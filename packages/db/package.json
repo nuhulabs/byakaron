@@ -1,0 +1,22 @@
+{
+  "name": "@bngc/db",
+  "module": "index.ts",
+  "type": "module",
+  "prisma": {
+    "schema": "./schemas/schema.prisma"
+  },
+  "scripts": {
+    "reset": "prisma migrate reset --force",
+    "deploy": "prisma migrate deploy",
+    "migration": "prisma migrate dev",
+    "studio": "prisma studio",
+    "seed": "prisma db seed",
+    "generate": "prisma generate"
+  },
+  "devDependencies": {
+    "prisma": "^6.4.1"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.4.1"
+  }
+}

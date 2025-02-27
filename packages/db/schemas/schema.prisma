@@ -1,0 +1,56 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model grammar_rules {
+  id          Int      @id @default(autoincrement())
+  type        String?
+  description String?
+  rules       rules[]
+}
+
+model rules {
+  id                  Int           @id @default(autoincrement())
+  keyword            String?
+  replace_keyword    String?
+  error_description  String?
+  grammar_rule       grammar_rules? @relation(fields: [grammar_rule_id], references: [id])
+  grammar_rule_id    Int?
+}
+
+model sentences {
+  id         Int       @id @default(autoincrement())
+  text       String?
+  created_at DateTime?
+  words      words[]
+}
+
+model words {
+  id           Int           @id @default(autoincrement())
+  sentence     sentences?    @relation(fields: [sentence_id], references: [id])
+  sentence_id  Int?
+  word_text    String?
+  position     Int?
+  pre_groups   word_groups[] @relation("PreWord")
+  post_groups  word_groups[] @relation("PostWord")
+}
+
+model word_groups {
+  id           Int      @id @default(autoincrement())
+  pre_word     words?   @relation("PreWord", fields: [pre_word_id], references: [id])
+  pre_word_id  Int?
+  post_word    words?   @relation("PostWord", fields: [post_word_id], references: [id])
+  post_word_id Int?
+  weight       Float?
+}

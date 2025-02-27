@@ -1,0 +1,16 @@
+FROM oven/bun:1.2.4 AS base
+
+# Install global deps
+COPY package.json ./
+COPY bun.lock ./
+RUN bun i
+
+# Install all internal deps
+COPY packages/db ./packages/db
+RUN bun i
+
+# Set environment variables
+ENV DATABASE_URL postgresql://bngc:bngc@db/bngc
+
+# Run deploy script
+CMD bun -F @bngc/db deploy

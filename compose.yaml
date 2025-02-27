@@ -1,0 +1,24 @@
+services:
+  db:
+    image: postgres:17
+    restart: always
+    environment:
+      POSTGRES_USER: bngc
+      POSTGRES_PASSWORD: bngc
+      POSTGRES_DB: bngc
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bngc"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  
+  db-scripts:
+    build:
+      dockerfile: Dockerfile.db
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://bngc:bngc@db:5432/bngc?schema=public"
