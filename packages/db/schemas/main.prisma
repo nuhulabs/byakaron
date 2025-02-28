@@ -1,0 +1,84 @@
+
+/// Stores grammar rules and their metadata
+model grammar_rules {
+  /// Unique identifier for the grammar rule
+  id          Int     @id @default(autoincrement())
+  /// Type of grammar rule (e.g., "spelling", "punctuation", etc.)
+  type        String?
+  /// Detailed description of the grammar rule
+  description String?
+
+  // Relations
+  /// Associated grammar rule instances
+  rules       rules[]
+}
+
+/// Contains specific rule instances and their correction suggestions
+model rules {
+  /// Unique identifier for the rule
+  id                Int            @id @default(autoincrement())
+  /// The word or phrase to check for
+  keyword           String?
+  /// The suggested replacement for the keyword
+  replace_keyword   String?
+  /// Description of the error this rule catches
+  error_description String?
+  /// Foreign key reference to grammar_rules
+  grammar_rule_id   Int?
+
+  // Relations
+  /// Reference to the parent grammar rule
+  grammar_rule      grammar_rules? @relation(fields: [grammar_rule_id], references: [id])
+}
+
+/// Stores complete sentences for language processing
+model sentences {
+  /// Unique identifier for the sentence
+  id         Int       @id @default(autoincrement())
+  /// The actual text content of the sentence
+  text       String?
+  /// Timestamp when the sentence was created
+  created_at DateTime?
+
+  // Relations
+  /// Individual words that make up this sentence
+  words      words[]
+}
+
+/// Contains individual words and their positions within sentences
+model words {
+  /// Unique identifier for the word
+  id          Int     @id @default(autoincrement())
+  /// Foreign key reference to sentences
+  sentence_id Int?
+  /// The actual word text
+  text        String?
+  /// Position of the word in the sentence
+  position    Int?
+
+  // Relations
+  /// Reference to the parent sentence
+  sentence    sentences?    @relation(fields: [sentence_id], references: [id])
+  /// Groups where this word appears as the previous word
+  prev_groups word_groups[] @relation("prev_word")
+  /// Groups where this word appears as the next word
+  next_groups word_groups[] @relation("next_word")
+}
+
+/// Represents pairs of words and their statistical relationships
+model word_groups {
+  /// Unique identifier for the word group
+  id      Int    @id @default(autoincrement())
+  /// Foreign key reference to the previous word
+  prev_id Int?
+  /// Foreign key reference to the next word
+  next_id Int?
+  /// Weight/probability score for this word pair
+  weight  Float?
+
+  // Relations
+  /// Reference to the previous word in the pair
+  prev_word words? @relation("prev_word", fields: [prev_id], references: [id])
+  /// Reference to the next word in the pair
+  next_word words? @relation("next_word", fields: [next_id], references: [id])
+}

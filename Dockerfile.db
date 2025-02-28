@@ -6,11 +6,14 @@ COPY bun.lock ./
 RUN bun i
 
 # Install all internal deps
-COPY packages/db ./packages/db
+COPY packages/db/package.json ./packages/db/package.json
 RUN bun i
+
+# Copy packages
+COPY packages/db ./packages/db
 
 # Set environment variables
 ENV DATABASE_URL postgresql://bngc:bngc@db/bngc
 
-# Run deploy script
+# Run deploy scripts
 CMD bun -F @bngc/db deploy

@@ -1,0 +1,10 @@
+{
+  "name": "@bngc/dataset",
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "extract": "bun extract.ts",
+    "transform": "bun transform.ts",
+    "load": "bun load.ts"
+  }
+}

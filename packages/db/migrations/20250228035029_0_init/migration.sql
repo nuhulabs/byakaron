@@ -1,3 +1,6 @@
+-- CreateEnum
+CREATE TYPE "datasources_type" AS ENUM ('mysql_dump', 'postgres_dump', 'csv', 'json', 'yaml', 'xml', 'html', 'markdown', 'text');
+
 -- CreateTable
 CREATE TABLE "grammar_rules" (
     "id" SERIAL NOT NULL,
@@ -31,7 +34,7 @@ CREATE TABLE "sentences" (
 CREATE TABLE "words" (
     "id" SERIAL NOT NULL,
     "sentence_id" INTEGER,
-    "word_text" TEXT,
+    "text" TEXT,
     "position" INTEGER,
 
     CONSTRAINT "words_pkey" PRIMARY KEY ("id")
@@ -40,11 +43,23 @@ CREATE TABLE "words" (
 -- CreateTable
 CREATE TABLE "word_groups" (
     "id" SERIAL NOT NULL,
-    "pre_word_id" INTEGER,
-    "post_word_id" INTEGER,
+    "prev_id" INTEGER,
+    "next_id" INTEGER,
     "weight" DOUBLE PRECISION,
 
     CONSTRAINT "word_groups_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "datasources" (
+    "id" SERIAL NOT NULL,
+    "name" TEXT NOT NULL,
+    "type" "datasources_type" NOT NULL,
+    "url" TEXT NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "datasources_pkey" PRIMARY KEY ("id")
 );
 
 -- AddForeignKey
@@ -54,7 +69,7 @@ ALTER TABLE "rules" ADD CONSTRAINT "rules_grammar_rule_id_fkey" FOREIGN KEY ("gr
 ALTER TABLE "words" ADD CONSTRAINT "words_sentence_id_fkey" FOREIGN KEY ("sentence_id") REFERENCES "sentences"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "word_groups" ADD CONSTRAINT "word_groups_pre_word_id_fkey" FOREIGN KEY ("pre_word_id") REFERENCES "words"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "word_groups" ADD CONSTRAINT "word_groups_prev_id_fkey" FOREIGN KEY ("prev_id") REFERENCES "words"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "word_groups" ADD CONSTRAINT "word_groups_post_word_id_fkey" FOREIGN KEY ("post_word_id") REFERENCES "words"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "word_groups" ADD CONSTRAINT "word_groups_next_id_fkey" FOREIGN KEY ("next_id") REFERENCES "words"("id") ON DELETE SET NULL ON UPDATE CASCADE;

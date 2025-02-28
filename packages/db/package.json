@@ -3,12 +3,12 @@
   "module": "index.ts",
   "type": "module",
   "prisma": {
-    "schema": "./schemas/schema.prisma"
+    "schema": "./schemas"
   },
   "scripts": {
     "reset": "prisma migrate reset --force",
     "deploy": "prisma migrate deploy",
-    "migration": "prisma migrate dev",
+    "migration": "prisma migrate dev --skip-generate",
     "studio": "prisma studio",
     "seed": "prisma db seed",
     "generate": "prisma generate"

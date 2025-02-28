@@ -22,3 +22,5 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: "postgresql://bngc:bngc@db:5432/bngc?schema=public"
+    volumes:
+      - ./packages/db/schemas:/home/bun/app/packages/db/schemas

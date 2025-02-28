@@ -100,7 +100,6 @@ web_modules/
 
 # dotenv environment variable files
 
-.env
 .env.development.local
 .env.test.local
 .env.production.local
@@ -173,3 +172,7 @@ dist
 
 # Finder (MacOS) folder config
 .DS_Store
+
+# Dataset
+packages/dataset/assets/*
+!packages/dataset/assets/.gitkeep
