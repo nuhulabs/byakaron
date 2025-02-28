@@ -2,7 +2,7 @@ import { prisma } from "@bngc/db";
 import { basename, extname } from "path";
 import { existsSync } from "fs";
 import { $ } from "bun";
-import { ASSET_PATH } from "./constant";
+import { ASSET_PATH } from "../constant";
 
 async function handler() {
   try {
@@ -26,10 +26,14 @@ async function downloadFile(source: { id: number; url: string; type: string }) {
     
     const urlBasename = basename(source.url);
     const isGzipped = source.url.endsWith('.gz');
+    const isBzipped = source.url.endsWith('.bz2');
+    const isCompressed = isGzipped || isBzipped;
     const downloadFilename = `${ASSET_PATH}/${source.id}_${urlBasename}`;
     
     // Determine final filename with proper extension
-    let baseFilename = isGzipped ? urlBasename.replace('.gz', '') : urlBasename;
+    let baseFilename = isCompressed ? 
+      (isGzipped ? urlBasename.replace('.gz', '') : urlBasename.replace('.bz2', '')) : 
+      urlBasename;
     const existingExt = extname(baseFilename);
     const typeExt = getFileExtension(source.type);
     
@@ -44,7 +48,7 @@ async function downloadFile(source: { id: number; url: string; type: string }) {
     }
 
     // Check if compressed file exists before downloading
-    if (isGzipped && existsSync(downloadFilename)) {
+    if (isCompressed && existsSync(downloadFilename)) {
       console.log(`Compressed file exists, skipping download: ${downloadFilename}`);
     } else {
       // Download file using curl with progress
@@ -56,14 +60,21 @@ async function downloadFile(source: { id: number; url: string; type: string }) {
       }
     }
 
-    // Handle .gz files
-    if (isGzipped) {
-      console.log(`Extracting gzipped file: ${downloadFilename}`);
-      // Extract to a new file without removing the original
-      await $`gunzip -c ${downloadFilename} > ${finalFilename}`;
+    // Handle compressed files
+    if (isCompressed) {
+      console.log(`Extracting compressed file: ${downloadFilename}`);
+      
+      if (isGzipped) {
+        // Extract gzipped file to a new file without removing the original
+        await $`gunzip -c ${downloadFilename} > ${finalFilename}`;
+      } else if (isBzipped) {
+        // Extract bz2 file to a new file without removing the original
+        await $`bunzip2 -c ${downloadFilename} > ${finalFilename}`;
+      }
+      
       console.log(`Successfully extracted to: ${finalFilename}`);
     } else {
-      // If not gzipped and filenames are different, create a copy instead of moving
+      // If not compressed and filenames are different, create a copy instead of moving
       if (downloadFilename !== finalFilename) {
         await $`cp ${downloadFilename} ${finalFilename}`;
       }
