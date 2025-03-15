@@ -36,7 +36,7 @@ model sentences {
   /// Unique identifier for the sentence
   id         Int       @id @default(autoincrement())
   /// The actual text content of the sentence
-  text       String?
+  text       String?   @unique
   /// Timestamp when the sentence was created
   created_at DateTime?
 
@@ -52,7 +52,7 @@ model words {
   /// Foreign key reference to sentences
   sentence_id Int?
   /// The actual word text
-  text        String?
+  text        String? @unique
   /// Position of the word in the sentence
   position    Int?
 

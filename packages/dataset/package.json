@@ -3,13 +3,13 @@
   "module": "index.ts",
   "type": "module",
   "scripts": {
-    "extract": "bun extract.ts",
-    "transform": "bun transform.ts",
-    "load": "bun load.ts",
-    "wiki-transform": "bun transform/wikiTransform.ts"
+    "extract": "bun extract/extract.ts",
+    "transform": "bun transform/transform.ts",
+    "load": "bun load/load.ts"
   },
   "dependencies": {
     "@types/sax": "^1.2.7",
-    "sax": "^1.4.1"
+    "sax": "^1.4.1",
+    "wtf_wikipedia": "^10.4.0"
   }
 }

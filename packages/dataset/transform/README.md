@@ -5,8 +5,9 @@ This module provides functionality to parse large Wikipedia XML dump files effic
 ## Features
 
 - Streams the XML file instead of loading it entirely into memory
-- Uses SAX parser for efficient XML parsing
+- Uses regex-based parsing for efficient XML processing
 - Extracts key information from Wikipedia pages
+- Converts wikitext to plain text
 - Outputs the parsed data as JSON
 
 ## Usage
@@ -15,13 +16,14 @@ To parse the Wikipedia XML dump file:
 
 ```bash
 # From the packages/dataset directory
-bun wiki-transform
+bun transform
 ```
 
 This will:
 1. Read the XML file from `packages/dataset/assets/1_bnwiki-latest-pages-articles.xml`
 2. Parse the first 10 pages from the XML file
-3. Save the parsed data to `packages/dataset/output/wiki-pages.json`
+3. Convert wikitext to plain text
+4. Save the parsed data to `packages/dataset/output/wiki-pages.json`
 
 ## Structure
 
@@ -45,7 +47,8 @@ The output JSON file contains an array of Wikipedia page objects with the follow
         "username": "Username",
         "id": "54321"
       },
-      "text": "Page content..."
+      "text": "Original wikitext content...",
+      "plainText": "Rendered plain text version..."
     }
   },
   ...
