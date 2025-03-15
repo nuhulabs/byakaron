@@ -10,6 +10,32 @@
         "typescript": "^5.0.0",
       },
     },
+    "apps/lsp": {
+      "name": "@bnkt/lsp-server",
+      "version": "0.0.0",
+      "dependencies": {
+        "@bnkt/db": "workspace:*",
+        "@bnkt/lsp": "workspace:*",
+        "vscode-languageserver": "^8.1.0",
+        "vscode-languageserver-textdocument": "^1.0.8",
+      },
+      "devDependencies": {
+        "bun-types": "latest",
+      },
+    },
+    "packages/core/ner": {
+      "name": "@bnkt/ner",
+    },
+    "packages/core/pos": {
+      "name": "@bnkt/pos",
+    },
+    "packages/core/stemming": {
+      "name": "@bnkt/stemming",
+      "version": "0.0.0",
+    },
+    "packages/core/tokenization": {
+      "name": "@bnkt/tokenization",
+    },
     "packages/dataset": {
       "name": "@bnkt/dataset",
       "dependencies": {
@@ -64,7 +90,17 @@
 
     "@bnkt/lsp": ["@bnkt/lsp@workspace:packages/lsp"],
 
+    "@bnkt/lsp-server": ["@bnkt/lsp-server@workspace:apps/lsp"],
+
+    "@bnkt/ner": ["@bnkt/ner@workspace:packages/core/ner"],
+
+    "@bnkt/pos": ["@bnkt/pos@workspace:packages/core/pos"],
+
     "@bnkt/processing": ["@bnkt/processing@workspace:packages/processing"],
+
+    "@bnkt/stemming": ["@bnkt/stemming@workspace:packages/core/stemming"],
+
+    "@bnkt/tokenization": ["@bnkt/tokenization@workspace:packages/core/tokenization"],
 
     "@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.25.0", "", { "os": "aix", "cpu": "ppc64" }, "sha512-O7vun9Sf8DFjH2UtqK8Ku3LkquL9SZL8OLY1T5NZkA34+wG3OQF7cl4Ql8vdNzM6fzBbYfLaiRLIOZ+2FOCgBQ=="],
 
@@ -144,7 +180,7 @@
 
     "ansi-regex": ["ansi-regex@5.0.1", "", {}, "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ=="],
 
-    "bun-types": ["bun-types@1.2.4", "", { "dependencies": { "@types/node": "*", "@types/ws": "~8.5.10" } }, "sha512-nDPymR207ZZEoWD4AavvEaa/KZe/qlrbMSchqpQwovPZCKc7pwMoENjEtHgMKaAjJhy+x6vfqSBA1QU3bJgs0Q=="],
+    "bun-types": ["bun-types@1.2.5", "", { "dependencies": { "@types/node": "*", "@types/ws": "~8.5.10" } }, "sha512-3oO6LVGGRRKI4kHINx5PIdIgnLRb7l/SprhzqXapmoYkFl5m4j6EvALvbDVuuBFaamB46Ap6HCUxIXNLCGy+tg=="],
 
     "cli-progress": ["cli-progress@3.12.0", "", { "dependencies": { "string-width": "^4.2.3" } }, "sha512-tRkV3HJ1ASwm19THiiLIXLO7Im7wlTuKnvkYaTkyoAPefqjNg7W7DHKUlGRxy9vxDvbyCYQkQozvptuMkGCg8A=="],
 
@@ -221,6 +257,8 @@
     "xtend": ["xtend@4.0.2", "", {}, "sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ=="],
 
     "@bnkt/processing/@prisma/client": ["@prisma/client@5.22.0", "", { "peerDependencies": { "prisma": "*" }, "optionalPeers": ["prisma"] }, "sha512-M0SVXfyHnQREBKxCgyo7sffrKttwE6R8PMq330MIUF0pTwjUhLbW84pFDlf06B27XyCR++VtjugEnIHdr07SVA=="],
+
+    "@types/bun/bun-types": ["bun-types@1.2.4", "", { "dependencies": { "@types/node": "*", "@types/ws": "~8.5.10" } }, "sha512-nDPymR207ZZEoWD4AavvEaa/KZe/qlrbMSchqpQwovPZCKc7pwMoENjEtHgMKaAjJhy+x6vfqSBA1QU3bJgs0Q=="],
 
     "pg/pg-types": ["pg-types@2.2.0", "", { "dependencies": { "pg-int8": "1.0.1", "postgres-array": "~2.0.0", "postgres-bytea": "~1.0.0", "postgres-date": "~1.0.4", "postgres-interval": "^1.1.0" } }, "sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA=="],
 

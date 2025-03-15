@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "workspaces": [
     "packages/*",
+    "packages/core/*",
     "apps/*"
   ],
   "files": ["dist/cli.js"],

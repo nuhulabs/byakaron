@@ -1,0 +1,6 @@
+{
+  "name": "@bnkt/tokenization",
+  "module": "index.ts",
+  "main": "index.ts",
+  "type": "module"
+}

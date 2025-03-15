@@ -67,6 +67,9 @@ model words {
   prev_groups word_groups[] @relation("prev_word")
   /// Groups where this word appears as the next word
   next_groups word_groups[] @relation("next_word")
+
+  // Index for sentence_id
+  @@index([sentence_id])
 }
 
 /// Represents pairs of words and their statistical relationships
