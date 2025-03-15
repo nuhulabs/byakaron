@@ -39,6 +39,10 @@ function cleanupSentence(text: string): string {
       .replace(/\s+/g, " ")
       // Remove consecutive -
       .replace(/\-+/g, "-")
+      // Remove trailing - and _
+      .replace(/[-_]$/g, "")
+      // remove starting symbols
+      .replace(/^[।,.?!:-]+/, "")
       // Trim whitespace from beginning and end
       .trim()
   );
@@ -47,7 +51,7 @@ function cleanupSentence(text: string): string {
 /**
  * Split text into sentences by Bengalic KAR delimeter or new line
  */
-export function cleanupSentences(text: string): string[] {
+export function cleanupSentences(text: string) {
     // Split by line break
     const sentences = text.split("\n");
 
@@ -55,8 +59,11 @@ export function cleanupSentences(text: string): string[] {
     const karSentences = sentences.flatMap(sentence => sentence.split("।")).filter(Boolean);
 
     // Only keep sentences that are longer than 2 words
-    const filteredSentences = karSentences.filter(sentence => sentence.split(" ").length > 2);
+    const filteredSentences = karSentences
+    // Filter sentences that doesn't contain any Bengali character
+    .filter(sentence => /[\u0980-\u09FF]/.test(sentence))
+    .filter(sentence => sentence.split(" ").length > 2);
 
     // Cleanup each sentence
-    return filteredSentences.map(cleanupSentence).filter(Boolean);
+    return new Set(filteredSentences.map(cleanupSentence).filter(Boolean));
   }

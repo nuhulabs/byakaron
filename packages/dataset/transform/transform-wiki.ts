@@ -6,61 +6,78 @@ import { mkdirSync } from 'fs';
 import { writeFile } from 'fs/promises';
 import { cleanupSentences } from './util';
 
+const MAX_PAGES = Infinity;
+async function main() {
 
-// Helper function to extract content between XML tags
-function extractTagContent(xml: string, tag: string): string | null {
-  const regex = new RegExp(`<${tag}[^>]*>(.*?)<\\/${tag}>`, 's');
-  const match = xml.match(regex);
-  return match ? match[1].trim() : null;
+console.log('Wiki XML transformation started');
+console.log(`Working directory: ${import.meta.dir}`);
+
+// Path to the XML file
+const xmlFilePath = join(import.meta.dir, '../assets/1_bnwiki-latest-pages-articles.xml');
+
+// Check if the XML file exists
+if (!existsSync(xmlFilePath)) {
+  console.error(`Error: XML file not found at ${xmlFilePath}`);
+  process.exit(1);
 }
 
-// Helper function to convert wikitext to plain text
-async function wikitextToPlainText(wikitext: string): Promise<string> {
-  try {
-    const doc = wtf(wikitext);
-    return doc.text();
-  } catch (error) {
-    console.error('Error converting wikitext to plain text:', error);
-    return wikitext; // Return original text if conversion fails
-  }
+// Path to the output file
+const outputPath = join(import.meta.dir, '../output/wiki-pages.jsonl');
+
+// Parse the XML file (process 10 pages by default)
+parseWikiXml(xmlFilePath, outputPath, MAX_PAGES)
+  .then(() => {
+    console.log('Wiki XML transformation completed');
+  })
+  .catch(error => {
+    console.error('Error during XML transformation:', error);
+    process.exit(1);
+  }); 
+
+
 }
+
+main();
+
+
 
 /**
  * Parses a Wikipedia XML dump file
  * @param xmlFilePath Path to the XML file
- * @param outputPath Path to save the JSON output
+ * @param outputPath Path to save the JSONL output
  * @param maxPages Maximum number of pages to process
  */
 async function parseWikiXml(
-  xmlFilePath: string = join(import.meta.dir, '../assets/1_bnwiki-latest-pages-articles.xml'),
-  outputPath: string = join(import.meta.dir, '../output/wiki-pages.json'),
-  maxPages: number = 10
+  xmlFilePath: string,
+  outputPath: string,
+  maxPages: number
 ): Promise<void> {
   console.log('Starting to parse XML file...');
   
   // Ensure output directory exists
   const outputDir = outputPath.substring(0, outputPath.lastIndexOf('/'));
-  if (!existsSync(outputDir)) {
-    mkdirSync(outputDir, { recursive: true });
-  }
+  if (!existsSync(outputDir))mkdirSync(outputDir, { recursive: true });
+  // Create/truncate the output file
+  await writeFile(outputPath, '');
   
   // Read the file in chunks using Bun's streaming API
-  const file = Bun.file(xmlFilePath);
+  const InputFile = Bun.file(xmlFilePath);
+  const OutputFile = Bun.file(outputPath);
+  const outputFileWriter = OutputFile.writer();
   
   // For large files, we'll read it in chunks
   const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
-  const fileSize = file.size;
+  const fileSize = InputFile.size;
   
   console.log(`File size: ${(fileSize / (1024 * 1024)).toFixed(2)} MB`);
   console.log(`Will process up to ${maxPages} pages`);
   
   let buffer = '';
   let pageCount = 0;
-  const pages: WikiPage[] = [];
   
   // Process the file in chunks
   for (let position = 0; position < fileSize; position += CHUNK_SIZE) {
-    const chunk = await file.slice(position, position + CHUNK_SIZE).text();
+    const chunk = await InputFile.slice(position, position + CHUNK_SIZE).text();
     buffer += chunk;
     
     // Extract complete page elements from the buffer
@@ -123,13 +140,23 @@ async function parseWikiXml(
               id: revisionId || '',
               timestamp: timestamp || '',
               text,
-              plainText, // Add the plain text version
-              sentences,
               ...(Object.keys(contributor).length > 0 && { contributor })
             }
           };
+
+        const sentencesesObj: Sentences = {
+          ts: timestamp ? Date.parse(timestamp) : Date.now(),
+          id: `${title}:${id}:${revisionId}`,
+          sentences: Array.from(sentences)
+        }
           
-          pages.push(page);
+          const hasNoSentences = sentences.size === 0;
+          const isMediaWikiPage = page.title.startsWith('মিডিয়াউইকি:');
+          const isTemplatePage = page.title.startsWith('টেমপ্লেট');
+          const isMainPage = page.title === 'প্রধান পাতা';
+          // Write the page to the JSONL file immediately
+          if (!hasNoSentences && !isMediaWikiPage && !isTemplatePage && !isMainPage) outputFileWriter.write(JSON.stringify(sentencesesObj) + '\n');
+          
           pageCount++;
           
           console.log(`Processed page ${pageCount}: ${title}`);
@@ -152,48 +179,27 @@ async function parseWikiXml(
     }
   }
   
-  console.log(`Finished parsing. Processed ${pages.length} pages.`);
-  
-  // Write the pages to a JSON file
-  await writeFile(outputPath, JSON.stringify(pages, null, 2));
-  console.log(`JSON data written to ${outputPath}`);
+  console.log(`Finished parsing. Processed ${pageCount} pages.`);
+  console.log(`JSONL data written to ${outputPath}`);
 }
 
-
-/**
- * Checks if the XML file exists at the specified path
- * @param xmlFilePath Path to the XML file
- * @returns True if the file exists, false otherwise
- */
-function checkXmlFile(xmlFilePath: string = join(import.meta.dir, '../assets/1_bnwiki-latest-pages-articles.xml')): boolean {
-  return existsSync(xmlFilePath);
+// Helper function to extract content between XML tags
+function extractTagContent(xml: string, tag: string): string | null {
+  const regex = new RegExp(`<${tag}[^>]*>(.*?)<\\/${tag}>`, 's');
+  const match = xml.match(regex);
+  return match ? match[1].trim() : null;
 }
 
-console.log('Wiki XML transformation started');
-console.log(`Working directory: ${import.meta.dir}`);
-
-// Path to the XML file
-const xmlFilePath = join(import.meta.dir, '../assets/1_bnwiki-latest-pages-articles.xml');
-
-// Check if the XML file exists
-if (!checkXmlFile(xmlFilePath)) {
-  console.error(`Error: XML file not found at ${xmlFilePath}`);
-  process.exit(1);
+// Helper function to convert wikitext to plain text
+async function wikitextToPlainText(wikitext: string): Promise<string> {
+  try {
+    const doc = wtf(wikitext);
+    return doc.text();
+  } catch (error) {
+    console.error('Error converting wikitext to plain text:', error);
+    return wikitext; // Return original text if conversion fails
+  }
 }
-
-// Path to the output file
-const outputPath = join(import.meta.dir, '../output/wiki-pages.json');
-
-// Parse the XML file (process 10 pages by default)
-parseWikiXml(xmlFilePath, outputPath, 100)
-  .then(() => {
-    console.log('Wiki XML transformation completed');
-  })
-  .catch(error => {
-    console.error('Error during XML transformation:', error);
-    process.exit(1);
-  }); 
-
 
 
 interface WikiPage {
@@ -208,8 +214,13 @@ interface WikiPage {
       ip?: string;
     };
     text: string;
-    plainText: string; // Added plainText field
-    sentences: string[]; // Added sentences field
+    // sentences: string[]; // Added sentences field
   };
   ns: string;
+}
+
+interface Sentences {
+  ts: number;
+  id: string;
+  sentences: string[];
 }
