@@ -1,8 +1,5 @@
-import { Pool } from 'pg';
-import { pipeline } from 'stream/promises';
-import { Readable } from 'stream';
-import cliProgress from 'cli-progress';
 import { prisma, type DataTypes } from '@bnkt/db';
+import cliProgress from 'cli-progress';
 
 
 // Interface for a word entry

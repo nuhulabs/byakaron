@@ -89,3 +89,76 @@ model word_groups {
 
   @@id([prev_id, next_id])
 }
+
+/// Part-of-Speech (POS) tags based on Universal Dependencies (UD) v2 specification
+/// Source: https://universaldependencies.org/u/pos/
+enum pos_tag {
+  /// Nouns are words denoting all physical objects and materials
+  /// Example: cat, rock, intelligence (বিড়াল/biral, পাথর/pathor, বুদ্ধি/buddhi)
+  NOUN
+  /// Verbs are words denoting actions and processes
+  /// Example: run, eat, think (দৌড়ানো/dourano, খাওয়া/khawa, ভাবা/bhaba)
+  VERB
+  /// Adjectives are words that typically modify nouns
+  /// Example: big, old, green, incomprehensible (বড়/boro, পুরানো/purano, সবুজ/sobuj)
+  ADJ
+  /// Adverbs are words that typically modify verbs, adjectives or other adverbs
+  /// Example: very, well, exactly (খুব/khub, ভালোভাবে/bhalobhabe, ঠিক/thik)
+  ADV
+  /// Determiners are words that modify nouns or noun phrases
+  /// Example: the, a, an, this (টি/ti, টা/ta, এই/ei)
+  DET
+  /// Pronouns are words that substitute for nouns or noun phrases
+  /// Example: I, you, he, she (আমি/ami, তুমি/tumi, সে/se)
+  PRON
+  /// Adpositions are prepositions and postpositions
+  /// Example: in, to, during (মধ্যে/moddhe, থেকে/theke, জন্য/jonno)
+  ADP
+  /// Coordinating and subordinating conjunctions
+  /// Example: and, but, or, if, while (এবং/ebong, কিন্তু/kintu, বা/ba)
+  CONJ
+  /// Punctuation marks
+  /// Example: ., ?, !, , (।, ?, !, ,)
+  PUNCT
+  /// Cardinal numbers, ordinal numbers and other types of numeric expressions
+  /// Example: 1, one, first (১/1, এক/ek, প্রথম/prothom)
+  NUM
+  /// Interjections are words used as exclamations
+  /// Example: oh, wow, ouch (ওহ/oh, বাহ/bah, উফ/uf)
+  PART
+  /// Particles are function words that must be associated with another word
+  /// Example: not, to (না/na, তো/to)
+  SYM
+  /// Other words that cannot be classified
+  /// Example: foreign words, abbreviations (etc/ইত্যাদি/ittyadi)
+  X
+}
+
+/// Named Entity Recognition (NER) tags based on CoNLL-2003 shared task specification
+/// Source: https://www.clips.uantwerpen.be/conll2003/ner/
+enum ner_tag {
+  /// Names of persons (e.g., "John Smith", "আব্দুল করিম")
+  PERSON
+  /// Names of organizations (e.g., "United Nations", "বাংলাদেশ সরকার") 
+  ORGANIZATION
+  /// Names of locations/geo-political entities (e.g., "Paris", "ঢাকা")
+  LOCATION
+  /// Temporal expressions - dates (e.g., "June 1st, 2024", "১লা বৈশাখ")
+  DATE
+  /// Temporal expressions - times (e.g., "3:30 PM", "সকাল ৯টা")
+  TIME
+  /// Monetary values and quantities (e.g., "$100", "১০০ টাকা")
+  MONEY
+  /// Percentages and other numerical quantities (e.g., "50%", "১০ কেজি") 
+  QUANTITY
+  /// Names of products and services (e.g., "iPhone", "পদ্মা সেতু")
+  PRODUCT
+  /// Names of events (e.g., "World War II", "মুক্তিযুদ্ধ")
+  EVENT
+  /// Works of art, books, songs etc. (e.g., "Hamlet", "পথের পাঁচালী")
+  WORK_OF_ART
+  /// Laws, regulations, official documents (e.g., "Constitution", "সংবিধান")
+  LAW
+  /// Languages and nationalities (e.g., "English", "বাঙালি")
+  LANGUAGE
+}

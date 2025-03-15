@@ -1,0 +1,5 @@
+{
+  "name": "@bnkt/lsp",
+  "module": "index.ts",
+  "type": "module"
+}
