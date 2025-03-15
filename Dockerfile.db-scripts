@@ -16,4 +16,4 @@ COPY packages/db ./packages/db
 ENV DATABASE_URL postgresql://bngc:bngc@db/bngc
 
 # Run deploy scripts
-CMD bun -F @bngc/db deploy
+CMD bun -F @bnkt/db deploy

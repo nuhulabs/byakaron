@@ -71,18 +71,21 @@ model words {
 
 /// Represents pairs of words and their statistical relationships
 model word_groups {
-  /// Unique identifier for the word group
-  id      Int    @id @default(autoincrement())
   /// Foreign key reference to the previous word
-  prev_id Int?
+  prev_id Int
   /// Foreign key reference to the next word
-  next_id Int?
+  next_id Int
   /// Weight/probability score for this word pair
   weight  Float?
+  
+  // occurance count
+  occurance Int @default(0)
 
   // Relations
   /// Reference to the previous word in the pair
-  prev_word words? @relation("prev_word", fields: [prev_id], references: [id])
+  prev_word words @relation("prev_word", fields: [prev_id], references: [id])
   /// Reference to the next word in the pair
-  next_word words? @relation("next_word", fields: [next_id], references: [id])
+  next_word words @relation("next_word", fields: [next_id], references: [id])
+
+  @@id([prev_id, next_id])
 }

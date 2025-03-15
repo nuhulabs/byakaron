@@ -1,0 +1,12 @@
+{
+  "datasources": [
+    {
+      "id": 1,
+      "name": "wiki-articles",
+      "type": "xml",
+      "url": "https://dumps.wikimedia.org/bnwiki/latest/bnwiki-latest-pages-articles.xml.bz2",
+      "created_at": "2025-03-15 16:39:24.159",
+      "updated_at": "2025-03-15 16:39:24.159"
+    }
+  ]
+}

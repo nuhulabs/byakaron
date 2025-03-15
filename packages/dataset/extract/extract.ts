@@ -1,4 +1,4 @@
-import { prisma } from "@bngc/db";
+import { prisma } from "@bnkt/db";
 import { basename, extname } from "path";
 import { existsSync } from "fs";
 import { $ } from "bun";

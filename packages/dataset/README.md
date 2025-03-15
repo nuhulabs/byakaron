@@ -1,4 +1,4 @@
-# @bngc/dataset
+# @bnkt/dataset
 
 Extract data from sources and save to persistent storage to be transformed and loaded into a data warehouse.
 
@@ -41,7 +41,7 @@ The output is in JSONL (JSON Lines) format, where each line is a valid JSON obje
 You can also use the transformer programmatically:
 
 ```typescript
-import { transformWikiXmlToJsonl } from '@bngc/dataset/transform-sax';
+import { transformWikiXmlToJsonl } from '@bnkt/dataset/transform-sax';
 
 await transformWikiXmlToJsonl({
   inputFile: './assets/enwiki-latest-pages-articles.xml',
@@ -55,7 +55,7 @@ await transformWikiXmlToJsonl({
 For backward compatibility, the original function name is still available:
 
 ```typescript
-import { transformWikiXmlToJson } from '@bngc/dataset/transform-sax';
+import { transformWikiXmlToJson } from '@bnkt/dataset/transform-sax';
 
 // This now outputs JSONL format
 await transformWikiXmlToJson({

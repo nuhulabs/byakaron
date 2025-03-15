@@ -1,5 +1,5 @@
-import type { DataTypes } from "@bngc/db";
-import { prisma } from "@bngc/db";
+import type { DataTypes } from "@bnkt/db";
+import { prisma } from "@bnkt/db";
 import { createReadStream, existsSync, statSync } from "fs";
 import { readdir } from "node:fs/promises";
 import * as path from "path";
