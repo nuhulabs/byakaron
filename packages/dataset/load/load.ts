@@ -10,8 +10,6 @@ import { pipeline } from "stream/promises";
 
 async function handler() {
   try {
-
-
     console.log("Starting dataset loading process...");
     
     // await measureCopy();
@@ -80,7 +78,7 @@ async function loadSentences(source: DataTypes.datasources) {
     // Create a temporary table to hold the data
     console.log("Creating temporary table...");
     await pgClient.query(`
-      CREATE TABLE IF NOT EXISTS temp_sentences (
+      CREATE TEMP TABLE IF NOT EXISTS temp_sentences (
         text TEXT NULL
       )
     `);
@@ -104,15 +102,25 @@ async function loadSentences(source: DataTypes.datasources) {
 
     // Set up progress tracking
     let bytesProcessed = 0;
+    let lastProgressUpdate = 0;
+    
     fileStream.on('data', (chunk) => {
       bytesProcessed += chunk.length;
-      displayCopyProgress(fileSize, bytesProcessed);
+      
+      // Only update progress display every 100ms to avoid console flickering
+      const now = Date.now();
+      if (now - lastProgressUpdate > 100) {
+        displayProgress(fileSize, bytesProcessed, "COPY Progress");
+        lastProgressUpdate = now;
+      }
     });
 
     // Pipe the file stream to the copy stream
     // Type assertion to make TypeScript happy
     await pipeline(fileStream, copyStream as any);
     
+    // Ensure we show 100% at the end
+    displayProgress(fileSize, fileSize, "COPY Progress");
     console.log("\nCOPY operation completed");
     
     // Count the number of rows in the temporary table
@@ -122,21 +130,21 @@ async function loadSentences(source: DataTypes.datasources) {
 
     // Insert distinct sentences into the sentences table
     console.log("Inserting distinct sentences into the sentences table...");
-    const insertResult = await pgClient.query(`
-      INSERT INTO sentences (text, created_at, datasource_id)
-      SELECT DISTINCT text, NOW(), $1::integer
-      FROM temp_sentences
-      WHERE text IS NOT NULL 
-        AND LENGTH(TRIM(text)) > 3
-        AND text NOT LIKE '#%'  -- Skip comment lines
-        AND text NOT LIKE '';   -- Skip empty lines
-    `, [source.id]);
+    
+    // Insert in batches with progress tracking
+      const batchResult =  pgClient.query(`
+        INSERT INTO sentences (text, created_at, datasource_id)
+        SELECT DISTINCT text, NOW(), $1::integer
+        FROM temp_sentences
+        WHERE text IS NOT NULL 
+          AND LENGTH(TRIM(text)) > 3
+          AND text NOT LIKE '#%'  -- Skip comment lines
+          AND text NOT LIKE ''    -- Skip empty lines
+      `, [source.id]);
 
     // Commit the transaction
     await pgClient.query('COMMIT');
 
-    const insertedCount = insertResult.rowCount || 0;
-    console.log(`Inserted ${insertedCount.toLocaleString()} distinct sentences into the sentences table`);
 
     // Calculate performance metrics
     const endTime = Date.now();
@@ -148,7 +156,6 @@ async function loadSentences(source: DataTypes.datasources) {
     console.log(`Processing rate: ${rowsPerSecond.toFixed(2)} rows/second`);
     console.log(`File size processed: ${(fileSize / (1024 * 1024)).toFixed(2)} MB`);
     console.log(`Rows loaded: ${rowCount.toLocaleString()}`);
-    console.log(`Distinct rows inserted: ${insertedCount.toLocaleString()}`);
     
   } catch (error) {
     // Rollback the transaction in case of error
@@ -167,18 +174,27 @@ async function loadSentences(source: DataTypes.datasources) {
 }
 
 /**
- * Display progress for COPY operation
+ * Display progress for operations
  */
-function displayCopyProgress(totalSize: number, bytesProcessed: number) {
+function displayProgress(total: number, current: number, label: string) {
   // Calculate progress percentage
-  const progress = Math.min(100, Math.round((bytesProcessed / totalSize) * 100));
+  const progress = Math.min(100, Math.round((current / total) * 100));
   
   // Create a progress bar
   const barLength = 30;
   const filledLength = Math.round((barLength * progress) / 100);
   const progressBar = "█".repeat(filledLength) + "░".repeat(barLength - filledLength);
   
-  // Display progress
-  process.stdout.write(`\rCOPY Progress: [${progressBar}] ${progress}% | ${(bytesProcessed / (1024 * 1024)).toFixed(2)}MB / ${(totalSize / (1024 * 1024)).toFixed(2)}MB`);
+  // Clear the current line and display progress
+  process.stdout.clearLine(0);
+  process.stdout.cursorTo(0);
+  
+  if (label.includes("COPY")) {
+    // For file operations, show MB
+    process.stdout.write(`${label}: [${progressBar}] ${progress}% | ${(current / (1024 * 1024)).toFixed(2)}MB / ${(total / (1024 * 1024)).toFixed(2)}MB`);
+  } else {
+    // For row operations, show row counts
+    process.stdout.write(`${label}: [${progressBar}] ${progress}% | ${current.toLocaleString()} / ${total.toLocaleString()} rows`);
+  }
 }
 

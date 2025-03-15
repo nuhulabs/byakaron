@@ -11,5 +11,8 @@
     "@types/sax": "^1.2.7",
     "sax": "^1.4.1",
     "wtf_wikipedia": "^10.4.0"
+  },
+  "devDependencies": {
+    "@types/pg-copy-streams": "^1.2.5"
   }
 }
