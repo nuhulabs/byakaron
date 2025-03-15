@@ -41,30 +41,38 @@ function cleanupSentence(text: string): string {
       .replace(/\-+/g, "-")
       // Remove trailing - and _
       .replace(/[-_]$/g, "")
-      // remove starting symbols
-      .replace(/^[।,.?!:-]+/, "")
-      // Trim all symbols from the beginning and end
-      .replace(/^[।,.?!:-]+|[।,.?!:-]+$/g, "")
+      // Remove complex patterns of punctuation and symbols at the beginning of sentences
+      .replace(/^[-.:,।?!_\s]+/g, "")
+      // Remove complex patterns of punctuation and symbols at the end of sentences
+      .replace(/[-.:,।?!_\s]+$/g, "")
       // Trim whitespace from beginning and end
       .trim()
   );
 }
 
 /**
- * Split text into sentences by Bengalic KAR delimeter or new line
+ * Split text into sentences by Bengalic KAR delimeter, new line, or multiple punctuation patterns
  */
 export function cleanupSentences(text: string) {
   // Split by line break
   const paraSentences = text.split("\n");
 
-  // Split by KAR delimeter
+  // Split by KAR delimeter and other standard sentence delimiters
   const karSentences = paraSentences.flatMap((sentence) =>
     sentence.split(/[।!?]/).filter(Boolean)
   );
 
+  // Further split sentences by multiple punctuation patterns
+  // This handles cases like ".,", "-,,.,,.," and other unusual punctuation clusters
+  const furtherSplitSentences = karSentences.flatMap((sentence) => {
+    // Pattern to match multiple punctuation marks together (2 or more)
+    // This includes combinations of periods, commas, hyphens, etc.
+    return sentence.split(/[.,:;-]{2,}/).filter(Boolean);
+  });
+
   // Cleanup each sentence
   return new Set(
-    karSentences
+    furtherSplitSentences
       .map(cleanupSentence)
       .filter((sentence) => /[\u0980-\u09FF]/.test(sentence))
       .filter((sentence) => sentence.split(" ").length > 3)

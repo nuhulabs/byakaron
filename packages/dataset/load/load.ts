@@ -1,71 +1,47 @@
+import type { DataTypes } from "@bngc/db";
 import { prisma } from "@bngc/db";
-import { ASSET_PATH } from "../constant";
-import { readdir, access } from "node:fs/promises";
-import { $ } from "bun";
+import { readdir } from "node:fs/promises";
 import * as path from "path";
-import { constants } from "fs";
+import { ASSET_PATH } from "../constant";
+// Batch size for file writes
+const BATCH_SIZE = 100000;
+
 
 async function handler() {
-  const sources = await prisma.datasources.findMany();
-  const assetFiles = await readdir(ASSET_PATH, {recursive: true});
-
-  for (const source of sources) {
-    const file = assetFiles.find((file) => file.startsWith(`${source.id}_`));
-    if (!file) {
-      console.log(`File not found for source ${source.id}`);
-      continue;
-    }
-
-    const filePath = `${ASSET_PATH}/${file}`;
+  try {
+    console.log("Starting dataset loading process...");
     
-    console.log(`Loading ${filePath}`);
-
-    if (source.type === 'xml') {
-      try {
-        // Check if sentences file exists
-        const sentencesFilePath = path.join(ASSET_PATH, 'sentences', `${source.id}_sentences.txt`);
-        
-        try {
-          await access(sentencesFilePath, constants.R_OK);
-        } catch (error) {
-          console.error(`Sentences file not found or not readable: ${sentencesFilePath}`);
-          continue;
-        }
-        
-        console.log(`Loading sentences from ${sentencesFilePath} into database...`);
-        
-        // Use Prisma raw query to perform PostgreSQL COPY operation
-        // First create a temporary table
-        await prisma.$executeRaw`
-          CREATE TEMP TABLE temp_sentences (
-            text TEXT
-          )
-        `;
-        
-        // Use PostgreSQL COPY command to bulk load data from file
-        await prisma.$executeRaw`
-          COPY temp_sentences (text)
-          FROM ${sentencesFilePath}
-          WITH (FORMAT text, DELIMITER E'\n')
-        `;
-        
-        // Insert distinct sentences into the sentences table
-        const result = await prisma.$executeRaw`
-          INSERT INTO sentences (text, datasource_id, created_at)
-          SELECT DISTINCT text, ${source.id}, NOW()
-          FROM temp_sentences
-          ON CONFLICT (text) DO NOTHING
-        `;
-        
-        // Drop the temporary table
-        await prisma.$executeRaw`DROP TABLE temp_sentences`;
-        
-        console.log(`Successfully loaded sentences into database from ${sentencesFilePath}`);
-      } catch (error) {
-        console.error('Error loading sentences into database:', error);
-      }
+    const sources = await prisma.datasources.findMany();
+    console.log(`Found ${sources.length} data sources to process`);
+    
+    if (sources.length === 0) {
+      console.log("No data sources found. Exiting.");
+      return;
     }
+    
+    const assetFiles = await readdir(ASSET_PATH, { recursive: true });
+    console.log(`Found ${assetFiles.length} files in asset directory`);
+
+    for (const source of sources) {
+      await loadSentences(source);
+    }
+   
+  } catch (error) {
+    console.error("Fatal error in dataset loading process:", error);
+    process.exit(1);
   }
 }
 
-handler();
+// Start the handler function and catch any unhandled errors
+handler().catch(error => {
+  console.error("Unhandled error in handler:", error);
+  process.exit(1);
+});
+
+async function loadSentences(source: DataTypes.datasources) {
+  const jsonlFilePath = path.join(ASSET_PATH, `${source.id}_transformed.jsonl`);
+  const stdFilePath = path.join(ASSET_PATH, `${source.id}_std.jsonl`);
+  const stdTxtFilePath = path.join(ASSET_PATH, `${source.id}_std.txt`);
+
+}
+
