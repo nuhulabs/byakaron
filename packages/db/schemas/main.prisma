@@ -1,4 +1,3 @@
-
 /// Stores grammar rules and their metadata
 model grammar_rules {
   /// Unique identifier for the grammar rule
@@ -10,13 +9,13 @@ model grammar_rules {
 
   // Relations
   /// Associated grammar rule instances
-  rules       rules[]
+  rules rules[]
 }
 
 /// Contains specific rule instances and their correction suggestions
 model rules {
   /// Unique identifier for the rule
-  id                Int            @id @default(autoincrement())
+  id                Int     @id @default(autoincrement())
   /// The word or phrase to check for
   keyword           String?
   /// The suggested replacement for the keyword
@@ -28,7 +27,7 @@ model rules {
 
   // Relations
   /// Reference to the parent grammar rule
-  grammar_rule      grammar_rules? @relation(fields: [grammar_rule_id], references: [id])
+  grammar_rule grammar_rules? @relation(fields: [grammar_rule_id], references: [id])
 }
 
 /// Stores complete sentences for language processing
@@ -36,13 +35,18 @@ model sentences {
   /// Unique identifier for the sentence
   id         Int       @id @default(autoincrement())
   /// The actual text content of the sentence
-  text       String?   @unique
+  text       String?
   /// Timestamp when the sentence was created
   created_at DateTime?
+
+  /// Foreign key reference to datasources
+  datasource_id Int?
 
   // Relations
   /// Individual words that make up this sentence
   words      words[]
+  /// Reference to the datasource
+  datasource datasources? @relation(fields: [datasource_id], references: [id])
 }
 
 /// Contains individual words and their positions within sentences

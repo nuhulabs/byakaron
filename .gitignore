@@ -179,3 +179,5 @@ packages/dataset/assets/*
 
 # Output
 packages/dataset/output
+output/*
+!output/.gitkeep

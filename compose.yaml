@@ -14,21 +14,6 @@ services:
       timeout: 5s
       retries: 5
       
-  db-mysql:
-    image: mysql:8.0
-    restart: always
-    environment:
-      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
-      MYSQL_DATABASE: bngc
-    ports:
-      - "3306:3306"
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    command: --default-authentication-plugin=mysql_native_password
-
   db-scripts:
     build:
       dockerfile: Dockerfile.db-scripts
@@ -39,15 +24,3 @@ services:
       DATABASE_URL: "postgresql://bngc:bngc@db:5432/bngc?schema=public"
     volumes:
       - ./packages/db/schemas:/home/bun/app/packages/db/schemas
-
-  db-load:
-    build:
-      context: .
-      dockerfile: Dockerfile.db-load
-    depends_on:
-      db:
-        condition: service_healthy
-      db-mysql:
-        condition: service_healthy
-    volumes:
-      - ./packages/dataset/assets:/app/dataset

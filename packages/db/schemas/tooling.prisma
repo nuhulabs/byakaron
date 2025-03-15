@@ -1,5 +1,3 @@
-
-
 /// Represents the type of data source
 enum datasources_type {
   /// MySQL dump file
@@ -25,15 +23,16 @@ enum datasources_type {
 /// Represents a data source that provides data for the application
 model datasources {
   /// Unique identifier for the data source
-  id Int @id @default(autoincrement())
+  id         Int              @id @default(autoincrement())
   /// Name of the data source
-  name String
+  name       String
   /// Type of data source (e.g., "file", "api", "database")
-  type datasources_type
+  type       datasources_type
   /// URL or path to the data source
-  url String
+  url        String
   /// Timestamp when the data source was created
-  created_at DateTime @default(now())
+  created_at DateTime         @default(now())
   /// Timestamp when the data source was last updated
-  updated_at DateTime @updatedAt
+  updated_at DateTime         @updatedAt
+  sentences  sentences[]
 }

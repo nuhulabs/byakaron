@@ -24,7 +24,7 @@ function cleanupSentence(text: string): string {
       .replace(/&[a-zA-Z0-9#]+;/g, "")
       // Remove Latin characters (a-z, A-Z)
       .replace(/[a-zA-Z]/g, "")
-      // Keep only Bengali characters (Unicode range: \u0980-\u09FF), 
+      // Keep only Bengali characters (Unicode range: \u0980-\u09FF),
       // spaces, and essential punctuation
       .replace(/[^\u0980-\u09FF\s।,.?!:-]/g, "")
       // Replace multiple consecutive spaces with a single space
@@ -43,6 +43,8 @@ function cleanupSentence(text: string): string {
       .replace(/[-_]$/g, "")
       // remove starting symbols
       .replace(/^[।,.?!:-]+/, "")
+      // Trim all symbols from the beginning and end
+      .replace(/^[।,.?!:-]+|[।,.?!:-]+$/g, "")
       // Trim whitespace from beginning and end
       .trim()
   );
@@ -52,18 +54,120 @@ function cleanupSentence(text: string): string {
  * Split text into sentences by Bengalic KAR delimeter or new line
  */
 export function cleanupSentences(text: string) {
-    // Split by line break
-    const sentences = text.split("\n");
+  // Split by line break
+  const paraSentences = text.split("\n");
 
-    // Split by KAR delimeter
-    const karSentences = sentences.flatMap(sentence => sentence.split("।")).filter(Boolean);
+  // Split by KAR delimeter
+  const karSentences = paraSentences.flatMap((sentence) =>
+    sentence.split(/[।!?]/).filter(Boolean)
+  );
 
-    // Only keep sentences that are longer than 2 words
-    const filteredSentences = karSentences
-    // Filter sentences that doesn't contain any Bengali character
-    .filter(sentence => /[\u0980-\u09FF]/.test(sentence))
-    .filter(sentence => sentence.split(" ").length > 2);
+  // Cleanup each sentence
+  return new Set(
+    karSentences
+      .map(cleanupSentence)
+      .filter((sentence) => /[\u0980-\u09FF]/.test(sentence))
+      .filter((sentence) => sentence.split(" ").length > 3)
+      .filter(Boolean)
+  );
+}
 
-    // Cleanup each sentence
-    return new Set(filteredSentences.map(cleanupSentence).filter(Boolean));
-  }
+export const displayProgress = (() => {
+  // Closure variables to track last update time and progress
+  let lastUpdateTime = 0;
+  let lastProcessedPages = 0;
+  let startTime = Date.now();
+
+  return function (
+    totalSize: number,
+    currentPosition: number,
+    processedPages: number,
+    maxPages: number,
+    currentPage: string,
+    force: boolean = false
+  ) {
+    const now = Date.now();
+    const UPDATE_THRESHOLD_MS = 1000; // Update display every 1 second
+    const UPDATE_THRESHOLD_PAGES = 5; // Or every 5 pages
+
+    // Only update if forced or thresholds are met
+    if (
+      !force &&
+      now - lastUpdateTime < UPDATE_THRESHOLD_MS &&
+      processedPages - lastProcessedPages < UPDATE_THRESHOLD_PAGES
+    ) {
+      return;
+    }
+
+    // Update tracking variables
+    lastUpdateTime = now;
+    lastProcessedPages = processedPages;
+
+    // Ensure currentPosition is valid and not greater than totalSize
+    const validPosition = Math.min(currentPosition || 0, totalSize);
+
+    const progress =
+      totalSize > 0
+        ? Math.min(100, Math.round((validPosition / totalSize) * 100))
+        : 0;
+    const pagesProgress =
+      maxPages !== Infinity
+        ? Math.min(100, Math.round((processedPages / maxPages) * 100))
+        : 0;
+
+    // Create a progress bar
+    const barLength = 30;
+    const filledLength = Math.round((barLength * progress) / 100);
+    const progressBar =
+      "█".repeat(filledLength) + "░".repeat(barLength - filledLength);
+
+    // Calculate elapsed time and processing rate
+    const elapsedSeconds = (now - startTime) / 1000;
+    const pagesPerSecond = processedPages / Math.max(1, elapsedSeconds);
+
+    // Calculate estimated total pages more safely
+    let estimatedTotalPages = maxPages;
+    if (maxPages === Infinity && validPosition > 0 && totalSize > 0) {
+      estimatedTotalPages = Math.round(
+        totalSize * (processedPages / validPosition)
+      );
+    }
+
+    const remainingPages = Math.max(0, estimatedTotalPages - processedPages);
+    const estimatedTimeRemaining =
+      remainingPages / Math.max(0.1, pagesPerSecond);
+
+    // Format time remaining
+    const formatTime = (seconds: number): string => {
+      if (!isFinite(seconds) || seconds <= 0) return "unknown";
+      const hrs = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${hrs > 0 ? `${hrs}h ` : ""}${
+        mins > 0 ? `${mins}m ` : ""
+      }${secs}s`;
+    };
+
+    console.clear();
+    console.log("Wiki XML to JSONL Transformation Progress");
+    console.log(`[${progressBar}] ${progress}%`);
+    console.log(
+      `File: ${(validPosition / (1024 * 1024)).toFixed(2)}MB / ${(
+        totalSize /
+        (1024 * 1024)
+      ).toFixed(2)}MB`
+    );
+    console.log(
+      `Pages: ${processedPages} / ${
+        maxPages === Infinity ? estimatedTotalPages + " (est.)" : maxPages
+      } ${maxPages !== Infinity ? `(${pagesProgress}%)` : ""}`
+    );
+    console.log(`Current page: ${currentPage}`);
+    console.log(`Processing rate: ${pagesPerSecond.toFixed(2)} pages/sec`);
+    console.log(`Elapsed time: ${formatTime(elapsedSeconds)}`);
+    console.log(
+      `Estimated time remaining: ${formatTime(estimatedTimeRemaining)}`
+    );
+    console.log(`Last update: ${new Date().toLocaleTimeString()}`);
+  };
+})();
