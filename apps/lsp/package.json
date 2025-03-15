@@ -1,0 +1,22 @@
+{
+  "name": "@bnkt/lsp-server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Bengali language spellcheck LSP server",
+  "scripts": {
+    "dev": "bunx ts-node src/index.ts",
+    "dev:http": "bun run src/http-server.ts",
+    "test": "bun test",
+    "start": "bun run src/index.ts",
+    "start:http": "bun run src/http-server.ts"
+  },
+  "dependencies": {
+    "@bnkt/lsp": "workspace:*",
+    "@bnkt/db": "workspace:*",
+    "vscode-languageserver": "^8.1.0",
+    "vscode-languageserver-textdocument": "^1.0.8"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  }
+} 

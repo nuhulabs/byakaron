@@ -3,7 +3,8 @@
   "private": false,
   "version": "0.0.0",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "files": ["dist/cli.js"],
   "devDependencies": {
