@@ -10,5 +10,10 @@
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@types/pg": "^8.11.11",
+    "pg": "^8.14.0",
+    "pg-copy-streams": "^6.0.6"
   }
 }
