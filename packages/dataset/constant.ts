@@ -4,7 +4,7 @@ import { DataSource } from "./types";
 // Base paths
 export const ASSET_PATH = "./assets";
 export const SOURCE_ASSET_PATH = (source: DataSource) =>
-  join(ASSET_PATH, `${source.id}_${source.name}`);
+  join(ASSET_PATH, `${source.name}`);
 export const STATE_FILE_PATH = join(ASSET_PATH, "state.json");
 
 // File names for processing steps

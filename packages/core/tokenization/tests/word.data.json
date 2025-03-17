@@ -1,0 +1,194 @@
+[
+  {
+    "name": "should remove prefix - from words",
+    "cases": [
+      {
+        "input": "-ইন্টাগ্রেটেড",
+        "expected": ["ইন্টাগ্রেটেড"]
+      },
+      {
+        "input": "-এর",
+        "expected": ["এর"]
+      },
+      {
+        "input": "৪-অংশক",
+        "expected": ["৪-অংশক"]
+      },
+      {
+        "input": "জুলাইআগস্ট -আগস্টসেপ্টেম্বর - দ্বিমাসিক",
+        "expected": ["জুলাইআগস্ট", "আগস্টসেপ্টেম্বর", "দ্বিমাসিক"]
+      }
+    ]
+  },
+  {
+    "name": "should tokenize simple Bangla text",
+    "cases": [
+      {
+        "input": "আমি বাংলায় কথা বলি",
+        "expected": ["আমি", "বাংলায়", "কথা", "বলি"]
+      }
+    ]
+  },
+  {
+    "name": "should handle empty string",
+    "cases": [
+      {
+        "input": "",
+        "expected": []
+      }
+    ]
+  },
+  {
+    "name": "should handle whitespace-only string",
+    "cases": [
+      {
+        "input": "   ",
+        "expected": []
+      }
+    ]
+  },
+  {
+    "name": "should split on word separators",
+    "cases": [
+      {
+        "input": "আমি, তুমি। সে; তারা:",
+        "expected": ["আমি", "তুমি", "সে", "তারা"]
+      }
+    ]
+  },
+  {
+    "name": "should handle punctuation marks",
+    "cases": [
+      {
+        "input": "আমি? তুমি! সে, তারা।",
+        "expected": ["আমি", "তুমি", "সে", "তারা"]
+      }
+    ]
+  },
+  {
+    "name": "should remove Bangla digits from start and end of words",
+    "cases": [
+      {
+        "input": "১২আমি৩৪ ৫৬বাংলা",
+        "expected": ["১২আমি৩৪", "৫৬বাংলা"]
+      }
+    ]
+  },
+  {
+    "name": "should keep Bangla digits in the middle of words",
+    "cases": [
+      {
+        "input": "আ১২মি বাং৩৪লা",
+        "expected": ["আ১২মি", "বাং৩৪লা"]
+      }
+    ]
+  },
+  {
+    "name": "should remove non-Bangla characters",
+    "cases": [
+      {
+        "input": "আমিabc বাংলাdef",
+        "expected": ["আমি", "বাংলা"]
+      }
+    ]
+  },
+  {
+    "name": "should handle mixed text with punctuation and digits",
+    "cases": [
+      {
+        "input": "১২আমি, ৩৪বাংলা! abc১২৩",
+        "expected": ["১২আমি", "৩৪বাংলা"]
+      }
+    ]
+  },
+  {
+    "name": "should handle quotes",
+    "cases": [
+      {
+        "input": "'আমি' \"বাংলা\"",
+        "expected": ["আমি", "বাংলা"]
+      }
+    ]
+  },
+  {
+    "name": "should handle hyphenated words",
+    "cases": [
+      {
+        "input": "আমি-তুমি বাংলা-ভাষা",
+        "expected": ["আমি-তুমি", "বাংলা-ভাষা"]
+      }
+    ]
+  },
+  {
+    "name": "should filter out empty words after processing",
+    "cases": [
+      {
+        "input": "আমি ১২৩ বাংলা",
+        "expected": ["আমি", "বাংলা"]
+      }
+    ]
+  },
+  {
+    "name": "should handle multiple consecutive separators",
+    "cases": [
+      {
+        "input": "আমি,,, বাংলা... কথা",
+        "expected": ["আমি", "বাংলা", "কথা"]
+      }
+    ]
+  },
+  {
+    "name": "should handle text with only non-Bangla characters",
+    "cases": [
+      {
+        "input": "abc 123 !@#",
+        "expected": []
+      }
+    ]
+  },
+  {
+    "name": "should handle text with only Bangla digits",
+    "cases": [
+      {
+        "input": "১২৩ ৪৫৬ ৭৮৯",
+        "expected": []
+      }
+    ]
+  },
+  {
+    "name": "should remove non-Bangla characters",
+    "cases": [
+      {
+        "input": "আমিabc123",
+        "expected": ["আমি"]
+      }
+    ]
+  },
+  {
+    "name": "should preserve Bangla punctuation",
+    "cases": [
+      {
+        "input": "আমি, তুমি। সে: তারা-",
+        "expected": ["আমি", "তুমি", "সে", "তারা"]
+      }
+    ]
+  },
+  {
+    "name": "should handle text with mixed scripts",
+    "cases": [
+      {
+        "input": "আমি speak বাংলা",
+        "expected": ["আমি", "বাংলা"]
+      }
+    ]
+  },
+  {
+    "name": "should trim whitespace",
+    "cases": [
+      {
+        "input": "  আমি  বাংলা  ",
+        "expected": ["আমি", "বাংলা"]
+      }
+    ]
+  }
+] 

@@ -71,7 +71,9 @@ function cleanup(word: string): string {
       // Remove starting and ending hyphens
       .replace(/^-+|-+$/g, "")
       // Remove Bangla digits from start and end
-      .replace(/^[\u09E6-\u09EF]+|[\u09E6-\u09EF]+$/g, "")
+      // .replace(/^[\u09E6-\u09EF]+|[\u09E6-\u09EF]+$/g, "")
+      // Remove if the whole word is bangla digits
+      .replace(/^[\u09E6-\u09EF]+$/g, "")
       .trim()
   );
 }

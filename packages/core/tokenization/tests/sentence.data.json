@@ -1,0 +1,182 @@
+[
+  {
+    "name": "should tokenize simple Bangla text with দাড়ি (।) separator",
+    "cases": [
+      {
+        "input": "আমি বাংলায় কথা বলি এবং। আমি বাংলাদেশে থাকি।",
+        "expected": ["আমি বাংলায় কথা বলি এবং"]
+      }
+    ]
+  },
+  {
+    "name": "should tokenize text with multiple sentence separators",
+    "cases": [
+      {
+        "input": "আমি বাংলায় কথা বলি এবং। আমি বাংলাদেশে থাকি? তুমি কোথায় থাকো!",
+        "expected": ["আমি বাংলায় কথা বলি এবং"]
+      }
+    ]
+  },
+  {
+    "name": "should handle empty string",
+    "cases": [
+      {
+        "input": "",
+        "expected": []
+      }
+    ]
+  },
+  {
+    "name": "should handle whitespace-only string",
+    "cases": [
+      {
+        "input": "   ",
+        "expected": []
+      }
+    ]
+  },
+  {
+    "name": "should split on newlines",
+    "cases": [
+      {
+        "input": "আমি বাংলায় কথা বলি এবং\nআমি বাংলাদেশে থাকি\nতুমি কোথায় থাকো",
+        "expected": ["আমি বাংলায় কথা বলি এবং"]
+      }
+    ]
+  },
+  {
+    "name": "should filter out sentences with fewer than 4 words",
+    "cases": [
+      {
+        "input": "আমি বাংলায়। কথা বলি। আমি বাংলাদেশে থাকি এবং।",
+        "expected": ["আমি বাংলাদেশে থাকি এবং"]
+      }
+    ]
+  },
+  {
+    "name": "should filter out sentences without Bangla characters",
+    "cases": [
+      {
+        "input": "আমি বাংলায় কথা বলি এবং। This is English text. আমি বাংলাদেশে থাকি।",
+        "expected": ["আমি বাংলায় কথা বলি এবং"]
+      }
+    ]
+  },
+  {
+    "name": "should handle double দাড়ি (॥) separator",
+    "cases": [
+      {
+        "input": "আমি বাংলায় কথা বলি এবং॥ আমি বাংলাদেশে থাকি॥",
+        "expected": ["আমি বাংলায় কথা বলি এবং"]
+      }
+    ]
+  },
+  {
+    "name": "should handle ellipsis (...) separator",
+    "cases": [
+      {
+        "input": "আমি বাংলায় কথা বলি এবং... আমি বাংলাদেশে থাকি...",
+        "expected": ["আমি বাংলায় কথা বলি এবং"]
+      }
+    ]
+  },
+  {
+    "name": "should handle mixed separators",
+    "cases": [
+      {
+        "input": "আমি বাংলায় কথা বলি এবং। আমি বাংলাদেশে থাকি॥ তুমি কোথায় থাকো? সে কি জানে!",
+        "expected": ["আমি বাংলায় কথা বলি এবং"]
+      }
+    ]
+  },
+  {
+    "name": "should deduplicate identical sentences",
+    "cases": [
+      {
+        "input": "আমি বাংলায় কথা বলি এবং। আমি বাংলায় কথা বলি এবং।",
+        "expected": ["আমি বাংলায় কথা বলি এবং"]
+      }
+    ]
+  },
+  {
+    "name": "should handle text with only non-Bangla characters",
+    "cases": [
+      {
+        "input": "This is a test. Another test.",
+        "expected": []
+      }
+    ]
+  },
+  {
+    "name": "should remove text inside brackets",
+    "cases": [
+      {
+        "input": "আমি (parentheses) বাংলায় [brackets] কথা বলি {braces} এবং <angles> বাংলাদেশে থাকি।",
+        "expected": ["আমি বাংলায় কথা বলি এবং বাংলাদেশে থাকি"]
+      }
+    ]
+  },
+  {
+    "name": "should remove URLs",
+    "cases": [
+      {
+        "input": "আমি বাংলায় কথা বলি এবং https://example.com বাংলাদেশে থাকি।",
+        "expected": ["আমি বাংলায় কথা বলি এবং"]
+      }
+    ]
+  },
+  {
+    "name": "should remove email addresses",
+    "cases": [
+      {
+        "input": "আমি বাংলায় কথা বলি এবং user@example.com বাংলাদেশে থাকি।",
+        "expected": ["আমি বাংলায় কথা বলি এবং"]
+      }
+    ]
+  },
+  {
+    "name": "should remove HTML entities",
+    "cases": [
+      {
+        "input": "আমি &nbsp; বাংলায় &#39; কথা বলি এবং বাংলাদেশে থাকি।",
+        "expected": ["কথা বলি এবং বাংলাদেশে থাকি"]
+      }
+    ]
+  },
+  {
+    "name": "should remove Latin characters",
+    "cases": [
+      {
+        "input": "আমি Bangla বাংলায় কথা বলি এবং Bangladesh বাংলাদেশে থাকি।",
+        "expected": ["আমি বাংলায় কথা বলি এবং বাংলাদেশে থাকি"]
+      }
+    ]
+  },
+  {
+    "name": "should normalize whitespace",
+    "cases": [
+      {
+        "input": "আমি   বাংলায়    কথা   বলি   এবং   বাংলাদেশে   থাকি।",
+        "expected": ["আমি বাংলায় কথা বলি এবং বাংলাদেশে থাকি"]
+      }
+    ]
+  },
+  {
+    "name": "should handle text with unusual spacing and formatting",
+    "cases": [
+      {
+        "input": "\n      আমি    বাংলায়    কথা    বলি    এবং    \n      \n      আমি    বাংলাদেশে    থাকি।\n      \n      আমি    ভাত    খাই।\n    ",
+        "expected": ["আমি বাংলায় কথা বলি এবং"]
+      }
+    ]
+  },
+  {
+    "name": "should handle text with mixed Unicode normalization forms",
+    "cases": [
+      {
+        "input": "আমি বাংলায় কথা বলি এবং।",
+        "expected": ["আমি বাংলায় কথা বলি এবং"]
+      }
+    ]
+  }
+] 
