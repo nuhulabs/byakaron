@@ -1,1 +1,1 @@
-console.log("@bnkt/ner");
+console.log("@bntk/ner");

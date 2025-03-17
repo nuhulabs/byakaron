@@ -1,11 +1,11 @@
 /**
- * Utility functions for the Bengali spellcheck LSP
+ * Utility functions for the Bangla spellcheck LSP
  */
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
 /**
- * Extract Bengali words from a text document
+ * Extract Bangla words from a text document
  * @param document The text document to extract words from
  * @returns Array of words with their positions
  */
@@ -13,8 +13,8 @@ export function extractBengaliWords(document: TextDocument): { word: string; sta
   const text = document.getText();
   const words: { word: string; start: number; end: number }[] = [];
   
-  // Bengali Unicode range: \u0980-\u09FF
-  // This regex matches Bengali words
+  // Bangla Unicode range: \u0980-\u09FF
+  // This regex matches Bangla words
   const bengaliWordRegex = /[\u0980-\u09FF]+/g;
   let match: RegExpExecArray | null;
   
@@ -64,12 +64,12 @@ export function levenshteinDistance(a: string, b: string): number {
 }
 
 /**
- * Normalize Bengali text to handle different forms of the same character
+ * Normalize Bangla text to handle different forms of the same character
  * @param text The text to normalize
  * @returns Normalized text
  */
 export function normalizeBengaliText(text: string): string {
-  // Implement normalization rules for Bengali text
-  // This is a placeholder - actual implementation would handle specific Bengali normalization rules
+  // Implement normalization rules for Bangla text
+  // This is a placeholder - actual implementation would handle specific Bangla normalization rules
   return text;
 } 

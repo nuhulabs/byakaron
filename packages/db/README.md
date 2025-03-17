@@ -1,4 +1,4 @@
-# @bnkt/db
+# @bntk/db
 
 To install dependencies:
 

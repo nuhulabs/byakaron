@@ -1,5 +1,5 @@
 /**
- * Type definitions for the Bengali spellcheck LSP
+ * Type definitions for the Bangla spellcheck LSP
  */
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -19,7 +19,7 @@ export interface SpellingError {
 }
 
 /**
- * Configuration options for the Bengali spellchecker
+ * Configuration options for the Bangla spellchecker
  */
 export interface BengaliSpellcheckOptions {
   /** Custom dictionary words to ignore */

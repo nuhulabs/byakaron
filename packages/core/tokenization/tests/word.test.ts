@@ -3,7 +3,7 @@ import { tokenizeToWords } from "../word";
 
 describe("@bntk/tokenization", () => {
   describe("tokenizeToWords", () => {
-    test("should tokenize simple Bengali text", () => {
+    test("should tokenize simple Bangla text", () => {
       const text = "আমি বাংলায় কথা বলি";
       const expected = ["আমি", "বাংলায়", "কথা", "বলি"];
       expect(tokenizeToWords(text)).toEqual(expected);
@@ -29,19 +29,19 @@ describe("@bntk/tokenization", () => {
       expect(tokenizeToWords(text)).toEqual(expected);
     });
 
-    test("should remove Bengali digits from start and end of words", () => {
+    test("should remove Bangla digits from start and end of words", () => {
       const text = "১২আমি৩৪ ৫৬বাংলা";
       const expected = ["আমি", "বাংলা"];
       expect(tokenizeToWords(text)).toEqual(expected);
     });
 
-    test("should keep Bengali digits in the middle of words", () => {
+    test("should keep Bangla digits in the middle of words", () => {
       const text = "আ১২মি বাং৩৪লা";
       const expected = ["আ১২মি", "বাং৩৪লা"];
       expect(tokenizeToWords(text)).toEqual(expected);
     });
 
-    test("should remove non-Bengali characters", () => {
+    test("should remove non-Bangla characters", () => {
       const text = "আমিabc বাংলাdef";
       const expected = ["আমি", "বাংলা"];
       expect(tokenizeToWords(text)).toEqual(expected);
@@ -77,25 +77,25 @@ describe("@bntk/tokenization", () => {
       expect(tokenizeToWords(text)).toEqual(expected);
     });
 
-    test("should handle text with only non-Bengali characters", () => {
+    test("should handle text with only non-Bangla characters", () => {
       const text = "abc 123 !@#";
       expect(tokenizeToWords(text)).toEqual([]);
     });
 
-    test("should handle text with only Bengali digits", () => {
+    test("should handle text with only Bangla digits", () => {
       const text = "১২৩ ৪৫৬ ৭৮৯";
       expect(tokenizeToWords(text)).toEqual([]);
     });
   });
 
   describe("word/cleanup", () => {
-    test("should remove non-Bengali characters", () => {
+    test("should remove non-Bangla characters", () => {
       const text = "আমিabc123";
       const expected = ["আমি"];
       expect(tokenizeToWords(text)).toEqual(expected);
     });
 
-    test("should preserve Bengali punctuation", () => {
+    test("should preserve Bangla punctuation", () => {
       const text = "আমি, তুমি। সে: তারা-";
       const expected = ["আমি", "তুমি", "সে", "তারা"];
       expect(tokenizeToWords(text)).toEqual(expected);

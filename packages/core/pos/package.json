@@ -1,5 +1,5 @@
 {
-  "name": "@bnkt/pos",
+  "name": "@bntk/pos",
   "module": "index.ts",
   "type": "module"
 }

@@ -1,7 +1,7 @@
 /**
- * Entry point for the Bengali Language Spellcheck HTTP Server
+ * Entry point for the Bangla Language Spellcheck HTTP Server
  */
 
 import './server';
 
-console.log('Bengali Language Spellcheck HTTP Server started'); 
+console.log('Bangla Language Spellcheck HTTP Server started'); 

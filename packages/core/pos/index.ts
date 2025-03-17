@@ -1,1 +1,1 @@
-console.log("@bnkt/pos");
+console.log("@bntk/pos");

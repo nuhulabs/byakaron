@@ -1,10 +1,10 @@
-# Bengali Spellcheck LSP Server
+# Bangla Spellcheck LSP Server
 
-This is a Language Server Protocol (LSP) server implementation for Bengali language spellchecking. It provides real-time spelling error detection and correction suggestions for Bengali text.
+This is a Language Server Protocol (LSP) server implementation for Bangla language spellchecking. It provides real-time spelling error detection and correction suggestions for Bangla text.
 
 ## Features
 
-- Real-time Bengali text spellchecking
+- Real-time Bangla text spellchecking
 - Integration with MongoDB for dictionary storage
 - Spelling error diagnostics with suggestions
 - Completion provider for correction suggestions
@@ -19,10 +19,10 @@ This is a Language Server Protocol (LSP) server implementation for Bengali langu
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/bengali-spellcheck-lsp.git
+git clone https://github.com/your-username/bangla-spellcheck-lsp.git
 
 # Install dependencies
-cd bengali-spellcheck-lsp
+cd bangla-spellcheck-lsp
 npm install
 ```
 
@@ -56,10 +56,10 @@ npm run dev
 
 ## Database Setup
 
-The server requires a MongoDB database with a dictionary collection. You can populate the dictionary with Bengali words using the provided scripts:
+The server requires a MongoDB database with a dictionary collection. You can populate the dictionary with Bangla words using the provided scripts:
 
 ```bash
-# Import a basic Bengali dictionary
+# Import a basic Bangla dictionary
 npm run import-dictionary
 ```
 

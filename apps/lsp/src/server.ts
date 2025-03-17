@@ -1,10 +1,10 @@
 /**
- * Bengali Language Spellcheck HTTP Server
+ * Bangla Language Spellcheck HTTP Server
  * Exposes spellchecker functionality via HTTP endpoints
  */
 
-import { BengaliSpellchecker, type SpellingError } from "@bnkt/lsp";
-import { prisma } from "@bnkt/db";
+import { BengaliSpellchecker, type SpellingError } from "@bntk/lsp";
+import { prisma } from "@bntk/db";
 
 // Define the database-backed spellchecker class
 class BengaliSpellcheckerDbtaized extends BengaliSpellchecker {
@@ -85,7 +85,7 @@ async function checkText(text: string): Promise<SpellingError[]> {
 // Create a Bun HTTP server
 export const createServer = ({ port }: { port: number }) => {
   console.log(
-    `Bengali Language Spellcheck HTTP Server is running at http://localhost:${port}`
+    `Bangla Language Spellcheck HTTP Server is running at http://localhost:${port}`
   );
 
   const server = Bun.serve({

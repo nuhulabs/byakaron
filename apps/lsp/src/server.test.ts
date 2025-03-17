@@ -1,9 +1,9 @@
 /**
- * Tests for the Bengali Language Spellcheck HTTP Server
+ * Tests for the Bangla Language Spellcheck HTTP Server
  */
 
 import { describe, expect, test, beforeAll, afterAll, mock } from 'bun:test';
-import { BengaliSpellchecker } from '@bnkt/lsp';
+import { BengaliSpellchecker } from '@bntk/lsp';
 import { createServer } from './server';
 
 // Mock port for testing
@@ -11,7 +11,7 @@ const TEST_PORT = 3002;
 const BASE_URL = `http://localhost:${TEST_PORT}`;
 
 // Mock the BengaliSpellchecker class
-mock.module('@bnkt/lsp', () => {
+mock.module('@bntk/lsp', () => {
   return {
     BengaliSpellchecker: class MockBengaliSpellchecker {
       async checkWord(word: string): Promise<boolean> {
@@ -32,7 +32,7 @@ mock.module('@bnkt/lsp', () => {
 });
 
 // Mock the prisma client
-mock.module('@bnkt/db', () => {
+mock.module('@bntk/db', () => {
   return {
     prisma: {
       words: {
@@ -46,7 +46,7 @@ mock.module('@bnkt/db', () => {
   };
 });
 
-describe('Bengali Language Spellcheck HTTP Server', () => {
+describe('Bangla Language Spellcheck HTTP Server', () => {
   let testServer: ReturnType<typeof Bun.serve>;
 
   // Start the server before all tests

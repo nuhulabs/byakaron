@@ -1,5 +1,5 @@
 /**
- * Bengali language spellchecker implementation
+ * Bangla language spellchecker implementation
  */
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -7,14 +7,14 @@ import type { BengaliSpellcheckOptions, SpellingError, SpellcheckerService } fro
 import { extractBengaliWords, levenshteinDistance, normalizeBengaliText } from './utils';
 
 /**
- * Implementation of the Bengali spellchecker service
+ * Implementation of the Bangla spellchecker service
  */
 export class BengaliSpellchecker implements SpellcheckerService {
   private dictionary: Set<string> = new Set();
   private options: Required<BengaliSpellcheckOptions>;
 
   /**
-   * Create a new Bengali spellchecker
+   * Create a new Bangla spellchecker
    * @param options Configuration options
    */
   constructor(options: BengaliSpellcheckOptions = {}) {
@@ -30,13 +30,13 @@ export class BengaliSpellchecker implements SpellcheckerService {
       this.dictionary.add(normalizeBengaliText(word));
     });
 
-    // In a real implementation, we would load a Bengali dictionary here
+    // In a real implementation, we would load a Bangla dictionary here
     // This is a placeholder for demonstration purposes
   }
 
   /**
    * Load a dictionary from a data source
-   * @param words Array of Bengali words to add to the dictionary
+   * @param words Array of Bangla words to add to the dictionary
    */
   public loadDictionary(words: string[]): void {
     words.forEach(word => {
@@ -86,7 +86,7 @@ export class BengaliSpellchecker implements SpellcheckerService {
     }
 
     // Ignore words in all uppercase if the option is enabled
-    // Note: This may not be applicable for Bengali, but included for completeness
+    // Note: This may not be applicable for Bangla, but included for completeness
     if (this.options.ignoreWordsInAllUpperCase && word === word.toUpperCase() && word !== word.toLowerCase()) {
       return true;
     }

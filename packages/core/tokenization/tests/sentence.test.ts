@@ -3,7 +3,7 @@ import { tokenizeToSentences } from "../sentence";
 
 describe("@bntk/tokenization", () => {
   describe("tokenizeToSentences", () => {
-    test("should tokenize simple Bengali text with দাড়ি (।) separator", () => {
+    test("should tokenize simple Bangla text with দাড়ি (।) separator", () => {
       const text = "আমি বাংলায় কথা বলি এবং। আমি বাংলাদেশে থাকি।";
       const expected = new Set(["আমি বাংলায় কথা বলি এবং"]);
       expect(tokenizeToSentences(text)).toEqual(expected);
@@ -37,7 +37,7 @@ describe("@bntk/tokenization", () => {
       expect(tokenizeToSentences(text)).toEqual(expected);
     });
 
-    test("should filter out sentences without Bengali characters", () => {
+    test("should filter out sentences without Bangla characters", () => {
       const text =
         "আমি বাংলায় কথা বলি এবং। This is English text. আমি বাংলাদেশে থাকি।";
       const expected = new Set(["আমি বাংলায় কথা বলি এবং"]);
@@ -70,7 +70,7 @@ describe("@bntk/tokenization", () => {
       expect(tokenizeToSentences(text)).toEqual(expected);
     });
 
-    test("should handle text with only non-Bengali characters", () => {
+    test("should handle text with only non-Bangla characters", () => {
       const text = "This is English text. Another English sentence.";
       expect(tokenizeToSentences(text)).toEqual(new Set());
     });
@@ -139,12 +139,12 @@ describe("@bntk/tokenization", () => {
   describe("sentence/edge cases", () => {
     test("should handle text with mixed scripts and separators", () => {
       const text =
-        "আমি বাংলায় কথা বলি এবং। I speak Bengali. আমি বাংলাদেশে থাকি।";
+        "আমি বাংলায় কথা বলি এবং। I speak Bangla. আমি বাংলাদেশে থাকি।";
       const expected = new Set(["আমি বাংলায় কথা বলি এবং"]);
       expect(tokenizeToSentences(text)).toEqual(expected);
     });
 
-    test("should handle text with only Bengali digits", () => {
+    test("should handle text with only Bangla digits", () => {
       const text = "১২৩ ৪৫৬ ৭৮৯। ০১২ ৩৪৫ ৬৭৮।";
       expect(tokenizeToSentences(text)).toEqual(new Set());
     });
@@ -177,8 +177,8 @@ describe("@bntk/tokenization", () => {
     });
   });
 
-  describe("sentence/bengali", () => {
-    test("should handle sentences with Bengali digits", () => {
+  describe("sentence/bangla", () => {
+    test("should handle sentences with Bangla digits", () => {
       const text =
         "আমি ১২৩ টাকা দিয়ে ৫ কেজি চাল কিনেছি এবং বাকি টাকা ফেরত পেয়েছি।";
       const expected = new Set([
@@ -187,7 +187,7 @@ describe("@bntk/tokenization", () => {
       expect(tokenizeToSentences(text)).toEqual(expected);
     });
 
-    test("should handle sentences with Bengali punctuation", () => {
+    test("should handle sentences with Bangla punctuation", () => {
       const text = "আমি বাংলাদেশে থাকি, খুব ভালো লাগে; কিন্তু গরমে কষ্ট হয়।";
       const expected = new Set([
         "আমি বাংলাদেশে থাকি, খুব ভালো লাগে",
@@ -196,7 +196,7 @@ describe("@bntk/tokenization", () => {
       expect(tokenizeToSentences(text)).toEqual(expected);
     });
 
-    test("should handle sentences with Bengali conjunctions", () => {
+    test("should handle sentences with Bangla conjunctions", () => {
       const text = "আমি এবং আমার বন্ধু স্কুলে যাই কিন্তু আমার ভাই বাসায় থাকে।";
       const expected = new Set([
         "আমি এবং আমার বন্ধু স্কুলে যাই কিন্তু আমার ভাই বাসায় থাকে",
@@ -204,7 +204,7 @@ describe("@bntk/tokenization", () => {
       expect(tokenizeToSentences(text)).toEqual(expected);
     });
 
-    test("should handle sentences with Bengali honorifics", () => {
+    test("should handle sentences with Bangla honorifics", () => {
       const text = "আমার বাবা আমাকে বললেন যে আমি যেন সময়মত বাসায় ফিরি।";
       const expected = new Set([
         "আমার বাবা আমাকে বললেন যে আমি যেন সময়মত বাসায় ফিরি",
@@ -212,7 +212,7 @@ describe("@bntk/tokenization", () => {
       expect(tokenizeToSentences(text)).toEqual(expected);
     });
 
-    test("should handle sentences with Bengali compound words", () => {
+    test("should handle sentences with Bangla compound words", () => {
       const text =
         "বাংলাদেশের রাজধানী ঢাকা-শহরে অনেক জনসংখ্যা এবং যানজট রয়েছে।";
       const expected = new Set([
@@ -265,7 +265,7 @@ describe("@bntk/tokenization", () => {
       const text = `
       আমি (private) বাংলায় [confidential] কথা বলি এবং।
       
-      I am speaking in Bengali and I live in Bangladesh.
+      I am speaking in Bangla and I live in Bangladesh.
       
       আমি user@example.com বাংলাদেশে <span>থাকি</span> এবং https://example.com দেখি।
       
@@ -306,13 +306,13 @@ describe("@bntk/tokenization", () => {
       expect(tokenizeToSentences(text)).toEqual(expected);
     });
 
-    test("should handle text with Bengali abbreviations", () => {
+    test("should handle text with Bangla abbreviations", () => {
       const text = "ড. রহমান এবং প্রফে. আহমেদ আমাদের শিক্ষক ছিলেন।";
       const expected = new Set(["আহমেদ আমাদের শিক্ষক ছিলেন"]);
       expect(tokenizeToSentences(text)).toEqual(expected);
     });
 
-    test("should handle text with Bengali numbers and measurements", () => {
+    test("should handle text with Bangla numbers and measurements", () => {
       const text = "আমি ১০ কি.মি. হেঁটে যাই এবং ৫ কেজি ওজন বহন করি।";
       const expected = new Set(["হেঁটে যাই এবং ৫ কেজি ওজন বহন করি"]);
       expect(tokenizeToSentences(text)).toEqual(expected);
@@ -331,15 +331,15 @@ describe("@bntk/tokenization", () => {
       expect(tokenizeToSentences(text)).toEqual(new Set());
     });
 
-    test("should handle text with minimal Bengali characters", () => {
+    test("should handle text with minimal Bangla characters", () => {
       const text = "আ ই উ এ ও ক খ গ ঘ ঙ চ ছ জ ঝ ঞ।";
       // This test actually passes because the sentence has 15 words, which is more than the minimum 4 words
       const expected = new Set(["আ ই উ এ ও ক খ গ ঘ ঙ চ ছ জ ঝ ঞ"]);
       expect(tokenizeToSentences(text)).toEqual(expected);
     });
 
-    test("should handle text with mixed script but enough Bengali words", () => {
-      const text = "আমি বাংলায় কথা বলি and I speak Bengali.";
+    test("should handle text with mixed script but enough Bangla words", () => {
+      const text = "আমি বাংলায় কথা বলি and I speak Bangla.";
       const expected = new Set(["আমি বাংলায় কথা বলি"]);
       expect(tokenizeToSentences(text)).toEqual(expected);
     });

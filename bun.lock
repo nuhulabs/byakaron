@@ -11,11 +11,11 @@
       },
     },
     "apps/lsp": {
-      "name": "@bnkt/lsp-server",
+      "name": "@bntk/lsp-server",
       "version": "0.0.0",
       "dependencies": {
-        "@bnkt/db": "workspace:*",
-        "@bnkt/lsp": "workspace:*",
+        "@bntk/db": "workspace:*",
+        "@bntk/lsp": "workspace:*",
         "vscode-languageserver": "^8.1.0",
         "vscode-languageserver-textdocument": "^1.0.8",
       },
@@ -24,20 +24,20 @@
       },
     },
     "packages/core/ner": {
-      "name": "@bnkt/ner",
+      "name": "@bntk/ner",
     },
     "packages/core/pos": {
-      "name": "@bnkt/pos",
+      "name": "@bntk/pos",
     },
     "packages/core/stemming": {
-      "name": "@bnkt/stemming",
+      "name": "@bntk/stemming",
       "version": "0.0.0",
     },
     "packages/core/tokenization": {
-      "name": "@bnkt/tokenization",
+      "name": "@bntk/tokenization",
     },
     "packages/dataset": {
-      "name": "@bnkt/dataset",
+      "name": "@bntk/dataset",
       "dependencies": {
         "@types/sax": "^1.2.7",
         "pg": "^8.14.0",
@@ -50,7 +50,7 @@
       },
     },
     "packages/db": {
-      "name": "@bnkt/db",
+      "name": "@bntk/db",
       "dependencies": {
         "@prisma/client": "^6.4.1",
       },
@@ -59,7 +59,7 @@
       },
     },
     "packages/lsp": {
-      "name": "@bnkt/lsp",
+      "name": "@bntk/lsp",
       "version": "0.0.0",
       "dependencies": {
         "vscode-languageserver": "^8.1.0",
@@ -67,9 +67,9 @@
       },
     },
     "packages/processing": {
-      "name": "@bnkt/processing",
+      "name": "@bntk/processing",
       "dependencies": {
-        "@bnkt/db": "workspace:*",
+        "@bntk/db": "workspace:*",
         "@prisma/client": "^5.10.0",
         "@types/sax": "^1.2.7",
         "cli-progress": "^3.12.0",
@@ -84,23 +84,23 @@
     },
   },
   "packages": {
-    "@bnkt/dataset": ["@bnkt/dataset@workspace:packages/dataset"],
+    "@bntk/dataset": ["@bntk/dataset@workspace:packages/dataset"],
 
-    "@bnkt/db": ["@bnkt/db@workspace:packages/db"],
+    "@bntk/db": ["@bntk/db@workspace:packages/db"],
 
-    "@bnkt/lsp": ["@bnkt/lsp@workspace:packages/lsp"],
+    "@bntk/lsp": ["@bntk/lsp@workspace:packages/lsp"],
 
-    "@bnkt/lsp-server": ["@bnkt/lsp-server@workspace:apps/lsp"],
+    "@bntk/lsp-server": ["@bntk/lsp-server@workspace:apps/lsp"],
 
-    "@bnkt/ner": ["@bnkt/ner@workspace:packages/core/ner"],
+    "@bntk/ner": ["@bntk/ner@workspace:packages/core/ner"],
 
-    "@bnkt/pos": ["@bnkt/pos@workspace:packages/core/pos"],
+    "@bntk/pos": ["@bntk/pos@workspace:packages/core/pos"],
 
-    "@bnkt/processing": ["@bnkt/processing@workspace:packages/processing"],
+    "@bntk/processing": ["@bntk/processing@workspace:packages/processing"],
 
-    "@bnkt/stemming": ["@bnkt/stemming@workspace:packages/core/stemming"],
+    "@bntk/stemming": ["@bntk/stemming@workspace:packages/core/stemming"],
 
-    "@bnkt/tokenization": ["@bnkt/tokenization@workspace:packages/core/tokenization"],
+    "@bntk/tokenization": ["@bntk/tokenization@workspace:packages/core/tokenization"],
 
     "@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.25.0", "", { "os": "aix", "cpu": "ppc64" }, "sha512-O7vun9Sf8DFjH2UtqK8Ku3LkquL9SZL8OLY1T5NZkA34+wG3OQF7cl4Ql8vdNzM6fzBbYfLaiRLIOZ+2FOCgBQ=="],
 
@@ -256,7 +256,7 @@
 
     "xtend": ["xtend@4.0.2", "", {}, "sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ=="],
 
-    "@bnkt/processing/@prisma/client": ["@prisma/client@5.22.0", "", { "peerDependencies": { "prisma": "*" }, "optionalPeers": ["prisma"] }, "sha512-M0SVXfyHnQREBKxCgyo7sffrKttwE6R8PMq330MIUF0pTwjUhLbW84pFDlf06B27XyCR++VtjugEnIHdr07SVA=="],
+    "@bntk/processing/@prisma/client": ["@prisma/client@5.22.0", "", { "peerDependencies": { "prisma": "*" }, "optionalPeers": ["prisma"] }, "sha512-M0SVXfyHnQREBKxCgyo7sffrKttwE6R8PMq330MIUF0pTwjUhLbW84pFDlf06B27XyCR++VtjugEnIHdr07SVA=="],
 
     "@types/bun/bun-types": ["bun-types@1.2.4", "", { "dependencies": { "@types/node": "*", "@types/ws": "~8.5.10" } }, "sha512-nDPymR207ZZEoWD4AavvEaa/KZe/qlrbMSchqpQwovPZCKc7pwMoENjEtHgMKaAjJhy+x6vfqSBA1QU3bJgs0Q=="],
 

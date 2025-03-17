@@ -1,17 +1,17 @@
-# Bengali Language Spellcheck LSP
+# Bangla Language Spellcheck LSP
 
-A Language Server Protocol (LSP) implementation for Bengali language spellchecking that works across multiple platforms including browsers, mobile, and desktop applications.
+A Language Server Protocol (LSP) implementation for Bangla language spellchecking that works across multiple platforms including browsers, mobile, and desktop applications.
 
 ## Project Structure
 
 This project is organized as a monorepo with the following components:
 
-- **packages/lsp**: Core logic for the Bengali spellchecker LSP implementation
+- **packages/lsp**: Core logic for the Bangla spellchecker LSP implementation
 - **apps/lsp**: LSP server implementation with MongoDB integration
 
 ## Features
 
-- Real-time Bengali text spellchecking
+- Real-time Bangla text spellchecking
 - Spelling error detection and diagnostics
 - Suggestion generation for misspelled words
 - MongoDB integration for dictionary storage
@@ -30,10 +30,10 @@ This project is organized as a monorepo with the following components:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/bengali-spellcheck-lsp.git
+git clone https://github.com/your-username/bangla-spellcheck-lsp.git
 
 # Install dependencies
-cd bengali-spellcheck-lsp
+cd bangla-spellcheck-lsp
 bun install
 ```
 
@@ -67,7 +67,7 @@ bun run start
 ### Using the Core Logic Package
 
 ```typescript
-import { BengaliSpellchecker, TextDocument } from '@bnkt/lsp';
+import { BengaliSpellchecker, TextDocument } from '@bntk/lsp';
 
 // Create a new spellchecker instance
 const spellchecker = new BengaliSpellchecker();
@@ -76,7 +76,7 @@ const spellchecker = new BengaliSpellchecker();
 spellchecker.loadDictionary(['বাংলা', 'ভাষা', 'অভিধান']);
 
 // Check a document for spelling errors
-const document = TextDocument.create('file:///example.txt', 'bengali', 1, 'আমি বাংলায় কথা বলি।');
+const document = TextDocument.create('file:///example.txt', 'bangla', 1, 'আমি বাংলায় কথা বলি।');
 const spellingErrors = await spellchecker.checkDocument(document);
 ```
 

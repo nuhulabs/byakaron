@@ -1,7 +1,7 @@
 {
-  "name": "@bnkt/lsp",
+  "name": "@bntk/lsp",
   "version": "0.0.0",
-  "description": "Bengali language spellcheck LSP implementation",
+  "description": "Bangla language spellcheck LSP implementation",
   "main": "index.ts",
   "dependencies": {
     "vscode-languageserver": "^8.1.0",

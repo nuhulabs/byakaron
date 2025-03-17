@@ -1,5 +1,5 @@
 /**
- * Bengali Language Spellcheck LSP Implementation
+ * Bangla Language Spellcheck LSP Implementation
  * Main entry point for the LSP logic
  */
 

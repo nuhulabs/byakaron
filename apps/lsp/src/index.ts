@@ -1,5 +1,5 @@
 /**
- * Bengali Language Spellcheck LSP Server
+ * Bangla Language Spellcheck LSP Server
  * Main entry point
  */
 
@@ -21,8 +21,8 @@ import {
 } from 'vscode-languageserver/node';
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { BengaliSpellchecker, SpellingError } from '@bnkt/lsp';
-import { prisma } from '@bnkt/db';
+import { BengaliSpellchecker, SpellingError } from '@bntk/lsp';
+import { prisma } from '@bntk/db';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -106,7 +106,7 @@ connection.onInitialized(() => {
 // The settings interface
 interface BengaliSpellcheckerSettings {
   maxNumberOfProblems: number;
-  // Add any other settings specific to Bengali spellchecker
+  // Add any other settings specific to Bangla spellchecker
 }
 
 // The global settings, used when the `workspace/configuration` request is not supported by the client.
@@ -203,7 +203,7 @@ function createDiagnosticFromSpellingError(error: SpellingError, document: TextD
     severity: DiagnosticSeverity.Warning,
     range,
     message: `Possible spelling error: "${error.word}"`,
-    source: 'bengali-spellcheck'
+    source: 'bangla-spellcheck'
   };
 
   // Add suggestions as additional data
@@ -294,8 +294,8 @@ connection.onCompletion(
 connection.onCompletionResolve(
   (item: CompletionItem): CompletionItem => {
     if (typeof item.data === 'number') {
-      item.detail = 'Bengali spelling suggestion';
-      item.documentation = 'Correction for misspelled Bengali word';
+      item.detail = 'Bangla spelling suggestion';
+      item.documentation = 'Correction for misspelled Bangla word';
     }
     return item;
   }
@@ -308,7 +308,7 @@ documents.listen(connection);
 // Listen on the connection
 connection.listen();
 
-console.log('Bengali Language Spellcheck LSP Server is running...');
+console.log('Bangla Language Spellcheck LSP Server is running...');
 
 class BengaliSpellcheckerDbtaized extends BengaliSpellchecker {
   public async checkWord(word: string): Promise<boolean> {

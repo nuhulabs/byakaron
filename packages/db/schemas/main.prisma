@@ -69,7 +69,7 @@ model words {
   id          Int     @id @default(autoincrement())
 
   /// The actual word text
-  value        String? @unique
+  value        String @unique
 
   // Relations
   /// Groups where this word appears as the previous word
@@ -87,7 +87,7 @@ model word_pairs {
   /// Foreign key reference to the next word
   next_id Int
   /// Weight/probability score for this word pair
-  weight  Float?
+  weight  Float @default(0)
   
   // occurance count
   occurance Int @default(0)

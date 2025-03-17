@@ -1,7 +1,7 @@
 /**
- * Remove unwanted word sequences and characters from Bengali sentences
+ * Remove unwanted word sequences and characters from Bangla sentences
  * - Removes text inside brackets: (), [], {}, <>
- * - Removes non-Bengali characters except essential punctuation and spaces
+ * - Removes non-Bangla characters except essential punctuation and spaces
  * - Normalizes whitespace and removes extra spaces
  * - Handles special cases like URLs, email addresses, and numbers
  */
@@ -24,7 +24,7 @@ function cleanupSentence(text: string): string {
       .replace(/&[a-zA-Z0-9#]+;/g, "")
       // Remove Latin characters (a-z, A-Z)
       .replace(/[a-zA-Z]/g, "")
-      // Keep only Bengali characters (Unicode range: \u0980-\u09FF),
+      // Keep only Bangla characters (Unicode range: \u0980-\u09FF),
       // spaces, and essential punctuation
       .replace(/[^\u0980-\u09FF\s।,.?!:-]/g, "")
       // Replace multiple consecutive spaces with a single space

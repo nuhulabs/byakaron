@@ -1,25 +1,25 @@
-# Bengali Spellcheck LSP - Logic Package
+# Bangla Spellcheck LSP - Logic Package
 
-This package contains the core logic for the Bengali language spellcheck Language Server Protocol (LSP) implementation. It provides the functionality to check Bengali text for spelling errors and suggest corrections.
+This package contains the core logic for the Bangla language spellcheck Language Server Protocol (LSP) implementation. It provides the functionality to check Bangla text for spelling errors and suggest corrections.
 
 ## Features
 
-- Bengali text spellchecking
+- Bangla text spellchecking
 - Spelling error detection
 - Suggestion generation for misspelled words
 - Customizable dictionary support
-- Text normalization for Bengali characters
+- Text normalization for Bangla characters
 
 ## Installation
 
 ```bash
-npm install @bnkt/lsp
+npm install @bntk/lsp
 ```
 
 ## Usage
 
 ```typescript
-import { BengaliSpellchecker, TextDocument } from '@bnkt/lsp';
+import { BengaliSpellchecker, TextDocument } from '@bntk/lsp';
 
 // Create a new spellchecker instance
 const spellchecker = new BengaliSpellchecker({
@@ -31,7 +31,7 @@ const spellchecker = new BengaliSpellchecker({
 spellchecker.loadDictionary(['বাংলা', 'ভাষা', 'অভিধান']);
 
 // Check a document for spelling errors
-const document = TextDocument.create('file:///example.txt', 'bengali', 1, 'আমি বাংলায় কথা বলি।');
+const document = TextDocument.create('file:///example.txt', 'bangla', 1, 'আমি বাংলায় কথা বলি।');
 const spellingErrors = await spellchecker.checkDocument(document);
 
 // Check a single word
@@ -45,7 +45,7 @@ const suggestions = await spellchecker.getSuggestions('বাংল');
 
 ### `BengaliSpellchecker`
 
-The main class for spellchecking Bengali text.
+The main class for spellchecking Bangla text.
 
 #### Constructor
 

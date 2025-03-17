@@ -1,1 +1,1 @@
-console.log("@bnkt/stemming");
+console.log("@bntk/stemming");

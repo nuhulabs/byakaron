@@ -1,7 +1,29 @@
 import { SENTENCE_SEPARATORS_REGEX } from "./constant";
 
 /**
- * Split text into sentences by Bengalic KAR delimeter, new line, or multiple punctuation patterns
+ * Tokenizes a Bangla text into an array of sentences.
+ * 
+ * @param text - The input Bangla text to tokenize
+ * @returns A Set of cleaned and tokenized sentences
+ * 
+ * @description
+ * This function performs the following steps:
+ * 1. Splits text by line breaks
+ * 2. Further splits by Bangla sentence separators
+ * 3. Cleans each sentence
+ * 4. Filters sentences based on the following criteria:
+ *    - Must contain Bangla characters
+ *    - Must have more than 3 words
+ *    - Must not be empty
+ * 5. Returns a Set to remove duplicates
+ * 
+ * @example
+ * ```typescript
+ * const text: string = "আমি বাংলায় গান গাই। তুমি কি শুনবে?";
+ * const sentences: Set<string> = tokenizeToSentences(text);
+ * console.log(Array.from(sentences));
+ * // Output: ["আমি বাংলায় গান গাই", "তুমি কি শুনবে"]
+ * ```
  */
 export function tokenizeToSentences(text: string) {
   // Split by line break
@@ -22,11 +44,34 @@ export function tokenizeToSentences(text: string) {
 }
 
 /**
- * Remove unwanted word sequences and characters from Bengali sentences
- * - Removes text inside brackets: (), [], {}, <>
- * - Removes non-Bengali characters except essential punctuation and spaces
- * - Normalizes whitespace and removes extra spaces
- * - Handles special cases like URLs, email addresses, and numbers
+ * Cleans a Bangla sentence by removing unwanted content and normalizing the text.
+ * 
+ * @param text - The input sentence to clean
+ * @returns A cleaned sentence string containing only valid Bangla content
+ * 
+ * @description
+ * This function performs comprehensive cleaning:
+ * 1. Removes text inside various brackets: (), [], {}, <>
+ * 2. Removes URLs and email addresses
+ * 3. Removes HTML entities
+ * 4. Removes Latin characters
+ * 5. Keeps only Bangla characters, spaces, and essential punctuation
+ * 6. Normalizes whitespace and punctuation:
+ *    - Replaces multiple spaces with single space
+ *    - Removes spaces before punctuation
+ *    - Removes consecutive periods
+ *    - Removes consecutive newlines
+ *    - Removes trailing hyphens and underscores
+ *    - Removes complex patterns of punctuation at start/end
+ * 7. Trims whitespace
+ * 
+ * @example
+ * ```typescript
+ * const text: string = "আমি (বাংলায়) গান গাই। https://example.com";
+ * const cleaned: string = cleanup(text);
+ * console.log(cleaned);
+ * // Output: "আমি গান গাই"
+ * ```
  */
 function cleanup(text: string): string {
   return (
@@ -47,7 +92,7 @@ function cleanup(text: string): string {
       .replace(/&[a-zA-Z0-9#]+;/g, "")
       // Remove Latin characters (a-z, A-Z)
       .replace(/[a-zA-Z]/g, "")
-      // Keep only Bengali characters (Unicode range: \u0980-\u09FF),
+      // Keep only Bangla characters (Unicode range: \u0980-\u09FF),
       // spaces, and essential punctuation
       .replace(/[^\u0980-\u09FF\s।,.?!:-]/g, "")
       // Replace multiple consecutive spaces with a single space

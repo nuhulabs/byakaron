@@ -1,5 +1,5 @@
 {
-  "name": "@bnkt/dataset",
+  "name": "@bntk/dataset",
   "module": "index.ts",
   "type": "module",
   "scripts": {

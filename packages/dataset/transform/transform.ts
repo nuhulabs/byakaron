@@ -1,150 +1,20 @@
-import { prisma, type DataTypes } from "@bnkt/db";
-import * as tokenization from "@bnkt/tokenization";
-import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { readdir  } from "node:fs/promises";
+import { prisma, type DataTypes } from "@bntk/db";
+import * as tokenization from "@bntk/tokenization";
+import * as fs from "fs";
+import { createReadStream, createWriteStream, existsSync } from "fs";
+import { readdir } from "node:fs/promises";
 import * as path from "path";
 import { extname } from "path";
 import { createInterface } from "readline";
-import { ASSET_PATH } from "../constant";
+import * as Constants from "../constant";
+import { StateManager } from "../state";
 import { wikiToStd } from "../transform/wiki-jsonl-to-std";
 import { transformWikiXmlToJsonl } from "./wiki-xml-to-jsonl";
+import { Transform } from "stream";
+import { pipeline } from "stream/promises";
 
-// Batch size for file writes
-const BATCH_SIZE = 100000;
-const SENTENCES_FILE = "sentences.csv";
-const WORDS_CSV_FILE = "words.csv";
-const STATE_FILE = path.join(ASSET_PATH, "state.json");
-
-// Define state interface
-interface ProcessingState {
-  sources: {
-    [sourceId: string | number]: {
-      sentences: {
-        totalLines?: number;
-        processedLines: number;
-        totalSentencesProcessed: number;
-        lastUpdated: string;
-        completed: boolean;
-      };
-      words: {
-        totalLines?: number;
-        processedLines: number;
-        totalWordPairsProcessed: number;
-        lastUpdated: string;
-        completed: boolean;
-      };
-    };
-  };
-}
-
-// Type for sentence updates
-type SentenceUpdates = Partial<ProcessingState['sources'][string]['sentences']>;
-
-// Type for word updates
-type WordUpdates = Partial<ProcessingState['sources'][string]['words']>;
-
-// Initialize or load state
-function getState(): ProcessingState {
-  try {
-    if (existsSync(STATE_FILE)) {
-      const stateData = readFileSync(STATE_FILE, 'utf8');
-      return JSON.parse(stateData);
-    }
-  } catch (error) {
-    console.error("Error reading state file:", error);
-  }
-  
-  // Return default state if file doesn't exist or has errors
-  return { sources: {} };
-}
-
-// Save state to file
-function saveState(state: ProcessingState): void {
-  try {
-    writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
-  } catch (error) {
-    console.error("Error saving state file:", error);
-  }
-}
-
-// Get source state or initialize if not exists
-function getSourceState(state: ProcessingState, sourceId: string | number): ProcessingState['sources'][string] {
-  if (!state.sources[sourceId]) {
-    state.sources[sourceId] = {
-      sentences: {
-        processedLines: 0,
-        totalSentencesProcessed: 0,
-        lastUpdated: new Date().toISOString(),
-        completed: false
-      },
-      words: {
-        processedLines: 0,
-        totalWordPairsProcessed: 0,
-        lastUpdated: new Date().toISOString(),
-        completed: false
-      }
-    };
-  }
-  return state.sources[sourceId];
-}
-
-// Reset source state
-function resetSourceState(state: ProcessingState, sourceId: string | number, type: 'sentences' | 'words'): void {
-  if (state.sources[sourceId]) {
-    if (type === 'sentences') {
-      state.sources[sourceId].sentences = {
-        processedLines: 0,
-        totalSentencesProcessed: 0,
-        lastUpdated: new Date().toISOString(),
-        completed: false
-      };
-    } else if (type === 'words') {
-      state.sources[sourceId].words = {
-        processedLines: 0,
-        totalWordPairsProcessed: 0,
-        lastUpdated: new Date().toISOString(),
-        completed: false
-      };
-    }
-    saveState(state);
-  }
-}
-
-// Update state and save to file
-function updateState(
-  state: ProcessingState, 
-  sourceId:   string | number, 
-  type: 'sentences' | 'words', 
-  updates: SentenceUpdates | WordUpdates
-): void {
-  const sourceState = getSourceState(state, String(sourceId));
-  
-  if (type === 'sentences') {
-    sourceState.sentences = {
-      ...sourceState.sentences,
-      ...(updates as SentenceUpdates),
-      lastUpdated: new Date().toISOString()
-    };
-  } else if (type === 'words') {
-    sourceState.words = {
-      ...sourceState.words,
-      ...(updates as WordUpdates),
-      lastUpdated: new Date().toISOString()
-    };
-  }
-  
-  saveState(state);
-}
-
-// Ensure source directory exists
-function ensureSourceDir(sourceId: string | number): string {
-  const sourceDirPath = path.join(ASSET_PATH, String(sourceId));
-  if (!existsSync(sourceDirPath)) {
-    mkdirSync(sourceDirPath, { recursive: true });
-    console.log(`Created directory for source ${sourceId}: ${sourceDirPath}`);
-  }
-  return sourceDirPath;
-}
+// Create state manager instance
+const stateManager = new StateManager();
 
 // Main handler function
 async function handler() {
@@ -152,19 +22,39 @@ async function handler() {
     const sources = await prisma.datasources.findMany();
     console.log(`Found ${sources.length} sources to download`);
 
-    // Load current state
-    const state = getState();
-    console.log("Loaded processing state");
+    // Display overall progress
+    stateManager.displayOverallProgress(sources);
 
     // Run downloads in parallel using Promise.all
-    await Promise.all(sources.map(source => transformFile(source, state)));
-    await Promise.all(sources.map(source => processWordsFromSentences(source, state)));
-    
+    await Promise.all(sources.map((source) => transformFile(source)));
+
+    // Display updated overall progress
+    stateManager.displayOverallProgress(sources);
+
+    await Promise.all(
+      sources.map((source) => processWordsFromSentences(source))
+    );
+
+    // Display updated overall progress
+    stateManager.displayOverallProgress(sources);
+
+    await Promise.all(sources.map((source) => processDistinctWords(source)));
+
+    // Display updated overall progress
+    stateManager.displayOverallProgress(sources);
+
+    await Promise.all(
+      sources.map((source) => processDistinctWordPairs(source))
+    );
+
+    // Display final overall progress
+    stateManager.displayOverallProgress(sources, true);
+
     console.log("All transformations completed!");
-    
+
     // Give time for any pending file operations to complete
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
     // Explicitly exit the process with success code
     process.exit(0);
   } catch (error) {
@@ -175,29 +65,31 @@ async function handler() {
 }
 
 // Call the handler function
-handler().catch(err => {
+handler().catch((err) => {
   console.error("Unhandled error in handler:", err);
   process.exit(1);
 });
 
-async function transformFile(source: DataTypes.datasources, state: ProcessingState) {
+async function transformFile(source: DataTypes.datasources) {
   try {
     console.log(`Processing: ${source.id} ${source.name}`);
-    
+
     // Ensure source directory exists
-    const sourceDirPath = ensureSourceDir(source.id);
-    
+    const sourceDirPath = stateManager.ensureSourceDir(source.id);
+
     // Get or initialize source state
-    const sourceState = getSourceState(state, source.id);
-    
+    const sourceState = stateManager.getSourceState(source.id);
+
     // Skip if sentences processing is already completed
     if (sourceState.sentences.completed) {
-      console.log(`Sentences processing for source ${source.id} already completed, skipping`);
+      console.log(
+        `Sentences processing for source ${source.id} already completed, skipping`
+      );
       return;
     }
 
     // Find files that start with the source ID in the assets directory
-    const assetFiles = await readdir(ASSET_PATH);
+    const assetFiles = await readdir(Constants.ASSET_PATH);
     const sourceFile = assetFiles.find((file) =>
       file.startsWith(`${source.id}_`)
     );
@@ -207,7 +99,7 @@ async function transformFile(source: DataTypes.datasources, state: ProcessingSta
       return;
     }
 
-    const sourceFilePath = path.join(ASSET_PATH, sourceFile);
+    const sourceFilePath = path.join(Constants.ASSET_PATH, sourceFile);
     console.log(`Found file: ${sourceFilePath}`);
 
     // Determine if we need to transform the file to JSONL first
@@ -245,26 +137,30 @@ async function transformFile(source: DataTypes.datasources, state: ProcessingSta
       }
     }
 
-    const stdTxtFilePath = path.join(sourceDirPath, SENTENCES_FILE);
+    const stdTxtFilePath = path.join(sourceDirPath, Constants.SENTENCES_FILE);
 
     // Check if standard file exists
     const fileExists = existsSync(stdTxtFilePath);
-    
+
     // Reset state if output file doesn't exist
     if (!fileExists && sourceState.sentences.processedLines > 0) {
-      console.log(`Output file doesn't exist but state shows processing started. Resetting state for source ${source.id}`);
-      resetSourceState(state, source.id, 'sentences');
+      console.log(
+        `Output file doesn't exist but state shows processing started. Resetting state for source ${source.id}`
+      );
+      stateManager.resetSourceState(source.id, "sentences");
     }
-    
+
     // Check if we should resume processing
     const shouldResume = fileExists && sourceState.sentences.processedLines > 0;
-    
+
     if (fileExists && !shouldResume) {
       console.log(
         `Standard file already exists, skipping processing: ${stdTxtFilePath}`
       );
       // Mark as completed in state
-      updateState(state, source.id, 'sentences', { completed: true });
+      stateManager.updateSourceState(source.id, "sentences", {
+        completed: true,
+      });
       return;
     }
 
@@ -275,9 +171,9 @@ async function transformFile(source: DataTypes.datasources, state: ProcessingSta
     console.log("Counting total lines in JSONL file...");
     const totalLines = await countFileLines(jsonlFilePath);
     console.log(`Total lines in JSONL file: ${totalLines.toLocaleString()}`);
-    
+
     // Update state with total lines
-    updateState(state, source.id, 'sentences', { totalLines });
+    stateManager.updateSourceState(source.id, "sentences", { totalLines });
 
     // Create a read stream and readline interface for processing the JSONL file line by line
     const fileStream = createReadStream(jsonlFilePath);
@@ -287,26 +183,27 @@ async function transformFile(source: DataTypes.datasources, state: ProcessingSta
     });
 
     // Create a write stream for the text file with append mode if resuming
-    const txtWriteStream = createWriteStream(stdTxtFilePath, { 
-      flags: shouldResume ? 'a' : 'w' 
+    const txtWriteStream = createWriteStream(stdTxtFilePath, {
+      flags: shouldResume ? "a" : "w",
     });
 
     let sentencesBatch = new Set<string>();
     let processedLines = sourceState.sentences.processedLines || 0;
     let startTime = Date.now();
-    let totalSentencesProcessed = sourceState.sentences.totalSentencesProcessed || 0;
+    let totalSentencesProcessed =
+      sourceState.sentences.totalSentencesProcessed || 0;
     let currentLine = 0;
 
     try {
       // Process each line of the JSONL file
       for await (const line of rl) {
         currentLine++;
-        
+
         // Skip already processed lines if resuming
         if (shouldResume && currentLine <= processedLines) {
           continue;
         }
-        
+
         try {
           // Parse the JSON line
           const jsonData = JSON.parse(line);
@@ -317,7 +214,7 @@ async function transformFile(source: DataTypes.datasources, state: ProcessingSta
           sentences.forEach((sentence) => sentencesBatch.add(sentence));
 
           // When batch size is reached, insert to database and write to text file
-          if (sentencesBatch.size >= BATCH_SIZE) {
+          if (sentencesBatch.size >= Constants.SENTENCE_BATCH_SIZE) {
             // Write sentences to text file
             await writeSentencesToTextFile(
               Array.from(sentencesBatch),
@@ -332,11 +229,11 @@ async function transformFile(source: DataTypes.datasources, state: ProcessingSta
               processedLines,
               sentencesBatch.size
             );
-            
+
             // Update state
-            updateState(state, source.id, 'sentences', {
+            stateManager.updateSourceState(source.id, "sentences", {
               processedLines,
-              totalSentencesProcessed
+              totalSentencesProcessed,
             });
 
             // Clear the batch after successful insertion
@@ -351,12 +248,12 @@ async function transformFile(source: DataTypes.datasources, state: ProcessingSta
               processedLines,
               sentencesBatch.size
             );
-            
+
             // Update state periodically
             if (processedLines % 1000 === 0) {
-              updateState(state, source.id, 'sentences', {
+              stateManager.updateSourceState(source.id, "sentences", {
                 processedLines,
-                totalSentencesProcessed
+                totalSentencesProcessed,
               });
             }
           }
@@ -398,20 +295,20 @@ async function transformFile(source: DataTypes.datasources, state: ProcessingSta
         `Total sentences inserted: ${totalSentencesProcessed.toLocaleString()}`
       );
       console.log(`Created text file with sentences: ${stdTxtFilePath}`);
-      
+
       // Mark as completed in state
-      updateState(state, source.id, 'sentences', {
+      stateManager.updateSourceState(source.id, "sentences", {
         processedLines,
         totalSentencesProcessed,
-        completed: true
+        completed: true,
       });
     } catch (error) {
       console.error(`Error in loadSentences: ${error}`);
-      
+
       // Update state with current progress
-      updateState(state, source.id, 'sentences', {
+      stateManager.updateSourceState(source.id, "sentences", {
         processedLines,
-        totalSentencesProcessed
+        totalSentencesProcessed,
       });
 
       // Close the text file write stream
@@ -421,11 +318,698 @@ async function transformFile(source: DataTypes.datasources, state: ProcessingSta
       rl.close();
       fileStream.close();
     }
-
-    // After processing sentences, process words
-    await processWordsFromSentences(source, state);
   } catch (error) {
     console.error(`Error processing ${source.id}:`, error);
+  }
+}
+
+
+/**
+ * Write a batch of sentences to a text file
+ */
+async function writeSentencesToTextFile(
+  sentences: string[],
+  writeStream: NodeJS.WritableStream
+): Promise<void> {
+  // Skip empty batches
+  if (sentences.length === 0) {
+    return;
+  }
+
+  return new Promise((resolve, reject) => {
+    // Filter out empty or very short sentences
+    const validSentences = sentences.filter(
+      (sentence) => sentence && sentence.trim().length >= 3
+    );
+
+    // Skip if no valid sentences
+    if (validSentences.length === 0) {
+      resolve();
+      return;
+    }
+
+    // Process sentences with backpressure handling
+    let i = 0;
+
+    function writeNext() {
+      // Continue writing as long as there are sentences and the stream can accept data
+      let canContinue = true;
+
+      while (i < validSentences.length && canContinue) {
+        // Write each sentence on a new line
+        canContinue = writeStream.write(`${validSentences[i]}\n`);
+        i++;
+      }
+
+      // If we couldn't write all sentences, wait for drain event
+      if (i < validSentences.length) {
+        writeStream.once("drain", writeNext);
+      } else {
+        // All sentences written, add a separator and resolve
+        writeStream.write(`\n`, (err) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      }
+    }
+
+    // Start writing
+    writeNext();
+  });
+}
+
+/**
+ * Count the number of lines in a file
+ */
+async function countFileLines(filePath: string): Promise<number> {
+  return new Promise((resolve) => {
+    let lineCount = 0;
+    const rl = createInterface({
+      input: createReadStream(filePath),
+      crlfDelay: Infinity,
+    });
+
+    rl.on("line", () => lineCount++);
+    rl.on("close", () => resolve(lineCount));
+  });
+}
+
+/**
+ * Process sentences to extract words and create a words file
+ */
+async function processWordsFromSentences(source: DataTypes.datasources) {
+  try {
+    console.log(`\nProcessing words from sentences for source: ${source.id}`);
+
+    // Ensure source directory exists
+    const sourceDirPath = stateManager.ensureSourceDir(source.id);
+
+    // Get or initialize source state
+    const sourceState = stateManager.getSourceState(String(source.id));
+
+    // Skip if words processing is already completed
+    if (sourceState.words.completed) {
+      console.log(
+        `Words processing for source ${source.id} already completed, skipping`
+      );
+      return;
+    }
+
+    // Define file paths
+    const stdTxtFilePath = path.join(sourceDirPath, Constants.SENTENCES_FILE);
+    const wordsFilePath = path.join(sourceDirPath, Constants.WORDS_CSV_FILE);
+
+    // Check if words file exists
+    const fileExists = existsSync(wordsFilePath);
+
+    // Reset state if output file doesn't exist
+    if (!fileExists && sourceState.words.processedLines > 0) {
+      console.log(
+        `Words file doesn't exist but state shows processing started. Resetting state for source ${source.id}`
+      );
+      stateManager.resetSourceState(source.id, "words");
+    }
+
+    // Check if we should resume processing
+    const shouldResume = fileExists && sourceState.words.processedLines > 0;
+
+    // Check if words file already exists and we're not resuming
+    if (fileExists && !shouldResume) {
+      console.log(
+        `Words file already exists, skipping processing: ${wordsFilePath}`
+      );
+      // Mark as completed in state
+      stateManager.updateSourceState(String(source.id), "words", {
+        completed: true,
+      });
+      return;
+    }
+
+    // Check if sentences file exists
+    if (!existsSync(stdTxtFilePath)) {
+      console.error(`Sentences file not found: ${stdTxtFilePath}`);
+      return;
+    }
+
+    // Count total lines for progress tracking
+    console.log("Counting total sentences in text file...");
+    const totalLines = await countFileLines(stdTxtFilePath);
+    console.log(`Total sentences in text file: ${totalLines.toLocaleString()}`);
+
+    // Update state with total lines
+    stateManager.updateSourceState(String(source.id), "words", { totalLines });
+
+    // Create read stream and readline interface
+    const fileStream = createReadStream(stdTxtFilePath);
+    const rl = createInterface({
+      input: fileStream,
+      crlfDelay: Infinity,
+    });
+
+    // Create write stream for the CSV file with append mode if resuming
+    const wordsWriteStream = createWriteStream(wordsFilePath, {
+      flags: shouldResume ? "a" : "w",
+    });
+
+    // Write CSV header if not resuming
+    if (!shouldResume) {
+      wordsWriteStream.write("value,next_value\n");
+    }
+
+    let processedLines = sourceState.words.processedLines || 0;
+    let startTime = Date.now();
+    let totalWordPairsProcessed =
+      sourceState.words.totalWordPairsProcessed || 0;
+    let skippedLines = 0;
+    let wordPairsBatch: Array<{ value: string; next_value: string }> = [];
+    let currentLine = 0;
+
+    try {
+      // Process each line of the sentences file
+      for await (const line of rl) {
+        currentLine++;
+
+        // Skip already processed lines if resuming
+        if (shouldResume && currentLine <= processedLines) {
+          continue;
+        }
+
+        try {
+          // Skip empty lines, comments, or very short lines
+          if (!line || line.trim().length < 3 || line.startsWith("#")) {
+            skippedLines++;
+            processedLines++;
+            continue;
+          }
+
+          // Extract words from the sentence
+          const words = tokenization.tokenizeToWords(line);
+
+          // Create word pairs (current word and next word)
+          for (let i = 0; i < words.length - 1; i++) {
+            const currentWord = words[i];
+            const nextWord = words[i + 1];
+
+            if (currentWord && nextWord) {
+              wordPairsBatch.push({
+                value: currentWord,
+                next_value: nextWord,
+              });
+            }
+          }
+
+          // When batch size is reached, write to file
+          if (wordPairsBatch.length >= Constants.SENTENCE_BATCH_SIZE) {
+            // Write word pairs to CSV file
+            await writeWordPairsToCsv(wordPairsBatch, wordsWriteStream);
+
+            totalWordPairsProcessed += wordPairsBatch.length;
+
+            // Display progress
+            displayWordsProgress(
+              totalLines,
+              processedLines,
+              wordPairsBatch.length,
+              totalWordPairsProcessed
+            );
+
+            // Update state
+            stateManager.updateSourceState(String(source.id), "words", {
+              processedLines,
+              totalWordPairsProcessed,
+            });
+
+            // Clear the batch after successful write
+            wordPairsBatch = [];
+          }
+
+          // Update progress after each line
+          processedLines += 1;
+          if (processedLines % 100 === 0) {
+            displayWordsProgress(
+              totalLines,
+              processedLines,
+              wordPairsBatch.length,
+              totalWordPairsProcessed
+            );
+
+            // Update state periodically
+            if (processedLines % 1000 === 0) {
+              stateManager.updateSourceState(String(source.id), "words", {
+                processedLines,
+                totalWordPairsProcessed,
+              });
+            }
+          }
+        } catch (error) {
+          console.error(`Error processing sentence: ${error}`);
+          // Continue with the next line
+          processedLines++;
+        }
+      }
+
+      // Write any remaining data
+      if (wordPairsBatch.length > 0) {
+        await writeWordPairsToCsv(wordPairsBatch, wordsWriteStream);
+        totalWordPairsProcessed += wordPairsBatch.length;
+      }
+
+      // Display final progress
+      displayWordsProgress(
+        totalLines,
+        processedLines,
+        wordPairsBatch.length,
+        totalWordPairsProcessed,
+        true
+      );
+
+      // Close the file write stream
+      wordsWriteStream.end();
+
+      const elapsedSeconds = (Date.now() - startTime) / 1000;
+      console.log(`\nSuccessfully processed words from: ${stdTxtFilePath}`);
+      console.log(
+        `Processed ${processedLines.toLocaleString()} sentences in ${elapsedSeconds.toFixed(
+          2
+        )}s`
+      );
+      console.log(
+        `Total word pairs extracted: ${totalWordPairsProcessed.toLocaleString()}`
+      );
+      console.log(`Skipped lines: ${skippedLines.toLocaleString()}`);
+      console.log(`Created words CSV file: ${wordsFilePath}`);
+
+      // Mark as completed in state
+      stateManager.updateSourceState(String(source.id), "words", {
+        processedLines,
+        totalWordPairsProcessed,
+        completed: true,
+      });
+    } catch (error) {
+      console.error(`Error in processWordsFromSentences: ${error}`);
+
+      // Update state with current progress
+      stateManager.updateSourceState(String(source.id), "words", {
+        processedLines,
+        totalWordPairsProcessed,
+      });
+
+      // Close the file write stream
+      wordsWriteStream.end();
+    } finally {
+      // Ensure the readline interface is closed
+      rl.close();
+      fileStream.close();
+    }
+  } catch (error) {
+    console.error(`Error processing words for ${source.id}:`, error);
+  }
+}
+
+
+/**
+ * Write a batch of word pairs to a CSV file
+ */
+async function writeWordPairsToCsv(
+  wordPairs: Array<{ value: string; next_value: string }>,
+  writeStream: NodeJS.WritableStream
+): Promise<void> {
+  // Skip empty batches
+  if (wordPairs.length === 0) {
+    return;
+  }
+
+  return new Promise((resolve, reject) => {
+    // Process each word pair
+    const processWordPairs = () => {
+      let i = 0;
+
+      function writeNext() {
+        // Continue writing as long as there are pairs and the stream can accept data
+        let canContinue = true;
+
+        while (i < wordPairs.length && canContinue) {
+          const pair = wordPairs[i];
+
+          // Escape commas and quotes in the words
+          const escapedValue = pair.value.replace(/"/g, '""');
+          const escapedNextValue = pair.next_value.replace(/"/g, '""');
+
+          // Write the CSV line with proper quoting if needed
+          const needsQuotes =
+            escapedValue.includes(",") || escapedNextValue.includes(",");
+          const line = needsQuotes
+            ? `"${escapedValue}","${escapedNextValue}"\n`
+            : `${escapedValue},${escapedNextValue}\n`;
+
+          // Write to stream and check if we need to wait for drain
+          canContinue = writeStream.write(line);
+          i++;
+        }
+
+        // If we couldn't write all pairs, wait for drain event
+        if (i < wordPairs.length) {
+          writeStream.once("drain", writeNext);
+        } else {
+          // All pairs written, resolve the promise
+          resolve();
+        }
+      }
+
+      // Start writing
+      writeNext();
+    };
+
+    // Start processing
+    processWordPairs();
+  });
+}
+
+/**
+ * Process words.csv to extract distinct words
+ */
+async function processDistinctWords(source: DataTypes.datasources) {
+  try {
+    console.log(`\nProcessing distinct words for source: ${source.id}`);
+
+    // Ensure source directory exists
+    const sourceDirPath = stateManager.ensureSourceDir(source.id);
+
+    // Get or initialize source state
+    const sourceState = stateManager.getSourceState(String(source.id));
+
+    // Skip if distinct words processing is already completed
+    if (sourceState.distinctWords.completed) {
+      console.log(
+        `Distinct words processing for source ${source.id} already completed, skipping`
+      );
+      return;
+    }
+
+    // Define file paths
+    const wordsFilePath = path.join(sourceDirPath, Constants.WORDS_CSV_FILE);
+    const distinctWordsFilePath = path.join(sourceDirPath, Constants.DISTINCT_WORDS_FILE);
+
+    // Check if words file exists
+    if (!existsSync(wordsFilePath)) {
+      console.error(`Words file not found: ${wordsFilePath}`);
+      return;
+    }
+
+    // Check if distinct words file exists
+    const fileExists = existsSync(distinctWordsFilePath);
+
+    // Reset state if output file doesn't exist
+    if (!fileExists && sourceState.distinctWords.processedBytes > 0) {
+      console.log(
+        `Distinct words file doesn't exist but state shows processing started. Resetting state for source ${source.id}`
+      );
+      stateManager.resetSourceState(source.id, "distinctWords");
+    }
+
+    // Check if distinct words file already exists and we're not resuming
+    if (fileExists && !sourceState.distinctWords.processedBytes) {
+      console.log(
+        `Distinct words file already exists, skipping processing: ${distinctWordsFilePath}`
+      );
+      // Mark as completed in state
+      stateManager.updateSourceState(String(source.id), "distinctWords", {
+        completed: true,
+      });
+      return;
+    }
+
+    // Get file size for progress tracking
+    const stats = fs.statSync(wordsFilePath);
+    const fileSizeInBytes = stats.size;
+    const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
+    console.log(`Processing file: ${wordsFilePath}`);
+    console.log(`File size: ${fileSizeInMB.toFixed(2)} MB`);
+
+    // Update state with total bytes
+    stateManager.updateSourceState(String(source.id), "distinctWords", {
+      totalBytes: fileSizeInBytes,
+    });
+
+    // Sets to store unique values
+    const uniqueValues = new Set<string>();
+    
+    // Track progress
+    let bytesProcessed = sourceState.distinctWords.processedBytes || 0;
+    let lastReportedProgress = Math.floor((bytesProcessed / fileSizeInBytes) * 100);
+    
+    // Create a transform stream to process the CSV data
+    const processLineStream = new Transform({
+      objectMode: true,
+      transform(chunk: Buffer, encoding, callback) {
+        const line = chunk.toString().trim();
+        
+        // Update progress
+        bytesProcessed += chunk.length;
+        const progressPercent = Math.floor((bytesProcessed / fileSizeInBytes) * 100);
+        const progressMB = bytesProcessed / (1024 * 1024);
+        
+        // Report progress every 5%
+        if (progressPercent >= lastReportedProgress + 5) {
+          console.log(`Processed ${progressMB.toFixed(2)} MB (${progressPercent}%)`);
+          lastReportedProgress = progressPercent;
+          
+          // Update state periodically
+          stateManager.updateSourceState(String(source.id), "distinctWords", {
+            processedBytes: bytesProcessed,
+            uniqueWordsCount: uniqueValues.size,
+          });
+        }
+        
+        // Skip header line and empty lines
+        if (line && !line.startsWith('value,next_value') && line !== '') {
+          // Simple CSV parsing - split by comma
+          const [value] = line.split(',').map(item => item.trim());
+          
+          if (value) uniqueValues.add(value);
+        }
+        
+        callback();
+      }
+    });
+    
+    // Create line splitter stream
+    const lineSplitter = new Transform({
+      readableObjectMode: true,
+      writableObjectMode: false,
+      transform(chunk, encoding, callback) {
+        const lines = chunk.toString().split('\n');
+        for (const line of lines) {
+          if (line.trim()) this.push(Buffer.from(line));
+        }
+        callback();
+      }
+    });
+    
+    // Process the file
+    await pipeline(
+      createReadStream(wordsFilePath),
+      lineSplitter,
+      processLineStream
+    );
+    
+    console.log(`\nProcessing complete!`);
+    console.log(`Found ${uniqueValues.size} unique values`);
+    
+    // Write unique values to output file
+    console.log(`Writing unique values to ${distinctWordsFilePath}`);
+    const outputStream = createWriteStream(distinctWordsFilePath);
+    
+    // Write header
+    outputStream.write('value\n');
+    
+    // Write unique values
+    for (const value of uniqueValues) {
+      outputStream.write(`${value}\n`);
+    }
+    
+    outputStream.end();
+    console.log('Done!');
+
+    // Mark as completed in state
+    stateManager.updateSourceState(String(source.id), "distinctWords", {
+      processedBytes: bytesProcessed,
+      uniqueWordsCount: uniqueValues.size,
+      completed: true,
+    });
+    
+  } catch (error) {
+    console.error(`Error processing distinct words for ${source.id}:`, error);
+  }
+}
+
+/**
+ * Process words.csv to extract distinct word pairs with counts
+ */
+async function processDistinctWordPairs(source: DataTypes.datasources) {
+  try {
+    console.log(`\nProcessing distinct word pairs for source: ${source.id}`);
+
+    // Ensure source directory exists
+    const sourceDirPath = stateManager.ensureSourceDir(source.id);
+
+    // Get or initialize source state
+    const sourceState = stateManager.getSourceState(String(source.id));
+
+    // Skip if distinct word pairs processing is already completed
+    if (sourceState.distinctWordPairs.completed) {
+      console.log(
+        `Distinct word pairs processing for source ${source.id} already completed, skipping`
+      );
+      return;
+    }
+
+    // Define file paths
+    const wordsFilePath = path.join(sourceDirPath, Constants.WORDS_CSV_FILE);
+    const distinctWordPairsFilePath = path.join(
+      sourceDirPath,
+      Constants.DISTINCT_WORD_PAIRS_FILE
+    );
+
+    // Check if words file exists
+    if (!existsSync(wordsFilePath)) {
+      console.error(`Words file not found: ${wordsFilePath}`);
+      return;
+    }
+
+    // Check if distinct word pairs file exists
+    const fileExists = existsSync(distinctWordPairsFilePath);
+
+    // Reset state if output file doesn't exist
+    if (!fileExists && sourceState.distinctWordPairs.processedBytes > 0) {
+      console.log(
+        `Distinct word pairs file doesn't exist but state shows processing started. Resetting state for source ${source.id}`
+      );
+      stateManager.resetSourceState(source.id, "distinctWordPairs");
+    }
+
+    // Check if distinct word pairs file already exists and we're not resuming
+    if (fileExists && !sourceState.distinctWordPairs.processedBytes) {
+      console.log(
+        `Distinct word pairs file already exists, skipping processing: ${distinctWordPairsFilePath}`
+      );
+      // Mark as completed in state
+      stateManager.updateSourceState(String(source.id), "distinctWordPairs", {
+        completed: true,
+      });
+      return;
+    }
+
+    // Get file size for progress tracking
+    const stats = fs.statSync(wordsFilePath);
+    const fileSizeInBytes = stats.size;
+    const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
+    console.log(`Processing file: ${wordsFilePath}`);
+    console.log(`File size: ${fileSizeInMB.toFixed(2)} MB`);
+
+    // Update state with total bytes
+    stateManager.updateSourceState(String(source.id), "distinctWordPairs", {
+      totalBytes: fileSizeInBytes,
+    });
+
+    // Map to store word pairs and their occurrence counts
+    const wordPairCounts = new Map<string, number>();
+    
+    // Track progress
+    let bytesProcessed = sourceState.distinctWordPairs.processedBytes || 0;
+    let lastReportedProgress = Math.floor((bytesProcessed / fileSizeInBytes) * 100);
+    
+    // Create a transform stream to process the CSV data
+    const processLineStream = new Transform({
+      objectMode: true,
+      transform(chunk: Buffer, encoding, callback) {
+        const line = chunk.toString().trim();
+        
+        // Update progress
+        bytesProcessed += chunk.length;
+        const progressPercent = Math.floor((bytesProcessed / fileSizeInBytes) * 100);
+        const progressMB = bytesProcessed / (1024 * 1024);
+        
+        // Report progress every 5%
+        if (progressPercent >= lastReportedProgress + 5) {
+          console.log(`Processed ${progressMB.toFixed(2)} MB (${progressPercent}%)`);
+          lastReportedProgress = progressPercent;
+          
+          // Update state periodically
+          stateManager.updateSourceState(String(source.id), "distinctWordPairs", {
+            processedBytes: bytesProcessed,
+            uniquePairsCount: wordPairCounts.size,
+          });
+        }
+        
+        // Skip header line and empty lines
+        if (line && !line.startsWith('value,next_value') && line !== '') {
+          // Simple CSV parsing - split by comma
+          const [value, nextValue] = line.split(',').map(item => item.trim());
+          
+          if (value && nextValue) {
+            // Create a unique key for the word pair
+            const pairKey = `${value},${nextValue}`;
+            
+            // Increment the count for this pair
+            wordPairCounts.set(pairKey, (wordPairCounts.get(pairKey) || 0) + 1);
+          }
+        }
+        
+        callback();
+      }
+    });
+    
+    // Create line splitter stream
+    const lineSplitter = new Transform({
+      readableObjectMode: true,
+      writableObjectMode: false,
+      transform(chunk, encoding, callback) {
+        const lines = chunk.toString().split('\n');
+        for (const line of lines) {
+          if (line.trim()) this.push(Buffer.from(line));
+        }
+        callback();
+      }
+    });
+    
+    // Process the file
+    await pipeline(
+      createReadStream(wordsFilePath),
+      lineSplitter,
+      processLineStream
+    );
+    
+    console.log(`\nProcessing complete!`);
+    console.log(`Found ${wordPairCounts.size} unique word pairs`);
+    
+    // Write word pairs with counts to output file
+    console.log(`Writing word pairs to ${distinctWordPairsFilePath}`);
+    const outputStream = createWriteStream(distinctWordPairsFilePath);
+    
+    // Write header
+    outputStream.write('value,next_value,count\n');
+    
+    // Write word pairs with counts
+    for (const [pairKey, count] of wordPairCounts.entries()) {
+      outputStream.write(`${pairKey},${count}\n`);
+    }
+    
+    outputStream.end();
+    console.log('Done!');
+
+    // Mark as completed in state
+    stateManager.updateSourceState(String(source.id), "distinctWordPairs", {
+      processedBytes: bytesProcessed,
+      uniquePairsCount: wordPairCounts.size,
+      completed: true,
+    });
+    
+  } catch (error) {
+    console.error(`Error processing distinct word pairs for ${source.id}:`, error);
   }
 }
 
@@ -510,305 +1094,6 @@ const displayJsonlProgress = (() => {
     console.log(`Last update: ${new Date().toLocaleTimeString()}`);
   };
 })();
-
-/**
- * Write a batch of sentences to a text file
- */
-async function writeSentencesToTextFile(
-  sentences: string[],
-  writeStream: NodeJS.WritableStream
-): Promise<void> {
-  // Skip empty batches
-  if (sentences.length === 0) {
-    return;
-  }
-
-  return new Promise((resolve, reject) => {
-    // Filter out empty or very short sentences
-    const validSentences = sentences.filter(
-      (sentence) => sentence && sentence.trim().length >= 3
-    );
-
-    // Skip if no valid sentences
-    if (validSentences.length === 0) {
-      resolve();
-      return;
-    }
-
-    // Process sentences with backpressure handling
-    let i = 0;
-    
-    function writeNext() {
-      // Continue writing as long as there are sentences and the stream can accept data
-      let canContinue = true;
-      
-      while (i < validSentences.length && canContinue) {
-        // Write each sentence on a new line
-        canContinue = writeStream.write(`${validSentences[i]}\n`);
-        i++;
-      }
-      
-      // If we couldn't write all sentences, wait for drain event
-      if (i < validSentences.length) {
-        writeStream.once('drain', writeNext);
-      } else {
-        // All sentences written, add a separator and resolve
-        writeStream.write(`\n`, (err) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve();
-          }
-        });
-      }
-    }
-    
-    // Start writing
-    writeNext();
-  });
-}
-
-/**
- * Count the number of lines in a file
- */
-async function countFileLines(filePath: string): Promise<number> {
-  return new Promise((resolve) => {
-    let lineCount = 0;
-    const rl = createInterface({
-      input: createReadStream(filePath),
-      crlfDelay: Infinity,
-    });
-
-    rl.on("line", () => lineCount++);
-    rl.on("close", () => resolve(lineCount));
-  });
-}
-
-/**
- * Process sentences to extract words and create a words file
- */
-async function processWordsFromSentences(source: DataTypes.datasources, state: ProcessingState) {
-  try {
-    console.log(`\nProcessing words from sentences for source: ${source.id}`);
-    
-    // Ensure source directory exists
-    const sourceDirPath = ensureSourceDir(source.id);
-    
-    // Get or initialize source state
-    const sourceState = getSourceState(state, String(source.id));
-    
-    // Skip if words processing is already completed
-    if (sourceState.words.completed) {
-      console.log(`Words processing for source ${source.id} already completed, skipping`);
-      return;
-    }
-
-    // Define file paths
-    const stdTxtFilePath = path.join(sourceDirPath, SENTENCES_FILE);
-    const wordsFilePath = path.join(sourceDirPath, WORDS_CSV_FILE);
-
-    // Check if words file exists
-    const fileExists = existsSync(wordsFilePath);
-    
-    // Reset state if output file doesn't exist
-    if (!fileExists && sourceState.words.processedLines > 0) {
-      console.log(`Words file doesn't exist but state shows processing started. Resetting state for source ${source.id}`);
-      resetSourceState(state, source.id, 'words');
-    }
-    
-    // Check if we should resume processing
-    const shouldResume = fileExists && sourceState.words.processedLines > 0;
-    
-    // Check if words file already exists and we're not resuming
-    if (fileExists && !shouldResume) {
-      console.log(
-        `Words file already exists, skipping processing: ${wordsFilePath}`
-      );
-      // Mark as completed in state
-      updateState(state, String(source.id), 'words', { completed: true });
-      return;
-    }
-
-    // Check if sentences file exists
-    if (!existsSync(stdTxtFilePath)) {
-      console.error(`Sentences file not found: ${stdTxtFilePath}`);
-      return;
-    }
-
-    // Count total lines for progress tracking
-    console.log("Counting total sentences in text file...");
-    const totalLines = await countFileLines(stdTxtFilePath);
-    console.log(`Total sentences in text file: ${totalLines.toLocaleString()}`);
-    
-    // Update state with total lines
-    updateState(state, String(source.id), 'words', { totalLines });
-
-    // Create read stream and readline interface
-    const fileStream = createReadStream(stdTxtFilePath);
-    const rl = createInterface({
-      input: fileStream,
-      crlfDelay: Infinity,
-    });
-
-    // Create write stream for the CSV file with append mode if resuming
-    const wordsWriteStream = createWriteStream(wordsFilePath, { 
-      flags: shouldResume ? 'a' : 'w' 
-    });
-    
-    // Write CSV header if not resuming
-    if (!shouldResume) {
-      wordsWriteStream.write("value,next_value\n");
-    }
-
-    let processedLines = sourceState.words.processedLines || 0;
-    let startTime = Date.now();
-    let totalWordPairsProcessed = sourceState.words.totalWordPairsProcessed || 0;
-    let skippedLines = 0;
-    let wordPairsBatch: Array<{value: string, next_value: string}> = [];
-    let currentLine = 0;
-
-    try {
-      // Process each line of the sentences file
-      for await (const line of rl) {
-        currentLine++;
-        
-        // Skip already processed lines if resuming
-        if (shouldResume && currentLine <= processedLines) {
-          continue;
-        }
-        
-        try {
-          // Skip empty lines, comments, or very short lines
-          if (!line || line.trim().length < 3 || line.startsWith("#")) {
-            skippedLines++;
-            processedLines++;
-            continue;
-          }
-
-          // Extract words from the sentence
-          const words = tokenization.tokenizeToWords(line);
-          
-          // Create word pairs (current word and next word)
-          for (let i = 0; i < words.length - 1; i++) {
-            const currentWord = words[i];
-            const nextWord = words[i + 1];
-            
-            if (currentWord && nextWord) {
-              wordPairsBatch.push({
-                value: currentWord,
-                next_value: nextWord
-              });
-            }
-          }
-
-          // When batch size is reached, write to file
-          if (wordPairsBatch.length >= BATCH_SIZE) {
-            // Write word pairs to CSV file
-            await writeWordPairsToCsv(wordPairsBatch, wordsWriteStream);
-
-            totalWordPairsProcessed += wordPairsBatch.length;
-
-            // Display progress
-            displayWordsProgress(
-              totalLines,
-              processedLines,
-              wordPairsBatch.length,
-              totalWordPairsProcessed
-            );
-            
-            // Update state
-            updateState(state, String(source.id), 'words', {
-              processedLines,
-              totalWordPairsProcessed
-            });
-
-            // Clear the batch after successful write
-            wordPairsBatch = [];
-          }
-
-          // Update progress after each line
-          processedLines += 1;
-          if (processedLines % 100 === 0) {
-            displayWordsProgress(
-              totalLines,
-              processedLines,
-              wordPairsBatch.length,
-              totalWordPairsProcessed
-            );
-            
-            // Update state periodically
-            if (processedLines % 1000 === 0) {
-              updateState(state, String(source.id), 'words', {
-                processedLines,
-                totalWordPairsProcessed
-              });
-            }
-          }
-        } catch (error) {
-          console.error(`Error processing sentence: ${error}`);
-          // Continue with the next line
-          processedLines++;
-        }
-      }
-
-      // Write any remaining data
-      if (wordPairsBatch.length > 0) {
-        await writeWordPairsToCsv(wordPairsBatch, wordsWriteStream);
-        totalWordPairsProcessed += wordPairsBatch.length;
-      }
-
-      // Display final progress
-      displayWordsProgress(
-        totalLines,
-        processedLines,
-        wordPairsBatch.length,
-        totalWordPairsProcessed,
-        true
-      );
-
-      // Close the file write stream
-      wordsWriteStream.end();
-
-      const elapsedSeconds = (Date.now() - startTime) / 1000;
-      console.log(`\nSuccessfully processed words from: ${stdTxtFilePath}`);
-      console.log(
-        `Processed ${processedLines.toLocaleString()} sentences in ${elapsedSeconds.toFixed(
-          2
-        )}s`
-      );
-      console.log(
-        `Total word pairs extracted: ${totalWordPairsProcessed.toLocaleString()}`
-      );
-      console.log(`Skipped lines: ${skippedLines.toLocaleString()}`);
-      console.log(`Created words CSV file: ${wordsFilePath}`);
-      
-      // Mark as completed in state
-      updateState(state, String(source.id), 'words', {
-        processedLines,
-        totalWordPairsProcessed,
-        completed: true
-      });
-    } catch (error) {
-      console.error(`Error in processWordsFromSentences: ${error}`);
-      
-      // Update state with current progress
-      updateState(state, String(source.id), 'words', {
-        processedLines,
-        totalWordPairsProcessed
-      });
-      
-      // Close the file write stream
-      wordsWriteStream.end();
-    } finally {
-      // Ensure the readline interface is closed
-      rl.close();
-      fileStream.close();
-    }
-  } catch (error) {
-    console.error(`Error processing words for ${source.id}:`, error);
-  }
-}
-
 /**
  * Display progress for words processing
  */
@@ -894,60 +1179,3 @@ const displayWordsProgress = (() => {
     console.log(`Last update: ${new Date().toLocaleTimeString()}`);
   };
 })();
-
-/**
- * Write a batch of word pairs to a CSV file
- */
-async function writeWordPairsToCsv(
-  wordPairs: Array<{value: string, next_value: string}>,
-  writeStream: NodeJS.WritableStream
-): Promise<void> {
-  // Skip empty batches
-  if (wordPairs.length === 0) {
-    return;
-  }
-
-  return new Promise((resolve, reject) => {
-    // Process each word pair
-    const processWordPairs = () => {
-      let i = 0;
-      
-      function writeNext() {
-        // Continue writing as long as there are pairs and the stream can accept data
-        let canContinue = true;
-        
-        while (i < wordPairs.length && canContinue) {
-          const pair = wordPairs[i];
-          
-          // Escape commas and quotes in the words
-          const escapedValue = pair.value.replace(/"/g, '""');
-          const escapedNextValue = pair.next_value.replace(/"/g, '""');
-          
-          // Write the CSV line with proper quoting if needed
-          const needsQuotes = escapedValue.includes(',') || escapedNextValue.includes(',');
-          const line = needsQuotes 
-            ? `"${escapedValue}","${escapedNextValue}"\n`
-            : `${escapedValue},${escapedNextValue}\n`;
-          
-          // Write to stream and check if we need to wait for drain
-          canContinue = writeStream.write(line);
-          i++;
-        }
-        
-        // If we couldn't write all pairs, wait for drain event
-        if (i < wordPairs.length) {
-          writeStream.once('drain', writeNext);
-        } else {
-          // All pairs written, resolve the promise
-          resolve();
-        }
-      }
-      
-      // Start writing
-      writeNext();
-    };
-    
-    // Start processing
-    processWordPairs();
-  });
-}
