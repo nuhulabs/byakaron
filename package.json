@@ -2,16 +2,26 @@
   "name": "bntk",
   "private": false,
   "version": "0.0.0",
+  "scripts": {
+    "prepare": "husky"
+  },
   "workspaces": [
     "packages/*",
     "packages/core/*",
     "apps/*"
   ],
-  "files": ["dist/cli.js"],
+  "files": [
+    "dist/cli.js"
+  ],
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "husky": "^9.1.7",
+    "prettier": "^3.5.3"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
+  },
+  "lint-staged": {
+    "*.{js,css,md}": "prettier --write"
   }
 }

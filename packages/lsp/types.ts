@@ -2,7 +2,7 @@
  * Type definitions for the Bangla spellcheck LSP
  */
 
-import { TextDocument } from 'vscode-languageserver-textdocument';
+import { TextDocument } from "vscode-languageserver-textdocument";
 
 /**
  * Represents a spelling error found in the document
@@ -42,18 +42,18 @@ export interface SpellcheckerService {
    * @returns Array of spelling errors found
    */
   checkDocument(document: TextDocument): Promise<SpellingError[]>;
-  
+
   /**
    * Check a single word for spelling errors
    * @param word The word to check
    * @returns Whether the word is correctly spelled
    */
   checkWord(word: string): Promise<boolean>;
-  
+
   /**
    * Get suggestions for a misspelled word
    * @param word The misspelled word
    * @returns Array of suggested corrections
    */
   getSuggestions(word: string): Promise<string[]>;
-} 
+}

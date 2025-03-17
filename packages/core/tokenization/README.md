@@ -25,7 +25,7 @@ pnpm add @bntk/tokenization
 ## Quick Start
 
 ```typescript
-import { tokenizeToWords, tokenizeToSentences } from '@bntk/tokenization';
+import { tokenizeToWords, tokenizeToSentences } from "@bntk/tokenization";
 
 // Tokenize words
 const text = "আমি বাংলায় গান গাই";
@@ -47,18 +47,21 @@ For detailed API documentation, please refer to the auto-generated documentation
 ## Features in Detail
 
 ### Word Tokenization
+
 - Handles Bangla punctuation marks
 - Preserves hyphenated words
 - Removes unwanted characters and normalizes text
 - Filters out empty strings and invalid tokens
 
 ### Sentence Tokenization
+
 - Supports Bangla sentence endings (।, ?, !)
 - Handles line breaks and multiple separators
 - Filters out invalid or too short sentences
 - Removes duplicate sentences
 
 ### Text Cleaning
+
 - Removes non-Bangla characters
 - Normalizes whitespace and punctuation
 - Handles special cases like URLs and email addresses
@@ -70,4 +73,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.

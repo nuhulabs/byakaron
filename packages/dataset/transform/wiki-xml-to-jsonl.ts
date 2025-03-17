@@ -12,7 +12,7 @@ import { displayProgress } from "./util";
  * This is a more efficient approach than loading the entire XML into memory
  */
 export async function transformWikiXmlToJsonl(
-  options: TransformOptions
+  options: TransformOptions,
 ): Promise<void> {
   const {
     inputFile,
@@ -149,7 +149,7 @@ export async function transformWikiXmlToJsonl(
             pageCount,
             maxPages,
             lastTitle,
-            batchCount >= batchSize
+            batchCount >= batchSize,
           );
 
           if (batchCount >= batchSize) {
@@ -189,13 +189,13 @@ export async function transformWikiXmlToJsonl(
       const pagesPerSecond = pageCount / Math.max(1, elapsedSeconds);
       console.log(
         `\nFinished processing ${pageCount} pages in ${elapsedSeconds.toFixed(
-          2
-        )}s (${pagesPerSecond.toFixed(2)} pages/sec)`
+          2,
+        )}s (${pagesPerSecond.toFixed(2)} pages/sec)`,
       );
       console.log(
         `Total file size processed: ${(bytesProcessed / (1024 * 1024)).toFixed(
-          2
-        )}MB`
+          2,
+        )}MB`,
       );
     }
   });

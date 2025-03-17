@@ -23,11 +23,13 @@ bun packages/dataset/transform-sax.ts <input-xml-file> <output-jsonl-file> [max-
 ### Examples
 
 Process the first 10,000 pages:
+
 ```bash
 bun packages/dataset/transform-sax.ts ./assets/enwiki-latest-pages-articles.xml ./output/wiki.jsonl 10000 500
 ```
 
 Process all pages (equivalent to omitting the max-pages parameter):
+
 ```bash
 bun packages/dataset/transform-sax.ts ./assets/enwiki-latest-pages-articles.xml ./output/wiki.jsonl infinity 500
 ```
@@ -41,29 +43,29 @@ The output is in JSONL (JSON Lines) format, where each line is a valid JSON obje
 You can also use the transformer programmatically:
 
 ```typescript
-import { transformWikiXmlToJsonl } from '@bntk/dataset/transform-sax';
+import { transformWikiXmlToJsonl } from "@bntk/dataset/transform-sax";
 
 await transformWikiXmlToJsonl({
-  inputFile: './assets/enwiki-latest-pages-articles.xml',
-  outputFile: './output/wiki.jsonl',
-  maxPages: 10000,  // Use Infinity to process all pages
+  inputFile: "./assets/enwiki-latest-pages-articles.xml",
+  outputFile: "./output/wiki.jsonl",
+  maxPages: 10000, // Use Infinity to process all pages
   batchSize: 500,
-  verbose: true
+  verbose: true,
 });
 ```
 
 For backward compatibility, the original function name is still available:
 
 ```typescript
-import { transformWikiXmlToJson } from '@bntk/dataset/transform-sax';
+import { transformWikiXmlToJson } from "@bntk/dataset/transform-sax";
 
 // This now outputs JSONL format
 await transformWikiXmlToJson({
-  inputFile: './assets/enwiki-latest-pages-articles.xml',
-  outputFile: './output/wiki.jsonl',
+  inputFile: "./assets/enwiki-latest-pages-articles.xml",
+  outputFile: "./output/wiki.jsonl",
   maxPages: 10000,
   batchSize: 500,
-  verbose: true
+  verbose: true,
 });
 ```
 
@@ -107,12 +109,26 @@ class StateManager extends GenericStateManager<ProcessingState> {
   constructor(stateFilePath?: string, assetPath?: string);
   getSourceState(sourceId: string | number): SourceState;
   resetSourceState(sourceId: string | number, type: ProcessingStepType): void;
-  updateSourceState(sourceId: string | number, type: ProcessingStepType, updates: StepUpdates): void;
+  updateSourceState(
+    sourceId: string | number,
+    type: ProcessingStepType,
+    updates: StepUpdates,
+  ): void;
   ensureSourceDir(sourceId: string | number): string;
-  getSourceFilePaths(sourceId: string | number): { /* file paths */ };
+  getSourceFilePaths(sourceId: string | number): {
+    /* file paths */
+  };
   isStepCompleted(sourceId: string | number, type: ProcessingStepType): boolean;
-  shouldProcessFile(sourceId: string | number, type: ProcessingStepType): { /* result */ };
-  displayOverallProgress(sources: Array<{ id: string | number; name: string }>, final?: boolean): void;
+  shouldProcessFile(
+    sourceId: string | number,
+    type: ProcessingStepType,
+  ): {
+    /* result */
+  };
+  displayOverallProgress(
+    sources: Array<{ id: string | number; name: string }>,
+    final?: boolean,
+  ): void;
 }
 ```
 
@@ -157,7 +173,7 @@ interface ByteBasedStep extends BaseProcessingStep {
 #### Using the StateManager Class
 
 ```typescript
-import { StateManager } from './state';
+import { StateManager } from "./state";
 
 // Create a state manager instance
 const stateManager = new StateManager();
@@ -166,21 +182,21 @@ const stateManager = new StateManager();
 const state = stateManager.getState();
 
 // Get or initialize state for a source
-const sourceState = stateManager.getSourceState('source1');
+const sourceState = stateManager.getSourceState("source1");
 
 // Update state for a specific processing step
-stateManager.updateSourceState('source1', 'sentences', { 
+stateManager.updateSourceState("source1", "sentences", {
   processedLines: 1000,
-  totalSentencesProcessed: 5000
+  totalSentencesProcessed: 5000,
 });
 
 // Check if a processing step is completed
-const isCompleted = stateManager.isStepCompleted('source1', 'sentences');
+const isCompleted = stateManager.isStepCompleted("source1", "sentences");
 
 // Display overall progress
 stateManager.displayOverallProgress([
-  { id: 'source1', name: 'Wikipedia' },
-  { id: 'source2', name: 'Books' }
+  { id: "source1", name: "Wikipedia" },
+  { id: "source2", name: "Books" },
 ]);
 ```
 
@@ -189,19 +205,19 @@ stateManager.displayOverallProgress([
 For convenience, a singleton instance of `StateManager` is exported as `stateManager`, along with legacy functions that use this singleton:
 
 ```typescript
-import { stateManager, updateState, displayOverallProgress } from './state';
+import { stateManager, updateState, displayOverallProgress } from "./state";
 
 // Using the singleton instance directly
-stateManager.updateSourceState('source1', 'sentences', { 
+stateManager.updateSourceState("source1", "sentences", {
   processedLines: 1000,
-  totalSentencesProcessed: 5000
+  totalSentencesProcessed: 5000,
 });
 
 // Using legacy functions (these use the singleton internally)
 const state = getState();
-updateState(state, 'source1', 'sentences', { 
+updateState(state, "source1", "sentences", {
   processedLines: 1000,
-  totalSentencesProcessed: 5000
+  totalSentencesProcessed: 5000,
 });
 displayOverallProgress(sources, state);
 ```
@@ -211,7 +227,7 @@ displayOverallProgress(sources, state);
 You can create your own state manager by extending `GenericStateManager`:
 
 ```typescript
-import { GenericStateManager } from './state';
+import { GenericStateManager } from "./state";
 
 interface MyState {
   counter: number;
@@ -220,11 +236,14 @@ interface MyState {
 
 class MyStateManager extends GenericStateManager<MyState> {
   constructor() {
-    super('./my-state.json', { counter: 0, lastUpdated: new Date().toISOString() });
+    super("./my-state.json", {
+      counter: 0,
+      lastUpdated: new Date().toISOString(),
+    });
   }
-  
+
   incrementCounter(amount: number = 1): void {
-    this.updateState(state => {
+    this.updateState((state) => {
       state.counter += amount;
       state.lastUpdated = new Date().toISOString();
     });
@@ -247,28 +266,28 @@ The `constant.ts` module defines constants used throughout the dataset package:
 ## Usage Example
 
 ```typescript
-import { getState, updateState, displayOverallProgress } from './state';
-import { prisma } from '@bntk/db';
+import { getState, updateState, displayOverallProgress } from "./state";
+import { prisma } from "@bntk/db";
 
 async function processDatasets() {
   // Load current state
   const state = getState();
-  
+
   // Get data sources
   const sources = await prisma.datasources.findMany();
-  
+
   // Display initial progress
   displayOverallProgress(sources, state);
-  
+
   // Process each source
   for (const source of sources) {
     // Update state as processing progresses
-    updateState(state, source.id, 'sentences', { 
+    updateState(state, source.id, "sentences", {
       processedLines: 1000,
-      totalSentencesProcessed: 5000
+      totalSentencesProcessed: 5000,
     });
   }
-  
+
   // Display final progress
   displayOverallProgress(sources, state, true);
 }
@@ -283,6 +302,6 @@ async function processDatasets() {
   - `wiki-jsonl-to-std.ts`: Convert Wiki JSONL to standard format
   - `wiki-xml-to-jsonl.ts`: Convert Wiki XML to JSONL format
 
-
 ## References
+
 - https://en.wikipedia.org/wiki/Extract,_transform,_load

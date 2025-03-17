@@ -137,7 +137,7 @@ export class GenericStateManager<T> {
       writeFileSync(
         this.stateFilePath,
         JSON.stringify(this.state, null, 2),
-        "utf8"
+        "utf8",
       );
     } catch (error) {
       console.error("Error saving state file:", error);
@@ -195,7 +195,7 @@ export class StateManager extends GenericStateManager<ProcessingState> {
    */
   constructor(
     stateFilePath: string = STATE_FILE_PATH,
-    assetPath: string = ASSET_PATH
+    assetPath: string = ASSET_PATH,
   ) {
     super(stateFilePath, { sources: {} });
     this.assetPath = assetPath;
@@ -208,7 +208,7 @@ export class StateManager extends GenericStateManager<ProcessingState> {
   public getSourceState(sourceId: string | number): SourceState {
     if (!this.state?.sources?.[sourceId]) {
       this.state.sources[sourceId] = JSON.parse(
-        JSON.stringify(StateManager.EMPTY_SOURCE_STATE)
+        JSON.stringify(StateManager.EMPTY_SOURCE_STATE),
       );
       this.saveState();
     }
@@ -222,12 +222,12 @@ export class StateManager extends GenericStateManager<ProcessingState> {
    */
   public resetSourceState(
     sourceId: string | number,
-    type: ProcessingStepType
+    type: ProcessingStepType,
   ): void {
     if (this.state.sources[sourceId]) {
       const defaultState = StateManager.EMPTY_SOURCE_STATE[type];
       this.state.sources[sourceId][type] = JSON.parse(
-        JSON.stringify(defaultState)
+        JSON.stringify(defaultState),
       );
       this.saveState();
     }
@@ -242,7 +242,7 @@ export class StateManager extends GenericStateManager<ProcessingState> {
   public updateSourceState(
     sourceId: string | number,
     type: ProcessingStepType,
-    updates: StepUpdates
+    updates: StepUpdates,
   ): void {
     const sourceState = this.getSourceState(sourceId);
 
@@ -306,7 +306,7 @@ export class StateManager extends GenericStateManager<ProcessingState> {
       distinctWordsFilePath: path.join(sourceDirPath, DISTINCT_WORDS_FILE),
       distinctWordPairsFilePath: path.join(
         sourceDirPath,
-        DISTINCT_WORD_PAIRS_FILE
+        DISTINCT_WORD_PAIRS_FILE,
       ),
     };
   }
@@ -318,7 +318,7 @@ export class StateManager extends GenericStateManager<ProcessingState> {
    */
   public isStepCompleted(
     sourceId: string | number,
-    type: ProcessingStepType
+    type: ProcessingStepType,
   ): boolean {
     const sourceState = this.state.sources[sourceId];
     if (!sourceState) return false;
@@ -333,7 +333,7 @@ export class StateManager extends GenericStateManager<ProcessingState> {
    */
   public shouldProcessFile(
     sourceId: string | number,
-    type: ProcessingStepType
+    type: ProcessingStepType,
   ): { shouldProcess: boolean; shouldResume: boolean; filePath: string } {
     const sourceState = this.getSourceState(sourceId);
     const filePaths = this.getSourceFilePaths(sourceId);
@@ -371,7 +371,7 @@ export class StateManager extends GenericStateManager<ProcessingState> {
     // Reset state if output file doesn't exist but processing has started
     if (!fileExists && hasStarted) {
       console.log(
-        `${type} file doesn't exist but state shows processing started. Resetting state for source ${sourceId}`
+        `${type} file doesn't exist but state shows processing started. Resetting state for source ${sourceId}`,
       );
       this.resetSourceState(sourceId, type);
       return { shouldProcess: true, shouldResume: false, filePath };
@@ -386,7 +386,7 @@ export class StateManager extends GenericStateManager<ProcessingState> {
 
     if (fileExists && !shouldProcess) {
       console.log(
-        `${type} file already exists and processing is complete for source ${sourceId}`
+        `${type} file already exists and processing is complete for source ${sourceId}`,
       );
     }
 
@@ -400,7 +400,7 @@ export class StateManager extends GenericStateManager<ProcessingState> {
    */
   public displayOverallProgress(
     sources: Array<{ id: string | number; name: string }>,
-    final: boolean = false
+    final: boolean = false,
   ): void {
     console.log("\n=== OVERALL PROCESSING PROGRESS ===");
 
@@ -426,17 +426,17 @@ export class StateManager extends GenericStateManager<ProcessingState> {
       // Sentences progress
       if (sourceState.sentences.completed) {
         console.log(
-          `✅ Sentences: Complete (${sourceState.sentences.totalSentencesProcessed.toLocaleString()} sentences processed)`
+          `✅ Sentences: Complete (${sourceState.sentences.totalSentencesProcessed.toLocaleString()} sentences processed)`,
         );
         completedSteps++;
       } else if (sourceState.sentences.totalLines) {
         const progress = Math.round(
           (sourceState.sentences.processedLines /
             sourceState.sentences.totalLines) *
-            100
+            100,
         );
         console.log(
-          `🔄 Sentences: ${progress}% (${sourceState.sentences.processedLines.toLocaleString()}/${sourceState.sentences.totalLines.toLocaleString()} lines)`
+          `🔄 Sentences: ${progress}% (${sourceState.sentences.processedLines.toLocaleString()}/${sourceState.sentences.totalLines.toLocaleString()} lines)`,
         );
       } else {
         console.log(`⏳ Sentences: Not started`);
@@ -445,16 +445,16 @@ export class StateManager extends GenericStateManager<ProcessingState> {
       // Words progress
       if (sourceState.words.completed) {
         console.log(
-          `✅ Words: Complete (${sourceState.words.totalWordPairsProcessed.toLocaleString()} word pairs processed)`
+          `✅ Words: Complete (${sourceState.words.totalWordPairsProcessed.toLocaleString()} word pairs processed)`,
         );
         completedSteps++;
       } else if (sourceState.words.totalLines) {
         const progress = Math.round(
           (sourceState.words.processedLines / sourceState.words.totalLines) *
-            100
+            100,
         );
         console.log(
-          `🔄 Words: ${progress}% (${sourceState.words.processedLines.toLocaleString()}/${sourceState.words.totalLines.toLocaleString()} lines)`
+          `🔄 Words: ${progress}% (${sourceState.words.processedLines.toLocaleString()}/${sourceState.words.totalLines.toLocaleString()} lines)`,
         );
       } else {
         console.log(`⏳ Words: Not started`);
@@ -463,14 +463,14 @@ export class StateManager extends GenericStateManager<ProcessingState> {
       // Distinct words progress
       if (sourceState.distinctWords.completed) {
         console.log(
-          `✅ Distinct Words: Complete (${sourceState.distinctWords.uniqueWordsCount.toLocaleString()} unique words)`
+          `✅ Distinct Words: Complete (${sourceState.distinctWords.uniqueWordsCount.toLocaleString()} unique words)`,
         );
         completedSteps++;
       } else if (sourceState.distinctWords.totalBytes) {
         const progress = Math.round(
           (sourceState.distinctWords.processedBytes /
             sourceState.distinctWords.totalBytes) *
-            100
+            100,
         );
         const processedMB = (
           sourceState.distinctWords.processedBytes /
@@ -481,7 +481,7 @@ export class StateManager extends GenericStateManager<ProcessingState> {
           (1024 * 1024)
         ).toFixed(2);
         console.log(
-          `🔄 Distinct Words: ${progress}% (${processedMB}/${totalMB} MB)`
+          `🔄 Distinct Words: ${progress}% (${processedMB}/${totalMB} MB)`,
         );
       } else {
         console.log(`⏳ Distinct Words: Not started`);
@@ -490,14 +490,14 @@ export class StateManager extends GenericStateManager<ProcessingState> {
       // Distinct word pairs progress
       if (sourceState.distinctWordPairs.completed) {
         console.log(
-          `✅ Distinct Word Pairs: Complete (${sourceState.distinctWordPairs.uniquePairsCount.toLocaleString()} unique pairs)`
+          `✅ Distinct Word Pairs: Complete (${sourceState.distinctWordPairs.uniquePairsCount.toLocaleString()} unique pairs)`,
         );
         completedSteps++;
       } else if (sourceState.distinctWordPairs.totalBytes) {
         const progress = Math.round(
           (sourceState.distinctWordPairs.processedBytes /
             sourceState.distinctWordPairs.totalBytes) *
-            100
+            100,
         );
         const processedMB = (
           sourceState.distinctWordPairs.processedBytes /
@@ -508,7 +508,7 @@ export class StateManager extends GenericStateManager<ProcessingState> {
           (1024 * 1024)
         ).toFixed(2);
         console.log(
-          `🔄 Distinct Word Pairs: ${progress}% (${processedMB}/${totalMB} MB)`
+          `🔄 Distinct Word Pairs: ${progress}% (${processedMB}/${totalMB} MB)`,
         );
       } else {
         console.log(`⏳ Distinct Word Pairs: Not started`);
@@ -518,7 +518,7 @@ export class StateManager extends GenericStateManager<ProcessingState> {
     // Display overall completion percentage
     const overallProgress = Math.round((completedSteps / totalSteps) * 100);
     console.log(
-      `\nOverall Progress: ${overallProgress}% (${completedSteps}/${totalSteps} steps completed)`
+      `\nOverall Progress: ${overallProgress}% (${completedSteps}/${totalSteps} steps completed)`,
     );
 
     if (final) {
@@ -547,7 +547,7 @@ export function formatTime(seconds: number): string {
  */
 export function createProgressBar(
   progress: number,
-  length: number = 30
+  length: number = 30,
 ): string {
   const filledLength = Math.round((length * progress) / 100);
   return "█".repeat(filledLength) + "░".repeat(length - filledLength);
@@ -561,7 +561,7 @@ export function displayProgress(
   total: number,
   processed: number,
   additionalInfo: { [key: string]: any } = {},
-  force: boolean = false
+  force: boolean = false,
 ): void {
   // Create a closure to track progress display state
   const getProgressDisplay = (() => {
@@ -574,7 +574,7 @@ export function displayProgress(
       total: number,
       processed: number,
       additionalInfo: { [key: string]: any } = {},
-      force: boolean = false
+      force: boolean = false,
     ) => {
       const now = Date.now();
       const UPDATE_THRESHOLD_MS = 1000; // Update display every 1 second

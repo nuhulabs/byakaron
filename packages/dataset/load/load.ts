@@ -50,7 +50,7 @@ async function loadSentences(source: DataTypes.datasources) {
   }
 
   console.log(
-    `Loading sentences from ${stdTxtFilePath} for source ${source.id}`
+    `Loading sentences from ${stdTxtFilePath} for source ${source.id}`,
   );
 
   // Get file size for progress tracking
@@ -127,11 +127,11 @@ async function loadSentences(source: DataTypes.datasources) {
 
     // Count the number of rows in the temporary table
     const countResult = await pgClient.query(
-      "SELECT COUNT(*) FROM temp_sentences"
+      "SELECT COUNT(*) FROM temp_sentences",
     );
     const rowCount = parseInt(countResult.rows[0].count);
     console.log(
-      `Loaded ${rowCount.toLocaleString()} rows into temporary table`
+      `Loaded ${rowCount.toLocaleString()} rows into temporary table`,
     );
 
     // Insert distinct sentences into the sentences table
@@ -148,7 +148,7 @@ async function loadSentences(source: DataTypes.datasources) {
           AND text NOT LIKE '#%'  -- Skip comment lines
           AND text NOT LIKE ''    -- Skip empty lines
       `,
-      [source.id]
+      [source.id],
     );
 
     // Commit the transaction
@@ -163,7 +163,7 @@ async function loadSentences(source: DataTypes.datasources) {
     console.log(`Total time: ${elapsedSeconds.toFixed(2)} seconds`);
     console.log(`Processing rate: ${rowsPerSecond.toFixed(2)} rows/second`);
     console.log(
-      `File size processed: ${(fileSize / (1024 * 1024)).toFixed(2)} MB`
+      `File size processed: ${(fileSize / (1024 * 1024)).toFixed(2)} MB`,
     );
     console.log(`Rows loaded: ${rowCount.toLocaleString()}`);
   } catch (error) {
@@ -191,7 +191,7 @@ async function loadWordPairs(source: DataTypes.datasources) {
   const distinctWordsCsvFilePath = path.join(
     ASSET_PATH,
     `${source.id}`,
-    `words_pairs_distinct.csv`
+    `words_pairs_distinct.csv`,
   );
 
   if (!existsSync(distinctWordsCsvFilePath))
@@ -212,7 +212,7 @@ async function loadWordPairs(source: DataTypes.datasources) {
       `Distinct words file size: ${(
         distinctWordsFileSize /
         (1024 * 1024)
-      ).toFixed(2)} MB`
+      ).toFixed(2)} MB`,
     );
 
     // Start a transaction
@@ -229,7 +229,7 @@ async function loadWordPairs(source: DataTypes.datasources) {
 
     // Use COPY command to bulk load data from the distinct words file
     console.log(
-      "Starting COPY operation from distinct words CSV file to staging table..."
+      "Starting COPY operation from distinct words CSV file to staging table...",
     );
 
     // Create a read stream for the file
@@ -260,14 +260,14 @@ async function loadWordPairs(source: DataTypes.datasources) {
     // Pipe the file stream to the copy stream
     await pipeline(
       distinctWordsFileStream,
-      pgClient.query(distinctWordsCopyStreamQuery as any)
+      pgClient.query(distinctWordsCopyStreamQuery as any),
     );
 
     // Ensure we show 100% at the end
     displayProgress(
       distinctWordsFileSize,
       distinctWordsFileSize,
-      "COPY Progress"
+      "COPY Progress",
     );
     // Commit the transaction
     await pgClient.query("COMMIT");
@@ -276,11 +276,11 @@ async function loadWordPairs(source: DataTypes.datasources) {
     await pgClient.query("BEGIN");
     // Count the number of rows in the staging table
     const distinctWordsCountResult = await pgClient.query(
-      "SELECT COUNT(*) FROM warehouse.word_pairs"
+      "SELECT COUNT(*) FROM warehouse.word_pairs",
     );
     const distinctWordsCount = parseInt(distinctWordsCountResult.rows[0].count);
     console.log(
-      `Loaded ${distinctWordsCount.toLocaleString()} distinct word pairs into staging table`
+      `Loaded ${distinctWordsCount.toLocaleString()} distinct word pairs into staging table`,
     );
 
     // Insert all distinct words at once into the words table
@@ -293,7 +293,7 @@ async function loadWordPairs(source: DataTypes.datasources) {
     // Get total count for progress tracking
     const totalDistinctWords = parseInt(distinctWordsCountResult.rows[0].count);
     console.log(
-      `Found ${totalDistinctWords.toLocaleString()} valid distinct word pairs to process`
+      `Found ${totalDistinctWords.toLocaleString()} valid distinct word pairs to process`,
     );
 
     // Calculate number of batches
@@ -328,7 +328,7 @@ SET
 	weight = public.word_pairs.weight + EXCLUDED.weight,
 	occurance = public.word_pairs.occurance + EXCLUDED.occurance
         `,
-        [batchSize, batchNum * batchSize]
+        [batchSize, batchNum * batchSize],
       );
 
       processedWords += batchSize;
@@ -338,12 +338,12 @@ SET
       displayProgress(
         totalDistinctWords,
         Math.min(processedWords, totalDistinctWords),
-        "Words Insertion Progress"
+        "Words Insertion Progress",
       );
     }
 
     console.log(
-      `\nInserted ${totalInserted.toLocaleString()} new distinct word pairs`
+      `\nInserted ${totalInserted.toLocaleString()} new distinct word pairs`,
     );
 
     // Commit the transaction
@@ -374,7 +374,7 @@ async function loadWords(source: DataTypes.datasources) {
   const wordPairCsvFilePath = path.join(ASSET_PATH, `${source.id}_words.csv`);
   const distinctWordsCsvFilePath = path.join(
     ASSET_PATH,
-    `${source.id}_words_distinct.csv`
+    `${source.id}_words_distinct.csv`,
   );
 
   // Check if the words CSV files exist
@@ -408,7 +408,7 @@ async function loadWords(source: DataTypes.datasources) {
     // Process distinct words first if the file exists
     if (distinctWordsExist) {
       console.log(
-        `Loading distinct words from ${distinctWordsCsvFilePath} for source ${source.id}`
+        `Loading distinct words from ${distinctWordsCsvFilePath} for source ${source.id}`,
       );
 
       // Get file size for progress tracking
@@ -418,7 +418,7 @@ async function loadWords(source: DataTypes.datasources) {
         `Distinct words file size: ${(
           distinctWordsFileSize /
           (1024 * 1024)
-        ).toFixed(2)} MB`
+        ).toFixed(2)} MB`,
       );
 
       // Start a transaction
@@ -435,12 +435,12 @@ async function loadWords(source: DataTypes.datasources) {
 
       // Use COPY command to bulk load data from the distinct words file
       console.log(
-        "Starting COPY operation from distinct words CSV file to staging table..."
+        "Starting COPY operation from distinct words CSV file to staging table...",
       );
 
       // Create a read stream for the file
       const distinctWordsFileStream = createReadStream(
-        distinctWordsCsvFilePath
+        distinctWordsCsvFilePath,
       );
 
       // Use the COPY FROM STDIN command with pg-copy-streams
@@ -463,7 +463,7 @@ async function loadWords(source: DataTypes.datasources) {
           displayProgress(
             distinctWordsFileSize,
             bytesProcessed,
-            "COPY Progress"
+            "COPY Progress",
           );
           lastProgressUpdate = now;
         }
@@ -472,26 +472,26 @@ async function loadWords(source: DataTypes.datasources) {
       // Pipe the file stream to the copy stream
       await pipeline(
         distinctWordsFileStream,
-        pgClient.query(distinctWordsCopyStreamQuery as any)
+        pgClient.query(distinctWordsCopyStreamQuery as any),
       );
 
       // Ensure we show 100% at the end
       displayProgress(
         distinctWordsFileSize,
         distinctWordsFileSize,
-        "COPY Progress"
+        "COPY Progress",
       );
       console.log("\nCOPY operation completed for distinct words");
 
       // Count the number of rows in the staging table
       const distinctWordsCountResult = await pgClient.query(
-        "SELECT COUNT(*) FROM staging_distinct_words"
+        "SELECT COUNT(*) FROM staging_distinct_words",
       );
       const distinctWordsCount = parseInt(
-        distinctWordsCountResult.rows[0].count
+        distinctWordsCountResult.rows[0].count,
       );
       console.log(
-        `Loaded ${distinctWordsCount.toLocaleString()} distinct words into staging table`
+        `Loaded ${distinctWordsCount.toLocaleString()} distinct words into staging table`,
       );
 
       // Insert all distinct words at once into the words table
@@ -503,10 +503,10 @@ async function loadWords(source: DataTypes.datasources) {
 
       // Get total count for progress tracking
       const totalDistinctWords = parseInt(
-        distinctWordsCountResult.rows[0].count
+        distinctWordsCountResult.rows[0].count,
       );
       console.log(
-        `Found ${totalDistinctWords.toLocaleString()} valid distinct words to process`
+        `Found ${totalDistinctWords.toLocaleString()} valid distinct words to process`,
       );
 
       // Calculate number of batches
@@ -538,12 +538,12 @@ async function loadWords(source: DataTypes.datasources) {
         displayProgress(
           totalDistinctWords,
           Math.min(processedWords, totalDistinctWords),
-          "Words Insertion Progress"
+          "Words Insertion Progress",
         );
       }
 
       console.log(
-        `\nInserted ${totalInserted.toLocaleString()} new distinct words`
+        `\nInserted ${totalInserted.toLocaleString()} new distinct words`,
       );
 
       // Commit the transaction
@@ -554,7 +554,7 @@ async function loadWords(source: DataTypes.datasources) {
     // Process word pairs if the file exists
     if (wordPairsExist) {
       console.log(
-        `Loading word pairs from ${wordPairCsvFilePath} for source ${source.id}`
+        `Loading word pairs from ${wordPairCsvFilePath} for source ${source.id}`,
       );
 
       // Get file size for progress tracking
@@ -562,8 +562,8 @@ async function loadWords(source: DataTypes.datasources) {
       const wordPairsFileSize = wordPairsFileStats.size;
       console.log(
         `Word pairs file size: ${(wordPairsFileSize / (1024 * 1024)).toFixed(
-          2
-        )} MB`
+          2,
+        )} MB`,
       );
 
       // Start a transaction
@@ -581,7 +581,7 @@ async function loadWords(source: DataTypes.datasources) {
 
       // Use COPY command to bulk load data from the file
       console.log(
-        "Starting COPY operation from word pairs CSV file to staging table..."
+        "Starting COPY operation from word pairs CSV file to staging table...",
       );
 
       // Create a read stream for the file
@@ -612,7 +612,7 @@ async function loadWords(source: DataTypes.datasources) {
       // Pipe the file stream to the copy stream
       await pipeline(
         wordPairsFileStream,
-        pgClient.query(wordPairsCopyStreamQuery as any)
+        pgClient.query(wordPairsCopyStreamQuery as any),
       );
 
       // Ensure we show 100% at the end
@@ -621,11 +621,11 @@ async function loadWords(source: DataTypes.datasources) {
 
       // Count the number of rows in the staging table
       const wordPairsCountResult = await pgClient.query(
-        "SELECT COUNT(*) FROM staging_word_pairs"
+        "SELECT COUNT(*) FROM staging_word_pairs",
       );
       const wordPairsCount = parseInt(wordPairsCountResult.rows[0].count);
       console.log(
-        `Loaded ${wordPairsCount.toLocaleString()} rows into word pairs staging table`
+        `Loaded ${wordPairsCount.toLocaleString()} rows into word pairs staging table`,
       );
 
       // Commit the transaction to ensure the staging data is saved
@@ -653,7 +653,7 @@ async function loadWords(source: DataTypes.datasources) {
         `);
 
         console.log(
-          `Inserted ${extractWordsResult.rowCount} unique words from word pairs`
+          `Inserted ${extractWordsResult.rowCount} unique words from word pairs`,
         );
 
         // Commit the transaction
@@ -706,14 +706,14 @@ async function loadWords(source: DataTypes.datasources) {
         `Word pairs file size processed: ${(
           wordPairsFileSize /
           (1024 * 1024)
-        ).toFixed(2)} MB`
+        ).toFixed(2)} MB`,
       );
       if (distinctWordsExist) {
         console.log(
           `Distinct words file size processed: ${(
             distinctWordsFileSize /
             (1024 * 1024)
-          ).toFixed(2)} MB`
+          ).toFixed(2)} MB`,
         );
       }
       console.log(`Word pairs processed: ${wordPairsResult.rowCount}`);
@@ -757,12 +757,12 @@ function displayProgress(total: number, current: number, label: string) {
       `${label}: [${progressBar}] ${progress}% | ${(
         current /
         (1024 * 1024)
-      ).toFixed(2)}MB / ${(total / (1024 * 1024)).toFixed(2)}MB`
+      ).toFixed(2)}MB / ${(total / (1024 * 1024)).toFixed(2)}MB`,
     );
   } else {
     // For row operations, show row counts
     process.stdout.write(
-      `${label}: [${progressBar}] ${progress}% | ${current.toLocaleString()} / ${total.toLocaleString()} rows`
+      `${label}: [${progressBar}] ${progress}% | ${current.toLocaleString()} / ${total.toLocaleString()} rows`,
     );
   }
 }

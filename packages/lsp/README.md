@@ -19,26 +19,31 @@ npm install @bntk/lsp
 ## Usage
 
 ```typescript
-import { BengaliSpellchecker, TextDocument } from '@bntk/lsp';
+import { BengaliSpellchecker, TextDocument } from "@bntk/lsp";
 
 // Create a new spellchecker instance
 const spellchecker = new BengaliSpellchecker({
   maxSuggestions: 5,
-  ignoreWordsWithNumbers: true
+  ignoreWordsWithNumbers: true,
 });
 
 // Load a custom dictionary
-spellchecker.loadDictionary(['বাংলা', 'ভাষা', 'অভিধান']);
+spellchecker.loadDictionary(["বাংলা", "ভাষা", "অভিধান"]);
 
 // Check a document for spelling errors
-const document = TextDocument.create('file:///example.txt', 'bangla', 1, 'আমি বাংলায় কথা বলি।');
+const document = TextDocument.create(
+  "file:///example.txt",
+  "bangla",
+  1,
+  "আমি বাংলায় কথা বলি।",
+);
 const spellingErrors = await spellchecker.checkDocument(document);
 
 // Check a single word
-const isCorrect = await spellchecker.checkWord('বাংলা');
+const isCorrect = await spellchecker.checkWord("বাংলা");
 
 // Get suggestions for a misspelled word
-const suggestions = await spellchecker.getSuggestions('বাংল');
+const suggestions = await spellchecker.getSuggestions("বাংল");
 ```
 
 ## API Reference
@@ -54,6 +59,7 @@ constructor(options?: BengaliSpellcheckOptions)
 ```
 
 Options:
+
 - `customDictionary`: Array of words to add to the dictionary
 - `maxSuggestions`: Maximum number of suggestions to provide for misspelled words
 - `ignoreWordsWithNumbers`: Whether to ignore words containing numbers
@@ -68,4 +74,4 @@ Options:
 
 ## License
 
-MIT 
+MIT

@@ -20,6 +20,7 @@ bun transform
 ```
 
 This will:
+
 1. Read the XML file from `packages/dataset/assets/1_bnwiki-latest-pages-articles.xml`
 2. Parse the first 10 pages from the XML file
 3. Convert wikitext to plain text
@@ -57,4 +58,4 @@ The output JSON file contains an array of Wikipedia page objects with the follow
 
 ## Customization
 
-To parse more than 10 pages, modify the `pageCount` check in the `parseWikiXml.ts` file. 
+To parse more than 10 pages, modify the `pageCount` check in the `parseWikiXml.ts` file.

@@ -2,10 +2,10 @@ import { SENTENCE_SEPARATORS_REGEX } from "./constant";
 
 /**
  * Tokenizes a Bangla text into an array of sentences.
- * 
+ *
  * @param text - The input Bangla text to tokenize
  * @returns A Set of cleaned and tokenized sentences
- * 
+ *
  * @description
  * This function performs the following steps:
  * 1. Splits text by line breaks
@@ -16,7 +16,7 @@ import { SENTENCE_SEPARATORS_REGEX } from "./constant";
  *    - Must have more than 3 words
  *    - Must not be empty
  * 5. Returns a Set to remove duplicates
- * 
+ *
  * @example
  * ```typescript
  * const text: string = "আমি বাংলায় গান গাই। তুমি কি শুনবে?";
@@ -30,7 +30,7 @@ export function tokenizeToSentences(text: string) {
   const splittedSentences = text
     .split("\n")
     .flatMap((sentence) =>
-      sentence.split(SENTENCE_SEPARATORS_REGEX).filter(Boolean)
+      sentence.split(SENTENCE_SEPARATORS_REGEX).filter(Boolean),
     );
 
   // Cleanup each sentence
@@ -39,16 +39,16 @@ export function tokenizeToSentences(text: string) {
       .map(cleanup)
       .filter((sentence) => /[\u0980-\u09FF]/.test(sentence))
       .filter((sentence) => sentence.split(" ").length > 3)
-      .filter(Boolean)
+      .filter(Boolean),
   );
 }
 
 /**
  * Cleans a Bangla sentence by removing unwanted content and normalizing the text.
- * 
+ *
  * @param text - The input sentence to clean
  * @returns A cleaned sentence string containing only valid Bangla content
- * 
+ *
  * @description
  * This function performs comprehensive cleaning:
  * 1. Removes text inside various brackets: (), [], {}, <>
@@ -64,7 +64,7 @@ export function tokenizeToSentences(text: string) {
  *    - Removes trailing hyphens and underscores
  *    - Removes complex patterns of punctuation at start/end
  * 7. Trims whitespace
- * 
+ *
  * @example
  * ```typescript
  * const text: string = "আমি (বাংলায়) গান গাই। https://example.com";

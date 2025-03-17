@@ -67,16 +67,21 @@ bun run start
 ### Using the Core Logic Package
 
 ```typescript
-import { BengaliSpellchecker, TextDocument } from '@bntk/lsp';
+import { BengaliSpellchecker, TextDocument } from "@bntk/lsp";
 
 // Create a new spellchecker instance
 const spellchecker = new BengaliSpellchecker();
 
 // Load a custom dictionary
-spellchecker.loadDictionary(['বাংলা', 'ভাষা', 'অভিধান']);
+spellchecker.loadDictionary(["বাংলা", "ভাষা", "অভিধান"]);
 
 // Check a document for spelling errors
-const document = TextDocument.create('file:///example.txt', 'bangla', 1, 'আমি বাংলায় কথা বলি।');
+const document = TextDocument.create(
+  "file:///example.txt",
+  "bangla",
+  1,
+  "আমি বাংলায় কথা বলি।",
+);
 const spellingErrors = await spellchecker.checkDocument(document);
 ```
 

@@ -87,4 +87,4 @@ The server implements the [Language Server Protocol](https://microsoft.github.io
 
 ## License
 
-MIT 
+MIT

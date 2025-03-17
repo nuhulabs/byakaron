@@ -85,7 +85,7 @@ async function checkText(text: string): Promise<SpellingError[]> {
 // Create a Bun HTTP server
 export const createServer = ({ port }: { port: number }) => {
   console.log(
-    `Bangla Language Spellcheck HTTP Server is running at http://localhost:${port}`
+    `Bangla Language Spellcheck HTTP Server is running at http://localhost:${port}`,
   );
 
   const server = Bun.serve({
@@ -142,7 +142,7 @@ export const createServer = ({ port }: { port: number }) => {
           console.error("Error processing spellcheck request:", error);
           return new Response(
             JSON.stringify({ error: "Failed to process request" }),
-            { status: 500, headers }
+            { status: 500, headers },
           );
         }
       }
@@ -173,7 +173,7 @@ export const createServer = ({ port }: { port: number }) => {
           console.error("Error processing word check request:", error);
           return new Response(
             JSON.stringify({ error: "Failed to process request" }),
-            { status: 500, headers }
+            { status: 500, headers },
           );
         }
       }
@@ -189,7 +189,7 @@ export const createServer = ({ port }: { port: number }) => {
           console.error("Error fetching dictionary stats:", error);
           return new Response(
             JSON.stringify({ error: "Failed to fetch dictionary stats" }),
-            { status: 500, headers }
+            { status: 500, headers },
           );
         }
       }

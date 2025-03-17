@@ -2,9 +2,17 @@
  * Bangla language spellchecker implementation
  */
 
-import { TextDocument } from 'vscode-languageserver-textdocument';
-import type { BengaliSpellcheckOptions, SpellingError, SpellcheckerService } from './types';
-import { extractBengaliWords, levenshteinDistance, normalizeBengaliText } from './utils';
+import { TextDocument } from "vscode-languageserver-textdocument";
+import type {
+  BengaliSpellcheckOptions,
+  SpellingError,
+  SpellcheckerService,
+} from "./types";
+import {
+  extractBengaliWords,
+  levenshteinDistance,
+  normalizeBengaliText,
+} from "./utils";
 
 /**
  * Implementation of the Bangla spellchecker service
@@ -22,11 +30,11 @@ export class BengaliSpellchecker implements SpellcheckerService {
       customDictionary: options.customDictionary || [],
       maxSuggestions: options.maxSuggestions || 5,
       ignoreWordsWithNumbers: options.ignoreWordsWithNumbers || true,
-      ignoreWordsInAllUpperCase: options.ignoreWordsInAllUpperCase || false
+      ignoreWordsInAllUpperCase: options.ignoreWordsInAllUpperCase || false,
     };
 
     // Initialize with custom dictionary words
-    this.options.customDictionary.forEach(word => {
+    this.options.customDictionary.forEach((word) => {
       this.dictionary.add(normalizeBengaliText(word));
     });
 
@@ -39,7 +47,7 @@ export class BengaliSpellchecker implements SpellcheckerService {
    * @param words Array of Bangla words to add to the dictionary
    */
   public loadDictionary(words: string[]): void {
-    words.forEach(word => {
+    words.forEach((word) => {
       this.dictionary.add(normalizeBengaliText(word));
     });
   }
@@ -66,7 +74,7 @@ export class BengaliSpellchecker implements SpellcheckerService {
           word,
           start,
           end,
-          suggestions
+          suggestions,
         });
       }
     }
@@ -87,7 +95,11 @@ export class BengaliSpellchecker implements SpellcheckerService {
 
     // Ignore words in all uppercase if the option is enabled
     // Note: This may not be applicable for Bangla, but included for completeness
-    if (this.options.ignoreWordsInAllUpperCase && word === word.toUpperCase() && word !== word.toLowerCase()) {
+    if (
+      this.options.ignoreWordsInAllUpperCase &&
+      word === word.toUpperCase() &&
+      word !== word.toLowerCase()
+    ) {
       return true;
     }
 
@@ -125,4 +137,4 @@ export class BengaliSpellchecker implements SpellcheckerService {
       .slice(0, this.options.maxSuggestions)
       .map(([suggestion]) => suggestion);
   }
-} 
+}

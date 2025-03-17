@@ -17,8 +17,8 @@ export const main = async () => {
 
     console.log(
       String(
-        ` ✔ Seeded | Count: ${response?.count}] -> \x1b[32m${resource} \x1b[0m`
-      )
+        ` ✔ Seeded | Count: ${response?.count}] -> \x1b[32m${resource} \x1b[0m`,
+      ),
     );
   }
 };
