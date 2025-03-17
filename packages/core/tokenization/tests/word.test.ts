@@ -1,8 +1,15 @@
 import { describe, test, expect } from "bun:test";
-import { tokenizeToWords } from "../word";
+import { tokenizeToWords } from "../src/word";
 
 describe("@bntk/tokenization", () => {
   describe("tokenizeToWords", () => {
+    test("should remove prefix - from words", () => {
+      const text = "-ইন্টাগ্রেটেড";
+      const expected = ["ইন্টাগ্রেটেড"];
+      expect(tokenizeToWords(text)).toEqual(expected);
+    });
+    
+    
     test("should tokenize simple Bangla text", () => {
       const text = "আমি বাংলায় কথা বলি";
       const expected = ["আমি", "বাংলায়", "কথা", "বলি"];

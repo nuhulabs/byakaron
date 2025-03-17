@@ -824,15 +824,42 @@ async function processDistinctWords(source: DataTypes.datasources) {
     const outputStream = createWriteStream(distinctWordsFilePath);
     
     // Write header
-    outputStream.write('value\n');
-    
-    // Write unique values
-    for (const value of uniqueValues) {
-      outputStream.write(`${value}\n`);
+    await new Promise<void>((resolve, reject) => {
+      outputStream.write('value\n', (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    // Write unique values with progress tracking
+    const totalValues = uniqueValues.size;
+    let valuesWritten = 0;
+    const sortedValues = Array.from(uniqueValues).sort();
+
+    for (const value of sortedValues) {
+      await new Promise<void>((resolve, reject) => {
+        outputStream.write(`${value}\n`, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
+      valuesWritten++;
+      if (valuesWritten % 10000 === 0 || valuesWritten === totalValues) {
+        const progress = Math.floor((valuesWritten / totalValues) * 100);
+        console.log(`Writing progress: ${progress}% (${valuesWritten.toLocaleString()}/${totalValues.toLocaleString()} words)`);
+      }
     }
     
-    outputStream.end();
-    console.log('Done!');
+    // Close the stream and wait for it to finish
+    await new Promise<void>((resolve, reject) => {
+      outputStream.end((err: Error | null) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    console.log('Writing completed successfully!');
 
     // Mark as completed in state
     stateManager.updateSourceState(String(source.id), "distinctWords", {
@@ -991,15 +1018,42 @@ async function processDistinctWordPairs(source: DataTypes.datasources) {
     const outputStream = createWriteStream(distinctWordPairsFilePath);
     
     // Write header
-    outputStream.write('value,next_value,count\n');
+    await new Promise<void>((resolve, reject) => {
+      outputStream.write('value,next_value,count\n', (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
     
-    // Write word pairs with counts
-    for (const [pairKey, count] of wordPairCounts.entries()) {
-      outputStream.write(`${pairKey},${count}\n`);
+    // Write word pairs with counts with progress tracking
+    const totalPairs = wordPairCounts.size;
+    let pairsWritten = 0;
+    const sortedPairs = Array.from(wordPairCounts.entries()).sort();
+
+    for (const [pairKey, count] of sortedPairs) {
+      await new Promise<void>((resolve, reject) => {
+        outputStream.write(`${pairKey},${count}\n`, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
+      pairsWritten++;
+      if (pairsWritten % 10000 === 0 || pairsWritten === totalPairs) {
+        const progress = Math.floor((pairsWritten / totalPairs) * 100);
+        console.log(`Writing progress: ${progress}% (${pairsWritten.toLocaleString()}/${totalPairs.toLocaleString()} pairs)`);
+      }
     }
     
-    outputStream.end();
-    console.log('Done!');
+    // Close the stream and wait for it to finish
+    await new Promise<void>((resolve, reject) => {
+      outputStream.end((err: Error | null) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    console.log('Writing completed successfully!');
 
     // Mark as completed in state
     stateManager.updateSourceState(String(source.id), "distinctWordPairs", {

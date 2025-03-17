@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { tokenizeToSentences } from "../sentence";
+import { tokenizeToSentences } from "../src/sentence";
 
 describe("@bntk/tokenization", () => {
   describe("tokenizeToSentences", () => {
