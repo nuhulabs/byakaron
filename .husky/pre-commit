@@ -1,1 +1,1 @@
-command -v bun >/dev/null 2>&1 && bunx lint-staged || npx lint-staged
+command -v bun >/dev/null 2>&1 && bun lint-staged || npx lint-staged
