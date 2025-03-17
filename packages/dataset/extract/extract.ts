@@ -1,12 +1,11 @@
-import { prisma } from "@bntk/db";
-import { basename, extname } from "path";
+import { basename, extname, join } from "path";
 import { existsSync } from "fs";
 import { $ } from "bun";
-import { ASSET_PATH } from "../constant";
+import { ASSET_PATH, DATA_SOURCES } from "../constant";
 
 async function handler() {
   try {
-    const sources = await prisma.datasources.findMany();
+    const sources = DATA_SOURCES;
     console.log(`Found ${sources.length} sources to download`);
 
     // Run downloads in parallel using Promise.all
@@ -28,7 +27,7 @@ async function downloadFile(source: { id: number; url: string; type: string }) {
     const isGzipped = source.url.endsWith(".gz");
     const isBzipped = source.url.endsWith(".bz2");
     const isCompressed = isGzipped || isBzipped;
-    const downloadFilename = `${ASSET_PATH}/${source.id}_${urlBasename}`;
+    const downloadFilename = join(ASSET_PATH, `${source.id}_${urlBasename}`);
 
     // Determine final filename with proper extension
     let baseFilename = isCompressed
@@ -43,7 +42,7 @@ async function downloadFile(source: { id: number; url: string; type: string }) {
     const finalBasename = existingExt
       ? baseFilename
       : `${baseFilename}${typeExt}`;
-    const finalFilename = `${ASSET_PATH}/${source.id}_${finalBasename}`;
+    const finalFilename = join(ASSET_PATH, `${source.id}_${finalBasename}`);
 
     // Check if final file already exists
     if (existsSync(finalFilename)) {

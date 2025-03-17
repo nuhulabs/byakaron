@@ -1,4 +1,3 @@
-import { prisma, type DataTypes } from "@bntk/db";
 import * as tokenization from "@bntk/tokenization";
 import * as fs from "fs";
 import { createReadStream, createWriteStream, existsSync } from "fs";
@@ -12,6 +11,8 @@ import { wikiToStd } from "../transform/wiki-jsonl-to-std";
 import { transformWikiXmlToJsonl } from "./wiki-xml-to-jsonl";
 import { Transform } from "stream";
 import { pipeline } from "stream/promises";
+import { displayProgress, countFileLines } from "./util";
+import { DataSource } from "../types";
 
 // Create state manager instance
 const stateManager = new StateManager();
@@ -19,14 +20,14 @@ const stateManager = new StateManager();
 // Main handler function
 async function handler() {
   try {
-    const sources = await prisma.datasources.findMany();
+    const sources = Constants.DATA_SOURCES;
     console.log(`Found ${sources.length} sources to download`);
 
     // Display overall progress
     stateManager.displayOverallProgress(sources);
 
     // Run downloads in parallel using Promise.all
-    await Promise.all(sources.map((source) => writeSentence(source)));
+    await Promise.all(sources.map((source) => writeSentences(source)));
 
     // Display updated overall progress
     stateManager.displayOverallProgress(sources);
@@ -66,23 +67,7 @@ handler().catch((err) => {
   process.exit(1);
 });
 
-async function writeSentence(source: DataTypes.datasources) {
-  /**
-   * Count the number of lines in a file
-   */
-  async function countFileLines(filePath: string): Promise<number> {
-    return new Promise((resolve) => {
-      let lineCount = 0;
-      const rl = createInterface({
-        input: createReadStream(filePath),
-        crlfDelay: Infinity,
-      });
-
-      rl.on("line", () => lineCount++);
-      rl.on("close", () => resolve(lineCount));
-    });
-  }
-
+async function writeSentences(source: DataSource) {
   /**
    * Write a batch of sentences to a text file
    */
@@ -258,7 +243,6 @@ async function writeSentence(source: DataTypes.datasources) {
 
     let sentencesBatch = new Set<string>();
     let processedLines = sourceState.sentences.processedLines || 0;
-    let startTime = Date.now();
     let totalSentencesProcessed =
       sourceState.sentences.totalSentencesProcessed || 0;
     let currentLine = 0;
@@ -295,6 +279,12 @@ async function writeSentence(source: DataTypes.datasources) {
               totalItems: totalLines,
               processedItems: processedLines,
               currentBatchSize: sentencesBatch.size,
+              additionalStats: [
+                {
+                  label: "Total sentences processed",
+                  value: totalSentencesProcessed,
+                },
+              ],
             });
 
             // Update state
@@ -315,6 +305,12 @@ async function writeSentence(source: DataTypes.datasources) {
               totalItems: totalLines,
               processedItems: processedLines,
               currentBatchSize: sentencesBatch.size,
+              additionalStats: [
+                {
+                  label: "Total sentences processed",
+                  value: totalSentencesProcessed,
+                },
+              ],
             });
 
             // Update state periodically
@@ -347,24 +343,16 @@ async function writeSentence(source: DataTypes.datasources) {
         currentBatchSize: sentencesBatch.size,
         additionalStats: [
           {
-            label: "Total sentences inserted",
-            value: totalSentencesProcessed.toLocaleString(),
+            label: "Total sentences processed",
+            value: totalSentencesProcessed,
           },
         ],
+        force: true,
       });
 
       // Close the text file write stream
       txtWriteStream.end();
-      const elapsedSeconds = (Date.now() - startTime) / 1000;
       console.log(`\nSuccessfully processed: ${jsonlFilePath}`);
-      console.log(
-        `Processed ${processedLines.toLocaleString()} JSONL lines in ${elapsedSeconds.toFixed(
-          2,
-        )}s`,
-      );
-      console.log(
-        `Total sentences inserted: ${totalSentencesProcessed.toLocaleString()}`,
-      );
       console.log(`Created text file with sentences: ${stdTxtFilePath}`);
 
       // Mark as completed in state
@@ -397,7 +385,7 @@ async function writeSentence(source: DataTypes.datasources) {
 /**
  * Process sentences to extract words and create a words file
  */
-async function writeWordPairs(source: DataTypes.datasources) {
+async function writeWordPairs(source: DataSource) {
   /**
    * Write a batch of word pairs to a CSV file
    */
@@ -475,7 +463,13 @@ async function writeWordPairs(source: DataTypes.datasources) {
 
     // Define file paths
     const stdTxtFilePath = path.join(sourceDirPath, Constants.SENTENCES_FILE);
-    const wordsFilePath = path.join(sourceDirPath, Constants.WORDS_CSV_FILE);
+    const wordsFilePath = path.join(sourceDirPath, Constants.WORD_PAIRS_FILE);
+
+    // Check if sentences file exists
+    if (!existsSync(stdTxtFilePath)) {
+      console.error(`Sentences file not found: ${stdTxtFilePath}`);
+      return;
+    }
 
     // Check if words file exists
     const fileExists = existsSync(wordsFilePath);
@@ -500,12 +494,6 @@ async function writeWordPairs(source: DataTypes.datasources) {
       stateManager.updateSourceState(String(source.id), "words", {
         completed: true,
       });
-      return;
-    }
-
-    // Check if sentences file exists
-    if (!existsSync(stdTxtFilePath)) {
-      console.error(`Sentences file not found: ${stdTxtFilePath}`);
       return;
     }
 
@@ -535,7 +523,6 @@ async function writeWordPairs(source: DataTypes.datasources) {
     }
 
     let processedLines = sourceState.words.processedLines || 0;
-    let startTime = Date.now();
     let totalWordPairsProcessed =
       sourceState.words.totalWordPairsProcessed || 0;
     let skippedLines = 0;
@@ -592,7 +579,11 @@ async function writeWordPairs(source: DataTypes.datasources) {
               additionalStats: [
                 {
                   label: "Total word pairs extracted",
-                  value: totalWordPairsProcessed.toLocaleString(),
+                  value: totalWordPairsProcessed,
+                },
+                {
+                  label: "Skipped lines",
+                  value: skippedLines,
                 },
               ],
             });
@@ -615,6 +606,16 @@ async function writeWordPairs(source: DataTypes.datasources) {
               totalItems: totalLines,
               processedItems: processedLines,
               currentBatchSize: wordPairsBatch.length,
+              additionalStats: [
+                {
+                  label: "Total word pairs extracted",
+                  value: totalWordPairsProcessed,
+                },
+                {
+                  label: "Skipped lines",
+                  value: skippedLines,
+                },
+              ],
             });
 
             // Update state periodically
@@ -647,25 +648,19 @@ async function writeWordPairs(source: DataTypes.datasources) {
         additionalStats: [
           {
             label: "Total word pairs extracted",
-            value: totalWordPairsProcessed.toLocaleString(),
+            value: totalWordPairsProcessed,
+          },
+          {
+            label: "Skipped lines",
+            value: skippedLines,
           },
         ],
+        force: true,
       });
 
       // Close the file write stream
       wordsWriteStream.end();
-
-      const elapsedSeconds = (Date.now() - startTime) / 1000;
       console.log(`\nSuccessfully processed words from: ${stdTxtFilePath}`);
-      console.log(
-        `Processed ${processedLines.toLocaleString()} sentences in ${elapsedSeconds.toFixed(
-          2,
-        )}s`,
-      );
-      console.log(
-        `Total word pairs extracted: ${totalWordPairsProcessed.toLocaleString()}`,
-      );
-      console.log(`Skipped lines: ${skippedLines.toLocaleString()}`);
       console.log(`Created words CSV file: ${wordsFilePath}`);
 
       // Mark as completed in state
@@ -698,7 +693,7 @@ async function writeWordPairs(source: DataTypes.datasources) {
 /**
  * Process words.csv to extract distinct words
  */
-async function writeUniqueWords(source: DataTypes.datasources) {
+async function writeUniqueWords(source: DataSource) {
   try {
     console.log(`\nProcessing distinct words for source: ${source.id}`);
 
@@ -717,10 +712,10 @@ async function writeUniqueWords(source: DataTypes.datasources) {
     }
 
     // Define file paths
-    const wordsFilePath = path.join(sourceDirPath, Constants.WORDS_CSV_FILE);
+    const wordsFilePath = path.join(sourceDirPath, Constants.WORD_PAIRS_FILE);
     const distinctWordsFilePath = path.join(
       sourceDirPath,
-      Constants.DISTINCT_WORDS_FILE,
+      Constants.UNIQUE_WORDS_FILE,
     );
 
     // Check if words file exists
@@ -788,9 +783,21 @@ async function writeUniqueWords(source: DataTypes.datasources) {
 
         // Report progress every 5%
         if (progressPercent >= lastReportedProgress + 5) {
-          console.log(
-            `Processed ${progressMB.toFixed(2)} MB (${progressPercent}%)`,
-          );
+          displayProgress({
+            title: "Distinct Words Processing",
+            totalItems: fileSizeInBytes,
+            processedItems: bytesProcessed,
+            additionalStats: [
+              {
+                label: "Processed MB",
+                value: progressMB.toFixed(2),
+              },
+              {
+                label: "Unique words found",
+                value: uniqueValues.size,
+              },
+            ],
+          });
           lastReportedProgress = progressPercent;
 
           // Update state periodically
@@ -832,6 +839,24 @@ async function writeUniqueWords(source: DataTypes.datasources) {
       processLineStream,
     );
 
+    // Display final progress
+    displayProgress({
+      title: "Distinct Words Processing",
+      totalItems: fileSizeInBytes,
+      processedItems: fileSizeInBytes,
+      additionalStats: [
+        {
+          label: "Processed MB",
+          value: (fileSizeInBytes / (1024 * 1024)).toFixed(2),
+        },
+        {
+          label: "Unique words found",
+          value: uniqueValues.size,
+        },
+      ],
+      force: true,
+    });
+
     console.log(`\nProcessing complete!`);
     console.log(`Found ${uniqueValues.size} unique values`);
 
@@ -862,10 +887,17 @@ async function writeUniqueWords(source: DataTypes.datasources) {
 
       valuesWritten++;
       if (valuesWritten % 10000 === 0 || valuesWritten === totalValues) {
-        const progress = Math.floor((valuesWritten / totalValues) * 100);
-        console.log(
-          `Writing progress: ${progress}% (${valuesWritten.toLocaleString()}/${totalValues.toLocaleString()} words)`,
-        );
+        displayProgress({
+          title: "Writing Distinct Words",
+          totalItems: totalValues,
+          processedItems: valuesWritten,
+          additionalStats: [
+            {
+              label: "Words written",
+              value: valuesWritten,
+            },
+          ],
+        });
       }
     }
 
@@ -881,7 +913,7 @@ async function writeUniqueWords(source: DataTypes.datasources) {
 
     // Mark as completed in state
     stateManager.updateSourceState(String(source.id), "distinctWords", {
-      processedBytes: bytesProcessed,
+      processedBytes: fileSizeInBytes,
       uniqueWordsCount: uniqueValues.size,
       completed: true,
     });
@@ -893,7 +925,7 @@ async function writeUniqueWords(source: DataTypes.datasources) {
 /**
  * Process words.csv to extract distinct word pairs with counts
  */
-async function writeUniqueWordPairs(source: DataTypes.datasources) {
+async function writeUniqueWordPairs(source: DataSource) {
   try {
     console.log(`\nProcessing distinct word pairs for source: ${source.id}`);
 
@@ -912,10 +944,10 @@ async function writeUniqueWordPairs(source: DataTypes.datasources) {
     }
 
     // Define file paths
-    const wordsFilePath = path.join(sourceDirPath, Constants.WORDS_CSV_FILE);
+    const wordsFilePath = path.join(sourceDirPath, Constants.WORD_PAIRS_FILE);
     const distinctWordPairsFilePath = path.join(
       sourceDirPath,
-      Constants.DISTINCT_WORD_PAIRS_FILE,
+      Constants.UNIQUE_WORD_PAIRS_FILE,
     );
 
     // Check if words file exists
@@ -983,9 +1015,21 @@ async function writeUniqueWordPairs(source: DataTypes.datasources) {
 
         // Report progress every 5%
         if (progressPercent >= lastReportedProgress + 5) {
-          console.log(
-            `Processed ${progressMB.toFixed(2)} MB (${progressPercent}%)`,
-          );
+          displayProgress({
+            title: "Distinct Word Pairs Processing",
+            totalItems: fileSizeInBytes,
+            processedItems: bytesProcessed,
+            additionalStats: [
+              {
+                label: "Processed MB",
+                value: progressMB.toFixed(2),
+              },
+              {
+                label: "Unique pairs found",
+                value: wordPairCounts.size,
+              },
+            ],
+          });
           lastReportedProgress = progressPercent;
 
           // Update state periodically
@@ -1037,6 +1081,24 @@ async function writeUniqueWordPairs(source: DataTypes.datasources) {
       processLineStream,
     );
 
+    // Display final progress
+    displayProgress({
+      title: "Distinct Word Pairs Processing",
+      totalItems: fileSizeInBytes,
+      processedItems: fileSizeInBytes,
+      additionalStats: [
+        {
+          label: "Processed MB",
+          value: (fileSizeInBytes / (1024 * 1024)).toFixed(2),
+        },
+        {
+          label: "Unique pairs found",
+          value: wordPairCounts.size,
+        },
+      ],
+      force: true,
+    });
+
     console.log(`\nProcessing complete!`);
     console.log(`Found ${wordPairCounts.size} unique word pairs`);
 
@@ -1067,10 +1129,17 @@ async function writeUniqueWordPairs(source: DataTypes.datasources) {
 
       pairsWritten++;
       if (pairsWritten % 10000 === 0 || pairsWritten === totalPairs) {
-        const progress = Math.floor((pairsWritten / totalPairs) * 100);
-        console.log(
-          `Writing progress: ${progress}% (${pairsWritten.toLocaleString()}/${totalPairs.toLocaleString()} pairs)`,
-        );
+        displayProgress({
+          title: "Writing Distinct Word Pairs",
+          totalItems: totalPairs,
+          processedItems: pairsWritten,
+          additionalStats: [
+            {
+              label: "Pairs written",
+              value: pairsWritten,
+            },
+          ],
+        });
       }
     }
 
@@ -1086,7 +1155,7 @@ async function writeUniqueWordPairs(source: DataTypes.datasources) {
 
     // Mark as completed in state
     stateManager.updateSourceState(String(source.id), "distinctWordPairs", {
-      processedBytes: bytesProcessed,
+      processedBytes: fileSizeInBytes,
       uniquePairsCount: wordPairCounts.size,
       completed: true,
     });
@@ -1097,106 +1166,3 @@ async function writeUniqueWordPairs(source: DataTypes.datasources) {
     );
   }
 }
-
-/**
- * Generic progress display function that can handle different types of progress tracking
- */
-const displayProgress = (() => {
-  // Closure variables to track last update time and progress
-  let lastUpdateTime = 0;
-  let lastProcessedItems = 0;
-  let startTime = Date.now();
-
-  return function (options: {
-    title: string;
-    totalItems: number;
-    processedItems: number;
-    currentBatchSize?: number;
-    additionalStats?: Array<{ label: string; value: string | number }>;
-    force?: boolean;
-  }) {
-    const {
-      title,
-      totalItems,
-      processedItems,
-      currentBatchSize,
-      additionalStats = [],
-      force = false,
-    } = options;
-
-    const now = Date.now();
-    const UPDATE_THRESHOLD_MS = 1000; // Update display every 1 second
-    const UPDATE_THRESHOLD_ITEMS = 1000; // Or every 1000 items
-
-    // Only update if forced or thresholds are met
-    if (
-      !force &&
-      now - lastUpdateTime < UPDATE_THRESHOLD_MS &&
-      processedItems - lastProcessedItems < UPDATE_THRESHOLD_ITEMS
-    ) {
-      return;
-    }
-
-    // Update tracking variables
-    lastUpdateTime = now;
-    lastProcessedItems = processedItems;
-
-    // Calculate progress percentage
-    const progress =
-      totalItems > 0
-        ? Math.min(100, Math.round((processedItems / totalItems) * 100))
-        : 0;
-
-    // Create a progress bar
-    const barLength = 30;
-    const filledLength = Math.round((barLength * progress) / 100);
-    const progressBar =
-      "█".repeat(filledLength) + "░".repeat(barLength - filledLength);
-
-    // Calculate elapsed time and processing rate
-    const elapsedSeconds = (now - startTime) / 1000;
-    const itemsPerSecond = processedItems / Math.max(1, elapsedSeconds);
-
-    // Calculate estimated time remaining
-    const remainingItems = Math.max(0, totalItems - processedItems);
-    const estimatedTimeRemaining =
-      remainingItems / Math.max(0.1, itemsPerSecond);
-
-    // Format time
-    const formatTime = (seconds: number): string => {
-      if (!isFinite(seconds) || seconds <= 0) return "unknown";
-      const hrs = Math.floor(seconds / 3600);
-      const mins = Math.floor((seconds % 3600) / 60);
-      const secs = Math.floor(seconds % 60);
-      return `${hrs > 0 ? `${hrs}h ` : ""}${
-        mins > 0 ? `${mins}m ` : ""
-      }${secs}s`;
-    };
-
-    // Clear console and display progress
-    console.clear();
-    console.log(`${title} Progress`);
-    console.log(`[${progressBar}] ${progress}%`);
-    console.log(
-      `Processed: ${processedItems.toLocaleString()} / ${
-        totalItems > 0 ? totalItems.toLocaleString() : "unknown"
-      }`,
-    );
-
-    if (currentBatchSize !== undefined) {
-      console.log(`Current batch size: ${currentBatchSize.toLocaleString()}`);
-    }
-
-    // Display additional stats if provided
-    additionalStats.forEach(({ label, value }) => {
-      console.log(`${label}: ${value.toLocaleString()}`);
-    });
-
-    console.log(`Processing rate: ${itemsPerSecond.toFixed(2)} items/sec`);
-    console.log(`Elapsed time: ${formatTime(elapsedSeconds)}`);
-    console.log(
-      `Estimated time remaining: ${formatTime(estimatedTimeRemaining)}`,
-    );
-    console.log(`Last update: ${new Date().toLocaleTimeString()}`);
-  };
-})();

@@ -176,6 +176,7 @@ dist
 # Dataset
 packages/dataset/assets/*
 !packages/dataset/assets/.gitkeep
+!packages/dataset/assets/sources.json
 
 # Output
 packages/dataset/output

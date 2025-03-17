@@ -1,18 +1,17 @@
-import type { DataTypes } from "@bntk/db";
-import { prisma } from "@bntk/db";
 import { createReadStream, existsSync, statSync } from "fs";
 import { readdir } from "node:fs/promises";
 import * as path from "path";
 import { Client } from "pg";
-import { ASSET_PATH } from "../constant";
 import { from as copyFrom } from "pg-copy-streams";
 import { pipeline } from "stream/promises";
+import * as Constants from "../constant";
+import { DataSource } from "../types";
 
 async function handler() {
   try {
     console.log("Starting dataset loading process...");
 
-    const sources = await prisma.datasources.findMany();
+    const sources = Constants.DATA_SOURCES;
     console.log(`Found ${sources.length} data sources to process`);
 
     if (sources.length === 0) {
@@ -20,12 +19,12 @@ async function handler() {
       return;
     }
 
-    const assetFiles = await readdir(ASSET_PATH, { recursive: true });
+    const assetFiles = await readdir(Constants.ASSET_PATH, { recursive: true });
     console.log(`Found ${assetFiles.length} files in asset directory`);
 
     for (const source of sources) {
-      // await loadSentences(source);
-      // await loadWords(source);
+      await loadSentences(source);
+      await loadWords(source);
       await loadWordPairs(source);
     }
   } catch (error) {
@@ -40,8 +39,11 @@ handler().catch((error) => {
   process.exit(1);
 });
 
-async function loadSentences(source: DataTypes.datasources) {
-  const stdTxtFilePath = path.join(ASSET_PATH, `${source.id}_std.txt`);
+async function loadSentences(source: DataSource) {
+  const stdTxtFilePath = path.join(
+    Constants.SOURCE_ASSET_PATH(source),
+    Constants.SENTENCES_FILE
+  );
 
   // Check if the standard text file exists
   if (!existsSync(stdTxtFilePath)) {
@@ -187,11 +189,10 @@ async function loadSentences(source: DataTypes.datasources) {
  * This function now handles both loading unique words and calculating word pairs
  * for better performance by avoiding multiple passes through the data
  */
-async function loadWordPairs(source: DataTypes.datasources) {
+async function loadWordPairs(source: DataSource) {
   const distinctWordsCsvFilePath = path.join(
-    ASSET_PATH,
-    `${source.id}`,
-    `words_pairs_distinct.csv`,
+    Constants.SOURCE_ASSET_PATH(source),
+    Constants.UNIQUE_WORD_PAIRS_FILE,
   );
 
   if (!existsSync(distinctWordsCsvFilePath))
@@ -370,11 +371,14 @@ SET
  * This function now handles both loading unique words and calculating word pairs
  * for better performance by avoiding multiple passes through the data
  */
-async function loadWords(source: DataTypes.datasources) {
-  const wordPairCsvFilePath = path.join(ASSET_PATH, `${source.id}_words.csv`);
+async function loadWords(source:  DataSource) {
+  const wordPairCsvFilePath = path.join(
+    Constants.SOURCE_ASSET_PATH(source),
+    Constants.WORD_PAIRS_FILE,
+  );
   const distinctWordsCsvFilePath = path.join(
-    ASSET_PATH,
-    `${source.id}_words_distinct.csv`,
+    Constants.SOURCE_ASSET_PATH(source),
+    Constants.UNIQUE_WORD_PAIRS_FILE,
   );
 
   // Check if the words CSV files exist

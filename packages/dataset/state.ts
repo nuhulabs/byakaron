@@ -3,9 +3,9 @@ import * as path from "path";
 import {
   STATE_FILE_PATH,
   SENTENCES_FILE,
-  WORDS_CSV_FILE,
-  DISTINCT_WORDS_FILE,
-  DISTINCT_WORD_PAIRS_FILE,
+  WORD_PAIRS_FILE,
+  UNIQUE_WORDS_FILE,
+  UNIQUE_WORD_PAIRS_FILE,
   ASSET_PATH,
 } from "./constant";
 
@@ -302,11 +302,11 @@ export class StateManager extends GenericStateManager<ProcessingState> {
 
     return {
       sentencesFilePath: path.join(sourceDirPath, SENTENCES_FILE),
-      wordsFilePath: path.join(sourceDirPath, WORDS_CSV_FILE),
-      distinctWordsFilePath: path.join(sourceDirPath, DISTINCT_WORDS_FILE),
+      wordsFilePath: path.join(sourceDirPath, WORD_PAIRS_FILE),
+      distinctWordsFilePath: path.join(sourceDirPath, UNIQUE_WORDS_FILE),
       distinctWordPairsFilePath: path.join(
         sourceDirPath,
-        DISTINCT_WORD_PAIRS_FILE,
+        UNIQUE_WORD_PAIRS_FILE,
       ),
     };
   }
@@ -423,109 +423,91 @@ export class StateManager extends GenericStateManager<ProcessingState> {
 
       console.log(`\nSource ${sourceId} (${source.name}):`);
 
-      // Sentences progress
-      if (sourceState.sentences.completed) {
-        console.log(
-          `✅ Sentences: Complete (${sourceState.sentences.totalSentencesProcessed.toLocaleString()} sentences processed)`,
-        );
-        completedSteps++;
-      } else if (sourceState.sentences.totalLines) {
-        const progress = Math.round(
-          (sourceState.sentences.processedLines /
-            sourceState.sentences.totalLines) *
-            100,
-        );
-        console.log(
-          `🔄 Sentences: ${progress}% (${sourceState.sentences.processedLines.toLocaleString()}/${sourceState.sentences.totalLines.toLocaleString()} lines)`,
-        );
-      } else {
-        console.log(`⏳ Sentences: Not started`);
-      }
-
-      // Words progress
-      if (sourceState.words.completed) {
-        console.log(
-          `✅ Words: Complete (${sourceState.words.totalWordPairsProcessed.toLocaleString()} word pairs processed)`,
-        );
-        completedSteps++;
-      } else if (sourceState.words.totalLines) {
-        const progress = Math.round(
-          (sourceState.words.processedLines / sourceState.words.totalLines) *
-            100,
-        );
-        console.log(
-          `🔄 Words: ${progress}% (${sourceState.words.processedLines.toLocaleString()}/${sourceState.words.totalLines.toLocaleString()} lines)`,
-        );
-      } else {
-        console.log(`⏳ Words: Not started`);
-      }
-
-      // Distinct words progress
-      if (sourceState.distinctWords.completed) {
-        console.log(
-          `✅ Distinct Words: Complete (${sourceState.distinctWords.uniqueWordsCount.toLocaleString()} unique words)`,
-        );
-        completedSteps++;
-      } else if (sourceState.distinctWords.totalBytes) {
-        const progress = Math.round(
-          (sourceState.distinctWords.processedBytes /
-            sourceState.distinctWords.totalBytes) *
-            100,
-        );
-        const processedMB = (
-          sourceState.distinctWords.processedBytes /
-          (1024 * 1024)
-        ).toFixed(2);
-        const totalMB = (
-          sourceState.distinctWords.totalBytes /
-          (1024 * 1024)
-        ).toFixed(2);
-        console.log(
-          `🔄 Distinct Words: ${progress}% (${processedMB}/${totalMB} MB)`,
-        );
-      } else {
-        console.log(`⏳ Distinct Words: Not started`);
-      }
-
-      // Distinct word pairs progress
-      if (sourceState.distinctWordPairs.completed) {
-        console.log(
-          `✅ Distinct Word Pairs: Complete (${sourceState.distinctWordPairs.uniquePairsCount.toLocaleString()} unique pairs)`,
-        );
-        completedSteps++;
-      } else if (sourceState.distinctWordPairs.totalBytes) {
-        const progress = Math.round(
-          (sourceState.distinctWordPairs.processedBytes /
-            sourceState.distinctWordPairs.totalBytes) *
-            100,
-        );
-        const processedMB = (
-          sourceState.distinctWordPairs.processedBytes /
-          (1024 * 1024)
-        ).toFixed(2);
-        const totalMB = (
-          sourceState.distinctWordPairs.totalBytes /
-          (1024 * 1024)
-        ).toFixed(2);
-        console.log(
-          `🔄 Distinct Word Pairs: ${progress}% (${processedMB}/${totalMB} MB)`,
-        );
-      } else {
-        console.log(`⏳ Distinct Word Pairs: Not started`);
-      }
+      // Process each step type with a consistent display format
+      completedSteps += this.displayStepProgress(sourceState, "sentences");
+      completedSteps += this.displayStepProgress(sourceState, "words");
+      completedSteps += this.displayStepProgress(sourceState, "distinctWords");
+      completedSteps += this.displayStepProgress(sourceState, "distinctWordPairs");
     }
 
-    // Display overall completion percentage
+    // Display overall completion percentage and progress bar
     const overallProgress = Math.round((completedSteps / totalSteps) * 100);
-    console.log(
-      `\nOverall Progress: ${overallProgress}% (${completedSteps}/${totalSteps} steps completed)`,
-    );
+    const progressBar = createProgressBar(overallProgress);
+    
+    console.log(`\nOverall Progress: ${progressBar} ${overallProgress}%`);
+    console.log(`Steps completed: ${completedSteps}/${totalSteps}`);
 
     if (final) {
       console.log("\n🎉 All processing steps completed! 🎉\n");
     }
 
     console.log("=====================================\n");
+  }
+
+  /**
+   * Display progress for a specific step
+   * @param sourceState Source state
+   * @param type Processing step type
+   * @returns 1 if step is completed, 0 otherwise
+   */
+  private displayStepProgress(
+    sourceState: SourceState,
+    type: ProcessingStepType
+  ): number {
+    const stepState = sourceState[type];
+    const stepName = formatStepName(type);
+    
+    if (stepState.completed) {
+      // Get appropriate count for the step type
+      let count = 0;
+      let countLabel = "";
+      
+      if (type === "sentences") {
+        count = (stepState as SentencesStep).totalSentencesProcessed;
+        countLabel = "sentences";
+      } else if (type === "words") {
+        count = (stepState as WordsStep).totalWordPairsProcessed;
+        countLabel = "word pairs";
+      } else if (type === "distinctWords") {
+        count = (stepState as DistinctWordsStep).uniqueWordsCount;
+        countLabel = "unique words";
+      } else if (type === "distinctWordPairs") {
+        count = (stepState as DistinctWordPairsStep).uniquePairsCount;
+        countLabel = "unique pairs";
+      }
+      
+      console.log(`✅ ${stepName}: Complete (${count.toLocaleString()} ${countLabel})`);
+      return 1; // Step completed
+    } else {
+      // Calculate progress based on step type
+      let progress = 0;
+      let progressDetail = "";
+      
+      if (type === "sentences" || type === "words") {
+        const lineStep = stepState as LineBasedStep;
+        if (lineStep.totalLines) {
+          progress = Math.round((lineStep.processedLines / lineStep.totalLines) * 100);
+          progressDetail = `${lineStep.processedLines.toLocaleString()}/${lineStep.totalLines.toLocaleString()} lines`;
+        }
+      } else {
+        const byteStep = stepState as ByteBasedStep;
+        if (byteStep.totalBytes) {
+          progress = Math.round((byteStep.processedBytes / byteStep.totalBytes) * 100);
+          const processedMB = (byteStep.processedBytes / (1024 * 1024)).toFixed(2);
+          const totalMB = (byteStep.totalBytes / (1024 * 1024)).toFixed(2);
+          progressDetail = `${processedMB}/${totalMB} MB`;
+        }
+      }
+      
+      if (progress > 0) {
+        const progressBar = createProgressBar(progress, 20);
+        console.log(`🔄 ${stepName}: ${progressBar} ${progress}% (${progressDetail})`);
+      } else {
+        console.log(`⏳ ${stepName}: Not started`);
+      }
+      
+      return 0; // Step not completed
+    }
   }
 }
 
@@ -544,6 +526,8 @@ export function formatTime(seconds: number): string {
 
 /**
  * Create a progress bar string
+ * @param progress Progress percentage (0-100)
+ * @param length Length of the progress bar
  */
 export function createProgressBar(
   progress: number,
@@ -554,105 +538,82 @@ export function createProgressBar(
 }
 
 /**
- * Display progress for a specific processing step
+ * Format step name for display
+ * @param type Processing step type
  */
-export function displayProgress(
+export function formatStepName(type: ProcessingStepType): string {
+  switch (type) {
+    case "sentences":
+      return "Sentences";
+    case "words":
+      return "Words";
+    case "distinctWords":
+      return "Distinct Words";
+    case "distinctWordPairs":
+      return "Distinct Word Pairs";
+    default:
+      return type;
+  }
+}
+
+/**
+ * Display progress for a specific processing step
+ * @param type Step type
+ * @param total Total items to process
+ * @param processed Number of processed items
+ * @param additionalInfo Additional information to display
+ * @param startTime Starting timestamp for calculating elapsed time
+ */
+export function logProgress(
   type: ProcessingStepType,
   total: number,
   processed: number,
-  additionalInfo: { [key: string]: any } = {},
-  force: boolean = false,
+  additionalInfo: Record<string, any> = {},
+  startTime: number = Date.now(),
 ): void {
-  // Create a closure to track progress display state
-  const getProgressDisplay = (() => {
-    // Closure variables to track last update time and progress
-    let lastUpdateTime = 0;
-    let lastProcessed = 0;
-    let startTime = Date.now();
-
-    return (
-      total: number,
-      processed: number,
-      additionalInfo: { [key: string]: any } = {},
-      force: boolean = false,
-    ) => {
-      const now = Date.now();
-      const UPDATE_THRESHOLD_MS = 1000; // Update display every 1 second
-      const UPDATE_THRESHOLD_PROGRESS = total * 0.01; // Or every 1% progress
-
-      // Only update if forced or thresholds are met
-      if (
-        !force &&
-        now - lastUpdateTime < UPDATE_THRESHOLD_MS &&
-        processed - lastProcessed < UPDATE_THRESHOLD_PROGRESS
-      ) {
-        return null;
-      }
-
-      // Update tracking variables
-      lastUpdateTime = now;
-      lastProcessed = processed;
-
-      // Calculate progress percentage
-      const progress =
-        total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
-
-      // Create a progress bar
-      const progressBar = createProgressBar(progress);
-
-      // Calculate elapsed time and processing rate
-      const elapsedSeconds = (now - startTime) / 1000;
-      const rate = processed / Math.max(1, elapsedSeconds);
-
-      // Calculate estimated time remaining
-      const remaining = Math.max(0, total - processed);
-      const estimatedTimeRemaining = remaining / Math.max(0.1, rate);
-
-      // Build the display object
-      const display = {
-        title: `${
-          type.charAt(0).toUpperCase() + type.slice(1)
-        } Processing Progress`,
-        progressBar: `[${progressBar}] ${progress}%`,
-        processed: processed.toLocaleString(),
-        total: total > 0 ? total.toLocaleString() : "unknown",
-        rate: `${rate.toFixed(2)} items/sec`,
-        elapsedTime: formatTime(elapsedSeconds),
-        estimatedTimeRemaining: formatTime(estimatedTimeRemaining),
-        lastUpdate: new Date().toLocaleTimeString(),
-        ...additionalInfo,
-      };
-
-      return display;
-    };
-  })();
-
-  // Get the progress display
-  const display = getProgressDisplay(total, processed, additionalInfo, force);
-
-  // If no update needed, return
-  if (!display) return;
-
+  // Calculate progress percentage
+  const progress = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+  
+  // Create a progress bar
+  const progressBar = createProgressBar(progress);
+  
+  // Calculate elapsed time and processing rate
+  const elapsedSeconds = (Date.now() - startTime) / 1000;
+  const rate = processed / Math.max(1, elapsedSeconds);
+  
+  // Calculate estimated time remaining
+  const remaining = Math.max(0, total - processed);
+  const estimatedTimeRemaining = remaining / Math.max(0.1, rate);
+  
   // Clear console and display progress
   console.clear();
-  console.log(display.title);
-  console.log(display.progressBar);
-
+  
+  // Display header
+  console.log(`=== ${formatStepName(type)} Processing ===`);
+  
+  // Display progress bar
+  console.log(`Progress: ${progressBar} ${progress}%`);
+  
   // Display processed/total
   if (type === "sentences" || type === "words") {
-    console.log(`Lines: ${display.processed} / ${display.total}`);
+    console.log(`Lines: ${processed.toLocaleString()} / ${total.toLocaleString()}`);
   } else {
-    console.log(`Bytes: ${display.processed} / ${display.total}`);
+    const processedMB = (processed / (1024 * 1024)).toFixed(2);
+    const totalMB = (total / (1024 * 1024)).toFixed(2);
+    console.log(`Bytes: ${processedMB} MB / ${totalMB} MB`);
   }
-
+  
   // Display additional info
   for (const [key, value] of Object.entries(additionalInfo)) {
     console.log(`${key}: ${value}`);
   }
-
-  // Display timing info
-  console.log(`Processing rate: ${display.rate}`);
-  console.log(`Elapsed time: ${display.elapsedTime}`);
-  console.log(`Estimated time remaining: ${display.estimatedTimeRemaining}`);
-  console.log(`Last update: ${display.lastUpdate}`);
+  
+  // Display timing info in a clean format
+  console.log(`\nProcessing Metrics:`);
+  console.log(`• Rate: ${rate.toFixed(2)} items/sec`);
+  console.log(`• Elapsed: ${formatTime(elapsedSeconds)}`);
+  console.log(`• Est. remaining: ${formatTime(estimatedTimeRemaining)}`);
+  console.log(`• Last update: ${new Date().toLocaleTimeString()}`);
+  
+  console.log(`\n${"=".repeat(40)}`);
 }

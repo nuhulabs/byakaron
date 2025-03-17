@@ -4,8 +4,8 @@ import sax from "sax";
 import { createWriteStream } from "fs";
 import { pipeline } from "stream/promises";
 import type { WikiPage } from "./wiki.types";
-import type { TransformOptions } from "./types";
-import { displayProgress } from "./util";
+import type { TransformOptions } from "../types";
+import { displayProgressLegacy } from "./util";
 
 /**
  * Transforms a large Wiki XML dump to JSONL using SAX parser
@@ -143,7 +143,7 @@ export async function transformWikiXmlToJsonl(
         // Update progress
         if (verbose) {
           // Use our tracked bytes processed instead of parser.position
-          displayProgress(
+          displayProgressLegacy(
             fileSize,
             bytesProcessed,
             pageCount,

@@ -7,6 +7,8 @@ describe("@bntk/tokenization", () => {
       const text = "-ইন্টাগ্রেটেড";
       const expected = ["ইন্টাগ্রেটেড"];
       expect(tokenizeToWords(text)).toEqual(expected);
+
+      expect(tokenizeToWords("-এর")).toEqual(["এর"]);
     });
 
     test("should tokenize simple Bangla text", () => {
