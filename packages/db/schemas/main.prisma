@@ -10,6 +10,8 @@ model grammar_rules {
   // Relations
   /// Associated grammar rule instances
   rules rules[]
+
+  @@schema("public")
 }
 
 /// Contains specific rule instances and their correction suggestions
@@ -28,6 +30,8 @@ model rules {
   // Relations
   /// Reference to the parent grammar rule
   grammar_rule grammar_rules? @relation(fields: [grammar_rule_id], references: [id])
+
+  @@schema("public")
 }
 
 /// Stores complete sentences for language processing
@@ -43,37 +47,41 @@ model sentences {
   datasource_id Int?
 
   // Relations
-  /// Individual words that make up this sentence
-  words      words[]
   /// Reference to the datasource
   datasource datasources? @relation(fields: [datasource_id], references: [id])
+
+  @@schema("warehouse")
+}
+
+model sentence_words {
+  sentence_id Int
+  word_id Int
+  position Int
+
+  @@id([sentence_id, word_id])
+
+  @@schema("warehouse")
 }
 
 /// Contains individual words and their positions within sentences
 model words {
   /// Unique identifier for the word
   id          Int     @id @default(autoincrement())
-  /// Foreign key reference to sentences
-  sentence_id Int?
+
   /// The actual word text
-  text        String? @unique
-  /// Position of the word in the sentence
-  position    Int?
+  value        String? @unique
 
   // Relations
-  /// Reference to the parent sentence
-  sentence    sentences?    @relation(fields: [sentence_id], references: [id])
   /// Groups where this word appears as the previous word
-  prev_groups word_groups[] @relation("prev_word")
-  /// Groups where this word appears as the next word
-  next_groups word_groups[] @relation("next_word")
+  prev_pairs word_pairs[] @relation("prev_word")
+  /// pairs where this word appears as the next word
+  next_pairs word_pairs[] @relation("next_word")
 
-  // Index for sentence_id
-  @@index([sentence_id])
+  @@schema("public")
 }
 
 /// Represents pairs of words and their statistical relationships
-model word_groups {
+model word_pairs {
   /// Foreign key reference to the previous word
   prev_id Int
   /// Foreign key reference to the next word
@@ -91,50 +99,66 @@ model word_groups {
   next_word words @relation("next_word", fields: [next_id], references: [id])
 
   @@id([prev_id, next_id])
+
+  @@schema("public")
 }
 
 /// Part-of-Speech (POS) tags based on Universal Dependencies (UD) v2 specification
 /// Source: https://universaldependencies.org/u/pos/
 enum pos_tag {
-  /// Nouns are words denoting all physical objects and materials
-  /// Example: cat, rock, intelligence (বিড়াল/biral, পাথর/pathor, বুদ্ধি/buddhi)
-  NOUN
-  /// Verbs are words denoting actions and processes
-  /// Example: run, eat, think (দৌড়ানো/dourano, খাওয়া/khawa, ভাবা/bhaba)
-  VERB
   /// Adjectives are words that typically modify nouns
-  /// Example: big, old, green, incomprehensible (বড়/boro, পুরানো/purano, সবুজ/sobuj)
+  /// Example: big, old, green (বড়/boro, পুরানো/purano, সবুজ/sobuj)
   ADJ
-  /// Adverbs are words that typically modify verbs, adjectives or other adverbs
-  /// Example: very, well, exactly (খুব/khub, ভালোভাবে/bhalobhabe, ঠিক/thik)
-  ADV
-  /// Determiners are words that modify nouns or noun phrases
-  /// Example: the, a, an, this (টি/ti, টা/ta, এই/ei)
-  DET
-  /// Pronouns are words that substitute for nouns or noun phrases
-  /// Example: I, you, he, she (আমি/ami, তুমি/tumi, সে/se)
-  PRON
   /// Adpositions are prepositions and postpositions
   /// Example: in, to, during (মধ্যে/moddhe, থেকে/theke, জন্য/jonno)
   ADP
-  /// Coordinating and subordinating conjunctions
-  /// Example: and, but, or, if, while (এবং/ebong, কিন্তু/kintu, বা/ba)
-  CONJ
+  /// Adverbs are words that typically modify verbs, adjectives or other adverbs
+  /// Example: very, well, exactly (খুব/khub, ভালোভাবে/bhalobhabe, ঠিক/thik)
+  ADV
+  /// Auxiliary verbs are used to form tenses, moods, etc.
+  /// Example: is, have, will (আছে/ache, হবে/hobe)
+  AUX
+  /// Coordinating conjunctions connect words, phrases, clauses of equal status
+  /// Example: and, or, but (এবং/ebong, বা/ba, কিন্তু/kintu)
+  CCONJ
+  /// Determiners are words that modify nouns or noun phrases
+  /// Example: the, a, this (টি/ti, টা/ta, এই/ei)
+  DET
+  /// Interjections are exclamatory words
+  /// Example: oh, wow, hey (ওহ/oh, বাহ/bah, এই/ei)
+  INTJ
+  /// Nouns are words denoting all physical objects and materials
+  /// Example: cat, rock, intelligence (বিড়াল/biral, পাথর/pathor, বুদ্ধি/buddhi)
+  NOUN
+  /// Numerals represent numbers, quantities, etc.
+  /// Example: one, first, 1 (এক/ek, প্রথম/prothom, ১/1)
+  NUM
+  /// Particles are function words that must be associated with another word
+  /// Example: not, to (না/na, তো/to)
+  PART
+  /// Pronouns substitute for nouns or noun phrases
+  /// Example: I, you, he, she (আমি/ami, তুমি/tumi, সে/se)
+  PRON
+  /// Proper nouns are names of specific persons, places, organizations
+  /// Example: John, Dhaka, Google (জন/john, ঢাকা/dhaka, গুগল/google)
+  PROPN
   /// Punctuation marks
   /// Example: ., ?, !, , (।, ?, !, ,)
   PUNCT
-  /// Cardinal numbers, ordinal numbers and other types of numeric expressions
-  /// Example: 1, one, first (১/1, এক/ek, প্রথম/prothom)
-  NUM
-  /// Interjections are words used as exclamations
-  /// Example: oh, wow, ouch (ওহ/oh, বাহ/bah, উফ/uf)
-  PART
-  /// Particles are function words that must be associated with another word
-  /// Example: not, to (না/na, তো/to)
+  /// Subordinating conjunctions link dependent clauses to independent ones
+  /// Example: if, because, while (যদি/jodi, কারণ/karon, যখন/jokhon)
+  SCONJ
+  /// Symbols represent currency, math operators, etc.
+  /// Example: $, +, = (৳, +, =)
   SYM
-  /// Other words that cannot be classified
+  /// Verbs denote actions and processes
+  /// Example: run, eat, think (দৌড়ানো/dourano, খাওয়া/khawa, ভাবা/bhaba)
+  VERB
+  /// Other words that don't fit into above categories
   /// Example: foreign words, abbreviations (etc/ইত্যাদি/ittyadi)
   X
+
+  @@schema("public")
 }
 
 /// Named Entity Recognition (NER) tags based on CoNLL-2003 shared task specification
@@ -164,4 +188,6 @@ enum ner_tag {
   LAW
   /// Languages and nationalities (e.g., "English", "বাঙালি")
   LANGUAGE
+
+  @@schema("public")
 }

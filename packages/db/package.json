@@ -5,7 +5,8 @@
   "type": "module",
   "main": "index.ts",
   "prisma": {
-    "schema": "./schemas"
+    "schema": "./schemas",
+    "seed": "bun seed.ts"
   },
   "scripts": {
     "reset": "prisma migrate reset --force",

@@ -18,6 +18,8 @@ enum datasources_type {
   markdown
   /// Text file
   text
+
+  @@schema("warehouse")
 }
 
 /// Represents a data source that provides data for the application
@@ -35,4 +37,6 @@ model datasources {
   /// Timestamp when the data source was last updated
   updated_at DateTime         @updatedAt
   sentences  sentences[]
+
+  @@schema("warehouse")
 }

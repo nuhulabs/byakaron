@@ -7,68 +7,6 @@ import type { WikiPage } from "./wiki.types";
 import type { TransformOptions } from "./types";
 import { displayProgress } from "./util";
 
-// Command-line interface
-if (import.meta.main) {
-  const args = process.argv.slice(2);
-
-  if (args.length < 2) {
-    console.error(
-      "Usage: bun transform-sax.ts <input-xml-file> <output-jsonl-file> [max-pages] [batch-size]"
-    );
-    process.exit(1);
-  }
-
-  const inputFile = args[0];
-  const outputFile = args[1];
-
-  // Parse max pages, supporting "infinity" string
-  let maxPages = Infinity;
-  if (args[2]) {
-    const maxPagesArg = args[2].toLowerCase();
-    if (maxPagesArg === "infinity" || maxPagesArg === "inf") {
-      maxPages = Infinity;
-    } else {
-      const parsed = parseInt(maxPagesArg, 10);
-      if (!isNaN(parsed)) {
-        maxPages = parsed;
-      } else {
-        console.error(`Invalid max-pages value: ${args[2]}`);
-        process.exit(1);
-      }
-    }
-  }
-
-  const batchSize = args[3] ? parseInt(args[3], 10) : 1000;
-
-  if (!fs.existsSync(inputFile)) {
-    console.error(`Input file not found: ${inputFile}`);
-    process.exit(1);
-  }
-
-  console.log(`Transforming ${inputFile} to ${outputFile}...`);
-  console.log(
-    `Max pages: ${
-      maxPages === Infinity ? "Infinity (process all pages)" : maxPages
-    }`
-  );
-  console.log(`Batch size: ${batchSize}`);
-
-  transformWikiXmlToJsonl({
-    inputFile,
-    outputFile,
-    maxPages,
-    batchSize,
-    verbose: true,
-  })
-    .then(() => {
-      console.log("Transformation complete!");
-    })
-    .catch((error) => {
-      console.error("Transformation failed:", error);
-      process.exit(1);
-    });
-}
-
 /**
  * Transforms a large Wiki XML dump to JSONL using SAX parser
  * This is a more efficient approach than loading the entire XML into memory
@@ -272,6 +210,3 @@ export async function transformWikiXmlToJsonl(
     throw error;
   }
 }
-
-export const transformWikiXmlToJson = transformWikiXmlToJsonl;
-
