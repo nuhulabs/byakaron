@@ -3,7 +3,11 @@
   "private": false,
   "version": "0.0.0",
   "scripts": {
-    "prepare": "husky"
+    "prepare": "husky",
+    "db:migration": "bun -F @bntk/db migration",
+    "check": "bun tsc --noEmit && :",
+    "format": "prettier --write .",
+    "etl": "bun -F @bntk/dataset etl"
   },
   "workspaces": [
     "packages/*",
@@ -14,6 +18,7 @@
     "dist/cli.js"
   ],
   "devDependencies": {
+    "@trivago/prettier-plugin-sort-imports": "^5.2.2",
     "@types/bun": "latest",
     "husky": "^9.1.7",
     "lint-staged": "^15.5.0",
@@ -21,6 +26,7 @@
     "typescript": "^5.8.0"
   },
   "lint-staged": {
-    "*.{js,css,md}": "prettier --write"
+    "*.{ts,tsx}": "bun check",
+    "*.{ts,json,js,css,md}": "prettier --write"
   }
 }

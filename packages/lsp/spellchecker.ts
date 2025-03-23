@@ -1,12 +1,12 @@
 /**
  * Bangla language spellchecker implementation
  */
-
 import { TextDocument } from "vscode-languageserver-textdocument";
+
 import type {
   BengaliSpellcheckOptions,
-  SpellingError,
   SpellcheckerService,
+  SpellingError,
 } from "./types";
 import {
   extractBengaliWords,
@@ -50,6 +50,7 @@ export class BengaliSpellchecker implements SpellcheckerService {
     words.forEach((word) => {
       this.dictionary.add(normalizeBengaliText(word));
     });
+    console.log(`Loaded ${words.length} words into dictionary`);
   }
 
   /**

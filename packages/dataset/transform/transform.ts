@@ -1,18 +1,19 @@
-import * as tokenization from "@bntk/tokenization";
 import * as fs from "fs";
 import { createReadStream, createWriteStream, existsSync } from "fs";
 import { readdir } from "node:fs/promises";
 import * as path from "path";
 import { extname } from "path";
 import { createInterface } from "readline";
-import * as Constants from "../constant";
-import { StateManager } from "../state";
-import { wikiToStd } from "../transform/wiki-jsonl-to-std";
-import { transformWikiXmlToJsonl } from "./wiki-xml-to-jsonl";
 import { Transform } from "stream";
 import { pipeline } from "stream/promises";
-import { displayProgress, countFileLines } from "./util";
-import { DataSource } from "../types";
+
+import * as tokenization from "@bntk/tokenization";
+
+import * as Constants from "../constant";
+import { WikipediaTransformer } from "../platforms/wikipedia";
+import { StateManager } from "../state";
+import type { DataSource } from "../types";
+import { countFileLines, displayProgress } from "../util";
 
 // Create state manager instance
 const stateManager = new StateManager();
@@ -52,19 +53,20 @@ async function handler() {
     // Give time for any pending file operations to complete
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    // Explicitly exit the process with success code
-    process.exit(0);
+    // Remove explicit process exit
+    // process.exit(0);
   } catch (error) {
     console.error("Error in handler:", error);
-    // Exit with error code
-    process.exit(1);
+    // Remove explicit process exit
+    // process.exit(1);
   }
 }
 
 // Call the handler function
 handler().catch((err) => {
   console.error("Unhandled error in handler:", err);
-  process.exit(1);
+  // Remove explicit process exit
+  // process.exit(1);
 });
 
 async function writeSentences(source: DataSource) {
@@ -175,7 +177,7 @@ async function writeSentences(source: DataSource) {
           console.log(
             `Transforming XML to JSONL: ${sourceFilePath} -> ${jsonlFilePath}`,
           );
-          await transformWikiXmlToJsonl({
+          await WikipediaTransformer.toJSONL({
             inputFile: sourceFilePath,
             outputFile: jsonlFilePath,
             verbose: true,
@@ -261,7 +263,7 @@ async function writeSentences(source: DataSource) {
           // Parse the JSON line
           const jsonData = JSON.parse(line);
 
-          const sentences = Array.from(wikiToStd(jsonData));
+          const sentences = Array.from(WikipediaTransformer.toStd(jsonData));
 
           // Add unique sentences to the batch
           sentences.forEach((sentence) => sentencesBatch.add(sentence));

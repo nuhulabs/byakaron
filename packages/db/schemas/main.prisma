@@ -55,28 +55,42 @@ model sentences {
 
 model sentence_words {
   sentence_id Int
-  word_id Int
-  position Int
+  word_id     Int
+  position    Int
 
   @@id([sentence_id, word_id])
-
   @@schema("warehouse")
 }
 
 /// Contains individual words and their positions within sentences
 model words {
   /// Unique identifier for the word
-  id          Int     @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
   /// The actual word text
-  value        String @unique
+  value String @unique
 
   // Relations
   /// Groups where this word appears as the previous word
   prev_pairs word_pairs[] @relation("prev_word")
   /// pairs where this word appears as the next word
   next_pairs word_pairs[] @relation("next_word")
+  word_roots_word word_roots[] @relation("word")
+  word_roots_root word_roots[] @relation("root")
 
+  @@schema("public")
+}
+
+/// Word with their root words
+model word_roots {
+  word_id Int
+  root_id Int
+
+  // Relations
+  word words @relation("word", fields: [word_id], references: [id])
+  root words @relation("root", fields: [root_id], references: [id])
+
+  @@id([word_id, root_id])
   @@schema("public")
 }
 
@@ -88,7 +102,7 @@ model word_pairs {
   next_id Int
   /// Weight/probability score for this word pair
   weight  Float @default(0)
-  
+
   // occurance count
   occurance Int @default(0)
 
@@ -99,7 +113,6 @@ model word_pairs {
   next_word words @relation("next_word", fields: [next_id], references: [id])
 
   @@id([prev_id, next_id])
-
   @@schema("public")
 }
 

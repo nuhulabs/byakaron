@@ -1,6 +1,8 @@
 import { join } from "path";
-import { datasources } from "./assets/sources.json";
-import { DataSource } from "./types";
+
+import { datasources } from "./sources.json";
+import type { DataSource } from "./types";
+
 // Base paths
 export const ASSET_PATH = "./assets";
 export const SOURCE_ASSET_PATH = (source: DataSource) =>

@@ -1,4 +1,5 @@
 import { prisma } from "@bntk/db";
+
 import InitData from "./assets/init.json";
 
 export const main = async () => {

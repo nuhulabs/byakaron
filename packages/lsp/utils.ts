@@ -1,7 +1,6 @@
 /**
  * Utility functions for the Bangla spellcheck LSP
  */
-
 import { TextDocument } from "vscode-languageserver-textdocument";
 
 /**

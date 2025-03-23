@@ -1,4 +1,5 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
+
 import { tokenizeToWords } from "../src/word";
 import testData from "./word.data.json";
 

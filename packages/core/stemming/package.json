@@ -1,6 +1,13 @@
 {
   "version": "0.0.0",
   "name": "@bntk/stemming",
-  "module": "index.ts",
-  "type": "module"
+  "module": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "build": "bun build ./src/index.ts --outdir ./dist"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  }
 }

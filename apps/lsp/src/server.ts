@@ -2,22 +2,21 @@
  * Bangla Language Spellcheck HTTP Server
  * Exposes spellchecker functionality via HTTP endpoints
  */
-
-import { BengaliSpellchecker, type SpellingError } from "@bntk/lsp";
 import { prisma } from "@bntk/db";
+import { BengaliSpellchecker, type SpellingError } from "@bntk/lsp";
 
 // Define the database-backed spellchecker class
-class BengaliSpellcheckerDbtaized extends BengaliSpellchecker {
-  public async checkWord(word: string): Promise<boolean> {
-    const wordRes = await prisma.words.findUnique({
-      where: {
-        text: word,
-      },
-    });
+// class BengaliSpellcheckerDbtaized extends BengaliSpellchecker {
+//   public async checkWord(word: string): Promise<boolean> {
+//     const wordRes = await prisma.words.findUnique({
+//       where: {
+//         text: word,
+//       },
+//     });
 
-    return wordRes ? true : false;
-  }
-}
+//     return wordRes ? true : false;
+//   }
+// }
 
 // Initialize the spellchecker
 let spellchecker: BengaliSpellchecker;
@@ -25,7 +24,11 @@ let spellchecker: BengaliSpellchecker;
 // Initialize the database connection
 try {
   // Initialize the spellchecker with dictionary from the database
-  spellchecker = new BengaliSpellcheckerDbtaized();
+  spellchecker = new BengaliSpellchecker();
+  const words = await prisma.words.findMany();
+  spellchecker.loadDictionary(
+    words.map((word) => word.value).filter((word) => word !== null) as string[],
+  );
   console.log("Initialized spellchecker with database connection");
 } catch (error) {
   console.error("Failed to initialize database:", error);

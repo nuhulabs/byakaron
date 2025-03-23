@@ -17,6 +17,7 @@
     "generate": "prisma generate"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.2.17",
     "@prisma/client": "^6.4.1"
   },
   "devDependencies": {

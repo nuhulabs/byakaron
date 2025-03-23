@@ -1,9 +1,10 @@
 /**
  * Tests for the Bangla Language Spellcheck HTTP Server
  */
+import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 
-import { describe, expect, test, beforeAll, afterAll, mock } from "bun:test";
 import { BengaliSpellchecker } from "@bntk/lsp";
+
 import { createServer } from "./server";
 
 // Mock port for testing
@@ -11,25 +12,25 @@ const TEST_PORT = 3002;
 const BASE_URL = `http://localhost:${TEST_PORT}`;
 
 // Mock the BengaliSpellchecker class
-mock.module("@bntk/lsp", () => {
-  return {
-    BengaliSpellchecker: class MockBengaliSpellchecker {
-      async checkWord(word: string): Promise<boolean> {
-        // Mock implementation: consider "ভালো" as correct, everything else as incorrect
-        return word === "ভালো";
-      }
+// mock.module("@bntk/lsp", () => {
+//   return {
+//     BengaliSpellchecker: class MockBengaliSpellchecker {
+//       async checkWord(word: string): Promise<boolean> {
+//         // Mock implementation: consider "ভালো" as correct, everything else as incorrect
+//         return word === "ভালো";
+//       }
 
-      async getSuggestions(word: string): Promise<string[]> {
-        // Mock implementation: return some suggestions for incorrect words
-        if (word === "ভাল") {
-          return ["ভালো", "ভাল্লাগে"];
-        }
-        return ["ভালো"];
-      }
-    },
-    SpellingError: class {},
-  };
-});
+//       async getSuggestions(word: string): Promise<string[]> {
+//         // Mock implementation: return some suggestions for incorrect words
+//         if (word === "ভাল") {
+//           return ["ভালো", "ভাল্লাগে"];
+//         }
+//         return ["ভালো"];
+//       }
+//     },
+//     SpellingError: class {},
+//   };
+// });
 
 // Mock the prisma client
 mock.module("@bntk/db", () => {

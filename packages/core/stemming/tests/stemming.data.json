@@ -1,0 +1,60 @@
+{
+  "removePrefix": {
+    "commonPrefixes": [
+      { "input": "প্রতিদিন", "expected": "দিন" },
+      { "input": "অধিকার", "expected": "কার" },
+      { "input": "অনুবাদ", "expected": "বাদ" },
+      { "input": "উপস্থিত", "expected": "স্থিত" }
+    ],
+    "tooShort": [{ "input": "অক", "expected": "অক" }],
+    "noMatches": [
+      { "input": "দেশ", "expected": "দেশ" },
+      { "input": "বাংলা", "expected": "বাংলা" }
+    ]
+  },
+  "removeSuffix": {
+    "commonSuffixes": [
+      { "input": "সম্পর্কিত", "expected": "সম্পর্ক" },
+      { "input": "মানুষের", "expected": "মানুষ" },
+      { "input": "দেখছিলাম", "expected": "দেখ" },
+      { "input": "বাংলাদেশী", "expected": "বাংলাদেশ" },
+      { "input": "উপকরণসমূহ", "expected": "উপকরণ" }
+    ],
+    "tooShort": [{ "input": "টি", "expected": "টি" }],
+    "noMatches": [
+      { "input": "গাছ", "expected": "গাছ" },
+      { "input": "বই", "expected": "বই" }
+    ]
+  },
+  "stemWord": {
+    "removeAffixes": [
+      { "input": "প্রতিদিন", "expected": "দিন" },
+      { "input": "মানুষের", "expected": "মানুষ" },
+      { "input": "অসুবিধাগুলো", "expected": "সুবিধা" },
+      { "input": "উপকরণসমূহ", "expected": "করণ" }
+    ],
+    "bothPrefixAndSuffix": [
+      { "input": "অসুবিধাগুলো", "expected": "সুবিধা" },
+      { "input": "প্রধানমন্ত্রীর", "expected": "ধানমন্ত্র" },
+      { "input": "অনুপস্থিতির", "expected": "পস্থিত" }
+    ],
+    "noModifications": [
+      { "input": "বই", "expected": "বই" },
+      { "input": "গাছ", "expected": "গাছ" }
+    ]
+  },
+  "stemWords": {
+    "multipleWords": {
+      "input": ["প্রতিদিন", "মানুষের", "দেখছিলাম"],
+      "expected": ["দিন", "মানুষ", "দেখ"]
+    },
+    "emptyArray": {
+      "input": [],
+      "expected": []
+    },
+    "mixedWords": {
+      "input": ["প্রতিদিন", "গাছ", "অসুবিধাগুলো", "বই"],
+      "expected": ["দিন", "গাছ", "সুবিধা", "বই"]
+    }
+  }
+}

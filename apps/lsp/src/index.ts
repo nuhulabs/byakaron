@@ -2,27 +2,26 @@
  * Bangla Language Spellcheck LSP Server
  * Main entry point
  */
-
+import { TextDocument } from "vscode-languageserver-textdocument";
 import {
-  createConnection,
-  TextDocuments,
-  Diagnostic,
-  DiagnosticSeverity,
-  ProposedFeatures,
-  InitializeParams,
-  DidChangeConfigurationNotification,
   CompletionItem,
   CompletionItemKind,
-  TextDocumentPositionParams,
-  TextDocumentSyncKind,
-  InitializeResult,
-  DocumentDiagnosticReportKind,
+  Diagnostic,
+  DiagnosticSeverity,
+  DidChangeConfigurationNotification,
   type DocumentDiagnosticReport,
+  DocumentDiagnosticReportKind,
+  type InitializeParams,
+  type InitializeResult,
+  ProposedFeatures,
+  type TextDocumentPositionParams,
+  TextDocumentSyncKind,
+  TextDocuments,
+  createConnection,
 } from "vscode-languageserver/node";
 
-import { TextDocument } from "vscode-languageserver-textdocument";
-import { BengaliSpellchecker, SpellingError } from "@bntk/lsp";
 import { prisma } from "@bntk/db";
+import { BengaliSpellchecker, type SpellingError } from "@bntk/lsp";
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -333,7 +332,7 @@ class BengaliSpellcheckerDbtaized extends BengaliSpellchecker {
   public async checkWord(word: string): Promise<boolean> {
     const wordRes = await prisma.words.findUnique({
       where: {
-        text: word,
+        value: word,
       },
     });
 

@@ -1,17 +1,96 @@
 import * as fs from "fs";
+import { createWriteStream } from "fs";
 import * as path from "path";
 import sax from "sax";
-import { createWriteStream } from "fs";
 import { pipeline } from "stream/promises";
-import type { WikiPage } from "./wiki.types";
-import type { TransformOptions } from "../types";
-import { displayProgressLegacy } from "./util";
+
+import { tokenizeToSentences } from "@bntk/tokenization";
+
+import { Transfomer } from ".";
+import type { DataSource, TransformOptions } from "../types";
+import { displayProgressLegacy } from "../util";
+
+export class WikipediaTransformer extends Transfomer {
+  static readonly NAME = "wikipedia";
+  name = WikipediaTransformer.NAME;
+
+  extract(datasource: DataSource): Promise<boolean> {
+    return Promise.resolve(true);
+  }
+
+  transform(datasource: DataSource): Promise<boolean> {
+    return Promise.resolve(true);
+  }
+
+  static toJSONL = transformWikiXmlToJsonl;
+  static toStd = wikiToStd;
+}
+
+// Helper function to convert wikitext to plain text
+function wikiToStd(wikitext: WikiPage) {
+  // const doc = wtf(wikitext.revision.text);
+  // return doc.text();
+  return tokenizeToSentences(mediawikitoplaintext(wikitext));
+}
+
+function mediawikitoplaintext(wikitext: WikiPage): string {
+  const text = wikitext.revision.text;
+
+  // Remove common MediaWiki syntax
+  let plainText = text
+    // Remove comments
+    .replace(/<!--[\s\S]*?-->/g, "")
+
+    // Remove templates/infoboxes {{...}}
+    .replace(/\{\{[\s\S]*?\}\}/g, "")
+
+    // Remove tables
+    .replace(/\{\|[\s\S]*?\|\}/g, "")
+
+    // Remove file/image links
+    .replace(/\[\[(File|Image):[\s\S]*?\]\]/gi, "")
+
+    // Remove category links
+    .replace(/\[\[Category:[\s\S]*?\]\]/gi, "")
+
+    // Handle internal links - keep the text but remove the link
+    .replace(/\[\[([^|\]]*)\|([^\]]*)\]\]/g, "$2") // [[link|text]] -> text
+    .replace(/\[\[([^\]]*)\]\]/g, "$1") // [[link]] -> link
+
+    // Remove external links
+    .replace(/\[https?:\/\/[^\s\]]*\s([^\]]*)\]/g, "$1") // [http://example.com text] -> text
+    .replace(/\[https?:\/\/[^\s\]]*\]/g, "") // [http://example.com] -> ''
+
+    // Remove formatting
+    .replace(/'''([^']*)'''/g, "$1") // Bold
+    .replace(/''([^']*)''/g, "$1") // Italic
+
+    // Remove HTML tags
+    .replace(/<[^>]*>/g, "")
+
+    // Remove section headers
+    .replace(/==+([^=]*)==+/g, "$1")
+
+    // Remove list markers
+    .replace(/^[*#:;]+\s*/gm, "")
+
+    // Remove references
+    .replace(/<ref[^>]*>[\s\S]*?<\/ref>/g, "")
+    .replace(/<ref[^>]*\/>/g, "");
+
+  // Clean up whitespace
+  plainText = plainText
+    .replace(/\n{3,}/g, "\n\n") // Replace multiple newlines with just two
+    .replace(/^\s+|\s+$/g, ""); // Trim whitespace
+
+  return plainText;
+}
 
 /**
  * Transforms a large Wiki XML dump to JSONL using SAX parser
  * This is a more efficient approach than loading the entire XML into memory
  */
-export async function transformWikiXmlToJsonl(
+async function transformWikiXmlToJsonl(
   options: TransformOptions,
 ): Promise<void> {
   const {
@@ -209,4 +288,20 @@ export async function transformWikiXmlToJsonl(
     console.error("Pipeline error:", error);
     throw error;
   }
+}
+
+interface WikiPage {
+  title: string;
+  id: string;
+  ns: string;
+  revision: {
+    id: string;
+    timestamp: string;
+    contributor?: {
+      username?: string;
+      id?: string;
+      ip?: string;
+    };
+    text: string;
+  };
 }

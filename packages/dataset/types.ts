@@ -8,4 +8,4 @@ export interface TransformOptions {
   verbose?: boolean;
 }
 
-export type DataSource = typeof DATA_SOURCES[number];
+export type DataSource = (typeof DATA_SOURCES)[number];

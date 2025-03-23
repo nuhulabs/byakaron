@@ -1,7 +1,9 @@
-import { basename, extname, join } from "path";
-import { existsSync } from "fs";
 import { $ } from "bun";
+import { existsSync } from "fs";
+import { basename, extname, join } from "path";
+
 import { ASSET_PATH, DATA_SOURCES } from "../constant";
+import type { DataSource } from "../types";
 
 async function handler() {
   try {
@@ -19,7 +21,7 @@ async function handler() {
 
 handler();
 
-async function downloadFile(source: { id: number; url: string; type: string }) {
+async function downloadFile(source: DataSource) {
   try {
     console.log(`Processing: ${source.url}`);
 

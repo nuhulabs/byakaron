@@ -25,7 +25,7 @@ pnpm add @bntk/tokenization
 ## Quick Start
 
 ```typescript
-import { tokenizeToWords, tokenizeToSentences } from "@bntk/tokenization";
+import { tokenizeToSentences, tokenizeToWords } from "@bntk/tokenization";
 
 // Tokenize words
 const text = "আমি বাংলায় গান গাই";

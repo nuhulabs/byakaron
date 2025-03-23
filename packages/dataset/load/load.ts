@@ -4,8 +4,9 @@ import * as path from "path";
 import { Client } from "pg";
 import { from as copyFrom } from "pg-copy-streams";
 import { pipeline } from "stream/promises";
+
 import * as Constants from "../constant";
-import { DataSource } from "../types";
+import type { DataSource } from "../types";
 
 async function handler() {
   try {
@@ -42,7 +43,7 @@ handler().catch((error) => {
 async function loadSentences(source: DataSource) {
   const stdTxtFilePath = path.join(
     Constants.SOURCE_ASSET_PATH(source),
-    Constants.SENTENCES_FILE
+    Constants.SENTENCES_FILE,
   );
 
   // Check if the standard text file exists
@@ -371,7 +372,7 @@ SET
  * This function now handles both loading unique words and calculating word pairs
  * for better performance by avoiding multiple passes through the data
  */
-async function loadWords(source:  DataSource) {
+async function loadWords(source: DataSource) {
   const wordPairCsvFilePath = path.join(
     Constants.SOURCE_ASSET_PATH(source),
     Constants.WORD_PAIRS_FILE,
