@@ -1,14 +1,7 @@
 {
   "name": "@bntk/tokenization",
   "version": "0.0.1",
-  "private": false,
   "main": "src/index.ts",
   "module": "src/index.ts",
-  "type": "module",
-  "scripts": {
-    "build": "bun build src/index.ts --outdir dist --minify && bun tsc"
-  },
-  "files": [
-    "dist"
-  ]
+  "type": "module"
 }

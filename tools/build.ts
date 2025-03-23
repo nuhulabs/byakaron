@@ -1,31 +1,94 @@
-import { execSync } from "child_process";
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { $ } from "bun";
+import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { readFile } from "fs/promises";
 import { join } from "path";
 
-const packages = ["stemming", "pos", "tokenization", "ner"];
+import { packages } from "./constant";
+
 const rootDir = process.cwd();
 const distDir = join(rootDir, "dist", "packages");
 
-packages.forEach((pkg) => {
-  const pkgDir = join(rootDir, "packages", "core", pkg);
-  const pkgDistDir = join(distDir);
-  mkdirSync(pkgDistDir, { recursive: true });
+async function main() {
+  const startTime = Date.now();
+  const builtPackages = [];
 
-  // Build the package
-  execSync(`bun build ${pkgDir} --outdir ${pkgDistDir}`);
+  for await (const pkg of packages) {
+    const pkgDir = join(rootDir, "packages", "core", pkg);
+    const pkgSrcDir = join(pkgDir, "src");
+    const pkgDistDir = join(distDir, "core", pkg);
+    const pkgJsonPath = join(pkgDir, "package.json");
+    const pkgJson = JSON.parse(await readFile(pkgJsonPath, "utf-8"));
+    const pkgName = `${pkgJson.name}@${pkgJson.version}`;
+    mkdirSync(pkgDistDir, { recursive: true });
 
-  // Update package.json
-  const pkgJsonPath = join(pkgDir, "package.json");
-  const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
-  if (!pkgJson.main) return;
-  if (pkgJson.private !== false) return;
+    // Build the package
+    console.log(`\x1b[33m📦 ${pkgName} - Bundling...\x1b[0m`);
+    await $`bun build ${pkgDir}/src/index.ts --outdir ${pkgDistDir}`.quiet();
 
-  pkgJson.main = pkgJson.main.replace(".ts", ".js");
-  pkgJson.module = pkgJson.module?.replace(".ts", ".js");
+    // Generate TypeScript declaration files
+    console.log(`\x1b[34m🔷 ${pkgName} - Generating types...\x1b[0m`);
+    try {
+      // Check if tsconfig.json exists in the package directory
+      const tsconfigPath = join(pkgDir, "tsconfig.json");
 
-  // Write updated package.json to dist
-  const distPkgJsonPath = join(pkgDistDir, "package.json");
-  writeFileSync(distPkgJsonPath, JSON.stringify(pkgJson, null, 2));
-});
+      if (existsSync(tsconfigPath)) {
+        // Use existing tsconfig.json in the package directory
+        await $`cd ${pkgDir} && tsc --declaration --emitDeclarationOnly --outDir ${pkgDistDir}`;
+      } else {
+        // Create a temporary tsconfig for this package
+        const tempTsConfigPath = join(pkgDir, "temp-tsconfig.json");
+        const tsConfig = {
+          compilerOptions: {
+            target: "ES2020",
+            module: "CommonJS",
+            lib: ["ES2020"],
+            strict: true,
+            esModuleInterop: true,
+            skipLibCheck: true,
+            forceConsistentCasingInFileNames: true,
+            moduleResolution: "node",
+            resolveJsonModule: true,
+            rootDir: "./src",
+            outDir: pkgDistDir,
+            declaration: true,
+            sourceMap: true,
+            emitDeclarationOnly: true,
+          },
+          exclude: ["node_modules", "dist", "tests"],
+          include: ["./src/**/*.ts"],
+        };
 
-console.log("Build complete.");
+        writeFileSync(tempTsConfigPath, JSON.stringify(tsConfig, null, 2));
+
+        // Use the temporary tsconfig and run tsc directly in the package directory
+        await $`cd ${pkgDir} && tsc --project ${tempTsConfigPath}`;
+
+        // Clean up temporary tsconfig
+        await $`rm ${tempTsConfigPath}`;
+      }
+    } catch (error) {
+      console.error(
+        `\x1b[31m❌ ${pkgName} - Error: Failed to generate type declarations: ${error}\x1b[0m`,
+      );
+    }
+
+    // Update package.json
+    pkgJson.main = "index.js";
+    pkgJson.module = "index.js";
+    pkgJson.types = "index.d.ts";
+
+    // Write updated package.json to dist
+    const distPkgJsonPath = join(pkgDistDir, "package.json");
+    writeFileSync(distPkgJsonPath, JSON.stringify(pkgJson, null, 2));
+
+    console.log(`\x1b[32m✅ ${pkgName} - Done\x1b[0m\n`);
+    builtPackages.push(pkgName);
+  }
+
+  const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+  console.log(
+    `\x1b[32m✨ Build complete. ${builtPackages.length} packages built in ${duration}s.\x1b[0m`,
+  );
+}
+
+main();

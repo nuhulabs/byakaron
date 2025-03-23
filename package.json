@@ -1,13 +1,15 @@
 {
   "name": "bntk",
-  "private": false,
+  "private": true,
   "version": "0.0.0",
   "scripts": {
-    "prepare": "husky",
-    "db:migration": "bun -F @bntk/db migration",
-    "check": "bun tsc --noEmit && :",
+    "build": "bun tools/build.ts",
+    "publish": "bun tools/publish.ts",
     "format": "prettier --write .",
-    "etl": "bun -F @bntk/dataset etl"
+    "check": "bun tsc --noEmit && :",
+    "etl": "bun -F @bntk/dataset etl",
+    "db:migration": "bun -F @bntk/db migration",
+    "prepare": "husky"
   },
   "workspaces": [
     "packages/*",

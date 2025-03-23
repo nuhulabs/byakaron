@@ -41,16 +41,15 @@
     },
     "packages/core/ner": {
       "name": "@bntk/ner",
+      "version": "0.0.0",
     },
     "packages/core/pos": {
       "name": "@bntk/pos",
+      "version": "0.0.0",
     },
     "packages/core/stemming": {
       "name": "@bntk/stemming",
       "version": "0.0.0",
-      "devDependencies": {
-        "bun-types": "latest",
-      },
     },
     "packages/core/tokenization": {
       "name": "@bntk/tokenization",
