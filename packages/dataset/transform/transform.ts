@@ -263,7 +263,9 @@ async function writeSentences(source: DataSource) {
           // Parse the JSON line
           const jsonData = JSON.parse(line);
 
-          const sentences = Array.from(WikipediaTransformer.toStd(jsonData));
+          const sentences = Array.from(
+            new Set(WikipediaTransformer.toStd(jsonData)),
+          );
 
           // Add unique sentences to the batch
           sentences.forEach((sentence) => sentencesBatch.add(sentence));

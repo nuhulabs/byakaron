@@ -1,0 +1,31 @@
+{
+  "entryPoints": ["../packages/core/*"],
+  "entryPointStrategy": "packages",
+  "tsconfig": "../tsconfig.json",
+  "plugin": ["typedoc-plugin-markdown", "typedoc-plugin-frontmatter"],
+  //   "readme": "none",
+  // Markdown Options
+  "excludeScopesInPaths": true,
+  "mergeReadme": true,
+  // hidePageHeader: true,
+  // hideBreadcrumbs: true,
+  //   "hidePageTitle": true,
+  //   "hideGroupHeadings": true,
+  //   "excludeGroups": true,
+  "parametersFormat": "table",
+  "interfacePropertiesFormat": "table",
+  "classPropertiesFormat": "table",
+  "typeAliasPropertiesFormat": "table",
+  "enumMembersFormat": "table",
+  "propertyMembersFormat": "table",
+  "typeDeclarationFormat": "table",
+  // flattenOutputFiles: true,
+  "typeDeclarationVisibility": "compact", // compact | verbose
+  "useCodeBlocks": true,
+  "groupOrder": ["Classes", "Interfaces", "Enums"],
+  "sidebar": { "pretty": true },
+  "textContentMappings": {
+    "title.indexPage": "API Reference",
+    "title.memberPage": "{name}"
+  }
+}

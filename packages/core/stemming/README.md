@@ -21,8 +21,6 @@ bun add @bntk/stemming
 
 ## Usage
 
-### Basic Usage
-
 ```typescript
 import { stemWord, stemWords } from "@bntk/stemming";
 
@@ -49,50 +47,3 @@ console.log(withoutPrefix); // 'দিন'
 const withoutSuffix = removeSuffix("মানুষের");
 console.log(withoutSuffix); // 'মানুষ'
 ```
-
-### Backward Compatibility
-
-For backward compatibility, the default export still provides the original API:
-
-```typescript
-import banglaStemmer from "@bntk/stemming";
-
-const stemmed = banglaStemmer.stem("অসুবিধাগুলো");
-console.log(stemmed); // 'সুবিধা'
-
-const stemmedWords = banglaStemmer.stemWords(["প্রতিদিন", "মানুষের"]);
-console.log(stemmedWords); // ['দিন', 'মানুষ']
-```
-
-## API Reference
-
-### `stemWord(word: string): string`
-
-Stems a single Bangla word by removing prefixes and suffixes.
-
-### `stemWords(words: string[]): string[]`
-
-Stems an array of Bangla words and returns an array of stemmed words.
-
-### `removePrefix(word: string): string`
-
-Removes a matching prefix from a word if found.
-
-### `removeSuffix(word: string): string`
-
-Removes a matching suffix from a word if found.
-
-## Running Tests
-
-```bash
-# Using Bun
-bun test
-```
-
-## Data Source
-
-The stemming data is sourced from the `stemming.json` file which contains lists of Bangla prefixes and suffixes.
-
-## License
-
-MIT

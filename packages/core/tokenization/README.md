@@ -1,4 +1,4 @@
-# Bangla Text Tokenization
+# @bntk/tokenization
 
 A TypeScript package for tokenizing Bangla text into words and sentences.
 
@@ -22,7 +22,7 @@ yarn add @bntk/tokenization
 pnpm add @bntk/tokenization
 ```
 
-## Quick Start
+## Usage
 
 ```typescript
 import { tokenizeToSentences, tokenizeToWords } from "@bntk/tokenization";
@@ -39,38 +39,3 @@ const sentences = tokenizeToSentences(paragraph);
 console.log(Array.from(sentences));
 // Output: ["আমি বাংলায় গান গাই", "তুমি কি শুনবে"]
 ```
-
-## API Reference
-
-For detailed API documentation, please refer to the auto-generated documentation.
-
-## Features in Detail
-
-### Word Tokenization
-
-- Handles Bangla punctuation marks
-- Preserves hyphenated words
-- Removes unwanted characters and normalizes text
-- Filters out empty strings and invalid tokens
-
-### Sentence Tokenization
-
-- Supports Bangla sentence endings (।, ?, !)
-- Handles line breaks and multiple separators
-- Filters out invalid or too short sentences
-- Removes duplicate sentences
-
-### Text Cleaning
-
-- Removes non-Bangla characters
-- Normalizes whitespace and punctuation
-- Handles special cases like URLs and email addresses
-- Preserves essential Bangla punctuation
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.

@@ -9,6 +9,8 @@
     "check": "bun tsc --noEmit && :",
     "etl": "bun -F @bntk/dataset etl",
     "db:migration": "bun -F @bntk/db migration",
+    "docs": "bun tools/docs.ts",
+    "docs:dev": "npm start --prefix docs",
     "prepare": "husky"
   },
   "workspaces": [
@@ -25,6 +27,8 @@
     "husky": "^9.1.7",
     "lint-staged": "^15.5.0",
     "prettier": "^3.5.3",
+    "typedoc": "^0.28.1",
+    "typedoc-plugin-markdown": "^4.6.0",
     "typescript": "^5.8.0"
   },
   "lint-staged": {

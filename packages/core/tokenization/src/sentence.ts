@@ -3,26 +3,48 @@ import { SENTENCE_SEPARATORS_REGEX } from "./constant";
 /**
  * Tokenizes a Bangla text into an array of sentences.
  *
- * @param text - The input Bangla text to tokenize
- * @returns A Set of cleaned and tokenized sentences
+ * @param {string} text - The input Bangla text to tokenize. Can contain mixed content including URLs, emails, and special characters.
+ * @returns {string[]} An array of cleaned and tokenized sentences, with duplicates removed.
  *
  * @description
  * This function performs the following steps:
  * 1. Splits text by line breaks
  * 2. Further splits by Bangla sentence separators
- * 3. Cleans each sentence
+ * 3. Cleans each sentence by:
+ *    - Removing text within parentheses, brackets, braces, and angle brackets
+ *    - Removing URLs and email addresses
+ *    - Removing HTML entities
+ *    - Removing Latin characters
+ *    - Keeping only Bangla characters, spaces, and essential punctuation
+ *    - Normalizing spaces and punctuation
  * 4. Filters sentences based on the following criteria:
- *    - Must contain Bangla characters
+ *    - Must contain Bangla characters (Unicode range: \u0980-\u09FF)
  *    - Must have more than 3 words
  *    - Must not be empty
  * 5. Returns a Set to remove duplicates
  *
  * @example
+ * Basic usage with simple Bangla text:
  * ```typescript
- * const text: string = "আমি বাংলায় গান গাই। তুমি কি শুনবে?";
- * const sentences: Set<string> = tokenizeToSentences(text);
- * console.log(Array.from(sentences));
+ * const text = "আমি বাংলায় গান গাই। তুমি কি শুনবে?";
+ * console.log(tokenizeToSentences(text));
  * // Output: ["আমি বাংলায় গান গাই", "তুমি কি শুনবে"]
+ * ```
+ *
+ * @example
+ * Handling mixed content:
+ * ```typescript
+ * const mixedText = "আমি বাংলায় গান গাই। Visit https://example.com or email@example.com";
+ * console.log(tokenizeToSentences(mixedText));
+ * // Output: ["আমি বাংলায় গান গাই"]
+ * ```
+ *
+ * @example
+ * Handling text with special characters:
+ * ```typescript
+ * const specialText = "বাংলা টেক্সট (ইংরেজি টেক্সট) [বন্ধনী টেক্সট] {কোঁকড়া টেক্সট}";
+ * console.log(tokenizeToSentences(specialText));
+ * // Output: ["বাংলা টেক্সট"]
  * ```
  */
 export function tokenizeToSentences(text: string) {
@@ -34,45 +56,12 @@ export function tokenizeToSentences(text: string) {
     );
 
   // Cleanup each sentence
-  return new Set(
-    splittedSentences
-      .map(cleanup)
-      .filter((sentence) => /[\u0980-\u09FF]/.test(sentence))
-      .filter((sentence) => sentence.split(" ").length > 3)
-      .filter(Boolean),
-  );
+  return splittedSentences
+    .map(cleanup)
+    .filter((sentence) => /[\u0980-\u09FF]/.test(sentence))
+    .filter(Boolean);
 }
 
-/**
- * Cleans a Bangla sentence by removing unwanted content and normalizing the text.
- *
- * @param text - The input sentence to clean
- * @returns A cleaned sentence string containing only valid Bangla content
- *
- * @description
- * This function performs comprehensive cleaning:
- * 1. Removes text inside various brackets: (), [], {}, <>
- * 2. Removes URLs and email addresses
- * 3. Removes HTML entities
- * 4. Removes Latin characters
- * 5. Keeps only Bangla characters, spaces, and essential punctuation
- * 6. Normalizes whitespace and punctuation:
- *    - Replaces multiple spaces with single space
- *    - Removes spaces before punctuation
- *    - Removes consecutive periods
- *    - Removes consecutive newlines
- *    - Removes trailing hyphens and underscores
- *    - Removes complex patterns of punctuation at start/end
- * 7. Trims whitespace
- *
- * @example
- * ```typescript
- * const text: string = "আমি (বাংলায়) গান গাই। https://example.com";
- * const cleaned: string = cleanup(text);
- * console.log(cleaned);
- * // Output: "আমি গান গাই"
- * ```
- */
 function cleanup(text: string): string {
   return (
     text

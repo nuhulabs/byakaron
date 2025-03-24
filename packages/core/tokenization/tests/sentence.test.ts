@@ -10,7 +10,7 @@ describe("@bntk/tokenization", () => {
       test(testGroup.name, () => {
         testGroup.cases.forEach((testCase) => {
           const result = tokenizeToSentences(testCase.input);
-          const expectedSet = new Set(testCase.expected);
+          const expectedSet = testCase.expected;
           expect(result).toEqual(expectedSet);
         });
       });
@@ -26,7 +26,7 @@ describe("@bntk/tokenization", () => {
       expect(() => tokenizeToSentences(largeText)).not.toThrow();
 
       // We expect at least one sentence to be returned
-      expect(tokenizeToSentences(largeText).size).toBeGreaterThan(0);
+      expect(tokenizeToSentences(largeText).length).toBeGreaterThan(0);
     });
 
     test("should handle text with mixed content that needs extensive cleanup", () => {

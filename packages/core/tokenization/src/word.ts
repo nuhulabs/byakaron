@@ -1,12 +1,15 @@
 /**
  * Tokenizes a Bangla text string into an array of words.
  *
- * @param text - The input Bangla text to tokenize
- * @returns An array of cleaned and tokenized words
+ * @param {string} text - The input Bangla text to tokenize. Can contain mixed content including punctuation and special characters.
+ * @returns {string[]} An array of cleaned and tokenized words, with empty strings removed.
  *
  * @description
  * This function performs the following steps:
- * 1. Cleans the input text by removing non-Bangla characters
+ * 1. Cleans the input text by:
+ *    - Removing non-Bangla characters (keeping only Unicode range: \u0980-\u09FF)
+ *    - Preserving essential punctuation marks (।, ,, ;, :, ', ", ?, !)
+ *    - Preserving hyphens for compound words
  * 2. Splits the text by whitespace
  * 3. Further splits each segment by punctuation (excluding hyphens)
  * 4. Cleans each word by:
@@ -16,11 +19,39 @@
  * 5. Filters out empty strings
  *
  * @example
+ * Basic usage with simple Bangla text:
  * ```typescript
- * const text: string = "আমি বাংলায় গান গাই";
- * const words: string[] = tokenizeToWords(text);
+ * const text = "আমি বাংলায় গান গাই";
+ * const words = tokenizeToWords(text);
  * console.log(words);
  * // Output: ["আমি", "বাংলায়", "গান", "গাই"]
+ * ```
+ *
+ * @example
+ * Handling text with punctuation:
+ * ```typescript
+ * const text = "আমি, বাংলায় গান গাই। তুমি কি শুনবে?";
+ * const words = tokenizeToWords(text);
+ * console.log(words);
+ * // Output: ["আমি", "বাংলায়", "গান", "গাই", "তুমি", "কি", "শুনবে"]
+ * ```
+ *
+ * @example
+ * Handling compound words with hyphens:
+ * ```typescript
+ * const text = "আমি-তুমি বাংলা-ভাষা শিখছি";
+ * const words = tokenizeToWords(text);
+ * console.log(words);
+ * // Output: ["আমি-তুমি", "বাংলা-ভাষা", "শিখছি"]
+ * ```
+ *
+ * @example
+ * Handling text with Bangla digits:
+ * ```typescript
+ * const text = "১টি বই ২টি খাতা";
+ * const words = tokenizeToWords(text);
+ * console.log(words);
+ * // Output: ["টি", "বই", "টি", "খাতা"]
  * ```
  */
 export function tokenizeToWords(text: string): string[] {
@@ -38,30 +69,6 @@ export function tokenizeToWords(text: string): string[] {
     .filter(Boolean); // Remove empty strings
 }
 
-/**
- * Cleans a Bangla text string by removing unwanted characters and normalizing the text.
- *
- * @param word - The input text to clean
- * @returns A cleaned text string containing only valid Bangla characters and essential punctuation
- *
- * @description
- * This function:
- * 1. Removes all non-Bangla characters except:
- *    - Bangla Unicode range (\u0980-\u09FF)
- *    - Whitespace
- *    - Hyphen (-)
- *    - Essential punctuation (:, ।, ', ", ;, ?, !)
- * 2. Removes Bangla digits from start and end
- * 3. Trims whitespace
- *
- * @example
- * ```typescript
- * const text: string = "আমি123বাংলায় গান গাই!";
- * const cleaned: string = cleanup(text);
- * console.log(cleaned);
- * // Output: "আমি বাংলায় গান গাই!"
- * ```
- */
 function cleanup(word: string): string {
   return (
     word
