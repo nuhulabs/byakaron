@@ -13,12 +13,12 @@ const config: Config = {
   url: "https://bangla-toolkit.github.io",
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
-  baseUrl: "/",
+  baseUrl: "/bntk-core/",
 
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
   organizationName: "bangla-toolkit", // Usually your GitHub org/user name.
-  projectName: "bntk", // Usually your repo name.
+  projectName: "bntk-core", // Usually your repo name.
 
   onBrokenLinks: "throw",
   onBrokenMarkdownLinks: "warn",
@@ -30,6 +30,7 @@ const config: Config = {
     defaultLocale: "en",
     locales: ["en"],
   },
+  themes: ["@docusaurus/theme-live-codeblock"],
   plugins: [["docusaurus-plugin-typedoc", {}]],
   presets: [
     [
@@ -40,6 +41,12 @@ const config: Config = {
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
           editUrl: "https://github.com/bangla-toolkit/bntk/tree/main/docs/",
+          remarkPlugins: [
+            [
+              require("@docusaurus/remark-plugin-npm2yarn"),
+              { sync: true, converters: ["bun", "yarn", "pnpm"] },
+            ],
+          ],
         },
         blog: {
           showReadingTime: true,
@@ -80,7 +87,7 @@ const config: Config = {
         },
         // { to: "/blog", label: "Blog", position: "left" },
         {
-          href: "https://github.com/bangla-toolkit/bntk",
+          href: "https://github.com/bangla-toolkit",
           label: "GitHub",
           position: "right",
         },
@@ -128,7 +135,7 @@ const config: Config = {
             // },
             {
               label: "GitHub",
-              href: "https://github.com/bangla-toolkit/bntk",
+              href: "https://github.com/bangla-toolkit",
             },
           ],
         },

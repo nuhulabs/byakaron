@@ -1,4 +1,4 @@
-# @bntk/tokenization
+# 📦 @bntk/tokenization
 
 A TypeScript package for tokenizing Bangla text into words and sentences.
 
@@ -12,14 +12,8 @@ A TypeScript package for tokenizing Bangla text into words and sentences.
 
 ## Installation
 
-```bash
-bun add @bntk/tokenization
-# or
+```bash npm2yarn
 npm install @bntk/tokenization
-# or
-yarn add @bntk/tokenization
-# or
-pnpm add @bntk/tokenization
 ```
 
 ## Usage

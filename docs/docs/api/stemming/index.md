@@ -1,4 +1,10 @@
-# @bntk/stemming
+# 📦 @bntk/stemming
+
+:::note
+
+See the [comprehensive documentation](https://bangla-toolkit.github.io/bntk-core/docs/api) for detailed API reference and examples.
+
+:::
 
 A Bangla (Bengali) language stemmer implementation that removes prefixes and suffixes from Bangla words based on predefined lists.
 
@@ -13,10 +19,8 @@ A Bangla (Bengali) language stemmer implementation that removes prefixes and suf
 
 ## Installation
 
-```bash
+```bash npm2yarn
 npm install @bntk/stemming
-# or
-bun add @bntk/stemming
 ```
 
 ## Usage
@@ -32,20 +36,6 @@ console.log(stemmed); // Expected output: 'সুবিধা'
 const words = ["প্রতিদিন", "মানুষের", "দেখছিলাম"];
 const stemmedWords = stemWords(words);
 console.log(stemmedWords); // Expected output: ['দিন', 'মানুষ', 'দেখ']
-```
-
-### Using Individual Functions
-
-```typescript
-import { removePrefix, removeSuffix } from "@bntk/stemming";
-
-// Remove only a prefix
-const withoutPrefix = removePrefix("প্রতিদিন");
-console.log(withoutPrefix); // 'দিন'
-
-// Remove only a suffix
-const withoutSuffix = removeSuffix("মানুষের");
-console.log(withoutSuffix); // 'মানুষ'
 ```
 
 ## Functions

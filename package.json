@@ -5,7 +5,7 @@
   "scripts": {
     "build": "bun tools/build.ts",
     "publish": "bun tools/publish.ts",
-    "format": "prettier --write .",
+    "format": "prettier --write --ignore-path .prettierignore --config .prettierrc .",
     "check": "bun tsc --noEmit && :",
     "etl": "bun -F @bntk/dataset etl",
     "db:migration": "bun -F @bntk/db migration",

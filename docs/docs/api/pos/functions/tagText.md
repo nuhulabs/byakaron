@@ -4,7 +4,7 @@
 function tagText(text): TaggedWord[];
 ```
 
-Defined in: [index.ts:162](https://github.com/nurulhudaapon/bntk/blob/3b9fe22b211144284ee58f4d31328c8e4ae31d1e/packages/core/pos/src/index.ts#L162)
+Defined in: [index.ts:162](https://github.com/nurulhudaapon/bntk/blob/314d9b2ac599759411d348b48ba4fdc0d09954c0/packages/core/pos/src/index.ts#L162)
 
 Tags a Bangla text string with parts of speech
 

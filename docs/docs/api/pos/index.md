@@ -1,4 +1,4 @@
-# @bntk/pos
+# 📦 @bntk/pos
 
 ## Enumerations
 
