@@ -2,7 +2,7 @@
 sidebar_position: 3
 ---
 
-# POS
+# 🏷️ POS
 
 POS (Part of Speech) is the process of tagging parts of speech in a text. This is useful for natural language processing tasks such as search, indexing, and text analysis.
 

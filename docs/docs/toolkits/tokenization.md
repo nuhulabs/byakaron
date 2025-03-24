@@ -2,7 +2,7 @@
 sidebar_position: 1
 ---
 
-# Tokenization
+# 🔍 Tokenization
 
 Tokenization is the process of breaking down a text into smaller units called tokens. In Bangla language, tokens can be words, phrases, or other meaningful units.
 

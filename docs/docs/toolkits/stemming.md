@@ -2,7 +2,7 @@
 sidebar_position: 2
 ---
 
-# Stemming
+# 🌱 Stemming
 
 Stemming is the process of reducing words to their root form, known as the stem. This is useful for natural language processing tasks such as search, indexing, and text analysis.
 
