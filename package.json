@@ -2,7 +2,7 @@
   "name": "bntk",
   "private": true,
   "version": "0.0.0",
-  "homepage": "https://bangla-toolkit.github.io/bntk-core/",
+  "homepage": "https://bangla-toolkit.github.io/core/",
   "description": "Build applications with Bengali natural language processing tools.",
   "scripts": {
     "build": "bun tools/build.ts",
@@ -29,8 +29,6 @@
     "husky": "^9.1.7",
     "lint-staged": "^15.5.0",
     "prettier": "^3.5.3",
-    "typedoc": "^0.28.1",
-    "typedoc-plugin-markdown": "^4.6.0",
     "typescript": "^5.8.0"
   },
   "lint-staged": {

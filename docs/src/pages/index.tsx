@@ -13,6 +13,11 @@ function HomepageHeader() {
   return (
     <header className={clsx("hero hero--primary", styles.heroBanner)}>
       <div className="container">
+        <img
+          src="/core/img/logo.svg"
+          alt="Bangla Toolkit Logo"
+          className={styles.homeLogo}
+        />
         <Heading as="h1" className="hero__title">
           {siteConfig.title}
         </Heading>

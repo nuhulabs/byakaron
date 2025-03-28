@@ -22,3 +22,8 @@
   justify-content: center;
   gap: 1rem;
 }
+
+.homeLogo {
+  width: 150px;
+  height: 150px;
+}

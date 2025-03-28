@@ -6,14 +6,14 @@ import styles from "./styles.module.css";
 
 type FeatureItem = {
   title: string;
-  Svg: React.ComponentType<React.ComponentProps<"svg">>;
+  // Svg: React.ComponentType<React.ComponentProps<"svg">>;
   description: ReactNode;
 };
 
 const FeatureList: FeatureItem[] = [
   {
     title: "Bangla Text Processing",
-    Svg: require("@site/static/img/undraw_docusaurus_mountain.svg").default,
+    // Svg: require("@site/static/img/undraw_docusaurus_mountain.svg").default,
     description: (
       <>
         Process and manipulate Bangla text with ease using our comprehensive set
@@ -23,7 +23,7 @@ const FeatureList: FeatureItem[] = [
   },
   {
     title: "NLP Capabilities",
-    Svg: require("@site/static/img/undraw_docusaurus_tree.svg").default,
+    // Svg: require("@site/static/img/undraw_docusaurus_tree.svg").default,
     description: (
       <>
         Leverage advanced Natural Language Processing features specifically
@@ -34,7 +34,7 @@ const FeatureList: FeatureItem[] = [
   },
   {
     title: "Developer Friendly",
-    Svg: require("@site/static/img/undraw_docusaurus_react.svg").default,
+    // Svg: require("@site/static/img/undraw_docusaurus_react.svg").default,
     description: (
       <>
         Built with modern development practices, Bangla Toolkit offers a clean

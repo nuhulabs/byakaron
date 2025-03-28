@@ -1,6 +1,6 @@
 <p align="center">
-  <a href="https://bangla-toolkit.github.io/bntk-core/">
-    <img alt="Bangla Toolkit" src="https://github.com/bangla-toolkit.png?s=200&v=4" width="300" />
+  <a href="https://bangla-toolkit.github.io/core/">
+    <img alt="Bangla Toolkit" src="https://bangla-toolkit.github.io/core/img/logo.svg" width="300" />
   </a>
 </p>
 
@@ -13,16 +13,17 @@
 
 ## Get Started
 
-Read the full [documentation](https://bangla-toolkit.github.io/bntk-core/docs/getting-started/) to get started.
+Read the full [documentation](https://bangla-toolkit.github.io/core/docs/getting-started/) to get started.
 
 ## Learn More
 
 Learn more about some of the core tools:
 
-- [Tokenization](https://bangla-toolkit.github.io/bntk-core/docs/api/tokenization/)
-- [Stemming](https://bangla-toolkit.github.io/bntk-core/docs/api/stemming/)
-- [POS Tagging](https://bangla-toolkit.github.io/bntk-core/docs/api/pos/)
-- [NER](https://bangla-toolkit.github.io/bntk-core/docs/api/ner/)
+- 🔍 [Tokenization](https://bangla-toolkit.github.io/core/docs/api/tokenization/)
+- 🌱 [Stemming](https://bangla-toolkit.github.io/core/docs/api/stemming/)
+- 🏷️ [POS Tagging](https://bangla-toolkit.github.io/core/docs/api/pos/)
+- 🔖 [NER](https://bangla-toolkit.github.io/core/docs/api/ner/)
+- ↹ [Transliteration](https://bangla-toolkit.github.io/core/docs/api/transliteration/)
 
 ## Contributing
 

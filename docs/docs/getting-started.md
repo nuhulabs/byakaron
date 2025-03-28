@@ -4,85 +4,57 @@ sidebar_position: 2
 
 # Getting Started
 
-### Installation
+#### 🧰 Learn about individual [Toolkits](./category/toolkits)
+
+Here's a quick start guide to help you get started with the Bangla Toolkit (BNTK).
+
+#### Installation
 
 Install the required packages for Bengali natural language processing:
 
 ```bash npm2yarn
-npm install @bntk/tokenization @bntk/stemming @bntk/pos @bntk/ner
+npm install @bntk/tokenization @bntk/stemming @bntk/pos @bntk/ner @bntk/transliteration
 ```
 
-### Usage
+#### Example Usage
 
 ```typescript
-// Import the required modules
 import * as ner from "@bntk/ner";
 import * as pos from "@bntk/pos";
 import * as stemming from "@bntk/stemming";
 import * as tokenization from "@bntk/tokenization";
+import * as transliteration from "@bntk/transliteration";
 
-// Example Bengali text
-const contents = `
-আমি বাংলা লেখার জন্য টুলিটক ব্যবহার করছি। আমার বন্ধু রহিম ঢাকায় থাকেন।
-`;
+const contents = `আমি বাংলা লেখার জন্য টুলিটক ব্যবহার করছি। আমার বন্ধু রহিম ঢাকায় থাকেন।`;
 
-// Step 1: Split text into sentences
+// ==== Tokenization ====
 const sentences = tokenization.tokenizeSentences(contents);
 console.log(sentences);
 // ['আমি বাংলা লেখার জন্য টুলিটক ব্যবহার করছি', 'আমার বন্ধু রহিম ঢাকায় থাকেন']
 
-// Step 2: Split first sentence into words
 const words = tokenization.tokenizeWords(sentences[0]);
 console.log(words);
 // ['আমি', 'বাংলা', 'লেখার', 'জন্য', 'টুলিটক', 'ব্যবহার', 'করছি']
 
-// Step 3: Apply stemming to words
+// ==== Stemming ====
 const stemmedWords = stemming.stemWords(words);
 console.log(stemmedWords);
 // ['আমি', 'বাংলা', 'লেখার', 'জন্য', 'টুলিটক', 'ব্যবহার', 'করছি']
 
-// Step 4: Perform part-of-speech tagging
+// ==== POS ====
 const taggedWords = pos.tagWords(stemmedWords);
 console.log(taggedWords);
 // ['আমি/PRON', 'বাংলা/NOUN', 'লেখার/NOUN', 'জন্য/ADP', 'টুলিটক/NOUN', 'ব্যবহার/VERB', 'করছি/VERB']
 
-// Step 5: Extract named entities
+// ==== NER ====
 const entities = ner.extractEntities(sentences[1]);
 console.log(entities);
-// [
-//   {
-//     type: 'PRONOUN',
-//     value: 'আমার',
-//     start: 0,
-//     end: 4,
-//   },
-//   {
-//     type: 'NOUN',
-//     value: 'বন্ধু',
-//     start: 6,
-//     end: 10,
-//   },
-//   {
-//     type: 'PERSON',
-//     value: 'রহিম',
-//     start: 11,
-//     end: 16,
-//   },
-//   {
-//     type: 'LOCATION',
-//     value: 'ঢাকায়',
-//     start: 17,
-//     end: 22,
-//   },
-//   {
-//     type: 'VERB',
-//     value: 'থাকেন',
-//     start: 23,
-//     end: 28,
-//   }
-// ]
+// [{type: 'PRONOUN', value: 'আমার', start: 0, end: 4}, {...}]
+
+// ==== Transliteration ====
+const transliterated = transliteration.transliterate("amar name apon.");
+console.log(transliterated);
+// 'আমার নাম আপন।'
 ```
 
-### API Reference
-
-See the [comprehensive documentation](/docs/api) for detailed API reference and examples.
+### 📚 See [API Reference](/docs/api)
