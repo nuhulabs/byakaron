@@ -2,6 +2,8 @@
   "name": "bntk",
   "private": true,
   "version": "0.0.0",
+  "homepage": "https://bangla-toolkit.github.io/bntk-core/",
+  "description": "Build applications with Bengali natural language processing tools.",
   "scripts": {
     "build": "bun tools/build.ts",
     "publish": "bun tools/publish.ts",

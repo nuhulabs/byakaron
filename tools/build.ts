@@ -1,5 +1,5 @@
 import { $ } from "bun";
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "fs";
 import { readFile } from "fs/promises";
 import { join } from "path";
 
@@ -13,10 +13,15 @@ async function main() {
   const builtPackages = [];
 
   for await (const pkg of packages) {
+    const rootReadmePath = join(rootDir, "README.md");
+    const rootPackageJsonPath = join(rootDir, "package.json");
     const pkgDir = join(rootDir, "packages", "core", pkg);
     const pkgSrcDir = join(pkgDir, "src");
     const pkgDistDir = join(distDir, "core", pkg);
     const pkgJsonPath = join(pkgDir, "package.json");
+    const rootPackageJson = JSON.parse(
+      await readFile(rootPackageJsonPath, "utf-8"),
+    );
     const pkgJson = JSON.parse(await readFile(pkgJsonPath, "utf-8"));
     const pkgName = `${pkgJson.name}@${pkgJson.version}`;
     mkdirSync(pkgDistDir, { recursive: true });
@@ -76,10 +81,16 @@ async function main() {
     pkgJson.main = "index.js";
     pkgJson.module = "index.js";
     pkgJson.types = "index.d.ts";
+    pkgJson.description = rootPackageJson.description;
+    pkgJson.homepage = rootPackageJson.homepage;
 
     // Write updated package.json to dist
     const distPkgJsonPath = join(pkgDistDir, "package.json");
     writeFileSync(distPkgJsonPath, JSON.stringify(pkgJson, null, 2));
+
+    // Copy README.md to dist
+    const distReadmePath = join(pkgDistDir, "README.md");
+    copyFileSync(rootReadmePath, distReadmePath);
 
     console.log(`\x1b[32m✅ ${pkgName} - Done\x1b[0m\n`);
     builtPackages.push(pkgName);

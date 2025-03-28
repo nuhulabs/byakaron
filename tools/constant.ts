@@ -1,1 +1,7 @@
-export const packages = ["stemming", "pos", "tokenization", "ner"];
+export const packages = [
+  "stemming",
+  "pos",
+  "tokenization",
+  "ner",
+  "transliteration",
+];
