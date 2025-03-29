@@ -53,5 +53,6 @@
   "lint-staged": {
     "*.{ts,tsx}": "bun check",
     "*.{ts,json,js,css,md}": "prettier --write"
-  }
+  },
+  "license": "MIT"
 }

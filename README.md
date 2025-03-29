@@ -4,7 +4,7 @@ A comprehensive suite of tools for working with Bangla language
 
 <p align="center">
   <a href="https://bangla-toolkit.github.io/core/" style="display: flex; align-items: center; justify-content: center; gap: 20px;">
-    <img src="https://bangla-toolkit.github.io/core/img/mascot-bykoron-babu-0.svg" alt="Bangla Toolkit Mascot" width="300" />
+    <img src="https://bangla-toolkit.github.io/core/img/mascot-main.svg" alt="Bangla Toolkit Mascot" width="300" />
     <img alt="Bangla Toolkit" src="https://bangla-toolkit.github.io/core/img/logo.svg" width="240" />
   </a>
 </p>

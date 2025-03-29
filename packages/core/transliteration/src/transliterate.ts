@@ -62,9 +62,7 @@ type TransliterationOptions =
 
 /**
  * Transliterates text between Bangla and Latin scripts using various modes.
- *
- * #### Modes:
- *
+ * @modes
  * - #### avro
  * Most popular phonetic typing system for Bangla
  *   ```typescript

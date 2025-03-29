@@ -117,7 +117,34 @@ const config: Config = {
       disableSwitch: true,
       respectPrefersColorScheme: true,
     },
-    image: "img/logo.svg",
+    image: "img/banner.png",
+    metadata: [
+      {
+        property: "og:image",
+        content: "img/banner.png",
+      },
+      {
+        property: "og:title",
+        content: "Bangla Toolkit",
+      },
+      {
+        property: "og:description",
+        content:
+          "A comprehensive suite of tools for working with Bangla language",
+      },
+      {
+        property: "og:type",
+        content: "website",
+      },
+      {
+        property: "twitter:card",
+        content: "summary_large_image",
+      },
+      {
+        property: "twitter:image",
+        content: "img/banner.png",
+      },
+    ],
     navbar: {
       title: "Bangla Toolkit",
       logo: {

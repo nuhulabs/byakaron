@@ -86,7 +86,7 @@ async function main() {
     pkgJson.keywords = rootPackageJson.keywords;
     pkgJson.repository = rootPackageJson.repository;
     pkgJson.author = rootPackageJson.author;
-
+    pkgJson.license = rootPackageJson.license;
     // Write updated package.json to dist
     const distPkgJsonPath = join(pkgDistDir, "package.json");
     writeFileSync(distPkgJsonPath, JSON.stringify(pkgJson, null, 2));

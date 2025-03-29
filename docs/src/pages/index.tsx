@@ -11,7 +11,7 @@ import styles from "./index.module.css";
 function HomepageHeader() {
   const { siteConfig } = useDocusaurusContext();
   return (
-    <header className={clsx("hero hero--primary", styles.heroBanner)}>
+    <header className={clsx("hero hero", styles.heroBanner)}>
       <div className="container">
         <div
           style={{
@@ -23,10 +23,10 @@ function HomepageHeader() {
           }}
         >
           <img
-            src="/core/img/mascot-bykoron-babu-0.svg"
+            src="/core/img/mascot-main.svg"
             alt="Bangla Toolkit Logo"
             style={{
-              height: "250px",
+              height: "min(250px, 35vw)",
               objectFit: "contain",
             }}
           />
@@ -34,11 +34,22 @@ function HomepageHeader() {
             src="/core/img/logo.svg"
             alt="Bangla Toolkit Logo"
             style={{
-              height: "220px",
+              height: "min(220px, 30vw)",
+              filter: "brightness(0)", // Forces black color
             }}
           />
         </div>
         <br />
+        <hr
+          style={{
+            width: "50%",
+            margin: "0 auto",
+            marginTop: "20px",
+            marginBottom: "20px",
+            border: "5px solid #e0e0e0",
+            borderRadius: "10px",
+          }}
+        />
         <Heading as="h1" className="hero__title">
           {siteConfig.title}
         </Heading>

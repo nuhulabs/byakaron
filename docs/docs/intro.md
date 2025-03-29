@@ -1,10 +1,11 @@
 ---
+title: "Introduction"
 sidebar_position: 1
 ---
 
 <div style={{display: "flex", flexDirection: "row", gap: "30px", alignItems: "center", justifyContent: "center"}}>
-<img src="../img/mascot-bykoron-babu-0.svg" alt="Bangla Toolkit Mascot" style={{height: "250px", objectFit: "contain"}} />
-<img src="../img/logo.svg" alt="Bangla Toolkit Logo" style={{height: "220px", objectFit: "contain"}} />
+<img src="/core/img/mascot-main.svg" alt="Bangla Toolkit Mascot" style={{height: "min(250px, 35vw)", objectFit: "contain"}} />
+<img src="/core/img/logo.svg" alt="Bangla Toolkit Logo" style={{height: "min(220px, 30vw)", objectFit: "contain"}} />
 </div>
 
 # Introduction
