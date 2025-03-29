@@ -1,15 +1,13 @@
+# Bangla Toolkit (বাংলা টুলকিট): bntk
+
+A comprehensive suite of tools for working with Bangla language
+
 <p align="center">
-  <a href="https://bangla-toolkit.github.io/core/">
-    <img alt="Bangla Toolkit" src="https://bangla-toolkit.github.io/core/img/logo.svg" width="300" />
+  <a href="https://bangla-toolkit.github.io/core/" style="display: flex; align-items: center; justify-content: center; gap: 20px;">
+    <img src="https://bangla-toolkit.github.io/core/img/mascot-bykoron-babu-0.svg" alt="Bangla Toolkit Mascot" width="300" />
+    <img alt="Bangla Toolkit" src="https://bangla-toolkit.github.io/core/img/logo.svg" width="240" />
   </a>
 </p>
-
-<p align="center">
-  <!-- <a href="https://www.npmjs.com/package/@bntk/tokenization"><img alt="npm" src="https://img.shields.io/npm/v/@bntk/tokenization.svg?style=flat-square" /></a> -->
-  <!-- <a href="https://github.com/bangla-toolkit/bntk-core/actions/workflows/build.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/bangla-toolkit/bntk-core/build.yml?style=flat-square&branch=dev" /></a> -->
-</p>
-
-#### Build applications with Bengali natural language processing tools.
 
 ## Get Started
 

@@ -4,6 +4,25 @@
   "version": "0.0.0",
   "homepage": "https://bangla-toolkit.github.io/core/",
   "description": "Build applications with Bengali natural language processing tools.",
+  "keywords": [
+    "bangla",
+    "bengali",
+    "bangla toolkit",
+    "bntk",
+    "bangla toolkit",
+    "bangla natural language processing",
+    "bangla natural language toolkit",
+    "nlp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bangla-toolkit/core.git"
+  },
+  "author": {
+    "name": "Nurul Huda (Apon)",
+    "email": "me@nurulhudaapon.com",
+    "url": "https://nurulhudaapon.com"
+  },
   "scripts": {
     "build": "bun tools/build.ts",
     "publish": "bun tools/publish.ts",

@@ -83,6 +83,9 @@ async function main() {
     pkgJson.types = "index.d.ts";
     pkgJson.description = rootPackageJson.description;
     pkgJson.homepage = rootPackageJson.homepage;
+    pkgJson.keywords = rootPackageJson.keywords;
+    pkgJson.repository = rootPackageJson.repository;
+    pkgJson.author = rootPackageJson.author;
 
     // Write updated package.json to dist
     const distPkgJsonPath = join(pkgDistDir, "package.json");
