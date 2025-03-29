@@ -13,11 +13,32 @@ function HomepageHeader() {
   return (
     <header className={clsx("hero hero--primary", styles.heroBanner)}>
       <div className="container">
-        <img
-          src="/core/img/logo.svg"
-          alt="Bangla Toolkit Logo"
-          className={styles.homeLogo}
-        />
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "row",
+            gap: "30px",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <img
+            src="/core/img/mascot-bykoron-babu-0.svg"
+            alt="Bangla Toolkit Logo"
+            style={{
+              height: "250px",
+              objectFit: "contain",
+            }}
+          />
+          <img
+            src="/core/img/logo.svg"
+            alt="Bangla Toolkit Logo"
+            style={{
+              height: "220px",
+            }}
+          />
+        </div>
+        <br />
         <Heading as="h1" className="hero__title">
           {siteConfig.title}
         </Heading>

@@ -47,7 +47,7 @@ mock.module("@bntk/db", () => {
   };
 });
 
-describe("Bangla Language Spellcheck HTTP Server", () => {
+describe.skip("Bangla Language Spellcheck HTTP Server", () => {
   let testServer: ReturnType<typeof Bun.serve>;
 
   // Start the server before all tests

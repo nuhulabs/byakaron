@@ -3,54 +3,58 @@
 ## transliterate()
 
 ```ts
-function transliterate(text): string;
+function transliterate(text, options): string;
 ```
 
-Defined in: [transliterate.ts:36](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/transliteration/src/transliterate.ts#L36)
+Defined in: [transliterate.ts:164](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/transliteration/src/transliterate.ts#L164)
 
-Transliterates Bangla text written in English (romanized) to Bangla script,
-following the Avro Phonetic typing method.
+Transliterates text between Bangla and Latin scripts using various modes.
+
+#### Modes:
+
+- #### avro
+
+  Most popular phonetic typing system for Bangla
+
+  ```typescript
+  transliterate("amar sOnar bangla", { mode: "avro" }); // → "আমার সোনার বাংলা"
+  transliterate("jIbon", { mode: "avro" }); // → "জীবন"
+  ```
+
+- #### orva
+
+  Reverse transliteration from Bangla to Latin script (beta)
+
+  ```typescript
+  transliterate("আমার সোনার বাংলা", { mode: "orva" }); // → "amar sOnar bangla"
+  transliterate("জীবন", { mode: "orva" }); // → "jIbon"
+  ```
+
+- #### banglish
+
+  Informal phonetic system matching common texting patterns (not yet implemented)
+
+  ```typescript
+  transliterate("amar shonar bangla", { mode: "banglish" }); // → "আমার সোনার বাংলা"
+  transliterate("jibon", { mode: "banglish" }); // → "জীবন"
+  ```
+
+- #### lishbang
+  English-speaker friendly system with systematic mappings (not yet implemented)
+  ```typescript
+  transliterate("ইট ইজ নট গুড।", { mode: "lishbang" }); // → "It is not good."
+  transliterate("মাই নেইম ইজ আপন।", { mode: "lishbang" }); // → "My name is Apon."
+  ```
 
 ### Parameters
 
-| Parameter | Type     | Description                                                      |
-| --------- | -------- | ---------------------------------------------------------------- |
-| `text`    | `string` | The input text in English characters to convert to Bangla script |
+| Parameter | Type                     | Description                             |
+| --------- | ------------------------ | --------------------------------------- |
+| `text`    | `string`                 | The input text to transliterate         |
+| `options` | `TransliterationOptions` | Configuration options with desired mode |
 
 ### Returns
 
 `string`
 
-The transliterated text in Bangla script
-
-### Examples
-
-```ts
-// Basic transliteration
-transliterate("ami bangla likhi");
-// Returns: "আমি বাংলা লিখি"
-```
-
-```ts
-// Conjunct consonants (juktakkhor)
-transliterate("kSto");
-// Returns: "ক্ষ্ট"
-```
-
-```ts
-// Special characters
-transliterate("amar kachhe 500 taka ache.");
-// Returns: "আমার কাছে ৫০০ টাকা আছে।"
-```
-
-```ts
-// Vowel combinations
-transliterate("aei");
-// Returns: "আঈ"
-```
-
-```ts
-// Mixed English and Bangla
-transliterate("ami website e login korlam");
-// Returns: "আমি ওয়েবসাইট এ লগিন করলাম"
-```
+The transliterated text

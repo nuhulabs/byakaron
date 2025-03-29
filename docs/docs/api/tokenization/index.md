@@ -6,7 +6,7 @@
 function tokenizeToSentences(text): string[];
 ```
 
-Defined in: [sentence.ts:50](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/tokenization/src/sentence.ts#L50)
+Defined in: [sentence.ts:50](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/tokenization/src/sentence.ts#L50)
 
 Tokenizes a Bangla text into an array of sentences.
 
@@ -77,7 +77,7 @@ console.log(tokenizeToSentences(specialText));
 function tokenizeToWords(text): string[];
 ```
 
-Defined in: [word.ts:57](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/tokenization/src/word.ts#L57)
+Defined in: [word.ts:57](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/tokenization/src/word.ts#L57)
 
 Tokenizes a Bangla text string into an array of words.
 

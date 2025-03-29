@@ -6,7 +6,7 @@
 function removePrefix(word): string;
 ```
 
-Defined in: [stemming.ts:26](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/stemming/src/stemming.ts#L26)
+Defined in: [stemming.ts:26](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/stemming/src/stemming.ts#L26)
 
 Removes matching prefix from the beginning of a word
 
@@ -30,7 +30,7 @@ The word with prefix removed if matched, otherwise original word
 function removeSuffix(word): string;
 ```
 
-Defined in: [stemming.ts:46](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/stemming/src/stemming.ts#L46)
+Defined in: [stemming.ts:46](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/stemming/src/stemming.ts#L46)
 
 Removes matching suffix from the end of a word
 
@@ -54,7 +54,7 @@ The word with suffix removed if matched, otherwise original word
 function stemWord(word): string;
 ```
 
-Defined in: [stemming.ts:65](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/stemming/src/stemming.ts#L65)
+Defined in: [stemming.ts:65](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/stemming/src/stemming.ts#L65)
 
 Stems a Bangla word by removing prefixes and suffixes
 
@@ -78,7 +78,7 @@ The stemmed word
 function stemWords(words): string[];
 ```
 
-Defined in: [stemming.ts:84](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/stemming/src/stemming.ts#L84)
+Defined in: [stemming.ts:84](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/stemming/src/stemming.ts#L84)
 
 Stems an array of Bangla words
 

@@ -2,7 +2,7 @@
 
 ## EntityType
 
-Defined in: [index.ts:22](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L22)
+Defined in: [index.ts:22](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L22)
 
 Enumeration of supported named entity types.
 
@@ -10,20 +10,20 @@ Enumeration of supported named entity types.
 
 | Enumeration Member                       | Value            | Defined in                                                                                                                            |
 | ---------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| <a id="date"></a> `DATE`                 | `"DATE"`         | [index.ts:26](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L26) |
-| <a id="location"></a> `LOCATION`         | `"LOCATION"`     | [index.ts:25](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L25) |
-| <a id="money"></a> `MONEY`               | `"MONEY"`        | [index.ts:27](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L27) |
-| <a id="organization"></a> `ORGANIZATION` | `"ORGANIZATION"` | [index.ts:24](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L24) |
-| <a id="percent"></a> `PERCENT`           | `"PERCENT"`      | [index.ts:28](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L28) |
-| <a id="person"></a> `PERSON`             | `"PERSON"`       | [index.ts:23](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L23) |
-| <a id="time"></a> `TIME`                 | `"TIME"`         | [index.ts:29](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L29) |
-| <a id="unknown"></a> `UNKNOWN`           | `"UNKNOWN"`      | [index.ts:30](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L30) |
+| <a id="date"></a> `DATE`                 | `"DATE"`         | [index.ts:26](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L26) |
+| <a id="location"></a> `LOCATION`         | `"LOCATION"`     | [index.ts:25](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L25) |
+| <a id="money"></a> `MONEY`               | `"MONEY"`        | [index.ts:27](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L27) |
+| <a id="organization"></a> `ORGANIZATION` | `"ORGANIZATION"` | [index.ts:24](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L24) |
+| <a id="percent"></a> `PERCENT`           | `"PERCENT"`      | [index.ts:28](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L28) |
+| <a id="person"></a> `PERSON`             | `"PERSON"`       | [index.ts:23](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L23) |
+| <a id="time"></a> `TIME`                 | `"TIME"`         | [index.ts:29](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L29) |
+| <a id="unknown"></a> `UNKNOWN`           | `"UNKNOWN"`      | [index.ts:30](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L30) |
 
 ---
 
 ## Entity
 
-Defined in: [index.ts:10](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L10)
+Defined in: [index.ts:10](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L10)
 
 Represents a named entity found in text with its position and classification details.
 
@@ -31,11 +31,11 @@ Represents a named entity found in text with its position and classification det
 
 | Property                             | Type                        | Description                                  | Defined in                                                                                                                            |
 | ------------------------------------ | --------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| <a id="confidence"></a> `confidence` | `number`                    | Confidence score of the classification (0-1) | [index.ts:15](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L15) |
-| <a id="end"></a> `end`               | `number`                    | Ending position of the entity in the text    | [index.ts:14](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L14) |
-| <a id="start"></a> `start`           | `number`                    | Starting position of the entity in the text  | [index.ts:13](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L13) |
-| <a id="text"></a> `text`             | `string`                    | The actual text of the entity                | [index.ts:11](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L11) |
-| <a id="type"></a> `type`             | [`EntityType`](#entitytype) | The classification type of the entity        | [index.ts:12](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L12) |
+| <a id="confidence"></a> `confidence` | `number`                    | Confidence score of the classification (0-1) | [index.ts:15](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L15) |
+| <a id="end"></a> `end`               | `number`                    | Ending position of the entity in the text    | [index.ts:14](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L14) |
+| <a id="start"></a> `start`           | `number`                    | Starting position of the entity in the text  | [index.ts:13](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L13) |
+| <a id="text"></a> `text`             | `string`                    | The actual text of the entity                | [index.ts:11](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L11) |
+| <a id="type"></a> `type`             | [`EntityType`](#entitytype) | The classification type of the entity        | [index.ts:12](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L12) |
 
 ---
 
@@ -45,7 +45,7 @@ Represents a named entity found in text with its position and classification det
 function batchExtractEntities(texts): Entity[][];
 ```
 
-Defined in: [index.ts:96](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L96)
+Defined in: [index.ts:96](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L96)
 
 Processes multiple texts for entity extraction in batch.
 
@@ -76,7 +76,7 @@ const results = batchExtractEntities(["John Doe", "New York"]);
 function classifyEntity(text): EntityType;
 ```
 
-Defined in: [index.ts:68](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L68)
+Defined in: [index.ts:68](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L68)
 
 Classifies a single text segment into an entity type.
 
@@ -107,7 +107,7 @@ const type = classifyEntity("John Doe");
 function extractEntities(text): Entity[];
 ```
 
-Defined in: [index.ts:41](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L41)
+Defined in: [index.ts:41](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L41)
 
 Extracts named entities from input text.
 
@@ -138,7 +138,7 @@ const entities = extractEntities("John Doe works at Apple Inc.");
 function getEntityConfidence(text, entityType): number;
 ```
 
-Defined in: [index.ts:81](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L81)
+Defined in: [index.ts:81](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L81)
 
 Calculates confidence score for entity classification.
 
@@ -170,7 +170,7 @@ const confidence = getEntityConfidence("John Doe", EntityType.PERSON);
 function getSupportedEntityTypes(): EntityType[];
 ```
 
-Defined in: [index.ts:107](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/ner/src/index.ts#L107)
+Defined in: [index.ts:107](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/ner/src/index.ts#L107)
 
 Retrieves all supported entity types.
 

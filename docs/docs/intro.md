@@ -2,6 +2,11 @@
 sidebar_position: 1
 ---
 
+<div style={{display: "flex", flexDirection: "row", gap: "30px", alignItems: "center", justifyContent: "center"}}>
+<img src="../img/mascot-bykoron-babu-0.svg" alt="Bangla Toolkit Mascot" style={{height: "250px", objectFit: "contain"}} />
+<img src="../img/logo.svg" alt="Bangla Toolkit Logo" style={{height: "220px", objectFit: "contain"}} />
+</div>
+
 # Introduction
 
 Welcome to Bangla Toolkit - your comprehensive companion for working with the Bangla language. Whether you're a writer, developer, or language enthusiast, our toolkit provides everything you need to work effectively with Bangla text.

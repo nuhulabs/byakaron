@@ -2,7 +2,7 @@
 
 ## UniversalPOSTag
 
-Defined in: [index.ts:11](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L11)
+Defined in: [index.ts:11](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L11)
 
 Universal POS tags based on Universal Dependencies (UD) v2 specification
 Source: https://universaldependencies.org/u/pos/
@@ -11,29 +11,29 @@ Source: https://universaldependencies.org/u/pos/
 
 | Enumeration Member         | Value     | Description                                                                                                                               | Defined in                                                                                                                            |
 | -------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| <a id="adj"></a> `ADJ`     | `"ADJ"`   | Adjectives are words that typically modify nouns **Example** `বড়/boro, সুন্দর/sundor, নতুন/notun`                                        | [index.ts:14](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L14) |
-| <a id="adp"></a> `ADP`     | `"ADP"`   | Adpositions are prepositions and postpositions **Example** `মধ্যে/moddhe, থেকে/theke, উপরে/upore`                                         | [index.ts:17](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L17) |
-| <a id="adv"></a> `ADV`     | `"ADV"`   | Adverbs are words that typically modify verbs, adjectives or other adverbs **Example** `খুব/khub, ধীরে/dhire, ভালোভাবে/bhalobhabe`        | [index.ts:20](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L20) |
-| <a id="aux"></a> `AUX`     | `"AUX"`   | Auxiliary verbs are used to form tenses, moods, etc. **Example** `আছে/ache, হয়/hoi, হবে/hobe`                                            | [index.ts:23](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L23) |
-| <a id="cconj"></a> `CCONJ` | `"CCONJ"` | Coordinating conjunctions connect words, phrases, clauses of equal status **Example** `এবং/ebong, কিন্তু/kintu, অথবা/othoba`              | [index.ts:26](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L26) |
-| <a id="det"></a> `DET`     | `"DET"`   | Determiners are words that modify nouns or noun phrases **Example** `এই/ei, সেই/sei, কোন/kon`                                             | [index.ts:29](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L29) |
-| <a id="intj"></a> `INTJ`   | `"INTJ"`  | Interjections are exclamatory words **Example** `ওহ/oh, বাহ/bah, হায়/hay`                                                                | [index.ts:32](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L32) |
-| <a id="noun"></a> `NOUN`   | `"NOUN"`  | Nouns are words denoting all physical objects and materials **Example** `বই/boi, মানুষ/manush, বাড়ি/bari`                                | [index.ts:35](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L35) |
-| <a id="num"></a> `NUM`     | `"NUM"`   | Numerals represent numbers, quantities, etc. **Example** `এক/ek, দুই/dui, প্রথম/prothom`                                                  | [index.ts:38](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L38) |
-| <a id="part"></a> `PART`   | `"PART"`  | Particles are function words that must be associated with another word **Example** `না/na, তো/to, কি/ki`                                  | [index.ts:41](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L41) |
-| <a id="pron"></a> `PRON`   | `"PRON"`  | Pronouns substitute for nouns or noun phrases **Example** `আমি/ami, তুমি/tumi, সে/se`                                                     | [index.ts:44](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L44) |
-| <a id="propn"></a> `PROPN` | `"PROPN"` | Proper nouns are names of specific persons, places, organizations **Example** `ঢাকা/dhaka, রবীন্দ্রনাথ/robindronath, বাংলাদেশ/bangladesh` | [index.ts:47](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L47) |
-| <a id="punct"></a> `PUNCT` | `"PUNCT"` | Punctuation marks **Example** `।, ?, !, ,`                                                                                                | [index.ts:50](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L50) |
-| <a id="sconj"></a> `SCONJ` | `"SCONJ"` | Subordinating conjunctions link dependent clauses to independent ones **Example** `যদি/jodi, কারণ/karon, যখন/jokhon`                      | [index.ts:53](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L53) |
-| <a id="sym"></a> `SYM`     | `"SYM"`   | Symbols represent currency, math operators, etc. **Example** `৳, +, =`                                                                    | [index.ts:56](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L56) |
-| <a id="verb"></a> `VERB`   | `"VERB"`  | Verbs denote actions and processes **Example** `যাই/jai, খাই/khai, পড়ি/pori`                                                             | [index.ts:59](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L59) |
-| <a id="x"></a> `X`         | `"X"`     | Other words that don't fit into above categories **Example** `ইত্যাদি/ittyadi, প্রভৃতি/probhriti`                                         | [index.ts:62](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L62) |
+| <a id="adj"></a> `ADJ`     | `"ADJ"`   | Adjectives are words that typically modify nouns **Example** `বড়/boro, সুন্দর/sundor, নতুন/notun`                                        | [index.ts:14](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L14) |
+| <a id="adp"></a> `ADP`     | `"ADP"`   | Adpositions are prepositions and postpositions **Example** `মধ্যে/moddhe, থেকে/theke, উপরে/upore`                                         | [index.ts:17](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L17) |
+| <a id="adv"></a> `ADV`     | `"ADV"`   | Adverbs are words that typically modify verbs, adjectives or other adverbs **Example** `খুব/khub, ধীরে/dhire, ভালোভাবে/bhalobhabe`        | [index.ts:20](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L20) |
+| <a id="aux"></a> `AUX`     | `"AUX"`   | Auxiliary verbs are used to form tenses, moods, etc. **Example** `আছে/ache, হয়/hoi, হবে/hobe`                                            | [index.ts:23](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L23) |
+| <a id="cconj"></a> `CCONJ` | `"CCONJ"` | Coordinating conjunctions connect words, phrases, clauses of equal status **Example** `এবং/ebong, কিন্তু/kintu, অথবা/othoba`              | [index.ts:26](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L26) |
+| <a id="det"></a> `DET`     | `"DET"`   | Determiners are words that modify nouns or noun phrases **Example** `এই/ei, সেই/sei, কোন/kon`                                             | [index.ts:29](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L29) |
+| <a id="intj"></a> `INTJ`   | `"INTJ"`  | Interjections are exclamatory words **Example** `ওহ/oh, বাহ/bah, হায়/hay`                                                                | [index.ts:32](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L32) |
+| <a id="noun"></a> `NOUN`   | `"NOUN"`  | Nouns are words denoting all physical objects and materials **Example** `বই/boi, মানুষ/manush, বাড়ি/bari`                                | [index.ts:35](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L35) |
+| <a id="num"></a> `NUM`     | `"NUM"`   | Numerals represent numbers, quantities, etc. **Example** `এক/ek, দুই/dui, প্রথম/prothom`                                                  | [index.ts:38](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L38) |
+| <a id="part"></a> `PART`   | `"PART"`  | Particles are function words that must be associated with another word **Example** `না/na, তো/to, কি/ki`                                  | [index.ts:41](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L41) |
+| <a id="pron"></a> `PRON`   | `"PRON"`  | Pronouns substitute for nouns or noun phrases **Example** `আমি/ami, তুমি/tumi, সে/se`                                                     | [index.ts:44](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L44) |
+| <a id="propn"></a> `PROPN` | `"PROPN"` | Proper nouns are names of specific persons, places, organizations **Example** `ঢাকা/dhaka, রবীন্দ্রনাথ/robindronath, বাংলাদেশ/bangladesh` | [index.ts:47](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L47) |
+| <a id="punct"></a> `PUNCT` | `"PUNCT"` | Punctuation marks **Example** `।, ?, !, ,`                                                                                                | [index.ts:50](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L50) |
+| <a id="sconj"></a> `SCONJ` | `"SCONJ"` | Subordinating conjunctions link dependent clauses to independent ones **Example** `যদি/jodi, কারণ/karon, যখন/jokhon`                      | [index.ts:53](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L53) |
+| <a id="sym"></a> `SYM`     | `"SYM"`   | Symbols represent currency, math operators, etc. **Example** `৳, +, =`                                                                    | [index.ts:56](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L56) |
+| <a id="verb"></a> `VERB`   | `"VERB"`  | Verbs denote actions and processes **Example** `যাই/jai, খাই/khai, পড়ি/pori`                                                             | [index.ts:59](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L59) |
+| <a id="x"></a> `X`         | `"X"`     | Other words that don't fit into above categories **Example** `ইত্যাদি/ittyadi, প্রভৃতি/probhriti`                                         | [index.ts:62](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L62) |
 
 ---
 
 ## TaggedWord
 
-Defined in: [index.ts:68](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L68)
+Defined in: [index.ts:68](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L68)
 
 Represents a word with its POS tag and additional linguistic features
 
@@ -41,9 +41,9 @@ Represents a word with its POS tag and additional linguistic features
 
 | Property                          | Type                                  | Description                                                 | Defined in                                                                                                                            |
 | --------------------------------- | ------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| <a id="features"></a> `features?` | `Record`\<`string`, `string`\>        | Additional linguistic features (e.g., gender, number, case) | [index.ts:74](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L74) |
-| <a id="tag"></a> `tag`            | [`UniversalPOSTag`](#universalpostag) | The POS tag for the word                                    | [index.ts:72](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L72) |
-| <a id="word"></a> `word`          | `string`                              | The original word                                           | [index.ts:70](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L70) |
+| <a id="features"></a> `features?` | `Record`\<`string`, `string`\>        | Additional linguistic features (e.g., gender, number, case) | [index.ts:74](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L74) |
+| <a id="tag"></a> `tag`            | [`UniversalPOSTag`](#universalpostag) | The POS tag for the word                                    | [index.ts:72](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L72) |
+| <a id="word"></a> `word`          | `string`                              | The original word                                           | [index.ts:70](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L70) |
 
 ---
 
@@ -53,7 +53,7 @@ Represents a word with its POS tag and additional linguistic features
 function getPOSTagFrequencies(taggedWords): Map<UniversalPOSTag, number>;
 ```
 
-Defined in: [index.ts:196](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L196)
+Defined in: [index.ts:196](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L196)
 
 Gets the most common POS tags in a sequence of tagged words
 
@@ -101,7 +101,7 @@ console.log(frequencies);
 function tagText(text): TaggedWord[];
 ```
 
-Defined in: [index.ts:162](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L162)
+Defined in: [index.ts:162](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L162)
 
 Tags a Bangla text string with parts of speech
 
@@ -144,7 +144,7 @@ console.log(tagged);
 function tagWord(word): TaggedWord;
 ```
 
-Defined in: [index.ts:102](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L102)
+Defined in: [index.ts:102](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L102)
 
 Tags a single Bangla word with its part of speech
 
@@ -188,7 +188,7 @@ console.log(result);
 function tagWords(words): TaggedWord[];
 ```
 
-Defined in: [index.ts:134](https://github.com/nurulhudaapon/bntk/blob/2238d24d66469246da98b70b2cf9912045ce91e7/packages/core/pos/src/index.ts#L134)
+Defined in: [index.ts:134](https://github.com/nurulhudaapon/bntk/blob/a800a88ba2a08067633bfe63793a7c8b86a8a486/packages/core/pos/src/index.ts#L134)
 
 Tags a sequence of Bangla words with their parts of speech
 
