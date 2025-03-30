@@ -1,4 +1,5 @@
 import Link from "@docusaurus/Link";
+import { useColorMode } from "@docusaurus/theme-common";
 import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
 import HomepageFeatures from "@site/src/components/HomepageFeatures";
 import Heading from "@theme/Heading";
@@ -10,6 +11,8 @@ import styles from "./index.module.css";
 
 function HomepageHeader() {
   const { siteConfig } = useDocusaurusContext();
+  const { colorMode } = useColorMode();
+  const isDarkTheme = colorMode === "dark";
   return (
     <header className={clsx("hero hero", styles.heroBanner)}>
       <div className="container">
@@ -35,7 +38,7 @@ function HomepageHeader() {
             alt="Bangla Toolkit Logo"
             style={{
               height: "min(220px, 30vw)",
-              filter: "brightness(0)", // Forces black color
+              filter: isDarkTheme ? "brightness(10)" : "brightness(0)", // White in dark mode, black in light mode
             }}
           />
         </div>

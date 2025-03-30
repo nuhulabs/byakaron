@@ -111,6 +111,36 @@ const config: Config = {
       } satisfies Preset.Options,
     ],
   ],
+  headTags: [
+    {
+      tagName: "link",
+      attributes: {
+        rel: "icon",
+        href: "/img/favicon.ico",
+        type: "any",
+      },
+    },
+    {
+      tagName: "link",
+      attributes: {
+        rel: "icon",
+        href: "/img/favicon-dark.ico",
+        type: "image/x-icon",
+        sizes: "32x32",
+        media: "(prefers-color-scheme: light)",
+      },
+    },
+    {
+      tagName: "link",
+      attributes: {
+        rel: "icon",
+        href: "/img/favicon-light.ico",
+        type: "image/x-icon",
+        sizes: "32x32",
+        media: "(prefers-color-scheme: dark)",
+      },
+    },
+  ],
   themeConfig: {
     // Replace with your project's social card
     colorMode: {
@@ -118,6 +148,7 @@ const config: Config = {
       respectPrefersColorScheme: true,
     },
     image: "img/banner.png",
+
     metadata: [
       {
         property: "og:image",
@@ -149,8 +180,8 @@ const config: Config = {
       title: "Bangla Toolkit",
       logo: {
         alt: "Bangla Toolkit Logo",
-        src: "img/logo.svg",
-        srcDark: "img/logo.svg",
+        src: "img/logo-light.svg",
+        srcDark: "img/logo-dark.svg",
       },
       items: [
         {
