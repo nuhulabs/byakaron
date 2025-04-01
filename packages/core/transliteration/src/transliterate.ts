@@ -115,137 +115,187 @@ const MODE_TRANSLITERATION_FUNCTIONS = {
   lishbang: lishbang,
 } as const;
 
-function avro(text: string) {
+/**
+ * Cache for pattern matching results to avoid repeated computations
+ */
+const patternMatchCache = new Map<
+  string,
+  {
+    pattern: (typeof rules.patterns)[0];
+    endIndex: number;
+  }
+>();
+
+/**
+ * Converts text using the Avro Phonetic system with optimized performance
+ */
+function avro(text: string): string {
   const fixed = phonetic.fixString(text);
-  let output = "";
-  for (let cur = 0; cur < fixed.length; ++cur) {
-    const start = cur;
-    let end = cur + 1;
-    let prev = start - 1;
-    let matched = false;
+  const output: string[] = []; // Using array for faster string concatenation
+  const len = fixed.length;
 
-    for (const pattern of rules.patterns) {
-      end = cur + pattern.find.length;
-      if (end <= fixed.length && fixed.substring(start, end) == pattern.find) {
-        prev = start - 1;
-        if (typeof pattern.rules !== "undefined") {
-          for (const rawRule of pattern.rules) {
-            const rule = rawRule as typeof rawRule & {
-              matches: (typeof rawRule.matches)[0] &
-                {
-                  negative?: boolean;
-                  value?: string;
-                  scope?: string;
-                }[];
-            };
-            let replace = true;
-            let chk = 0;
+  // Pre-calculate pattern lengths for faster matching
+  const patternsWithLength = rules.patterns.map((pattern) => ({
+    pattern,
+    length: pattern.find.length,
+  }));
 
-            for (const match of rule.matches) {
-              if (match.type === "suffix") {
-                chk = end;
-              }
-              // Prefix
-              else {
-                chk = prev;
-              }
+  for (let currentIndex = 0; currentIndex < len; ++currentIndex) {
+    const startIndex = currentIndex;
+    let isMatched = false;
 
-              // Handle Negative
-              if (typeof match.negative === "undefined") {
-                match.negative = false;
-                if (match.scope.charAt(0) === "!") {
-                  match.negative = true;
-                  match.scope = match.scope.substring(1);
-                }
-              }
+    // Try to match from cache first
+    const cacheKey = fixed.slice(startIndex, startIndex + 8); // Cache key with reasonable length
+    const cachedMatch = patternMatchCache.get(cacheKey);
 
-              // Handle empty value
-              // @ts-expect-error: TODO: fix this
-              if (typeof match.value === "undefined") match.value = "";
-
-              // Beginning
-              if (match.scope === "punctuation") {
-                if (
-                  !(
-                    (chk < 0 && match.type === "prefix") ||
-                    (chk >= fixed.length && match.type === "suffix") ||
-                    phonetic.isPunctuation(fixed.charAt(chk))
-                  ) !== match.negative
-                ) {
-                  replace = false;
-                  break;
-                }
-              }
-              // Vowel
-              else if (match.scope === "vowel") {
-                if (
-                  !(
-                    ((chk >= 0 && match.type === "prefix") ||
-                      (chk < fixed.length && match.type === "suffix")) &&
-                    phonetic.isVowel(fixed.charAt(chk))
-                  ) !== match.negative
-                ) {
-                  replace = false;
-                  break;
-                }
-              }
-              // Consonant
-              else if (match.scope === "consonant") {
-                if (
-                  !(
-                    ((chk >= 0 && match.type === "prefix") ||
-                      (chk < fixed.length && match.type === "suffix")) &&
-                    phonetic.isConsonant(fixed.charAt(chk))
-                  ) !== match.negative
-                ) {
-                  replace = false;
-                  break;
-                }
-              }
-              // Exact
-              else if (match.scope === "exact") {
-                let s, e;
-                if (match.type === "suffix") {
-                  s = end;
-                  e = end + match.value.length;
-                }
-                // Prefix
-                else {
-                  s = start - match.value.length;
-                  e = start;
-                }
-                if (
-                  !phonetic.isExact(match.value, fixed, s, e, match.negative)
-                ) {
-                  replace = false;
-                  break;
-                }
-              }
-            }
-
-            if (replace) {
-              output += rule.replace;
-              cur = end - 1;
-              matched = true;
-              break;
-            }
-          }
+    if (cachedMatch) {
+      const { pattern, endIndex } = cachedMatch;
+      if (
+        endIndex <= len &&
+        fixed.substring(startIndex, endIndex) === pattern.find
+      ) {
+        const result = processPattern(
+          pattern,
+          fixed,
+          startIndex,
+          endIndex,
+          currentIndex,
+        );
+        if (result.isMatched) {
+          output.push(result.output);
+          currentIndex = result.newIndex;
+          continue;
         }
-        if (matched == true) break;
-
-        // Default
-        output += pattern.replace;
-        cur = end - 1;
-        matched = true;
-        break;
       }
     }
 
-    if (!matched) {
-      output += fixed.charAt(cur);
+    // No cache hit, try matching patterns
+    for (const { pattern, length } of patternsWithLength) {
+      const endIndex = currentIndex + length;
+
+      if (endIndex > len) continue; // Skip if pattern is too long
+
+      const segment = fixed.substring(startIndex, endIndex);
+      if (segment === pattern.find) {
+        // Cache this successful match for future use
+        patternMatchCache.set(cacheKey, { pattern, endIndex });
+
+        const result = processPattern(
+          pattern,
+          fixed,
+          startIndex,
+          endIndex,
+          currentIndex,
+        );
+        if (result.isMatched) {
+          output.push(result.output);
+          currentIndex = result.newIndex;
+          isMatched = true;
+          break;
+        }
+      }
+    }
+
+    if (!isMatched) {
+      output.push(fixed.charAt(currentIndex));
     }
   }
-  return output;
+
+  return output.join("");
+}
+
+/**
+ * Optimized pattern processing with minimal object creation
+ */
+function processPattern(
+  pattern: (typeof rules.patterns)[0],
+  fixed: string,
+  startIndex: number,
+  endIndex: number,
+  currentIndex: number,
+): { isMatched: boolean; output: string; newIndex: number } {
+  if (!pattern.rules) {
+    return {
+      isMatched: true,
+      output: pattern.replace,
+      newIndex: endIndex - 1,
+    };
+  }
+
+  const previousIndex = startIndex - 1;
+
+  for (const rule of pattern.rules) {
+    let shouldReplace = true;
+
+    for (const match of rule.matches) {
+      const checkIndex = match.type === "suffix" ? endIndex : previousIndex;
+
+      // Handle negative matching
+      const isNegative = match.scope?.charAt(0) === "!";
+      const scope = isNegative ? match.scope.substring(1) : match.scope;
+
+      // Fast path for common cases
+      switch (scope) {
+        case "punctuation": {
+          const isPunctuation =
+            (checkIndex < 0 && match.type === "prefix") ||
+            (checkIndex >= fixed.length && match.type === "suffix") ||
+            phonetic.isPunctuation(fixed.charAt(checkIndex));
+          if (isPunctuation === isNegative) {
+            shouldReplace = false;
+          }
+          break;
+        }
+        case "vowel": {
+          const isVowelMatch =
+            ((checkIndex >= 0 && match.type === "prefix") ||
+              (checkIndex < fixed.length && match.type === "suffix")) &&
+            phonetic.isVowel(fixed.charAt(checkIndex));
+          if (isVowelMatch === isNegative) {
+            shouldReplace = false;
+          }
+          break;
+        }
+        case "consonant": {
+          const isConsonantMatch =
+            ((checkIndex >= 0 && match.type === "prefix") ||
+              (checkIndex < fixed.length && match.type === "suffix")) &&
+            phonetic.isConsonant(fixed.charAt(checkIndex));
+          if (isConsonantMatch === isNegative) {
+            shouldReplace = false;
+          }
+          break;
+        }
+        case "exact": {
+          const [s, e] =
+            match.type === "suffix"
+              ? [endIndex, endIndex + (match.value?.length || 0)]
+              : [startIndex - (match.value?.length || 0), startIndex];
+
+          if (!phonetic.isExact(match.value || "", fixed, s, e, isNegative)) {
+            shouldReplace = false;
+          }
+          break;
+        }
+      }
+
+      if (!shouldReplace) break;
+    }
+
+    if (shouldReplace) {
+      return {
+        isMatched: true,
+        output: rule.replace,
+        newIndex: endIndex - 1,
+      };
+    }
+  }
+
+  return {
+    isMatched: true,
+    output: pattern.replace,
+    newIndex: endIndex - 1,
+  };
 }
 
 function orva(text: string) {
