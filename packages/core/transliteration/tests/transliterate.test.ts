@@ -3,6 +3,7 @@ import testData from "./transliterate.data.json";
 
 const orva = testData.basic.orva;
 const avroed = testData.basic.avroed;
+const ligature = testData.ligature;
 
 const equal = (a: string, b: string) => {
   expect(a).toEqual(b);
@@ -37,9 +38,8 @@ describe("transliterate", () => {
   //   expect(transliterate(orva, { mode: "avro" })).toBe(avroed);
   // });
 
-  test("mode: avro: ligature", () => {
-    const ligature = testData.ligature;
-    Object.entries(ligature).forEach(([key, value]) => {
+  Object.entries(ligature).forEach(([key, value]) => {
+    test(`mode: avro ligature - ${key} > ${value}`, () => {
       equal(transliterate(key), value);
     });
   });
