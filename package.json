@@ -27,7 +27,7 @@
     "build": "bun tools/build.ts",
     "publish": "bun tools/publish.ts",
     "format": "prettier --write --ignore-path .prettierignore --config .prettierrc .",
-    "check": "bun tsc --noEmit && :",
+    "check": "bun tsc --noEmit",
     "etl": "bun -F @bntk/dataset etl",
     "db:migration": "bun -F @bntk/db migration",
     "docs": "bun tools/docs.ts",
@@ -44,15 +44,17 @@
   ],
   "devDependencies": {
     "@trivago/prettier-plugin-sort-imports": "^5.2.2",
-    "@types/bun": "latest",
+    "@types/bun": "1.2.7",
     "husky": "^9.1.7",
     "lint-staged": "^15.5.0",
     "prettier": "^3.5.3",
-    "typescript": "^5.8.0"
+    "typescript": "5.8.2"
   },
   "lint-staged": {
     "*.{ts,tsx}": "bun check",
     "*.{ts,json,js,css,md}": "prettier --write"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "module": "index.ts",
+  "type": "module"
 }

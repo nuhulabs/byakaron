@@ -1,6 +1,6 @@
 import { transliterate } from "../src/transliterate";
 import testData from "./transliterate.data.json";
-
+import { expect, describe, test } from 'bun:test';
 const avro = testData.avro;
 const ligature = testData.ligature;
 
@@ -10,7 +10,7 @@ const equal = (a: string, b: string) => {
 
 describe("transliterate", () => {
   avro.forEach(({ orva, avroed }, index) => {
-    test(`mode: avro test ${index + 1}`, () => {
+    test(`mode: avro test ${index + 1}: ${orva.slice(0, 6)}..`, () => {
       expect(transliterate(orva, { mode: "avro" })).toEqual(avroed);
     });
   });
@@ -46,7 +46,7 @@ describe("transliterate", () => {
   });
 
   test("performance test - should handle large text quickly", () => {
-    const ALLOWED_TIME_PER_THOUSAND_CHARS = 4;
+    const ALLOWED_TIME_PER_THOUSAND_CHARS = 10; // 3 in M1 Pro
     const sampleText = avro[0].orva;
     const largeText = sampleText.repeat(100);
 

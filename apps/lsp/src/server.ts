@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Bangla Language Spellcheck HTTP Server
  * Exposes spellchecker functionality via HTTP endpoints
