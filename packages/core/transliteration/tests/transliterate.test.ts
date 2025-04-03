@@ -1,8 +1,7 @@
 import { transliterate } from "../src/transliterate";
 import testData from "./transliterate.data.json";
 
-const orva = testData.basic.orva;
-const avroed = testData.basic.avroed;
+const avro = testData.avro;
 const ligature = testData.ligature;
 
 const equal = (a: string, b: string) => {
@@ -10,8 +9,10 @@ const equal = (a: string, b: string) => {
 };
 
 describe("transliterate", () => {
-  test("mode: avro", () => {
-    expect(transliterate(orva, { mode: "avro" })).toEqual(avroed);
+  avro.forEach(({ orva, avroed }, index) => {
+    test(`mode: avro test ${index + 1}`, () => {
+      expect(transliterate(orva, { mode: "avro" })).toEqual(avroed);
+    });
   });
 
   // test("mode: avro - history and culture", () => {
@@ -46,7 +47,7 @@ describe("transliterate", () => {
 
   test("performance test - should handle large text quickly", () => {
     const ALLOWED_TIME_PER_THOUSAND_CHARS = 4;
-    const sampleText = orva;
+    const sampleText = avro[0].orva;
     const largeText = sampleText.repeat(100);
 
     const startTime = performance.now();
@@ -67,6 +68,6 @@ describe("transliterate", () => {
     );
 
     // Verify the result is correct (check first few characters)
-    expect(result.slice(0, avroed.length)).toEqual(avroed);
+    expect(result.slice(0, avro[0].avroed.length)).toEqual(avro[0].avroed);
   });
 });
