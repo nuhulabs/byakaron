@@ -213,7 +213,8 @@ export class StateManager extends GenericStateManager<ProcessingState> {
       );
       this.saveState();
     }
-    return this.state.sources[sourceId];
+
+    return this.state.sources[sourceId]!;
   }
 
   /**

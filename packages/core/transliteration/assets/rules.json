@@ -720,7 +720,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "!consonant"
+              "scope": "!consonant",
+              "value": null
             }
           ],
           "replace": "ঐ"
@@ -729,7 +730,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "punctuation"
+              "scope": "punctuation",
+              "value": null
             }
           ],
           "replace": "ঐ"
@@ -744,7 +746,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "!consonant"
+              "scope": "!consonant",
+              "value": null
             }
           ],
           "replace": "ঔ"
@@ -753,7 +756,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "punctuation"
+              "scope": "punctuation",
+              "value": null
             }
           ],
           "replace": "ঔ"
@@ -768,7 +772,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "!consonant"
+              "scope": "!consonant",
+              "value": null
             }
           ],
           "replace": "ও"
@@ -777,7 +782,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "punctuation"
+              "scope": "punctuation",
+              "value": null
             }
           ],
           "replace": "ও"
@@ -840,7 +846,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "!consonant"
+              "scope": "!consonant",
+              "value": null
             }
           ],
           "replace": "ঋ"
@@ -849,7 +856,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "punctuation"
+              "scope": "punctuation",
+              "value": null
             }
           ],
           "replace": "ঋ"
@@ -872,7 +880,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "consonant"
+              "scope": "consonant",
+              "value": null
             },
             {
               "type": "prefix",
@@ -907,7 +916,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "consonant"
+              "scope": "consonant",
+              "value": null
             },
             {
               "type": "prefix",
@@ -942,11 +952,13 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "!consonant"
+              "scope": "!consonant",
+              "value": null
             },
             {
               "type": "suffix",
-              "scope": "!vowel"
+              "scope": "!vowel",
+              "value": null
             },
             {
               "type": "suffix",
@@ -955,7 +967,8 @@
             },
             {
               "type": "suffix",
-              "scope": "!punctuation"
+              "scope": "!punctuation",
+              "value": null
             }
           ],
           "replace": "র্"
@@ -964,7 +977,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "consonant"
+              "scope": "consonant",
+              "value": null
             },
             {
               "type": "prefix",
@@ -996,7 +1010,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "consonant"
+              "scope": "consonant",
+              "value": null
             },
             {
               "type": "prefix",
@@ -1192,7 +1207,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "!consonant"
+              "scope": "!consonant",
+              "value": null
             },
             {
               "type": "suffix",
@@ -1206,7 +1222,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "punctuation"
+              "scope": "punctuation",
+              "value": null
             },
             {
               "type": "suffix",
@@ -1234,7 +1251,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "vowel"
+              "scope": "vowel",
+              "value": null
             },
             {
               "type": "prefix",
@@ -1248,7 +1266,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "vowel"
+              "scope": "vowel",
+              "value": null
             },
             {
               "type": "prefix",
@@ -1262,7 +1281,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "punctuation"
+              "scope": "punctuation",
+              "value": null
             }
           ],
           "replace": "অ"
@@ -1337,7 +1357,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "punctuation"
+              "scope": "punctuation",
+              "value": null
             },
             {
               "type": "suffix",
@@ -1351,7 +1372,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "!consonant"
+              "scope": "!consonant",
+              "value": null
             },
             {
               "type": "prefix",
@@ -1395,7 +1417,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "!consonant"
+              "scope": "!consonant",
+              "value": null
             },
             {
               "type": "suffix",
@@ -1409,7 +1432,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "punctuation"
+              "scope": "punctuation",
+              "value": null
             },
             {
               "type": "suffix",
@@ -1433,7 +1457,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "!consonant"
+              "scope": "!consonant",
+              "value": null
             },
             {
               "type": "suffix",
@@ -1447,7 +1472,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "punctuation"
+              "scope": "punctuation",
+              "value": null
             },
             {
               "type": "suffix",
@@ -1471,7 +1497,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "!consonant"
+              "scope": "!consonant",
+              "value": null
             },
             {
               "type": "suffix",
@@ -1485,7 +1512,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "punctuation"
+              "scope": "punctuation",
+              "value": null
             },
             {
               "type": "suffix",
@@ -1509,7 +1537,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "!consonant"
+              "scope": "!consonant",
+              "value": null
             },
             {
               "type": "suffix",
@@ -1523,7 +1552,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "punctuation"
+              "scope": "punctuation",
+              "value": null
             },
             {
               "type": "suffix",
@@ -1547,7 +1577,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "!consonant"
+              "scope": "!consonant",
+              "value": null
             },
             {
               "type": "suffix",
@@ -1561,7 +1592,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "punctuation"
+              "scope": "punctuation",
+              "value": null
             },
             {
               "type": "suffix",
@@ -1585,7 +1617,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "!consonant"
+              "scope": "!consonant",
+              "value": null
             },
             {
               "type": "suffix",
@@ -1599,7 +1632,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "punctuation"
+              "scope": "punctuation",
+              "value": null
             },
             {
               "type": "suffix",
@@ -1627,11 +1661,13 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "!consonant"
+              "scope": "!consonant",
+              "value": null
             },
             {
               "type": "prefix",
-              "scope": "!punctuation"
+              "scope": "!punctuation",
+              "value": null
             }
           ],
           "replace": "য়"
@@ -1640,7 +1676,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "punctuation"
+              "scope": "punctuation",
+              "value": null
             }
           ],
           "replace": "ইয়"
@@ -1663,11 +1700,13 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "punctuation"
+              "scope": "punctuation",
+              "value": null
             },
             {
               "type": "suffix",
-              "scope": "vowel"
+              "scope": "vowel",
+              "value": null
             }
           ],
           "replace": "ওয়"
@@ -1676,7 +1715,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "consonant"
+              "scope": "consonant",
+              "value": null
             }
           ],
           "replace": "্ব"
@@ -1691,7 +1731,8 @@
           "matches": [
             {
               "type": "prefix",
-              "scope": "punctuation"
+              "scope": "punctuation",
+              "value": null
             }
           ],
           "replace": "এক্স"

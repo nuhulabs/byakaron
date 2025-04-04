@@ -414,6 +414,11 @@ async function writeWordPairs(source: DataSource) {
           while (i < wordPairs.length && canContinue) {
             const pair = wordPairs[i];
 
+            if (!pair) {
+              canContinue = false;
+              break;
+            }
+
             // Escape commas and quotes in the words
             const escapedValue = pair.value.replace(/"/g, '""');
             const escapedNextValue = pair.next_value.replace(/"/g, '""');

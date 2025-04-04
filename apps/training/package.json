@@ -2,20 +2,12 @@
   "name": "@bntk/training",
   "version": "0.0.0",
   "private": true,
-  "description": "Bangla language spellcheck LSP server",
   "scripts": {
-    "dev": "bunx ts-node src/index.ts",
-    "dev:http": "bun run src/http-server.ts",
-    "test": "bun test",
-    "start": "bun run src/index.ts",
-    "start:http": "bun run src/http-server.ts"
+    "start": "bun run src/index.ts"
   },
   "dependencies": {
     "@bntk/db": "workspace:*",
-    "@bntk/lsp": "workspace:*",
-    "openai": "^4.88.0",
-    "vscode-languageserver": "^8.1.0",
-    "vscode-languageserver-textdocument": "^1.0.8"
+    "openai": "^4.88.0"
   },
   "devDependencies": {
     "bun-types": "latest"
