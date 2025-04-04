@@ -2,6 +2,9 @@ const std = @import("std");
 const mem = std.mem;
 const assert = std.debug.assert;
 const json_parser = @import("json_parser.zig");
+const expect = std.testing.expect;
+const json = std.json;
+const fs = std.fs;
 
 pub const Transliteration = struct {
     const RuleMatch = json_parser.RuleMatch;
@@ -131,12 +134,10 @@ pub const Transliteration = struct {
     };
 
     fn buildTrie(patterns_list: []const Pattern, allocator: std.mem.Allocator) !*TrieNode {
-        std.debug.print("Building trie with {} patterns\n", .{patterns_list.len});
         const root = try TrieNode.init(allocator);
         errdefer root.deinit();
 
-        for (patterns_list, 0..) |*pattern, idx| {
-            std.debug.print("Processing pattern {d}: {s}\n", .{ idx, pattern.find });
+        for (patterns_list) |*pattern| {
             var current = root;
             const find = pattern.find;
             var i: usize = 0;
@@ -153,7 +154,6 @@ pub const Transliteration = struct {
             current.isEndOfPattern = true;
             current.pattern = pattern;
         }
-        std.debug.print("Trie construction completed\n", .{});
         return root;
     }
 
@@ -174,13 +174,6 @@ pub const Transliteration = struct {
         }
 
         while (currentIndex < len) {
-            // Special case for initial 'a'
-            if (currentIndex == 0 and fixed[currentIndex] == 'a') {
-                try output.appendSlice("আ");
-                currentIndex += 1;
-                continue;
-            }
-
             var node = trie;
             var matchLength: usize = 0;
             var matchPattern: ?*const Pattern = null;
@@ -217,56 +210,87 @@ pub const Transliteration = struct {
             return .{ .output = try allocator.dupe(u8, pattern.replace), .newIndex = endIndex - 1 };
         }
 
-        const previousIndex = if (startIndex > 0) startIndex - 1 else 0;
+        // In JavaScript, previousIndex can be negative, but in Zig we need to handle this differently
+        const previousIndex: isize = @intCast(@as(isize, @intCast(startIndex)) - 1);
 
         for (pattern.rules.?) |rule| {
             var shouldReplace: bool = true;
 
             for (rule.matches) |match| {
-                const checkIndex = if (mem.eql(u8, match.type, "suffix")) endIndex else previousIndex;
-                const isNegative = if (match.scope) |scope| scope[0] == '!' else false;
+                const isSuffix = mem.eql(u8, match.type, "suffix");
+                // Check index is signed to handle negatives properly
+                const checkIndex: isize = if (isSuffix) @intCast(endIndex) else previousIndex;
+                const isNegative = if (match.scope) |scope| scope.len > 0 and scope[0] == '!' else false;
                 const scope = if (match.scope) |s| if (isNegative) s[1..] else s else null;
 
-                const isValid: bool = blk: {
-                    if (scope) |s| {
-                        if (mem.eql(u8, s, "punctuation")) {
-                            if (checkIndex >= chars.len) {
-                                break :blk true;
-                            }
-                            break :blk isPunctuation(chars[checkIndex]);
-                        } else if (mem.eql(u8, s, "vowel")) {
-                            if (checkIndex >= chars.len) {
-                                break :blk false;
-                            }
-                            break :blk isVowel(chars[checkIndex]);
-                        } else if (mem.eql(u8, s, "consonant")) {
-                            if (checkIndex >= chars.len) {
-                                break :blk false;
-                            }
-                            break :blk isConsonant(chars[checkIndex]);
-                        } else if (mem.eql(u8, s, "exact")) {
-                            if (match.value) |value| {
-                                const s_index = if (mem.eql(u8, match.type, "suffix")) endIndex else if (value.len > startIndex) 0 else startIndex - value.len;
-                                const e_index = if (mem.eql(u8, match.type, "suffix")) @min(endIndex + value.len, chars.len) else startIndex;
+                if (scope) |s| {
+                    // Handle different scope types (similar to JS switch statement)
+                    if (mem.eql(u8, s, "punctuation")) {
+                        const hasPunctuation =
+                            (checkIndex < 0 and !isSuffix) or
+                            (checkIndex >= chars.len and isSuffix) or
+                            (checkIndex >= 0 and checkIndex < chars.len and isPunctuation(chars[@intCast(checkIndex)]));
 
-                                if (s_index >= chars.len or e_index > chars.len or s_index > e_index) {
-                                    break :blk false;
-                                }
+                        if (hasPunctuation == isNegative) {
+                            shouldReplace = false;
+                            break;
+                        }
+                    } else if (mem.eql(u8, s, "vowel")) {
+                        const isVowelMatch =
+                            ((checkIndex >= 0 and !isSuffix) or
+                                (checkIndex < chars.len and isSuffix)) and
+                            (checkIndex >= 0 and checkIndex < chars.len and isVowel(chars[@intCast(checkIndex)]));
 
-                                if (mem.eql(u8, chars[s_index..e_index], value)) {
-                                    break :blk true;
+                        if (isVowelMatch == isNegative) {
+                            shouldReplace = false;
+                            break;
+                        }
+                    } else if (mem.eql(u8, s, "consonant")) {
+                        const isConsonantMatch =
+                            ((checkIndex >= 0 and !isSuffix) or
+                                (checkIndex < chars.len and isSuffix)) and
+                            (checkIndex >= 0 and checkIndex < chars.len and isConsonant(chars[@intCast(checkIndex)]));
+
+                        if (isConsonantMatch == isNegative) {
+                            shouldReplace = false;
+                            break;
+                        }
+                    } else if (mem.eql(u8, s, "exact")) {
+                        if (match.value) |value| {
+                            // Calculate start and end indices similar to JS
+                            const s_index: isize = if (isSuffix)
+                                @intCast(endIndex)
+                            else
+                                @intCast(@max(0, @as(isize, @intCast(startIndex)) - @as(isize, @intCast(value.len))));
+
+                            const e_index: isize = if (isSuffix)
+                                @intCast(@min(chars.len, endIndex + value.len))
+                            else
+                                @intCast(startIndex);
+
+                            // Check if indices are valid
+                            if (s_index >= 0 and e_index <= chars.len and s_index <= e_index) {
+                                const isExactMatch = mem.eql(u8, chars[@intCast(s_index)..@intCast(e_index)], value);
+
+                                if (isExactMatch == isNegative) {
+                                    shouldReplace = false;
+                                    break;
                                 }
-                                break :blk false;
+                            } else {
+                                // Outside of valid range and not an exact match
+                                if (!isNegative) {
+                                    shouldReplace = false;
+                                    break;
+                                }
                             }
-                            break :blk false;
+                        } else {
+                            // No value to match with, can't be exact
+                            if (!isNegative) {
+                                shouldReplace = false;
+                                break;
+                            }
                         }
                     }
-                    break :blk false;
-                };
-
-                if (isValid == isNegative) {
-                    shouldReplace = false;
-                    break;
                 }
             }
 
@@ -415,32 +439,118 @@ pub const Transliteration = struct {
     }
 };
 
-const expect = std.testing.expect;
+// Helper function to load test data
+fn loadTestData(allocator: std.mem.Allocator) !struct { avro_tests: []const json.Value, ligature_tests: json.ObjectMap, parsed: json.Parsed(json.Value) } {
+    const file = try fs.cwd().openFile("src/transliteration.test.json", .{});
+    defer file.close();
 
-test "avro transliteration" {
-    const allocator = std.heap.page_allocator;
-    std.debug.print("\nInitializing test...\n", .{});
+    const file_content = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
+    defer allocator.free(file_content);
 
-    var trans = try Transliteration.init(allocator);
-    std.debug.print("Transliteration initialized\n", .{});
-    defer trans.deinit();
+    const parsed = try json.parseFromSlice(json.Value, allocator, file_content, .{});
+    errdefer parsed.deinit();
 
-    std.debug.print("Starting transliteration...\n", .{});
-    const result = try trans.avro("ami banglay gan gai", allocator);
-    std.debug.print("Transliteration completed\n", .{});
-    defer allocator.free(result);
+    const avro_tests = parsed.value.object.get("avro").?.array.items;
+    const ligature_tests = parsed.value.object.get("ligature").?.object;
 
-    std.debug.print("\nExpected: আমি বাংলায় গান গাই\nGot: {s}\n", .{result});
-    try expect(mem.eql(u8, result, "আমি বাংলায় গান গাই"));
+    return .{ .avro_tests = avro_tests, .ligature_tests = ligature_tests, .parsed = parsed };
 }
 
-// test "avro transliteratio - advance" {
-//     const orva = "kemon achO bondhoo, onek din por dekha ami banglaY likhte khoob pochondo kori. bangla bhaSha amader matrribhaSha. eTar modhZe onek soondor soondor kobita O golpo ache. ami ceShTa kori sob somoY shooddho banglaY kotha bolte. ami jani, bangla bZakaroNe onek zooktakkhor ache, za likhte ekoTu koThin. kintu, ami segoolO shikhte cai. ami procoor boi poRi, za amake bangla bhaSha sombndhe arO beshi janote sahazZo kore. ami bisheSh kore robIndronath Thakoorer kobita O golp poRi, zar modhZe ononto prem O prkrritir chobi ache. ami biswas kori, bangla bhasa amader sobaike ek sootOY ba^dhe. ami ei bhaSha niYe gorrbo bOdh kori. ami asha kori, amora sobai mile bangla bhaShake arO unnoto korbO.";
-//     const avroed = "কেমন আছো বন্ধু, অনেক দিন পর দেখা আমি বাংলায় লিখতে খুব পছন্দ করি। বাংলা ভাষা আমাদের মাতৃভাষা। এটার মধ্যে অনেক সুন্দর সুন্দর কবিতা ও গল্প আছে। আমি চেষ্টা করি সব সময় শুদ্ধ বাংলায় কথা বলতে। আমি জানি, বাংলা ব্যাকারণে অনেক যুক্তাক্ষর আছে, যা লিখতে একটু কঠিন। কিন্তু, আমি সেগুলো শিখতে চাই। আমি প্রচুর বই পড়ি, যা আমাকে বাংলা ভাষা সম্বন্ধে আরো বেশি জানতে সাহায্য করে। আমি বিশেষ করে রবীন্দ্রনাথ ঠাকুরের কবিতা ও গল্প পড়ি, যার মধ্যে অনন্ত প্রেম ও প্রকৃতির ছবি আছে। আমি বিস্বাস করি, বাংলা ভাসা আমাদের সবাইকে এক সুতোয় বাঁধে। আমি এই ভাষা নিয়ে গর্ব বোধ করি। আমি আশা করি, আমরা সবাই মিলে বাংলা ভাষাকে আরো উন্নত করবো।";
-
+// Test avro transliteration cases
+// test "mode: debug test" {
 //     const allocator = std.heap.page_allocator;
-//     const result = try Transliteration.transliterate(orva, "avro", allocator);
+//     const result = try Transliteration.transliterate("A`", "avro", allocator);
+//     const expected = "া";
 //     defer allocator.free(result);
-//     std.debug.print("\nExpected: {s}\nGot: {s}\n", .{ avroed, result });
-//     try expect(mem.eql(u8, result, avroed));
+//     std.debug.print("\n\nExpect: {s}\nGot:    {s}\n", .{ expected, result });
+//     try expect(mem.eql(u8, result, expected));
 // }
+
+// Test avro transliteration cases
+test "mode: avro test cases" {
+    const allocator = std.heap.page_allocator;
+    const test_data = try loadTestData(allocator);
+    defer test_data.parsed.deinit();
+
+    for (test_data.avro_tests) |test_case| {
+        const orva = test_case.object.get("orva").?.string;
+        const avroed = test_case.object.get("avroed").?.string;
+
+        const result = try Transliteration.transliterate(orva, "avro", allocator);
+        defer allocator.free(result);
+
+        // std.debug.print("\nTest {d}: mode: avro test {d}: {s}..\n", .{ index, index + 1, orva[0..@min(6, orva.len)] });
+        // std.debug.print("Expect: {s}\nGot:    {s}", .{ avroed, result });
+        try expect(mem.eql(u8, result, avroed));
+    }
+}
+
+// Test ligature transliteration cases
+test "mode: avro ligature cases" {
+    const allocator = std.heap.page_allocator;
+    const test_data = try loadTestData(allocator);
+    defer test_data.parsed.deinit();
+
+    var it = test_data.ligature_tests.iterator();
+    var total_failed: usize = 0;
+    var total_ligatures: usize = 0;
+    while (it.next()) |entry| {
+        const key = entry.key_ptr.*;
+        const value = entry.value_ptr.string;
+        total_ligatures += 1;
+
+        const result = try Transliteration.transliterate(key, "avro", allocator);
+        defer allocator.free(result);
+
+        const isSame = std.mem.eql(u8, value, result);
+        // std.debug.print("\n\n==> {s} ➜ {s}", .{ key, value });
+        // if (isSame) {
+        //     std.debug.print("\nExpect: {s}\nGot:    {s}\nMatched: {}", .{ value, result, isSame });
+        // }
+        if (!isSame) {
+            total_failed += 1;
+            // Print in red color
+            std.debug.print("\n\n==> {s} ➜ {s}", .{ key, value });
+
+            std.debug.print("\n\x1b[31mExpect: {s}\nGot:    {s}\nMatched: {}\x1b[0m", .{ value, result, isSame });
+        }
+    }
+
+    std.debug.print("\n\nTotal: {d}\nFailed: {d}\n", .{ total_ligatures, total_failed });
+}
+
+// Performance test
+test "performance test - should handle large text quickly" {
+    const allocator = std.heap.page_allocator;
+    const test_data = try loadTestData(allocator);
+    defer test_data.parsed.deinit();
+
+    const first_avro = test_data.avro_tests[0];
+    const sample_text = first_avro.object.get("orva").?.string;
+    var large_text = std.ArrayList(u8).init(allocator);
+    defer large_text.deinit();
+
+    // Repeat the sample text 100 times
+    var i: usize = 0;
+    while (i < 100) : (i += 1) {
+        try large_text.appendSlice(sample_text);
+    }
+
+    const start_time = std.time.nanoTimestamp();
+    const result = try Transliteration.transliterate(large_text.items, "avro", allocator);
+    defer allocator.free(result);
+    const end_time = std.time.nanoTimestamp();
+
+    const execution_time = @as(f64, @floatFromInt(end_time - start_time)) / 1_000_000.0; // Convert to milliseconds
+    const execution_time_per_thousand_chars = (execution_time / @as(f64, @floatFromInt(large_text.items.len))) * 1000.0;
+
+    // The function should process large text in reasonable time (e.g., under 10ms per 1000 chars)
+    const ALLOWED_TIME_PER_THOUSAND_CHARS: f64 = 10.0;
+    try expect(execution_time_per_thousand_chars < ALLOWED_TIME_PER_THOUSAND_CHARS);
+
+    std.debug.print("\nTime Taken per 1000 chars: {d:.2}ms\n", .{execution_time_per_thousand_chars});
+
+    // Verify the result is correct (check first few characters)
+    const expected_prefix = first_avro.object.get("avroed").?.string;
+    try expect(mem.startsWith(u8, result, expected_prefix));
+}
