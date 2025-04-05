@@ -1,0 +1,17 @@
+.{
+    .name = .example,
+    .version = "0.0.0",
+    .fingerprint = 0x6eec9b9f7441922a,
+    .minimum_zig_version = "0.14.0",
+    .dependencies = .{
+        .bangla = .{
+            .url = "git+https://github.com/nurulhudaapon/bangla.zig.git#61d6b9e656483fe004eab16a23150e937ace21fc",
+            .hash = "bangla-0.0.0-LE-V-oL4AABp0lP2LC0O8eQCq1h37XHgPiv_XMolBMFh",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
