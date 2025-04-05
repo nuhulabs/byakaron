@@ -3,10 +3,27 @@
 //! is to delete this file and start with root.zig instead.
 
 const std = @import("std");
-const lib = @import("bangla_zig_lib");
+const lib = @import("bangla_lib");
 const Transliteration = lib.transliteration.Transliteration;
 
 /// This imports the separate module containing `root.zig`. Take a look in `build.zig` for details.
 pub fn main() !void {
-    std.debug.print("Bangla.zig\n", .{});
+    const allocator = std.heap.page_allocator;
+
+    var args = try std.process.argsWithAllocator(allocator);
+    defer args.deinit();
+
+    // Skip the program name
+    _ = args.skip();
+
+    // Check if any argument was provided
+    if (args.next()) |input| {
+        const result = try Transliteration.transliterate(input, "avro", allocator);
+        defer allocator.free(result);
+
+        std.debug.print("{s}\n", .{result});
+    } else {
+        std.debug.print("Usage: bangla <text>\nExample: bangla \"amar nam apon\"\n", .{});
+        std.process.exit(1);
+    }
 }

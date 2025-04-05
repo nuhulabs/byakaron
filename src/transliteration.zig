@@ -398,15 +398,15 @@ test "mode: avro test cases" {
     defer test_data.parsed.deinit();
 
     for (test_data.avro_tests) |test_case| {
-        const orva = test_case.object.get("orva").?.string;
-        const avroed = test_case.object.get("avroed").?.string;
+        const en = test_case.object.get("en").?.string;
+        const bn = test_case.object.get("bn").?.string;
 
-        const result = try Transliteration.transliterate(orva, "avro", allocator);
+        const result = try Transliteration.transliterate(en, "avro", allocator);
         defer allocator.free(result);
 
         // std.debug.print("\nTest {d}: mode: avro test {d}: {s}..\n", .{ index, index + 1, orva[0..@min(6, orva.len)] });
         // std.debug.print("Expect: {s}\nGot:    {s}", .{ avroed, result });
-        try expect(mem.eql(u8, result, avroed));
+        try expect(mem.eql(u8, result, bn));
     }
 }
 
@@ -451,7 +451,7 @@ test "performance test - should handle large text quickly" {
     defer test_data.parsed.deinit();
 
     const first_avro = test_data.avro_tests[0];
-    const sample_text = first_avro.object.get("orva").?.string;
+    const sample_text = first_avro.object.get("en").?.string;
     var large_text = std.ArrayList(u8).init(allocator);
     defer large_text.deinit();
 
@@ -476,6 +476,6 @@ test "performance test - should handle large text quickly" {
     std.debug.print("\nTime Taken per 1000 chars: {d:.2}ms\n", .{execution_time_per_thousand_chars});
 
     // Verify the result is correct (check first few characters)
-    const expected_prefix = first_avro.object.get("avroed").?.string;
+    const expected_prefix = first_avro.object.get("bn").?.string;
     try expect(mem.startsWith(u8, result, expected_prefix));
 }
