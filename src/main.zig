@@ -3,8 +3,7 @@
 //! is to delete this file and start with root.zig instead.
 
 const std = @import("std");
-const lib = @import("bangla_lib");
-const Transliteration = lib.transliteration.Transliteration;
+const bangla_lib = @import("bangla_lib");
 
 /// This imports the separate module containing `root.zig`. Take a look in `build.zig` for details.
 pub fn main() !void {
@@ -18,7 +17,7 @@ pub fn main() !void {
 
     // Check if any argument was provided
     if (args.next()) |input| {
-        const result = try Transliteration.transliterate(input, "avro", allocator);
+        const result = try bangla_lib.Transliteration.transliterate(input, "avro", allocator);
         defer allocator.free(result);
 
         std.debug.print("{s}\n", .{result});

@@ -4,4 +4,4 @@
 const std = @import("std");
 const testing = std.testing;
 
-pub const transliteration = @import("transliteration.zig");
+pub const Transliteration = @import("transliteration.zig").Transliteration;
