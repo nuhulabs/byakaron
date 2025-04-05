@@ -1,5 +1,9 @@
-import * as rules from "../assets/rules.json";
-import { phonetic } from "./phonetic";
+import * as banglishRules from "../assets/banglish.json";
+import * as lishbangRules from "../assets/lishbang.json";
+import * as orvaRules from "../assets/orva.json";
+import * as avroRules from "../assets/rules.json";
+import { createPhonetic } from "./phonetic";
+import type { RootRule } from "./types";
 
 /**
  * Transliteration mode for Avro Phonetic keyboard layout.
@@ -100,19 +104,19 @@ export function transliterate(
   options: TransliterationOptions = { mode: "avro" },
 ) {
   const fn = MODE_TRANSLITERATION_FUNCTIONS[options.mode];
-  if (!fn) {
+  if (!fn)
     throw new Error(
       "Invalid mode. Available modes are: 'avro', 'orva', 'banglish', 'lishbang'",
     );
-  }
+
   return fn(text);
 }
 
 const MODE_TRANSLITERATION_FUNCTIONS = {
-  avro: avro,
-  orva: orva,
-  banglish: banglish,
-  lishbang: lishbang,
+  avro: createTransliterator(avroRules),
+  orva: createTransliterator(orvaRules),
+  banglish: createTransliterator(banglishRules),
+  lishbang: createTransliterator(lishbangRules),
 } as const;
 
 /**
@@ -121,7 +125,7 @@ const MODE_TRANSLITERATION_FUNCTIONS = {
 const patternMatchCache = new Map<
   string,
   {
-    pattern: (typeof rules.patterns)[0];
+    pattern: RootRule["patterns"][0];
     endIndex: number;
   }
 >();
@@ -129,90 +133,99 @@ const patternMatchCache = new Map<
 /**
  * Converts text using the Avro Phonetic system with optimized performance
  */
-function avro(text: string): string {
-  const fixed = phonetic.fixString(text);
-  const output: string[] = []; // Using array for faster string concatenation
-  const len = fixed.length;
+function createTransliterator(rules: RootRule) {
+  const phonetic = createPhonetic(rules);
+  return (text: string) => {
+    const fixed = phonetic.fixString(text);
+    const output: string[] = []; // Using array for faster string concatenation
+    const len = fixed.length;
 
-  // Pre-calculate pattern lengths for faster matching
-  const patternsWithLength = rules.patterns.map((pattern) => ({
-    pattern,
-    length: pattern.find.length,
-  }));
+    // Pre-calculate pattern lengths for faster matching and filter out empty patterns
+    const patternsWithLength = rules.patterns
+      .filter((pattern) => pattern.find.length > 0) // Skip empty patterns to avoid infinite loops
+      .map((pattern) => ({
+        pattern,
+        length: pattern.find.length,
+      }));
 
-  for (let currentIndex = 0; currentIndex < len; ++currentIndex) {
-    const startIndex = currentIndex;
-    let isMatched = false;
+    for (let currentIndex = 0; currentIndex < len; ++currentIndex) {
+      const startIndex = currentIndex;
+      let isMatched = false;
 
-    // Try to match from cache first
-    const cacheKey = fixed.slice(startIndex, startIndex + 8); // Cache key with reasonable length
-    const cachedMatch = patternMatchCache.get(cacheKey);
+      // Try to match from cache first
+      // const cacheKey = fixed.slice(startIndex, startIndex + 8); // Cache key with reasonable length
+      // const cachedMatch = patternMatchCache.get(cacheKey);
 
-    if (cachedMatch) {
-      const { pattern, endIndex } = cachedMatch;
-      if (
-        endIndex <= len &&
-        fixed.substring(startIndex, endIndex) === pattern.find
-      ) {
-        const result = processPattern(
-          pattern,
-          fixed,
-          startIndex,
-          endIndex,
-          currentIndex,
-        );
-        if (result.isMatched) {
-          output.push(result.output);
-          currentIndex = result.newIndex;
-          continue;
+      // if (cachedMatch) {
+      //   const { pattern, endIndex } = cachedMatch;
+      //   if (
+      //     endIndex <= len &&
+      //     fixed.substring(startIndex, endIndex) === pattern.find
+      //   ) {
+      //     const result = processPattern(
+      //       pattern,
+      //       fixed,
+      //       startIndex,
+      //       endIndex,
+      //       currentIndex,
+      //       phonetic,
+      //     );
+      //     if (result.isMatched) {
+      //       output.push(result.output);
+      //       currentIndex = result.newIndex;
+      //       continue;
+      //     }
+      //   }
+      // }
+
+      // No cache hit, try matching patterns
+      for (const { pattern, length } of patternsWithLength) {
+        const endIndex = currentIndex + length;
+
+        if (endIndex > len) continue; // Skip if pattern is too long
+        if (length === 0) continue; // Skip empty patterns to prevent infinite loops
+
+        const segment = fixed.substring(startIndex, endIndex);
+        if (segment === pattern.find) {
+          // Cache this successful match for future use
+          // patternMatchCache.set(cacheKey, { pattern, endIndex });
+
+          const result = processPattern(
+            pattern,
+            fixed,
+            startIndex,
+            endIndex,
+            currentIndex,
+            phonetic,
+          );
+          if (result.isMatched) {
+            output.push(result.output);
+            currentIndex = result.newIndex;
+            isMatched = true;
+            break;
+          }
         }
+      }
+
+      if (!isMatched) {
+        output.push(fixed.charAt(currentIndex));
       }
     }
 
-    // No cache hit, try matching patterns
-    for (const { pattern, length } of patternsWithLength) {
-      const endIndex = currentIndex + length;
-
-      if (endIndex > len) continue; // Skip if pattern is too long
-
-      const segment = fixed.substring(startIndex, endIndex);
-      if (segment === pattern.find) {
-        // Cache this successful match for future use
-        patternMatchCache.set(cacheKey, { pattern, endIndex });
-
-        const result = processPattern(
-          pattern,
-          fixed,
-          startIndex,
-          endIndex,
-          currentIndex,
-        );
-        if (result.isMatched) {
-          output.push(result.output);
-          currentIndex = result.newIndex;
-          isMatched = true;
-          break;
-        }
-      }
-    }
-
-    if (!isMatched) {
-      output.push(fixed.charAt(currentIndex));
-    }
-  }
-
-  return output.join("");
+    return output.join("");
+  };
 }
 
 /**
  * Optimized pattern processing with minimal object creation
  */
 function processPattern(
-  pattern: (typeof rules.patterns)[0],
+  pattern: RootRule["patterns"][0],
   fixed: string,
   startIndex: number,
   endIndex: number,
   currentIndex: number,
+  phonetic: ReturnType<typeof createPhonetic>,
 ): { isMatched: boolean; output: string; newIndex: number } {
   if (!pattern.rules) {
     return {
@@ -233,13 +246,15 @@ function processPattern(
       // Handle negative matching
       const isNegative = match.scope?.charAt(0) === "!";
       const scope = isNegative ? match.scope.substring(1) : match.scope;
+      const isPrefix = match.type === "prefix";
+      const isSuffix = match.type === "suffix";
 
       // Fast path for common cases
       switch (scope) {
         case "punctuation": {
           const isPunctuation =
-            (checkIndex < 0 && match.type === "prefix") ||
-            (checkIndex >= fixed.length && match.type === "suffix") ||
+            (isPrefix && checkIndex < 0) ||
+            (isSuffix && checkIndex >= fixed.length) ||
             phonetic.isPunctuation(fixed.charAt(checkIndex));
           if (isPunctuation === isNegative) {
             shouldReplace = false;
@@ -248,8 +263,8 @@ function processPattern(
         }
         case "vowel": {
           const isVowelMatch =
-            ((checkIndex >= 0 && match.type === "prefix") ||
-              (checkIndex < fixed.length && match.type === "suffix")) &&
+            ((isPrefix && checkIndex >= 0) ||
+              (isSuffix && checkIndex < fixed.length)) &&
             phonetic.isVowel(fixed.charAt(checkIndex));
           if (isVowelMatch === isNegative) {
             shouldReplace = false;
@@ -258,8 +273,8 @@ function processPattern(
         }
         case "consonant": {
           const isConsonantMatch =
-            ((checkIndex >= 0 && match.type === "prefix") ||
-              (checkIndex < fixed.length && match.type === "suffix")) &&
+            ((isPrefix && checkIndex >= 0) ||
+              (isSuffix && checkIndex < fixed.length)) &&
             phonetic.isConsonant(fixed.charAt(checkIndex));
           if (isConsonantMatch === isNegative) {
             shouldReplace = false;
@@ -267,10 +282,9 @@ function processPattern(
           break;
         }
         case "exact": {
-          const [s, e] =
-            match.type === "suffix"
-              ? [endIndex, endIndex + (match.value?.length || 0)]
-              : [startIndex - (match.value?.length || 0), startIndex];
+          const [s, e] = isSuffix
+            ? [endIndex, endIndex + (match.value?.length || 0)]
+            : [startIndex - (match.value?.length || 0), startIndex];
 
           if (!phonetic.isExact(match.value || "", fixed, s, e, isNegative)) {
             shouldReplace = false;
@@ -296,82 +310,4 @@ function processPattern(
     output: pattern.replace,
     newIndex: endIndex - 1,
   };
-}
-
-function orva(text: string) {
-  // Create a reverse mapping from Bengali to Roman characters
-  const reversePatterns = rules.patterns
-    .filter(
-      (pattern) =>
-        // Filter out patterns that would cause loops or are invalid for reverse mapping
-        pattern.replace &&
-        pattern.find &&
-        pattern.replace.length > 0 &&
-        pattern.find.length > 0,
-    )
-    // exclude non relevant txt
-    .filter((pattern) => pattern.find !== "o" && pattern.replace !== "")
-    .map((pattern) => ({
-      find: pattern.replace,
-      replace: pattern.find,
-      rules: pattern.rules,
-    }))
-    .sort((a, b) => b.find.length - a.find.length); // Sort by length descending for proper matching
-
-  let output = "";
-  let maxIterations = text.length * 2; // Safety counter
-  let iterations = 0;
-
-  for (let cur = 0; cur < text.length; ++cur) {
-    iterations++;
-    if (iterations > maxIterations) {
-      console.warn(
-        "Orva transliteration exceeded maximum iterations, breaking to prevent infinite loop",
-      );
-      break;
-    }
-
-    const start = cur;
-    let matched = false;
-
-    // Try to match patterns
-    for (const pattern of reversePatterns) {
-      const end = cur + pattern.find.length;
-
-      // Skip invalid patterns
-      if (end > text.length) continue;
-
-      const segment = text.substring(start, end);
-      if (segment === pattern.find) {
-        output += pattern.replace;
-        cur = end - 1; // Move cursor to end of matched pattern
-        matched = true;
-        break;
-      }
-    }
-
-    // If no pattern matches, keep the original character
-    if (!matched) {
-      output += text.charAt(cur);
-    }
-  }
-  return output
-    .replaceAll("`", "")
-    .replaceAll("আ", "a")
-    .replaceAll("অ", "o")
-    .replaceAll("ই", "i")
-    .replaceAll("ঈ", "e")
-    .replaceAll("উ", "u")
-    .replaceAll("এ", "e")
-    .replaceAll("্", "")
-    .replaceAll("়", "")
-    .replaceAll("উ", "u");
-}
-
-function banglish(text: string): string {
-  throw new Error("Banglish transliteration is not implemented yet");
-}
-
-function lishbang(text: string): string {
-  throw new Error("Lishbang transliteration is not implemented yet");
 }

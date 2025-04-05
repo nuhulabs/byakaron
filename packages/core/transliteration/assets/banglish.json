@@ -1,0 +1,6 @@
+{
+  "vowel": "অএইঈউঊ",
+  "consonant": "বচদফগহজকলমনপরসতথউভয়জ",
+  "casesensitive": "ওইউদগজনরসতয়জ",
+  "patterns": [{ "find": "ভ্ল", "replace": "bhl" }]
+}

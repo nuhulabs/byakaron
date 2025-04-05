@@ -8,6 +8,7 @@ import { Transform } from "stream";
 import { pipeline } from "stream/promises";
 
 import * as tokenization from "@bntk/tokenization";
+import * as transliteration from "@bntk/transliteration";
 
 import * as Constants from "../constant";
 import { WikipediaTransformer } from "../platforms/wikipedia";
@@ -44,6 +45,11 @@ async function handler() {
     stateManager.displayOverallProgress(sources);
 
     await Promise.all(sources.map((source) => writeUniqueWordPairs(source)));
+
+    // Display updated overall progress
+    stateManager.displayOverallProgress(sources);
+
+    await Promise.all(sources.map((source) => writeBanglishWords(source)));
 
     // Display final overall progress
     stateManager.displayOverallProgress(sources, true);
@@ -1174,4 +1180,302 @@ async function writeUniqueWordPairs(source: DataSource) {
       error,
     );
   }
+}
+
+/**
+ * Process unique words to generate Banglish transliterations
+ */
+async function writeBanglishWords(source: DataSource) {
+  try {
+    console.log(
+      `\nProcessing Banglish transliterations for source: ${source.id}`,
+    );
+
+    // Ensure source directory exists
+    const sourceDirPath = stateManager.ensureSourceDir(source.id);
+
+    // Get or initialize source state
+    const sourceState = stateManager.getSourceState(String(source.id));
+
+    // Initialize banglishWords state if not defined
+    if (!sourceState.banglishWords) {
+      stateManager.updateSourceState(String(source.id), "banglishWords", {
+        processedLines: 0,
+        totalWordsProcessed: 0,
+        completed: false,
+      });
+    }
+
+    // Skip if Banglish words processing is already completed
+    if (sourceState.banglishWords?.completed) {
+      console.log(
+        `Banglish words processing for source ${source.id} already completed, skipping`,
+      );
+      return;
+    }
+
+    // Define file paths
+    const uniqueWordsFilePath = path.join(
+      sourceDirPath,
+      Constants.UNIQUE_WORDS_FILE,
+    );
+    const banglishWordsFilePath = path.join(
+      sourceDirPath,
+      Constants.BANGLISH_WORDS_FILE,
+    );
+
+    // Check if unique words file exists
+    if (!existsSync(uniqueWordsFilePath)) {
+      console.error(`Unique words file not found: ${uniqueWordsFilePath}`);
+      return;
+    }
+
+    // Check if Banglish words file exists
+    const fileExists = existsSync(banglishWordsFilePath);
+
+    // Reset state if output file doesn't exist but state shows processing started
+    if (!fileExists && (sourceState.banglishWords?.processedLines || 0) > 0) {
+      console.log(
+        `Banglish words file doesn't exist but state shows processing started. Resetting state for source ${source.id}`,
+      );
+      stateManager.resetSourceState(source.id, "banglishWords");
+    }
+
+    // Check if we should skip processing
+    if (fileExists && !(sourceState.banglishWords?.processedLines || 0)) {
+      console.log(
+        `Banglish words file already exists, skipping processing: ${banglishWordsFilePath}`,
+      );
+      // Mark as completed in state
+      stateManager.updateSourceState(String(source.id), "banglishWords", {
+        completed: true,
+      });
+      return;
+    }
+
+    // Count total lines for progress tracking
+    console.log("Counting total words in unique words file...");
+    const totalLines = await countFileLines(uniqueWordsFilePath);
+    console.log(
+      `Total words in unique words file: ${totalLines.toLocaleString()}`,
+    );
+
+    // Update state with total lines
+    stateManager.updateSourceState(String(source.id), "banglishWords", {
+      totalLines,
+    });
+
+    // Create read stream and readline interface
+    const fileStream = createReadStream(uniqueWordsFilePath);
+    const rl = createInterface({
+      input: fileStream,
+      crlfDelay: Infinity,
+    });
+
+    // Create write stream for the CSV file
+    const banglishWriteStream = createWriteStream(banglishWordsFilePath, {
+      flags: (sourceState.banglishWords?.processedLines || 0) > 0 ? "a" : "w",
+    });
+
+    // Write CSV header if not resuming
+    if ((sourceState.banglishWords?.processedLines || 0) === 0) {
+      banglishWriteStream.write("bengali,banglish\n");
+    }
+
+    let processedLines = sourceState.banglishWords?.processedLines || 0;
+    let totalWordsProcessed =
+      sourceState.banglishWords?.totalWordsProcessed || 0;
+    let currentLine = 0;
+    const batchSize = 1000;
+    let batchWords: Array<{ bengali: string; banglish: string }> = [];
+
+    try {
+      // Process each line of the unique words file
+      for await (const line of rl) {
+        currentLine++;
+
+        // Skip already processed lines if resuming
+        if (
+          (sourceState.banglishWords?.processedLines || 0) > 0 &&
+          currentLine <= processedLines
+        ) {
+          continue;
+        }
+
+        try {
+          // Skip header line and empty lines
+          if (!line || line === "value" || line.trim().length === 0) {
+            processedLines++;
+            continue;
+          }
+
+          const bengaliWord = line.trim();
+
+          // Transliterate Bengali to Banglish using orva mode (reverse transliteration)
+          const banglishWord = transliteration.transliterate(bengaliWord, {
+            mode: "orva",
+          });
+
+          // Add to batch
+          batchWords.push({
+            bengali: bengaliWord,
+            banglish: banglishWord,
+          });
+
+          // Process batch when it reaches the batch size
+          if (batchWords.length >= batchSize) {
+            await writeBatchToFile(batchWords, banglishWriteStream);
+            totalWordsProcessed += batchWords.length;
+
+            // Display progress
+            displayProgress({
+              title: "Banglish Transliteration",
+              totalItems: totalLines,
+              processedItems: processedLines,
+              currentBatchSize: batchWords.length,
+              additionalStats: [
+                {
+                  label: "Total words processed",
+                  value: totalWordsProcessed,
+                },
+              ],
+            });
+
+            // Update state periodically
+            stateManager.updateSourceState(String(source.id), "banglishWords", {
+              processedLines,
+              totalWordsProcessed,
+            });
+
+            // Clear the batch
+            batchWords = [];
+          }
+
+          // Update progress
+          processedLines++;
+          if (processedLines % 100 === 0) {
+            displayProgress({
+              title: "Banglish Transliteration",
+              totalItems: totalLines,
+              processedItems: processedLines,
+              additionalStats: [
+                {
+                  label: "Total words processed",
+                  value: totalWordsProcessed,
+                },
+              ],
+            });
+          }
+        } catch (error) {
+          console.error(`Error processing word: ${error}`);
+          processedLines++;
+        }
+      }
+
+      // Process any remaining words in the batch
+      if (batchWords.length > 0) {
+        await writeBatchToFile(batchWords, banglishWriteStream);
+        totalWordsProcessed += batchWords.length;
+      }
+
+      // Display final progress
+      displayProgress({
+        title: "Banglish Transliteration",
+        totalItems: totalLines,
+        processedItems: processedLines,
+        additionalStats: [
+          {
+            label: "Total words processed",
+            value: totalWordsProcessed,
+          },
+        ],
+        force: true,
+      });
+
+      // Close the file write stream
+      banglishWriteStream.end();
+      console.log(`\nSuccessfully processed Banglish transliterations`);
+      console.log(`Created Banglish words file: ${banglishWordsFilePath}`);
+
+      // Mark as completed in state
+      stateManager.updateSourceState(String(source.id), "banglishWords", {
+        processedLines,
+        totalWordsProcessed,
+        completed: true,
+      });
+    } catch (error) {
+      console.error(`Error in writeBanglishWords: ${error}`);
+
+      // Update state with current progress
+      stateManager.updateSourceState(String(source.id), "banglishWords", {
+        processedLines,
+        totalWordsProcessed,
+      });
+
+      // Close the file write stream
+      banglishWriteStream.end();
+    } finally {
+      // Ensure the readline interface is closed
+      rl.close();
+      fileStream.close();
+    }
+  } catch (error) {
+    console.error(`Error processing Banglish words for ${source.id}:`, error);
+  }
+}
+
+/**
+ * Helper function to write a batch of Bengali-Banglish word pairs to CSV
+ */
+async function writeBatchToFile(
+  words: Array<{ bengali: string; banglish: string }>,
+  writeStream: NodeJS.WritableStream,
+): Promise<void> {
+  // Skip empty batches
+  if (words.length === 0) {
+    return;
+  }
+
+  return new Promise((resolve, reject) => {
+    let i = 0;
+
+    function writeNext() {
+      // Continue writing as long as there are words and the stream can accept data
+      let canContinue = true;
+
+      while (i < words.length && canContinue) {
+        const pair = words[i];
+        if (!pair) {
+          i++;
+          continue; // Skip if undefined
+        }
+
+        // Escape commas and quotes in CSV
+        const escapedBengali = pair.bengali.replace(/"/g, '""');
+        const escapedBanglish = pair.banglish.replace(/"/g, '""');
+
+        // Write the CSV line with proper quoting if needed
+        const needsQuotes =
+          escapedBengali.includes(",") || escapedBanglish.includes(",");
+        const line = needsQuotes
+          ? `"${escapedBengali}","${escapedBanglish}"\n`
+          : `${escapedBengali},${escapedBanglish}\n`;
+
+        // Write to stream and check if we need to wait for drain
+        canContinue = writeStream.write(line);
+        i++;
+      }
+
+      // If we couldn't write all words, wait for drain event
+      if (i < words.length) {
+        writeStream.once("drain", writeNext);
+      } else {
+        // All words written, resolve the promise
+        resolve();
+      }
+    }
+
+    // Start writing
+    writeNext();
+  });
 }

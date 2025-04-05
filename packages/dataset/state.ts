@@ -15,7 +15,8 @@ export type ProcessingStepType =
   | "sentences"
   | "words"
   | "distinctWords"
-  | "distinctWordPairs";
+  | "distinctWordPairs"
+  | "banglishWords";
 
 // Define base state interface for a processing step
 export interface BaseProcessingStep {
@@ -55,12 +56,18 @@ export interface DistinctWordPairsStep extends ByteBasedStep {
   uniquePairsCount: number;
 }
 
+// Define banglish words processing step
+export interface BanglishWordsStep extends LineBasedStep {
+  totalWordsProcessed: number;
+}
+
 // Define source state interface
 export interface SourceState {
   sentences: SentencesStep;
   words: WordsStep;
   distinctWords: DistinctWordsStep;
   distinctWordPairs: DistinctWordPairsStep;
+  banglishWords?: BanglishWordsStep;
 }
 
 // Define state interface
@@ -82,12 +89,16 @@ export type DistinctWordsUpdates = Partial<DistinctWordsStep>;
 // Type for distinct word pairs updates
 export type DistinctWordPairsUpdates = Partial<DistinctWordPairsStep>;
 
+// Type for banglish words updates
+export type BanglishWordsUpdates = Partial<BanglishWordsStep>;
+
 // Type for any step updates
 export type StepUpdates =
   | SentenceUpdates
   | WordUpdates
   | DistinctWordsUpdates
-  | DistinctWordPairsUpdates;
+  | DistinctWordPairsUpdates
+  | BanglishWordsUpdates;
 
 /**
  * Generic state manager for tracking processing progress
@@ -187,6 +198,12 @@ export class StateManager extends GenericStateManager<ProcessingState> {
       lastUpdated: new Date().toISOString(),
       completed: false,
     },
+    banglishWords: {
+      processedLines: 0,
+      totalWordsProcessed: 0,
+      lastUpdated: new Date().toISOString(),
+      completed: false,
+    },
   };
 
   /**
@@ -248,32 +265,51 @@ export class StateManager extends GenericStateManager<ProcessingState> {
   ): void {
     const sourceState = this.getSourceState(sourceId);
 
+    // Ensure last updated timestamp
+    const withTimestamp = {
+      ...updates,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    // Update the appropriate section of state based on type
     if (type === "sentences") {
       sourceState.sentences = {
         ...sourceState.sentences,
-        ...(updates as SentenceUpdates),
-        lastUpdated: new Date().toISOString(),
+        ...(withTimestamp as SentenceUpdates),
       };
     } else if (type === "words") {
       sourceState.words = {
         ...sourceState.words,
-        ...(updates as WordUpdates),
-        lastUpdated: new Date().toISOString(),
+        ...(withTimestamp as WordUpdates),
       };
     } else if (type === "distinctWords") {
       sourceState.distinctWords = {
         ...sourceState.distinctWords,
-        ...(updates as DistinctWordsUpdates),
-        lastUpdated: new Date().toISOString(),
+        ...(withTimestamp as DistinctWordsUpdates),
       };
     } else if (type === "distinctWordPairs") {
       sourceState.distinctWordPairs = {
         ...sourceState.distinctWordPairs,
-        ...(updates as DistinctWordPairsUpdates),
-        lastUpdated: new Date().toISOString(),
+        ...(withTimestamp as DistinctWordPairsUpdates),
+      };
+    } else if (type === "banglishWords") {
+      // Initialize banglishWords if not defined
+      if (!sourceState.banglishWords) {
+        sourceState.banglishWords = {
+          processedLines: 0,
+          totalWordsProcessed: 0,
+          lastUpdated: new Date().toISOString(),
+          completed: false,
+        };
+      }
+
+      sourceState.banglishWords = {
+        ...sourceState.banglishWords,
+        ...(withTimestamp as BanglishWordsUpdates),
       };
     }
 
+    // Save changes to file
     this.saveState();
   }
 
@@ -459,69 +495,117 @@ export class StateManager extends GenericStateManager<ProcessingState> {
     sourceState: SourceState,
     type: ProcessingStepType,
   ): number {
-    const stepState = sourceState[type];
-    const stepName = formatStepName(type);
+    try {
+      const stepState = sourceState[type];
+      if (!stepState) {
+        return 0; // Return 0 progress if step state doesn't exist
+      }
 
-    if (stepState.completed) {
-      // Get appropriate count for the step type
+      let total = 0;
+      let processed = 0;
+      let percentage = 0;
+      let status = "❓";
       let count = 0;
-      let countLabel = "";
+      let countLabel = "items";
 
-      if (type === "sentences") {
-        count = (stepState as SentencesStep).totalSentencesProcessed;
-        countLabel = "sentences";
-      } else if (type === "words") {
-        count = (stepState as WordsStep).totalWordPairsProcessed;
-        countLabel = "word pairs";
-      } else if (type === "distinctWords") {
-        count = (stepState as DistinctWordsStep).uniqueWordsCount;
-        countLabel = "unique words";
-      } else if (type === "distinctWordPairs") {
-        count = (stepState as DistinctWordPairsStep).uniquePairsCount;
-        countLabel = "unique pairs";
+      if (
+        type === "sentences" ||
+        type === "words" ||
+        type === "banglishWords"
+      ) {
+        // Line-based steps
+        total = (stepState as LineBasedStep).totalLines || 0;
+        processed = (stepState as LineBasedStep).processedLines;
+
+        if (type === "sentences") {
+          count = (stepState as SentencesStep).totalSentencesProcessed;
+          countLabel = "sentences";
+        } else if (type === "words") {
+          count = (stepState as WordsStep).totalWordPairsProcessed;
+          countLabel = "word pairs";
+        } else if (type === "banglishWords") {
+          // Banglish words step is optional, but we've already checked if it exists above
+          count = (stepState as BanglishWordsStep).totalWordsProcessed || 0;
+          countLabel = "words";
+        }
+      } else if (type === "distinctWords" || type === "distinctWordPairs") {
+        // Byte-based steps
+        total = (stepState as ByteBasedStep).totalBytes || 0;
+        processed = (stepState as ByteBasedStep).processedBytes;
+
+        if (type === "distinctWords") {
+          count = (stepState as DistinctWordsStep).uniqueWordsCount;
+          countLabel = "unique words";
+        } else if (type === "distinctWordPairs") {
+          count = (stepState as DistinctWordPairsStep).uniquePairsCount;
+          countLabel = "unique pairs";
+        }
       }
 
-      console.log(
-        `✅ ${stepName}: Complete (${count.toLocaleString()} ${countLabel})`,
-      );
-      return 1; // Step completed
-    } else {
-      // Calculate progress based on step type
-      let progress = 0;
-      let progressDetail = "";
+      // Calculate progress percentage
+      percentage = Math.round((processed / total) * 100);
 
+      // Determine status based on progress
+      if (percentage === 100) {
+        status = "✅";
+      } else if (percentage > 0) {
+        status = "🔄";
+      }
+
+      // Create a progress bar
+      const progressBar = createProgressBar(percentage);
+
+      // Calculate elapsed time and processing rate
+      const lastUpdated = new Date(
+        (stepState as BaseProcessingStep).lastUpdated ||
+          new Date().toISOString(),
+      ).getTime();
+      const elapsedSeconds = (Date.now() - lastUpdated) / 1000;
+      const rate = processed / Math.max(1, elapsedSeconds);
+
+      // Calculate estimated time remaining
+      const remaining = Math.max(0, total - processed);
+      const estimatedTimeRemaining = remaining / Math.max(0.1, rate);
+
+      // Clear console and display progress
+      console.clear();
+
+      // Display header
+      console.log(`=== ${formatStepName(type)} Processing ===`);
+
+      // Display progress bar
+      console.log(`Progress: ${progressBar} ${percentage}%`);
+
+      // Display processed/total
       if (type === "sentences" || type === "words") {
-        const lineStep = stepState as LineBasedStep;
-        if (lineStep.totalLines) {
-          progress = Math.round(
-            (lineStep.processedLines / lineStep.totalLines) * 100,
-          );
-          progressDetail = `${lineStep.processedLines.toLocaleString()}/${lineStep.totalLines.toLocaleString()} lines`;
-        }
-      } else {
-        const byteStep = stepState as ByteBasedStep;
-        if (byteStep.totalBytes) {
-          progress = Math.round(
-            (byteStep.processedBytes / byteStep.totalBytes) * 100,
-          );
-          const processedMB = (byteStep.processedBytes / (1024 * 1024)).toFixed(
-            2,
-          );
-          const totalMB = (byteStep.totalBytes / (1024 * 1024)).toFixed(2);
-          progressDetail = `${processedMB}/${totalMB} MB`;
-        }
-      }
-
-      if (progress > 0) {
-        const progressBar = createProgressBar(progress, 20);
         console.log(
-          `🔄 ${stepName}: ${progressBar} ${progress}% (${progressDetail})`,
+          `Lines: ${processed.toLocaleString()} / ${total.toLocaleString()}`,
         );
       } else {
-        console.log(`⏳ ${stepName}: Not started`);
+        const processedMB = (processed / (1024 * 1024)).toFixed(2);
+        const totalMB = (total / (1024 * 1024)).toFixed(2);
+        console.log(`Bytes: ${processedMB} MB / ${totalMB} MB`);
       }
 
-      return 0; // Step not completed
+      // Display additional info
+      console.log(`${status} ${formatStepName(type)}: ${percentage}%`);
+      console.log(`${status} ${count.toLocaleString()} ${countLabel}`);
+
+      // Display timing info in a clean format
+      console.log(`\nProcessing Metrics:`);
+      console.log(`• Rate: ${rate.toFixed(2)} items/sec`);
+      console.log(`• Elapsed: ${formatTime(elapsedSeconds)}`);
+      console.log(`• Est. remaining: ${formatTime(estimatedTimeRemaining)}`);
+      console.log(
+        `• Last update: ${new Date(stepState.lastUpdated).toLocaleTimeString()}`,
+      );
+
+      console.log(`\n${"=".repeat(40)}`);
+
+      return percentage === 100 ? 1 : 0; // Return 1 if step is completed, 0 otherwise
+    } catch (error) {
+      console.error(`Error displaying progress for ${type}:`, error);
+      return 0; // Return 0 progress if there's an error
     }
   }
 }
@@ -566,6 +650,8 @@ export function formatStepName(type: ProcessingStepType): string {
       return "Distinct Words";
     case "distinctWordPairs":
       return "Distinct Word Pairs";
+    case "banglishWords":
+      return "Banglish Words";
     default:
       return type;
   }

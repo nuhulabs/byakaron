@@ -1,4 +1,7 @@
 {
+  "vowel": "aeiou",
+  "consonant": "bcdfghjklmnpqrstvwxyz",
+  "casesensitive": "oiudgjnrstyz",
   "patterns": [
     { "find": "bhl", "replace": "ভ্ল" },
     { "find": "psh", "replace": "পশ" },
@@ -656,8 +659,5 @@
     { "find": ",", "replace": "," },
     { "find": "$", "replace": "৳" },
     { "find": "`", "replace": "" }
-  ],
-  "vowel": "aeiou",
-  "consonant": "bcdfghjklmnpqrstvwxyz",
-  "casesensitive": "oiudgjnrstyz"
+  ]
 }
