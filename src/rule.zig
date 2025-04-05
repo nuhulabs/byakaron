@@ -2,6 +2,26 @@ const std = @import("std");
 const mem = std.mem;
 const json = std.json;
 
+pub const Scope = enum {
+    vowel,
+    consonant,
+    exact,
+    punctuation,
+    pub fn fromString(str: []const u8) !Scope {
+        const is_negative = isNegative(str);
+        const scope = str[if (is_negative) 1 else 0..];
+        if (mem.eql(u8, scope, "vowel")) return .vowel;
+        if (mem.eql(u8, scope, "consonant")) return .consonant;
+        if (mem.eql(u8, scope, "exact")) return .exact;
+        if (mem.eql(u8, scope, "punctuation")) return .punctuation;
+
+        return error.InvalidScope;
+    }
+
+    pub fn isNegative(str: []const u8) bool {
+        return str[0] == '!';
+    }
+};
 pub const Pattern = struct {
     find: []const u8,
     replace: []const u8,
@@ -10,7 +30,8 @@ pub const Pattern = struct {
 
 pub const RuleMatch = struct {
     type: []const u8,
-    scope: ?[]const u8 = null,
+    scope: ?Scope = null,
+    negative: bool = false,
     value: ?[]const u8 = null,
 };
 
@@ -60,11 +81,15 @@ pub fn loadRules(allocator: std.mem.Allocator) !Rules {
                     const match_type = try allocator.dupe(u8, match_type_value.string);
                     errdefer allocator.free(match_type);
 
-                    const scope = if (match.object.get("scope")) |scope_val|
-                        try allocator.dupe(u8, scope_val.string)
+                    const scopeStr = if (match.object.get("scope")) |scope_val|
+                        scope_val.string
                     else
                         null;
-                    errdefer if (scope) |s| allocator.free(s);
+
+                    const scope = if (scopeStr) |s|
+                        try Scope.fromString(s)
+                    else
+                        null;
 
                     const value = if (match.object.get("value")) |value_val|
                         if (value_val == .null)
@@ -78,6 +103,7 @@ pub fn loadRules(allocator: std.mem.Allocator) !Rules {
                     matches[k] = RuleMatch{
                         .type = match_type,
                         .scope = scope,
+                        .negative = if (scopeStr) |s| Scope.isNegative(s) else false,
                         .value = value,
                     };
                 }
