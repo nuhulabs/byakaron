@@ -31,8 +31,10 @@ pub const Transliteration = struct {
     const RuleMatch = parsed_rules.RuleMatch;
     const Rule = parsed_rules.Rule;
     const Pattern = parsed_rules.Pattern;
+    const RootRule = parsed_rules.RootRule;
 
     patterns: []const Pattern,
+    root_rule: RootRule,
     allocator: std.mem.Allocator,
     trie: *TrieNode,
 
@@ -44,7 +46,26 @@ pub const Transliteration = struct {
     /// @param allocator Memory allocator for rule storage and trie construction
     /// @return A new Transliteration instance
     pub fn init(allocator: std.mem.Allocator) !Transliteration {
-        const patterns = try parsed_rules.loadRules(allocator);
+        const root_rule = try parsed_rules.loadRules(allocator);
+        const patterns = root_rule.patterns;
+        // DEMO: Save patterns as Zon for experimental purposes
+        // var buf = std.ArrayList(u8).init(std.heap.page_allocator);
+        // defer buf.deinit();
+        // try std.zon.stringify.serialize(patterns, .{}, buf.writer());
+        // const zonPatterns = buf.items;
+        // const jsonPatterns = std.json.fmt(patterns, .{});
+
+        // std.debug.print("zonPatterns: {s}\n", .{zonPatterns});
+        // std.debug.print("jsonPatterns: {s}\n", .{jsonPatterns});
+        // // write to file
+        // // try fs.cwd().writeFile(.{
+        // //     .data = jsonPatterns.value.msg,
+        // //     .sub_path = "patterns.json",
+        // // });
+        // try fs.cwd().writeFile(.{
+        //     .data = zonPatterns,
+        //     .sub_path = "patterns.zon",
+        // });
         const trie = try buildTrie(patterns, allocator);
         errdefer {
             allocator.free(patterns);
@@ -53,6 +74,7 @@ pub const Transliteration = struct {
         }
 
         return Transliteration{
+            .root_rule = root_rule,
             .patterns = patterns,
             .allocator = allocator,
             .trie = trie,
@@ -497,7 +519,7 @@ fn loadTestData(allocator: std.mem.Allocator) !struct { avro_tests: []const json
     const parsed = try json.parseFromSlice(json.Value, allocator, file_content, .{});
     errdefer parsed.deinit();
 
-    const avro_tests = parsed.value.object.get("avro").?.array.items;
+    const avro_tests = parsed.value.object.get("samples").?.array.items;
     const ligature_tests = parsed.value.object.get("ligature").?.object;
 
     return .{ .avro_tests = avro_tests, .ligature_tests = ligature_tests, .parsed = parsed };

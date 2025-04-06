@@ -2,6 +2,30 @@ const std = @import("std");
 const mem = std.mem;
 const json = std.json;
 
+const JsonRuleFile = struct {
+    vowel: []const u8,
+    consonant: []const u8,
+    casesensitive: []const u8,
+    patterns: []const JsonPattern,
+
+    pub const JsonPattern = struct {
+        find: []const u8,
+        replace: []const u8,
+        rules: ?[]const JsonRule = null,
+    };
+
+    pub const JsonRule = struct {
+        matches: []const JsonRuleMatch,
+        replace: []const u8,
+    };
+
+    pub const JsonRuleMatch = struct {
+        type: []const u8,
+        scope: ?[]const u8 = null,
+        value: ?[]const u8 = null,
+    };
+};
+
 pub const Scope = enum {
     vowel,
     consonant,
@@ -41,83 +65,69 @@ pub const Rule = struct {
 };
 
 pub const Rules = []const Pattern;
+pub const RootRule = struct {
+    vowel: std.StaticBitSet(256),
+    consonant: std.StaticBitSet(256),
+    casesensitive: std.StaticBitSet(256),
+    patterns: []const Pattern,
+};
 
-pub fn loadRules(allocator: std.mem.Allocator) !Rules {
-    const rules_json = @embedFile("rules.json");
+fn duplicateAndFree(allocator: std.mem.Allocator, data: []const u8) ![]u8 {
+    const duped = try allocator.dupe(u8, data);
+    errdefer allocator.free(duped);
+    return duped;
+}
 
-    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, rules_json, .{});
-    defer parsed.deinit();
+fn processPatternRules(allocator: std.mem.Allocator, pattern: JsonRuleFile.JsonPattern) !?[]Rule {
+    if (pattern.rules == null or pattern.rules.?.len == 0) return null;
 
-    const patterns_value = parsed.value.object.get("patterns") orelse return error.MissingPatterns;
-    const patterns = patterns_value.array.items;
-    var rules = try allocator.alloc(Pattern, patterns.len);
-    errdefer allocator.free(rules);
+    var rules_array = try allocator.alloc(Rule, pattern.rules.?.len);
+    errdefer allocator.free(rules_array);
 
-    for (patterns, 0..) |pattern, i| {
-        const find_value = pattern.object.get("find") orelse return error.MissingFindField;
-        const replace_value = pattern.object.get("replace") orelse return error.MissingReplaceField;
+    for (pattern.rules.?, 0..) |rule, j| {
+        const matches = try allocator.alloc(RuleMatch, rule.matches.len);
+        errdefer allocator.free(matches);
 
-        const find = try allocator.dupe(u8, find_value.string);
-        errdefer allocator.free(find);
-        const replace = try allocator.dupe(u8, replace_value.string);
-        errdefer allocator.free(replace);
+        for (rule.matches, 0..) |match, k| {
+            const match_type = try duplicateAndFree(allocator, match.type);
+            const scope = if (match.scope) |s| try Scope.fromString(s) else null;
+            const value = if (match.value) |v| try duplicateAndFree(allocator, v) else null;
+            errdefer if (value) |v| allocator.free(v);
 
-        const rules_opt = pattern.object.get("rules");
-        var pattern_rules: ?[]Rule = null;
-
-        if (rules_opt != null and rules_opt.?.array.items.len > 0) {
-            var rules_array = try allocator.alloc(Rule, rules_opt.?.array.items.len);
-            errdefer allocator.free(rules_array);
-
-            for (rules_opt.?.array.items, 0..) |rule, j| {
-                const matches_value = rule.object.get("matches") orelse return error.MissingMatchesField;
-                const rule_replace_value = rule.object.get("replace") orelse return error.MissingRuleReplaceField;
-
-                const matches = try allocator.alloc(RuleMatch, matches_value.array.items.len);
-                errdefer allocator.free(matches);
-
-                for (matches_value.array.items, 0..) |match, k| {
-                    const match_type_value = match.object.get("type") orelse return error.MissingMatchTypeField;
-                    const match_type = try allocator.dupe(u8, match_type_value.string);
-                    errdefer allocator.free(match_type);
-
-                    const scopeStr = if (match.object.get("scope")) |scope_val|
-                        scope_val.string
-                    else
-                        null;
-
-                    const scope = if (scopeStr) |s|
-                        try Scope.fromString(s)
-                    else
-                        null;
-
-                    const value = if (match.object.get("value")) |value_val|
-                        if (value_val == .null)
-                            null
-                        else
-                            try allocator.dupe(u8, value_val.string)
-                    else
-                        null;
-                    errdefer if (value) |v| allocator.free(v);
-
-                    matches[k] = RuleMatch{
-                        .type = match_type,
-                        .scope = scope,
-                        .negative = if (scopeStr) |s| Scope.isNegative(s) else false,
-                        .value = value,
-                    };
-                }
-
-                const rule_replace = try allocator.dupe(u8, rule_replace_value.string);
-                errdefer allocator.free(rule_replace);
-
-                rules_array[j] = Rule{
-                    .matches = matches,
-                    .replace = rule_replace,
-                };
-            }
-            pattern_rules = rules_array;
+            matches[k] = RuleMatch{
+                .type = match_type,
+                .scope = scope,
+                .negative = if (match.scope) |s| Scope.isNegative(s) else false,
+                .value = value,
+            };
         }
+
+        const rule_replace = try duplicateAndFree(allocator, rule.replace);
+        rules_array[j] = Rule{
+            .matches = matches,
+            .replace = rule_replace,
+        };
+    }
+    return rules_array;
+}
+
+pub fn loadRules(allocator: std.mem.Allocator) !RootRule {
+    const rules_json = @embedFile("rules.json");
+    var typed_parsed = try std.json.parseFromSlice(JsonRuleFile, allocator, rules_json, .{});
+    defer typed_parsed.deinit();
+
+    const json_rules = typed_parsed.value;
+
+    const vowel = try duplicateAndFree(allocator, json_rules.vowel);
+    const consonant = try duplicateAndFree(allocator, json_rules.consonant);
+    const casesensitive = try duplicateAndFree(allocator, json_rules.casesensitive);
+
+    var rules = try allocator.alloc(Pattern, json_rules.patterns.len);
+
+    for (json_rules.patterns, 0..) |pattern, i| {
+        const find = try duplicateAndFree(allocator, pattern.find);
+        const replace = try duplicateAndFree(allocator, pattern.replace);
+        const pattern_rules = try processPatternRules(allocator, pattern);
 
         rules[i] = Pattern{
             .find = find,
@@ -126,7 +136,30 @@ pub fn loadRules(allocator: std.mem.Allocator) !Rules {
         };
     }
 
-    return rules;
+    const vowels = blk: {
+        var set = std.StaticBitSet(256).initEmpty();
+        for (vowel) |c| set.set(c);
+        break :blk set;
+    };
+
+    const consonants = blk: {
+        var set = std.StaticBitSet(256).initEmpty();
+        for (consonant) |c| set.set(c);
+        break :blk set;
+    };
+
+    const case_sensitive_chars = blk: {
+        var set = std.StaticBitSet(256).initEmpty();
+        for (casesensitive) |c| set.set(c);
+        break :blk set;
+    };
+
+    return RootRule{
+        .vowel = vowels,
+        .consonant = consonants,
+        .casesensitive = case_sensitive_chars,
+        .patterns = rules,
+    };
 }
 
 pub fn getPatterns() []const Pattern {
