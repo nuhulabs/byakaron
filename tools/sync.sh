@@ -38,4 +38,8 @@ for file_pair in "${SOURCE_FILES[@]}"; do
     cp "$TEMP_DIR/$source_path" "$target_file"
 done
 
+# Clean up the temporary directory
+echo "Cleaning up temporary directory..."
+rm -rf "$TEMP_DIR"
+
 echo "Sync completed successfully!"

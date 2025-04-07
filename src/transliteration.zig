@@ -1,10 +1,5 @@
 const std = @import("std");
-const mem = std.mem;
-const assert = std.debug.assert;
-const parsed_rules = @import("rule.zig");
-const expect = std.testing.expect;
-const json = std.json;
-const fs = std.fs;
+const grammar = @import("rule.zig");
 
 /// Provides transliteration capabilities between Latin and Bangla scripts.
 ///
@@ -28,14 +23,16 @@ const fs = std.fs;
 /// // result now contains "আমার বাংলা"
 /// ```
 pub const Transliteration = struct {
-    const RuleMatch = parsed_rules.RuleMatch;
-    const Rule = parsed_rules.Rule;
-    const Pattern = parsed_rules.Pattern;
-    const RootRule = parsed_rules.RootRule;
+    const Mode = enum {
+        avro,
+        orva,
+        banglish,
+        lishbang,
+    };
 
-    patterns: []const Pattern,
-    root_rule: RootRule,
     allocator: std.mem.Allocator,
+    rules: grammar.Grammar,
+    patterns: []const grammar.Pattern,
     trie: *TrieNode,
 
     /// Initializes the Transliteration system.
@@ -46,27 +43,10 @@ pub const Transliteration = struct {
     /// @param allocator Memory allocator for rule storage and trie construction
     /// @return A new Transliteration instance
     pub fn init(allocator: std.mem.Allocator) !Transliteration {
-        const root_rule = try parsed_rules.loadRules(allocator);
-        const patterns = root_rule.patterns;
-        // DEMO: Save patterns as Zon for experimental purposes
-        // var buf = std.ArrayList(u8).init(std.heap.page_allocator);
-        // defer buf.deinit();
-        // try std.zon.stringify.serialize(patterns, .{}, buf.writer());
-        // const zonPatterns = buf.items;
-        // const jsonPatterns = std.json.fmt(patterns, .{});
-
-        // std.debug.print("zonPatterns: {s}\n", .{zonPatterns});
-        // std.debug.print("jsonPatterns: {s}\n", .{jsonPatterns});
-        // // write to file
-        // // try fs.cwd().writeFile(.{
-        // //     .data = jsonPatterns.value.msg,
-        // //     .sub_path = "patterns.json",
-        // // });
-        // try fs.cwd().writeFile(.{
-        //     .data = zonPatterns,
-        //     .sub_path = "patterns.zon",
-        // });
+        const rules = try grammar.loadGrammar(allocator);
+        const patterns = rules.patterns;
         const trie = try buildTrie(patterns, allocator);
+
         errdefer {
             allocator.free(patterns);
             trie.deinit();
@@ -74,7 +54,7 @@ pub const Transliteration = struct {
         }
 
         return Transliteration{
-            .root_rule = root_rule,
+            .rules = rules,
             .patterns = patterns,
             .allocator = allocator,
             .trie = trie,
@@ -92,116 +72,6 @@ pub const Transliteration = struct {
 
         // Free the patterns
         self.allocator.free(self.patterns);
-    }
-
-    // Use hashsets for faster character lookups
-    const vowels = blk: {
-        var set = std.StaticBitSet(256).initEmpty();
-        for ("aeiou") |c| {
-            set.set(c);
-        }
-        break :blk set;
-    };
-
-    const consonants = blk: {
-        var set = std.StaticBitSet(256).initEmpty();
-        for ("bcdfghjklmnpqrstvwxyz") |c| {
-            set.set(c);
-        }
-        break :blk set;
-    };
-
-    const case_sensitive_chars = blk: {
-        var set = std.StaticBitSet(256).initEmpty();
-        for ("oiudgjnrstyz") |c| {
-            set.set(c);
-        }
-        break :blk set;
-    };
-
-    // Pre-compute lowercase transformation table for faster case conversion
-    const lowercase_table = blk: {
-        var table: [256]u8 = undefined;
-        var i: u16 = 0;
-        while (i < 256) : (i += 1) {
-            table[i] = std.ascii.toLower(@intCast(i));
-        }
-        break :blk table;
-    };
-
-    /// Fixes the input string by converting non-case-sensitive characters to lowercase.
-    ///
-    /// Some characters in the Avro Phonetic system are case-sensitive and carry
-    /// special meaning (e.g., 'O' vs 'o'). This function preserves those characters
-    /// while converting all others to lowercase for consistent processing.
-    ///
-    /// @param input The input text to process
-    /// @param allocator Memory allocator for the new string
-    /// @return A new string with appropriate case formatting (caller owns memory)
-    pub fn fixString(input: []const u8, allocator: std.mem.Allocator) ![]u8 {
-        var fixed = try allocator.alloc(u8, input.len);
-        errdefer allocator.free(fixed);
-
-        for (input, 0..) |char, i| {
-            if (isCaseSensitive(char)) {
-                fixed[i] = char;
-            } else {
-                fixed[i] = lowercase_table[char];
-            }
-        }
-        return fixed;
-    }
-
-    /// Checks if the given character is a vowel.
-    ///
-    /// @param c The character to check
-    /// @return true if the character is a vowel, false otherwise
-    pub fn isVowel(c: u8) bool {
-        return vowels.isSet(lowercase_table[c]);
-    }
-
-    /// Checks if the given character is a consonant.
-    ///
-    /// @param c The character to check
-    /// @return true if the character is a consonant, false otherwise
-    pub fn isConsonant(c: u8) bool {
-        return consonants.isSet(lowercase_table[c]);
-    }
-
-    /// Checks if the given character is punctuation (neither vowel nor consonant).
-    ///
-    /// @param c The character to check
-    /// @return true if the character is punctuation, false otherwise
-    pub fn isPunctuation(c: u8) bool {
-        return !isVowel(c) and !isConsonant(c);
-    }
-
-    /// Checks if the string exactly matches the substring of the haystack.
-    ///
-    /// @param needle The string to search for
-    /// @param heystack The string to search in
-    /// @param start The start index of the substring
-    /// @param end The end index of the substring
-    /// @param not Whether to negate the match result
-    /// @return true if the substring matches (or doesn't match if not is true)
-    pub fn isExact(needle: []const u8, heystack: []const u8, start: usize, end: usize, not: bool) bool {
-        if (start < 0 or end > heystack.len) {
-            return not;
-        }
-
-        const substring = heystack[start..end];
-        return (mem.eql(u8, substring, needle)) != not;
-    }
-
-    /// Checks if the given character should be treated as case-sensitive.
-    ///
-    /// In the Avro Phonetic system, certain characters have different meanings
-    /// based on their case (uppercase vs lowercase). This function identifies those characters.
-    ///
-    /// @param c The character to check
-    /// @return true if the character's case should be preserved, false otherwise
-    pub fn isCaseSensitive(c: u8) bool {
-        return case_sensitive_chars.isSet(lowercase_table[c]);
     }
 
     /// Transliterates text between Bangla and Latin scripts using various modes.
@@ -237,28 +107,105 @@ pub const Transliteration = struct {
     /// @return The transliterated text (caller owns the memory)
     /// @error InvalidMode if the specified mode is not recognized
     /// @error NotImplemented if the mode is recognized but not yet implemented
-    pub fn transliterate(text: []const u8, mode: []const u8, allocator: std.mem.Allocator) ![]u8 {
+    pub fn transliterate(text: []const u8, comptime mode: Mode, allocator: std.mem.Allocator) ![]u8 {
         var trans = try Transliteration.init(allocator);
         defer trans.deinit();
 
-        if (mem.eql(u8, mode, "avro")) {
-            return try trans.avro(text, allocator);
-        } else if (mem.eql(u8, mode, "orva")) {
-            return try trans.orva(text, allocator);
-        } else if (mem.eql(u8, mode, "banglish")) {
-            return error.NotImplemented;
-        } else if (mem.eql(u8, mode, "lishbang")) {
-            return error.NotImplemented;
-        } else {
-            return error.InvalidMode;
+        switch (mode) {
+            .avro => return try trans.avro(text, allocator),
+            .orva => return try trans.orva(text, allocator),
+            .banglish => return error.NotImplemented,
+            .lishbang => return error.NotImplemented,
         }
+    }
+
+    /// Transliterates Latin script to Bangla using Avro Phonetic keyboard layout rules.
+    ///
+    /// Avro Phonetic is the most widely used phonetic typing method for Bangla text.
+    /// It follows intuitive phonetic rules where you type words exactly as they sound.
+    /// This implementation uses a trie-based pattern matching system for efficient
+    /// character mapping with contextual rules.
+    ///
+    /// @param text The Latin script input text to convert to Bangla
+    /// @param allocator Memory allocator for operation
+    /// @return The transliterated Bangla text (caller owns the memory)
+    fn avro(self: *const Transliteration, text: []const u8, allocator: std.mem.Allocator) ![]u8 {
+        const fixed = try fixString(text, allocator);
+        defer allocator.free(fixed);
+
+        // Use a fixed buffer for output to reduce allocations, with capacity for expansion
+        var output = std.ArrayList(u8).init(allocator);
+        errdefer output.deinit();
+        try output.ensureTotalCapacity(fixed.len * 3); // Pre-allocate with more space for worst case
+
+        const len = fixed.len;
+        var currentIndex: usize = 0;
+
+        // Reuse buffer for pattern output to avoid allocation in hot loop
+        var result_buffer = std.ArrayList(u8).init(allocator);
+        defer result_buffer.deinit();
+        try result_buffer.ensureTotalCapacity(32); // Typical replacement size
+
+        while (currentIndex < len) {
+            var node = self.trie;
+            var matchLength: usize = 0;
+            var matchPattern: ?*const grammar.Pattern = null;
+            var i: usize = currentIndex;
+
+            // Fast trie traversal with direct character indexing
+            while (i < len) {
+                const char = fixed[i];
+                const next_node = node.children[char] orelse break;
+                if (next_node.isEndOfPattern) {
+                    matchLength = i - currentIndex + 1;
+                    matchPattern = next_node.pattern;
+                }
+                node = next_node;
+                i += 1;
+            }
+
+            if (matchPattern) |pattern| {
+                const endIndex = currentIndex + matchLength;
+                // Clear buffer for reuse
+                result_buffer.clearRetainingCapacity();
+
+                const result = try processPattern(pattern.*, fixed, currentIndex, endIndex, allocator, &result_buffer);
+                try output.appendSlice(result.output);
+                currentIndex = result.newIndex + 1;
+            } else {
+                try output.append(fixed[currentIndex]);
+                currentIndex += 1;
+            }
+        }
+
+        return output.toOwnedSlice();
+    }
+
+    /// Transliterates Bangla script to Latin using Orva (Reverse Avro) rules.
+    ///
+    /// Orva performs reverse transliteration from Bangla script to romanized text.
+    /// It's particularly useful for converting Bangla text into a Latin alphabet representation
+    /// that can be easily typed using a standard keyboard.
+    ///
+    /// Note: This is currently not implemented.
+    ///
+    /// @param text The Bangla script input text to convert to Latin
+    /// @param allocator Memory allocator for operation
+    /// @return The transliterated Latin text (caller owns the memory)
+    /// @error NotImplemented since this feature is not yet available
+    fn orva(self: *const Transliteration, text: []const u8, allocator: std.mem.Allocator) ![]u8 {
+        // TODO: Implement orva mode
+        _ = self;
+        _ = text;
+        _ = allocator;
+        return error.NotImplemented;
     }
 
     // Using a more efficient character-indexed trie node
     const TrieNode = struct {
         // Direct array indexing for ASCII characters (much faster than HashMap)
         children: [256]?*TrieNode,
-        pattern: ?*const Pattern,
+        pattern: ?*const grammar.Pattern,
         isEndOfPattern: bool,
         allocator: std.mem.Allocator,
 
@@ -288,11 +235,11 @@ pub const Transliteration = struct {
     };
 
     const PatternWithIndex = struct {
-        pattern: Pattern,
+        pattern: grammar.Pattern,
         index: usize,
     };
 
-    fn buildTrie(patterns_list: []const Pattern, allocator: std.mem.Allocator) !*TrieNode {
+    fn buildTrie(patterns_list: []const grammar.Pattern, allocator: std.mem.Allocator) !*TrieNode {
         const root = try TrieNode.init(allocator);
         errdefer root.deinit();
 
@@ -313,8 +260,8 @@ pub const Transliteration = struct {
         return root;
     }
 
-    fn processPatternFast(
-        pattern: Pattern,
+    fn processPattern(
+        pattern: grammar.Pattern,
         chars: []const u8,
         startIndex: usize,
         endIndex: usize,
@@ -333,7 +280,7 @@ pub const Transliteration = struct {
             var shouldReplace: bool = true;
 
             for (rule.matches) |match| {
-                const isSuffix = mem.eql(u8, match.type, "suffix");
+                const isSuffix = match.type == .suffix;
                 // Check index is signed to handle negatives properly
                 const checkIndex: isize = if (isSuffix) @intCast(endIndex) else previousIndex;
                 const isNegative = match.negative;
@@ -390,7 +337,7 @@ pub const Transliteration = struct {
 
                                 // Check if indices are valid
                                 if (s_index >= 0 and e_index <= chars.len and s_index <= e_index) {
-                                    const isExactMatch = mem.eql(u8, chars[@intCast(s_index)..@intCast(e_index)], value);
+                                    const isExactMatch = std.mem.eql(u8, chars[@intCast(s_index)..@intCast(e_index)], value);
 
                                     if (isExactMatch == isNegative) {
                                         shouldReplace = false;
@@ -425,98 +372,93 @@ pub const Transliteration = struct {
         return .{ .output = result_buffer.items, .newIndex = endIndex - 1 };
     }
 
-    /// Transliterates Latin script to Bangla using Avro Phonetic keyboard layout rules.
-    ///
-    /// Avro Phonetic is the most widely used phonetic typing method for Bangla text.
-    /// It follows intuitive phonetic rules where you type words exactly as they sound.
-    /// This implementation uses a trie-based pattern matching system for efficient
-    /// character mapping with contextual rules.
-    ///
-    /// @param text The Latin script input text to convert to Bangla
-    /// @param allocator Memory allocator for operation
-    /// @return The transliterated Bangla text (caller owns the memory)
-    fn avro(self: *const Transliteration, text: []const u8, allocator: std.mem.Allocator) ![]u8 {
-        const fixed = try fixString(text, allocator);
-        defer allocator.free(fixed);
+    // Use hashsets for faster character lookups
+    const vowels = blk: {
+        var set = std.StaticBitSet(256).initEmpty();
+        for ("aeiou") |c| {
+            set.set(c);
+        }
+        break :blk set;
+    };
 
-        // Use a fixed buffer for output to reduce allocations, with capacity for expansion
-        var output = std.ArrayList(u8).init(allocator);
-        errdefer output.deinit();
-        try output.ensureTotalCapacity(fixed.len * 3); // Pre-allocate with more space for worst case
+    const consonants = blk: {
+        var set = std.StaticBitSet(256).initEmpty();
+        for ("bcdfghjklmnpqrstvwxyz") |c| {
+            set.set(c);
+        }
+        break :blk set;
+    };
 
-        const len = fixed.len;
-        var currentIndex: usize = 0;
+    const case_sensitive_chars = blk: {
+        var set = std.StaticBitSet(256).initEmpty();
+        for ("oiudgjnrstyz") |c| {
+            set.set(c);
+        }
+        break :blk set;
+    };
 
-        // Reuse buffer for pattern output to avoid allocation in hot loop
-        var result_buffer = std.ArrayList(u8).init(allocator);
-        defer result_buffer.deinit();
-        try result_buffer.ensureTotalCapacity(32); // Typical replacement size
+    // Pre-compute lowercase transformation table for faster case conversion
+    const lowercase_table = blk: {
+        var table: [256]u8 = undefined;
+        var i: u16 = 0;
+        while (i < 256) : (i += 1) {
+            table[i] = std.ascii.toLower(@intCast(i));
+        }
+        break :blk table;
+    };
 
-        while (currentIndex < len) {
-            var node = self.trie;
-            var matchLength: usize = 0;
-            var matchPattern: ?*const Pattern = null;
-            var i: usize = currentIndex;
+    fn fixString(input: []const u8, allocator: std.mem.Allocator) ![]u8 {
+        var fixed = try allocator.alloc(u8, input.len);
+        errdefer allocator.free(fixed);
 
-            // Fast trie traversal with direct character indexing
-            while (i < len) {
-                const char = fixed[i];
-                const next_node = node.children[char] orelse break;
-                if (next_node.isEndOfPattern) {
-                    matchLength = i - currentIndex + 1;
-                    matchPattern = next_node.pattern;
-                }
-                node = next_node;
-                i += 1;
-            }
-
-            if (matchPattern) |pattern| {
-                const endIndex = currentIndex + matchLength;
-                // Clear buffer for reuse
-                result_buffer.clearRetainingCapacity();
-
-                const result = try processPatternFast(pattern.*, fixed, currentIndex, endIndex, allocator, &result_buffer);
-                try output.appendSlice(result.output);
-                currentIndex = result.newIndex + 1;
+        for (input, 0..) |char, i| {
+            if (isCaseSensitive(char)) {
+                fixed[i] = char;
             } else {
-                try output.append(fixed[currentIndex]);
-                currentIndex += 1;
+                fixed[i] = lowercase_table[char];
             }
         }
-
-        return output.toOwnedSlice();
+        return fixed;
     }
 
-    /// Transliterates Bangla script to Latin using Orva (Reverse Avro) rules.
-    ///
-    /// Orva performs reverse transliteration from Bangla script to romanized text.
-    /// It's particularly useful for converting Bangla text into a Latin alphabet representation
-    /// that can be easily typed using a standard keyboard.
-    ///
-    /// Note: This is currently not implemented.
-    ///
-    /// @param text The Bangla script input text to convert to Latin
-    /// @param allocator Memory allocator for operation
-    /// @return The transliterated Latin text (caller owns the memory)
-    /// @error NotImplemented since this feature is not yet available
-    fn orva(self: *const Transliteration, text: []const u8, allocator: std.mem.Allocator) ![]u8 {
-        // TODO: Implement orva mode
-        _ = self;
-        _ = text;
-        _ = allocator;
-        return error.NotImplemented;
+    fn isVowel(c: u8) bool {
+        return vowels.isSet(lowercase_table[c]);
+    }
+
+    fn isConsonant(c: u8) bool {
+        return consonants.isSet(lowercase_table[c]);
+    }
+
+    fn isPunctuation(c: u8) bool {
+        return !isVowel(c) and !isConsonant(c);
+    }
+
+    fn isExact(needle: []const u8, heystack: []const u8, start: usize, end: usize, not: bool) bool {
+        if (start < 0 or end > heystack.len) {
+            return not;
+        }
+
+        const substring = heystack[start..end];
+        return (std.mem.eql(u8, substring, needle)) != not;
+    }
+    fn isCaseSensitive(c: u8) bool {
+        return case_sensitive_chars.isSet(lowercase_table[c]);
     }
 };
 
+// ------------ TESTING ------------
+const expect = std.testing.expect;
+const assert = std.debug.assert;
+
 // Helper function to load test data
-fn loadTestData(allocator: std.mem.Allocator) !struct { avro_tests: []const json.Value, ligature_tests: json.ObjectMap, parsed: json.Parsed(json.Value) } {
-    const file = try fs.cwd().openFile("src/transliteration.test.json", .{});
+fn loadTestData(allocator: std.mem.Allocator) !struct { avro_tests: []const std.json.Value, ligature_tests: std.json.ObjectMap, parsed: std.json.Parsed(std.json.Value) } {
+    const file = try std.fs.cwd().openFile("src/transliteration.test.json", .{});
     defer file.close();
 
     const file_content = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
     defer allocator.free(file_content);
 
-    const parsed = try json.parseFromSlice(json.Value, allocator, file_content, .{});
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, file_content, .{});
     errdefer parsed.deinit();
 
     const avro_tests = parsed.value.object.get("samples").?.array.items;
@@ -545,12 +487,12 @@ test "mode: avro test cases" {
         const en = test_case.object.get("en").?.string;
         const bn = test_case.object.get("bn").?.string;
 
-        const result = try Transliteration.transliterate(en, "avro", allocator);
+        const result = try Transliteration.transliterate(en, .avro, allocator);
         defer allocator.free(result);
 
         // std.debug.print("\nTest {d}: mode: avro test {d}: {s}..\n", .{ index, index + 1, orva[0..@min(6, orva.len)] });
         // std.debug.print("Expect: {s}\nGot:    {s}", .{ avroed, result });
-        try expect(mem.eql(u8, result, bn));
+        try expect(std.mem.eql(u8, result, bn));
     }
 }
 
@@ -568,7 +510,7 @@ test "mode: avro ligature cases" {
         const value = entry.value_ptr.string;
         total_ligatures += 1;
 
-        const result = try Transliteration.transliterate(key, "avro", allocator);
+        const result = try Transliteration.transliterate(key, .avro, allocator);
         defer allocator.free(result);
 
         const isSame = std.mem.eql(u8, value, result);
@@ -606,7 +548,7 @@ test "performance test - should handle large text quickly" {
     }
 
     const start_time = std.time.nanoTimestamp();
-    const result = try Transliteration.transliterate(large_text.items, "avro", allocator);
+    const result = try Transliteration.transliterate(large_text.items, .avro, allocator);
     defer allocator.free(result);
     const end_time = std.time.nanoTimestamp();
 
@@ -621,5 +563,5 @@ test "performance test - should handle large text quickly" {
 
     // Verify the result is correct (check first few characters)
     const expected_prefix = first_avro.object.get("bn").?.string;
-    try expect(mem.startsWith(u8, result, expected_prefix));
+    try expect(std.mem.startsWith(u8, result, expected_prefix));
 }
