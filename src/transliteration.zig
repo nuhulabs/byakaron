@@ -467,17 +467,15 @@ fn loadTestData(allocator: std.mem.Allocator) !struct { avro_tests: []const std.
     return .{ .avro_tests = avro_tests, .ligature_tests = ligature_tests, .parsed = parsed };
 }
 
-// Test avro transliteration cases
-// test "mode: debug test" {
-//     const allocator = std.heap.page_allocator;
-//     const result = try Transliteration.transliterate("A`", "avro", allocator);
-//     const expected = "া";
-//     defer allocator.free(result);
-//     std.debug.print("\n\nExpect: {s}\nGot:    {s}\n", .{ expected, result });
-//     try expect(mem.eql(u8, result, expected));
-// }
+test "mode: debug test" {
+    const allocator = std.heap.page_allocator;
+    const result = try Transliteration.transliterate("A`", .avro, allocator);
+    const expected = "া";
+    defer allocator.free(result);
+    // std.debug.print("\n\nExpect: {s}\nGot:    {s}\n", .{ expected, result });
+    try expect(std.mem.eql(u8, result, expected));
+}
 
-// Test avro transliteration cases
 test "mode: avro test cases" {
     const allocator = std.heap.page_allocator;
     const test_data = try loadTestData(allocator);
@@ -496,7 +494,6 @@ test "mode: avro test cases" {
     }
 }
 
-// Test ligature transliteration cases
 test "mode: avro ligature cases" {
     const allocator = std.heap.page_allocator;
     const test_data = try loadTestData(allocator);
@@ -530,7 +527,6 @@ test "mode: avro ligature cases" {
     std.debug.print("\n\nTotal: {d}\nFailed: {d}\n", .{ total_ligatures, total_failed });
 }
 
-// Performance test
 test "performance test - should handle large text quickly" {
     const allocator = std.heap.page_allocator;
     const test_data = try loadTestData(allocator);
