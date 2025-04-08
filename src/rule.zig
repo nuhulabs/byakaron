@@ -2,13 +2,14 @@ const std = @import("std");
 const mem = std.mem;
 const json = std.json;
 
-pub fn loadGrammar(allocator: std.mem.Allocator) !Grammar {
-    const rules_json = @embedFile("rules.json");
-    var typed_parsed = try std.json.parseFromSlice(GrammarFile, allocator, rules_json, .{});
+pub fn loadGrammar(comptime rules_file_name: []const u8) Grammar {
+    const allocator = std.heap.page_allocator;
+    const rules_json = @embedFile(rules_file_name);
+    const typed_parsed = std.json.parseFromSlice(GrammarFile, allocator, rules_json, .{}) catch unreachable;
     defer typed_parsed.deinit();
 
     const json_rules = typed_parsed.value;
-    return Grammar.fromJson(json_rules, allocator);
+    return Grammar.fromJson(json_rules, allocator) catch unreachable;
 }
 
 // Grammar is the internal representation of the grammar

@@ -17,7 +17,7 @@ pub fn main() !void {
 
     // Check if any argument was provided
     if (args.next()) |input| {
-        const result = try bangla_lib.Transliteration.transliterate(input, "avro", allocator);
+        const result = try bangla_lib.Transliteration.transliterate(input, .avro, allocator);
         defer allocator.free(result);
 
         std.debug.print("{s}\n", .{result});

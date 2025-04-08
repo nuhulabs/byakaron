@@ -32,9 +32,8 @@ pub const Transliteration = struct {
 
     allocator: std.mem.Allocator,
     rules: grammar.Grammar,
-    patterns: []const grammar.Pattern,
     trie: *TrieNode,
-
+    mode: Mode,
     /// Initializes the Transliteration system.
     ///
     /// This constructor loads the transliteration rules and builds the pattern
@@ -42,22 +41,24 @@ pub const Transliteration = struct {
     ///
     /// @param allocator Memory allocator for rule storage and trie construction
     /// @return A new Transliteration instance
-    pub fn init(allocator: std.mem.Allocator) !Transliteration {
-        const rules = try grammar.loadGrammar(allocator);
-        const patterns = rules.patterns;
-        const trie = try buildTrie(patterns, allocator);
-
+    pub fn init(allocator: std.mem.Allocator, comptime mode: Mode) Transliteration {
+        const rules = grammar.loadGrammar(switch (mode) {
+            .avro => "rules.json",
+            .orva => "rules.json",
+            .banglish => "rules.json",
+            .lishbang => "rules.json",
+        });
+        const trie = buildTrie(allocator, rules) catch unreachable;
         errdefer {
-            allocator.free(patterns);
             trie.deinit();
             allocator.destroy(trie);
         }
 
-        return Transliteration{
+        return .{
             .rules = rules,
-            .patterns = patterns,
             .allocator = allocator,
             .trie = trie,
+            .mode = mode,
         };
     }
 
@@ -66,12 +67,8 @@ pub const Transliteration = struct {
     /// Frees all allocated memory, including the pattern matching trie and rule patterns.
     /// Must be called when the Transliteration object is no longer needed.
     pub fn deinit(self: *Transliteration) void {
-        // Free the trie structure
         self.trie.deinit();
         self.allocator.destroy(self.trie);
-
-        // Free the patterns
-        self.allocator.free(self.patterns);
     }
 
     /// Transliterates text between Bangla and Latin scripts using various modes.
@@ -107,16 +104,8 @@ pub const Transliteration = struct {
     /// @return The transliterated text (caller owns the memory)
     /// @error InvalidMode if the specified mode is not recognized
     /// @error NotImplemented if the mode is recognized but not yet implemented
-    pub fn transliterate(text: []const u8, comptime mode: Mode, allocator: std.mem.Allocator) ![]u8 {
-        var trans = try Transliteration.init(allocator);
-        defer trans.deinit();
-
-        switch (mode) {
-            .avro => return try trans.avro(text, allocator),
-            .orva => return try trans.orva(text, allocator),
-            .banglish => return error.NotImplemented,
-            .lishbang => return error.NotImplemented,
-        }
+    pub fn transliterate(self: *Transliteration, text: []const u8) []u8 {
+        return self.execute(text) catch unreachable;
     }
 
     /// Transliterates Latin script to Bangla using Avro Phonetic keyboard layout rules.
@@ -129,12 +118,12 @@ pub const Transliteration = struct {
     /// @param text The Latin script input text to convert to Bangla
     /// @param allocator Memory allocator for operation
     /// @return The transliterated Bangla text (caller owns the memory)
-    fn avro(self: *const Transliteration, text: []const u8, allocator: std.mem.Allocator) ![]u8 {
-        const fixed = try fixString(text, allocator);
-        defer allocator.free(fixed);
+    fn execute(self: *Transliteration, text: []const u8) ![]u8 {
+        const fixed = try self.normalizeInput(text, self.allocator);
+        defer self.allocator.free(fixed);
 
         // Use a fixed buffer for output to reduce allocations, with capacity for expansion
-        var output = std.ArrayList(u8).init(allocator);
+        var output = std.ArrayList(u8).init(self.allocator);
         errdefer output.deinit();
         try output.ensureTotalCapacity(fixed.len * 3); // Pre-allocate with more space for worst case
 
@@ -142,7 +131,7 @@ pub const Transliteration = struct {
         var currentIndex: usize = 0;
 
         // Reuse buffer for pattern output to avoid allocation in hot loop
-        var result_buffer = std.ArrayList(u8).init(allocator);
+        var result_buffer = std.ArrayList(u8).init(self.allocator);
         defer result_buffer.deinit();
         try result_buffer.ensureTotalCapacity(32); // Typical replacement size
 
@@ -169,7 +158,7 @@ pub const Transliteration = struct {
                 // Clear buffer for reuse
                 result_buffer.clearRetainingCapacity();
 
-                const result = try processPattern(pattern.*, fixed, currentIndex, endIndex, allocator, &result_buffer);
+                const result = try self.processPattern(pattern.*, fixed, currentIndex, endIndex, &result_buffer);
                 try output.appendSlice(result.output);
                 currentIndex = result.newIndex + 1;
             } else {
@@ -179,26 +168,6 @@ pub const Transliteration = struct {
         }
 
         return output.toOwnedSlice();
-    }
-
-    /// Transliterates Bangla script to Latin using Orva (Reverse Avro) rules.
-    ///
-    /// Orva performs reverse transliteration from Bangla script to romanized text.
-    /// It's particularly useful for converting Bangla text into a Latin alphabet representation
-    /// that can be easily typed using a standard keyboard.
-    ///
-    /// Note: This is currently not implemented.
-    ///
-    /// @param text The Bangla script input text to convert to Latin
-    /// @param allocator Memory allocator for operation
-    /// @return The transliterated Latin text (caller owns the memory)
-    /// @error NotImplemented since this feature is not yet available
-    fn orva(self: *const Transliteration, text: []const u8, allocator: std.mem.Allocator) ![]u8 {
-        // TODO: Implement orva mode
-        _ = self;
-        _ = text;
-        _ = allocator;
-        return error.NotImplemented;
     }
 
     // Using a more efficient character-indexed trie node
@@ -234,16 +203,14 @@ pub const Transliteration = struct {
         }
     };
 
-    const PatternWithIndex = struct {
-        pattern: grammar.Pattern,
-        index: usize,
-    };
-
-    fn buildTrie(patterns_list: []const grammar.Pattern, allocator: std.mem.Allocator) !*TrieNode {
+    fn buildTrie(
+        allocator: std.mem.Allocator,
+        rules: grammar.Grammar,
+    ) !*TrieNode {
         const root = try TrieNode.init(allocator);
         errdefer root.deinit();
 
-        for (patterns_list) |*pattern| {
+        for (rules.patterns) |*pattern| {
             var current = root;
             const find = pattern.find;
             var i: usize = 0;
@@ -261,11 +228,11 @@ pub const Transliteration = struct {
     }
 
     fn processPattern(
+        self: *Transliteration,
         pattern: grammar.Pattern,
         chars: []const u8,
         startIndex: usize,
         endIndex: usize,
-        _: std.mem.Allocator, // Unused but kept for compatibility
         result_buffer: *std.ArrayList(u8),
     ) !struct { output: []const u8, newIndex: usize } {
         if (pattern.rules == null) {
@@ -293,7 +260,7 @@ pub const Transliteration = struct {
                             const hasPunctuation =
                                 (checkIndex < 0 and !isSuffix) or
                                 (checkIndex >= chars.len and isSuffix) or
-                                (checkIndex >= 0 and checkIndex < chars.len and isPunctuation(chars[@intCast(checkIndex)]));
+                                (checkIndex >= 0 and checkIndex < chars.len and self.isPunctuation(chars[@intCast(checkIndex)]));
 
                             if (hasPunctuation == isNegative) {
                                 shouldReplace = false;
@@ -304,7 +271,7 @@ pub const Transliteration = struct {
                             const isVowelMatch =
                                 ((checkIndex >= 0 and !isSuffix) or
                                     (checkIndex < chars.len and isSuffix)) and
-                                (checkIndex >= 0 and checkIndex < chars.len and isVowel(chars[@intCast(checkIndex)]));
+                                (checkIndex >= 0 and checkIndex < chars.len and self.isVowel(chars[@intCast(checkIndex)]));
 
                             if (isVowelMatch == isNegative) {
                                 shouldReplace = false;
@@ -315,7 +282,7 @@ pub const Transliteration = struct {
                             const isConsonantMatch =
                                 ((checkIndex >= 0 and !isSuffix) or
                                     (checkIndex < chars.len and isSuffix)) and
-                                (checkIndex >= 0 and checkIndex < chars.len and isConsonant(chars[@intCast(checkIndex)]));
+                                (checkIndex >= 0 and checkIndex < chars.len and self.isConsonant(chars[@intCast(checkIndex)]));
 
                             if (isConsonantMatch == isNegative) {
                                 shouldReplace = false;
@@ -372,31 +339,6 @@ pub const Transliteration = struct {
         return .{ .output = result_buffer.items, .newIndex = endIndex - 1 };
     }
 
-    // Use hashsets for faster character lookups
-    const vowels = blk: {
-        var set = std.StaticBitSet(256).initEmpty();
-        for ("aeiou") |c| {
-            set.set(c);
-        }
-        break :blk set;
-    };
-
-    const consonants = blk: {
-        var set = std.StaticBitSet(256).initEmpty();
-        for ("bcdfghjklmnpqrstvwxyz") |c| {
-            set.set(c);
-        }
-        break :blk set;
-    };
-
-    const case_sensitive_chars = blk: {
-        var set = std.StaticBitSet(256).initEmpty();
-        for ("oiudgjnrstyz") |c| {
-            set.set(c);
-        }
-        break :blk set;
-    };
-
     // Pre-compute lowercase transformation table for faster case conversion
     const lowercase_table = blk: {
         var table: [256]u8 = undefined;
@@ -407,12 +349,12 @@ pub const Transliteration = struct {
         break :blk table;
     };
 
-    fn fixString(input: []const u8, allocator: std.mem.Allocator) ![]u8 {
+    fn normalizeInput(self: *Transliteration, input: []const u8, allocator: std.mem.Allocator) ![]u8 {
         var fixed = try allocator.alloc(u8, input.len);
         errdefer allocator.free(fixed);
 
         for (input, 0..) |char, i| {
-            if (isCaseSensitive(char)) {
+            if (self.isCaseSensitive(char)) {
                 fixed[i] = char;
             } else {
                 fixed[i] = lowercase_table[char];
@@ -421,16 +363,16 @@ pub const Transliteration = struct {
         return fixed;
     }
 
-    fn isVowel(c: u8) bool {
-        return vowels.isSet(lowercase_table[c]);
+    fn isVowel(self: *Transliteration, c: u8) bool {
+        return self.rules.vowel.isSet(lowercase_table[c]);
     }
 
-    fn isConsonant(c: u8) bool {
-        return consonants.isSet(lowercase_table[c]);
+    fn isConsonant(self: *Transliteration, c: u8) bool {
+        return self.rules.consonant.isSet(lowercase_table[c]);
     }
 
-    fn isPunctuation(c: u8) bool {
-        return !isVowel(c) and !isConsonant(c);
+    fn isPunctuation(self: *Transliteration, c: u8) bool {
+        return !self.isVowel(c) and !self.isConsonant(c);
     }
 
     fn isExact(needle: []const u8, heystack: []const u8, start: usize, end: usize, not: bool) bool {
@@ -441,14 +383,15 @@ pub const Transliteration = struct {
         const substring = heystack[start..end];
         return (std.mem.eql(u8, substring, needle)) != not;
     }
-    fn isCaseSensitive(c: u8) bool {
-        return case_sensitive_chars.isSet(lowercase_table[c]);
+    fn isCaseSensitive(self: *Transliteration, c: u8) bool {
+        return self.rules.casesensitive.isSet(lowercase_table[c]);
     }
 };
 
 // ------------ TESTING ------------
 const expect = std.testing.expect;
 const assert = std.debug.assert;
+const testing = std.testing;
 
 // Helper function to load test data
 fn loadTestData(allocator: std.mem.Allocator) !struct { avro_tests: []const std.json.Value, ligature_tests: std.json.ObjectMap, parsed: std.json.Parsed(std.json.Value) } {
@@ -469,11 +412,14 @@ fn loadTestData(allocator: std.mem.Allocator) !struct { avro_tests: []const std.
 
 test "mode: debug test" {
     const allocator = std.heap.page_allocator;
-    const result = try Transliteration.transliterate("A`", .avro, allocator);
+    var transliteratior = Transliteration.init(allocator, .avro);
+    defer transliteratior.deinit();
+
+    const result = transliteratior.transliterate("A`");
     const expected = "া";
     defer allocator.free(result);
     // std.debug.print("\n\nExpect: {s}\nGot:    {s}\n", .{ expected, result });
-    try expect(std.mem.eql(u8, result, expected));
+    try testing.expectEqualStrings(result, expected);
 }
 
 test "mode: avro test cases" {
@@ -481,16 +427,17 @@ test "mode: avro test cases" {
     const test_data = try loadTestData(allocator);
     defer test_data.parsed.deinit();
 
+    var transliteratior = Transliteration.init(allocator, .avro);
     for (test_data.avro_tests) |test_case| {
         const en = test_case.object.get("en").?.string;
         const bn = test_case.object.get("bn").?.string;
 
-        const result = try Transliteration.transliterate(en, .avro, allocator);
+        const result = transliteratior.transliterate(en);
         defer allocator.free(result);
 
         // std.debug.print("\nTest {d}: mode: avro test {d}: {s}..\n", .{ index, index + 1, orva[0..@min(6, orva.len)] });
         // std.debug.print("Expect: {s}\nGot:    {s}", .{ avroed, result });
-        try expect(std.mem.eql(u8, result, bn));
+        try testing.expectEqualStrings(result, bn);
     }
 }
 
@@ -499,6 +446,7 @@ test "mode: avro ligature cases" {
     const test_data = try loadTestData(allocator);
     defer test_data.parsed.deinit();
 
+    var transliteratior = Transliteration.init(allocator, .avro);
     var it = test_data.ligature_tests.iterator();
     var total_failed: usize = 0;
     var total_ligatures: usize = 0;
@@ -507,7 +455,7 @@ test "mode: avro ligature cases" {
         const value = entry.value_ptr.string;
         total_ligatures += 1;
 
-        const result = try Transliteration.transliterate(key, .avro, allocator);
+        const result = transliteratior.transliterate(key);
         defer allocator.free(result);
 
         const isSame = std.mem.eql(u8, value, result);
@@ -542,9 +490,9 @@ test "performance test - should handle large text quickly" {
     while (i < 1000) : (i += 1) {
         try large_text.appendSlice(sample_text);
     }
-
+    var transliteratior = Transliteration.init(allocator, .avro);
     const start_time = std.time.nanoTimestamp();
-    const result = try Transliteration.transliterate(large_text.items, .avro, allocator);
+    const result = transliteratior.transliterate(large_text.items);
     defer allocator.free(result);
     const end_time = std.time.nanoTimestamp();
 
