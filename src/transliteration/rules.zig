@@ -1,15 +1,42 @@
 const std = @import("std");
 const mem = std.mem;
 const json = std.json;
+const zongRules: Grammar = @import("rules.zon");
+
+pub fn main() !void {
+    // const grammar = loadGrammar("rules.json");
+
+    // // write zon
+    // var zon_str = std.ArrayList(u8).init(std.heap.page_allocator);
+    // defer zon_str.deinit();
+    // try std.zon.stringify.serialize(grammar, .{
+    //     .emit_codepoint_literals = .never,
+    //     .whitespace = false,
+    // }, zon_str.writer());
+    // try std.fs.cwd().writeFile(.{
+    //     .data = zon_str.items,
+    //     .sub_path = "src/rules.zon",
+    // });
+
+    const my_string = "আa"; // "Hello" in Chinese (two 3-byte characters)
+
+    for (my_string) |byte| {
+        std.debug.print("{}\n", .{byte});
+    }
+}
 
 pub fn loadGrammar(comptime rules_file_name: []const u8) Grammar {
-    const allocator = std.heap.page_allocator;
-    const rules_json = @embedFile(rules_file_name);
-    const typed_parsed = std.json.parseFromSlice(GrammarFile, allocator, rules_json, .{}) catch unreachable;
-    defer typed_parsed.deinit();
+    // const allocator = std.heap.page_allocator;
+    // const rules_json = @embedFile(rules_file_name);
+    // const typed_parsed = std.json.parseFromSlice(GrammarFile, allocator, rules_json, .{}) catch unreachable;
+    // defer typed_parsed.deinit();
 
-    const json_rules = typed_parsed.value;
-    return Grammar.fromJson(json_rules, allocator) catch unreachable;
+    // const json_rules = typed_parsed.value;
+    // const grammar = Grammar.fromJson(allocator, json_rules) catch unreachable;
+    _ = rules_file_name;
+    comptime {
+        return zongRules;
+    }
 }
 
 // Grammar is the internal representation of the grammar
@@ -42,7 +69,7 @@ pub const Grammar = struct {
         }
     };
 
-    fn fromJson(json_grammar: GrammarFile, allocator: std.mem.Allocator) !Grammar {
+    fn fromJson(allocator: std.mem.Allocator, json_grammar: GrammarFile) !Grammar {
         var rules = try allocator.alloc(Pattern, json_grammar.patterns.len);
 
         for (json_grammar.patterns, 0..) |pattern, i| {
@@ -75,12 +102,6 @@ const RuleMatch = struct {
     pub const Type = enum {
         suffix,
         prefix,
-
-        pub fn fromString(str: []const u8) !Type {
-            if (mem.eql(u8, str, "suffix")) return .suffix;
-            if (mem.eql(u8, str, "prefix")) return .prefix;
-            return error.InvalidRuleMatchType;
-        }
     };
     pub const Scope = enum {
         vowel,
@@ -104,7 +125,7 @@ const RuleMatch = struct {
     };
 
     fn fromJson(json_rule_match: GrammarFile.JsonRuleMatch, allocator: std.mem.Allocator) !RuleMatch {
-        const rule_match_type = try Type.fromString(json_rule_match.type);
+        const rule_match_type = json_rule_match.type;
         const scope = if (json_rule_match.scope) |s| try Scope.fromString(s) else null;
         const negative = if (json_rule_match.scope) |s| Scope.isNegative(s) else false;
         const value = if (json_rule_match.value) |v| try duplicateAndFree(allocator, v) else null;
@@ -148,7 +169,7 @@ const GrammarFile = struct {
     };
 
     pub const JsonRuleMatch = struct {
-        type: []const u8,
+        type: RuleMatch.Type,
         scope: ?[]const u8 = null,
         value: ?[]const u8 = null,
     };

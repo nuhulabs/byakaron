@@ -7,4 +7,5 @@
 const std = @import("std");
 const testing = std.testing;
 
-pub const Transliteration = @import("transliteration.zig").Transliteration;
+pub const Transliteration = @import("transliteration/transliteration.zig").Transliteration;
+pub const Tokenization = @import("tokenization/tokenizer.zig");

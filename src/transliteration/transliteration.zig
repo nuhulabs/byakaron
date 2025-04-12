@@ -1,5 +1,5 @@
 const std = @import("std");
-const grammar = @import("rule.zig");
+const grammar = @import("rules.zig");
 
 /// Provides transliteration capabilities between Latin and Bangla scripts.
 ///
@@ -42,7 +42,7 @@ pub const Transliteration = struct {
     /// @param allocator Memory allocator for rule storage and trie construction
     /// @return A new Transliteration instance
     pub fn init(allocator: std.mem.Allocator, comptime mode: Mode) Transliteration {
-        const rules = grammar.loadGrammar(switch (mode) {
+        const rules = comptime grammar.loadGrammar(switch (mode) {
             .avro => "rules.json",
             .orva => "rules.json",
             .banglish => "rules.json",
@@ -395,7 +395,7 @@ const testing = std.testing;
 
 // Helper function to load test data
 fn loadTestData(allocator: std.mem.Allocator) !struct { avro_tests: []const std.json.Value, ligature_tests: std.json.ObjectMap, parsed: std.json.Parsed(std.json.Value) } {
-    const file = try std.fs.cwd().openFile("src/transliteration.test.json", .{});
+    const file = try std.fs.cwd().openFile("src/assets/transliteration.test.json", .{});
     defer file.close();
 
     const file_content = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
@@ -485,27 +485,38 @@ test "performance test - should handle large text quickly" {
     var large_text = std.ArrayList(u8).init(allocator);
     defer large_text.deinit();
 
-    // Repeat the sample text 100 times
+    // Repeat the sample text 1000 times
     var i: usize = 0;
     while (i < 1000) : (i += 1) {
         try large_text.appendSlice(sample_text);
     }
-    var transliteratior = Transliteration.init(allocator, .avro);
-    const start_time = std.time.nanoTimestamp();
-    const result = transliteratior.transliterate(large_text.items);
-    defer allocator.free(result);
-    const end_time = std.time.nanoTimestamp();
 
-    const execution_time = @as(f64, @floatFromInt(end_time - start_time)) / 1_000_000.0; // Convert to milliseconds
-    const execution_time_per_thousand_chars = (execution_time / @as(f64, @floatFromInt(large_text.items.len))) * 1000.0;
+    var transliteratior = Transliteration.init(allocator, .avro);
+    var total_time: f64 = 0;
+    const NUM_RUNS = 20;
+
+    // Run 10 times and calculate average
+    var run: usize = 0;
+    while (run < NUM_RUNS) : (run += 1) {
+        const start_time = std.time.nanoTimestamp();
+        const result = transliteratior.transliterate(large_text.items);
+        defer allocator.free(result);
+        const end_time = std.time.nanoTimestamp();
+
+        const execution_time = @as(f64, @floatFromInt(end_time - start_time)) / 1_000_000.0; // Convert to milliseconds
+        total_time += execution_time;
+
+        // Verify the result is correct (check first few characters)
+        const expected_prefix = first_avro.object.get("bn").?.string;
+        try expect(std.mem.startsWith(u8, result, expected_prefix));
+    }
+
+    const avg_execution_time = total_time / @as(f64, @floatFromInt(NUM_RUNS));
+    const avg_execution_time_per_thousand_chars = (avg_execution_time / @as(f64, @floatFromInt(large_text.items.len))) * 1000.0;
 
     // The function should process large text in reasonable time (e.g., under 10ms per 1000 chars)
     const ALLOWED_TIME_PER_THOUSAND_CHARS: f64 = 10.0;
-    try expect(execution_time_per_thousand_chars < ALLOWED_TIME_PER_THOUSAND_CHARS);
+    try expect(avg_execution_time_per_thousand_chars < ALLOWED_TIME_PER_THOUSAND_CHARS);
 
-    std.debug.print("\nTime Taken per 1000 chars: {d:.2}ms\n", .{execution_time_per_thousand_chars});
-
-    // Verify the result is correct (check first few characters)
-    const expected_prefix = first_avro.object.get("bn").?.string;
-    try expect(std.mem.startsWith(u8, result, expected_prefix));
+    std.debug.print("\nAverage Time Taken per 1000 chars: {d:.2}ms\n", .{avg_execution_time_per_thousand_chars});
 }
