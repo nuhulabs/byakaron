@@ -361,7 +361,7 @@ export class StateManager extends GenericStateManager<ProcessingState> {
     const sourceState = this.state.sources[sourceId];
     if (!sourceState) return false;
 
-    return sourceState[type].completed;
+    return sourceState[type]?.completed ?? false;
   }
 
   /**
@@ -417,7 +417,7 @@ export class StateManager extends GenericStateManager<ProcessingState> {
 
     // Check if we should resume processing
     const shouldResume =
-      fileExists && hasStarted && !sourceState[type].completed;
+      fileExists && hasStarted && !sourceState[type]?.completed;
 
     // Check if we should process at all
     const shouldProcess = !fileExists || shouldResume;
