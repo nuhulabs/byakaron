@@ -26,7 +26,7 @@ function HomepageHeader() {
           }}
         >
           <img
-            src="/core/img/mascot-main.svg"
+            src="/img/mascot-main.svg"
             alt="Bangla Toolkit Logo"
             style={{
               height: "min(250px, 35vw)",
@@ -34,7 +34,7 @@ function HomepageHeader() {
             }}
           />
           <img
-            src="/core/img/logo.svg"
+            src="/img/logo.svg"
             alt="Bangla Toolkit Logo"
             style={{
               height: "min(220px, 30vw)",
