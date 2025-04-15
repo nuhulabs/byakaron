@@ -44,7 +44,7 @@ pub fn build(b: *std.Build) void {
     const lib_unit_tests = b.addTest(.{
         .root_module = lib_mod,
     });
-    const t_mod = b.createModule(.{ .root_source_file = b.path("src/transliteration.zig"), .target = target, .optimize = optimize });
+    const t_mod = b.createModule(.{ .root_source_file = b.path("src/root.zig"), .target = target, .optimize = optimize });
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
     const exe_unit_tests = b.addTest(.{
         .root_module = t_mod,

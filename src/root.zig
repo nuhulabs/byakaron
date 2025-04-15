@@ -9,3 +9,8 @@ const testing = std.testing;
 
 pub const Transliteration = @import("transliteration/transliteration.zig").Transliteration;
 pub const Tokenization = @import("tokenization/tokenizer.zig");
+
+test {
+    _ = @import("transliteration/transliteration.zig");
+    _ = @import("tokenization/tokenizer.zig");
+}
