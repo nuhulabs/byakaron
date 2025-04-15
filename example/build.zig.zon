@@ -5,8 +5,8 @@
     .minimum_zig_version = "0.14.0",
     .dependencies = .{
         .bangla = .{
-            .url = "git+https://github.com/nurulhudaapon/bangla.zig.git#61d6b9e656483fe004eab16a23150e937ace21fc",
-            .hash = "bangla-0.0.0-LE-V-oL4AABp0lP2LC0O8eQCq1h37XHgPiv_XMolBMFh",
+            .url = "../",
+            .hash = "bangla-0.2.0-LE-V-rLRAgCvJbMO93nqTQ-Q4x98S3vF_qIvN6alQdLg",
         },
     },
     .paths = .{

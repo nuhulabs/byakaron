@@ -308,9 +308,7 @@ pub const Tokenizer = struct {
                 for (sent.tokens) |token| {
                     if (token.kind == .word) {
                         if (options.normalize) {
-                            const normalized = try normalizeWikiWord(self.allocator, token.value);
-                            defer self.allocator.free(normalized);
-                            try words.append(normalized);
+                            @compileError("normalize is not implemented yet as it was making things slow");
                         } else {
                             try words.append(token.value);
                         }
@@ -820,7 +818,7 @@ const NUKTA_REPLACEMENTS = [_]struct { from: []const u8, to: []const u8 }{
 // with their single Unicode character representation.
 // Returns an allocated slice containing the normalized word. The caller owns the memory.
 // If no normalization is needed, returns an allocated duplicate of the original word.
-fn normalizeWikiWord(allocator: std.mem.Allocator, word: []const u8) ![]u8 {
+pub fn normalizeWord(allocator: std.mem.Allocator, word: []const u8) ![]u8 {
     var needs_replacement = false;
     for (NUKTA_REPLACEMENTS) |rep| {
         if (std.mem.indexOf(u8, word, rep.from) != null) {
@@ -859,58 +857,58 @@ fn normalizeWikiWord(allocator: std.mem.Allocator, word: []const u8) ![]u8 {
     return buffer.toOwnedSlice();
 }
 
-test "normalizeWikiWord" {
+test "normalizeWord" {
     const allocator = std.testing.allocator;
 
     // Test basic normalization (sequences)
-    const norm_yya = try normalizeWikiWord(allocator, "\u{09af}\u{09bc}"); // YA + NUKTA
+    const norm_yya = try normalizeWord(allocator, "\u{09af}\u{09bc}"); // YA + NUKTA
     defer allocator.free(norm_yya);
     try std.testing.expectEqualStrings("\u{09df}", norm_yya); // YYA
 
-    const norm_rha = try normalizeWikiWord(allocator, "\u{09a2}\u{09bc}"); // DDHA + NUKTA
+    const norm_rha = try normalizeWord(allocator, "\u{09a2}\u{09bc}"); // DDHA + NUKTA
     defer allocator.free(norm_rha);
     try std.testing.expectEqualStrings("\u{09dd}", norm_rha); // RHA
 
-    const norm_rra = try normalizeWikiWord(allocator, "\u{09a1}\u{09bc}"); // DDA + NUKTA
+    const norm_rra = try normalizeWord(allocator, "\u{09a1}\u{09bc}"); // DDA + NUKTA
     defer allocator.free(norm_rra);
     try std.testing.expectEqualStrings("\u{09dc}", norm_rra); // RRA
 
     // Test unchanged words
-    const norm_bangla = try normalizeWikiWord(allocator, "বাংলা");
+    const norm_bangla = try normalizeWord(allocator, "বাংলা");
     defer allocator.free(norm_bangla);
     try std.testing.expectEqualStrings("বাংলা", norm_bangla);
 
     // Test words with single replacements
-    const norm_shomoy = try normalizeWikiWord(allocator, "সময়"); // Has YA+NUKTA sequence
+    const norm_shomoy = try normalizeWord(allocator, "সময়"); // Has YA+NUKTA sequence
     defer allocator.free(norm_shomoy);
     // Expect the normalized form with YYA (U+09DF)
     try std.testing.expectEqualStrings("স\u{09ae}\u{09df}", norm_shomoy);
 
-    const norm_ashar = try normalizeWikiWord(allocator, "আষাঢ়"); // Has DDHA+NUKTA sequence
+    const norm_ashar = try normalizeWord(allocator, "আষাঢ়"); // Has DDHA+NUKTA sequence
     defer allocator.free(norm_ashar);
     // Expect the normalized form with RHA (U+09DD)
     try std.testing.expectEqualStrings("আ\u{09b7}\u{09be}\u{09dd}", norm_ashar);
 
-    const norm_bari = try normalizeWikiWord(allocator, "বাড়ি"); // Has DDA+NUKTA sequence
+    const norm_bari = try normalizeWord(allocator, "বাড়ি"); // Has DDA+NUKTA sequence
     defer allocator.free(norm_bari);
     // Expect the normalized form with RRA (U+09DC) followed by i (U+09BF)
     try std.testing.expectEqualStrings("বা\u{09dc}\u{09bf}", norm_bari);
 
     // Test word with multiple replacements (hypothetical, combine sequences)
     const multi_seq = "\u{09af}\u{09bc}\u{09a1}\u{09bc}"; // YA+NUKTA, DDA+NUKTA
-    const norm_multi = try normalizeWikiWord(allocator, multi_seq);
+    const norm_multi = try normalizeWord(allocator, multi_seq);
     defer allocator.free(norm_multi);
     try std.testing.expectEqualStrings("\u{09df}\u{09dc}", norm_multi); // YYA + RRA
 
     // Test word needing normalization within context
     const context_word = "গাড়\u{09af}\u{09bc}"; // gaar + YA + NUKTA
-    const norm_context = try normalizeWikiWord(allocator, context_word);
+    const norm_context = try normalizeWord(allocator, context_word);
     defer allocator.free(norm_context);
     // Expect the normalized form: gaar (গাড় U+0997 U+09be U+09dc) + YYA (য় U+09df)
     try std.testing.expectEqualStrings("গাড়\u{09df}", norm_context);
 
     const somoy_word = "সময়";
-    const norm_somoy = try normalizeWikiWord(allocator, somoy_word);
+    const norm_somoy = try normalizeWord(allocator, somoy_word);
     defer allocator.free(norm_somoy);
 
     // try std.testing.expectEqualStrings("সময়", normalizeWikiWord("সময়"));
