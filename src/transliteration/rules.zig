@@ -4,25 +4,31 @@ const json = std.json;
 const zongRules: Grammar = @import("rules.zon");
 
 pub fn main() !void {
-    const allocator = std.heap.page_allocator;
-    const rules_json = std.fs.cwd().readFileAlloc(allocator, "src/assets/orva.json", std.math.maxInt(usize)) catch unreachable;
+    const rules = [_]struct { src_path: []const u8, export_path: []const u8 }{
+        .{ .src_path = "src/assets/orva.json", .export_path = "src/assets/orva.zon" },
+        .{ .src_path = "src/assets/rules.json", .export_path = "src/assets/rules.zon" },
+    };
+    for (rules) |rule| {
+        const allocator = std.heap.page_allocator;
+        const rules_json = std.fs.cwd().readFileAlloc(allocator, rule.src_path, std.math.maxInt(usize)) catch unreachable;
 
-    const typed_parsed = std.json.parseFromSlice(GrammarFile, allocator, rules_json, .{}) catch unreachable;
-    defer typed_parsed.deinit();
+        const typed_parsed = std.json.parseFromSlice(GrammarFile, allocator, rules_json, .{}) catch unreachable;
+        defer typed_parsed.deinit();
 
-    const grammar = Grammar.fromJson(allocator, typed_parsed.value) catch unreachable;
+        const grammar = Grammar.fromJson(allocator, typed_parsed.value) catch unreachable;
 
-    // write zon
-    var zon_str = std.ArrayList(u8).init(std.heap.page_allocator);
-    defer zon_str.deinit();
-    try std.zon.stringify.serialize(grammar, .{
-        .emit_codepoint_literals = .never,
-        .whitespace = false,
-    }, zon_str.writer());
-    try std.fs.cwd().writeFile(.{
-        .data = zon_str.items,
-        .sub_path = "src/assets/orva.zon",
-    });
+        // write zon
+        var zon_str = std.ArrayList(u8).init(std.heap.page_allocator);
+        defer zon_str.deinit();
+        try std.zon.stringify.serialize(grammar, .{
+            .emit_codepoint_literals = .never,
+            .whitespace = false,
+        }, zon_str.writer());
+        try std.fs.cwd().writeFile(.{
+            .data = zon_str.items,
+            .sub_path = rule.export_path,
+        });
+    }
 }
 
 // Grammar is the internal representation of the grammar
@@ -173,5 +179,15 @@ fn duplicateAndFree(allocator: std.mem.Allocator, data: []const u8) ![]u8 {
 fn stringToSet(data: []const u8) std.StaticBitSet(256) {
     var set = std.StaticBitSet(256).initEmpty();
     for (data) |c| set.set(c);
+    return set;
+}
+
+fn stringToUnicodeSet(data: []const u8) std.StaticBitSet(0x09FF) {
+    var set = std.StaticBitSet(0x09FF).initEmpty();
+    const utf = std.unicode.Utf8View.init(data) catch unreachable;
+    var iter = utf.iterator();
+    while (iter.nextCodepoint()) |codepoint| {
+        set.set(codepoint);
+    }
     return set;
 }
