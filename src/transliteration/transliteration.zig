@@ -42,12 +42,12 @@ pub const Transliteration = struct {
     /// @param allocator Memory allocator for rule storage and trie construction
     /// @return A new Transliteration instance
     pub fn init(allocator: std.mem.Allocator, comptime mode: Mode) Transliteration {
-        const rules = comptime grammar.loadGrammar(switch (mode) {
-            .avro => "rules.json",
-            .orva => "rules.json",
-            .banglish => "rules.json",
-            .lishbang => "rules.json",
-        });
+        const rules: grammar.Grammar = comptime switch (mode) {
+            .avro => @import("rules.zon"),
+            .orva => @import("orva.zon"),
+            .banglish => @import("rules.zon"),
+            .lishbang => @import("rules.zon"),
+        };
         const trie = buildTrie(allocator, rules) catch unreachable;
         errdefer {
             trie.deinit();
@@ -364,10 +364,16 @@ pub const Transliteration = struct {
     }
 
     fn isVowel(self: *Transliteration, c: u8) bool {
+        if (self.mode == .orva) {
+            return self.rules.vowel.isSet(c);
+        }
         return self.rules.vowel.isSet(lowercase_table[c]);
     }
 
     fn isConsonant(self: *Transliteration, c: u8) bool {
+        if (self.mode == .orva) {
+            return self.rules.consonant.isSet(c);
+        }
         return self.rules.consonant.isSet(lowercase_table[c]);
     }
 
@@ -384,6 +390,9 @@ pub const Transliteration = struct {
         return (std.mem.eql(u8, substring, needle)) != not;
     }
     fn isCaseSensitive(self: *Transliteration, c: u8) bool {
+        if (self.mode == .orva) {
+            return self.rules.casesensitive.isSet(c);
+        }
         return self.rules.casesensitive.isSet(lowercase_table[c]);
     }
 };
@@ -437,7 +446,26 @@ test "mode: avro test cases" {
 
         // std.debug.print("\nTest {d}: mode: avro test {d}: {s}..\n", .{ index, index + 1, orva[0..@min(6, orva.len)] });
         // std.debug.print("Expect: {s}\nGot:    {s}", .{ avroed, result });
-        try testing.expectEqualStrings(result, bn);
+        try testing.expectEqualStrings(bn, result);
+    }
+}
+
+test "mode: orva test cases" {
+    const allocator = std.heap.page_allocator;
+    const test_data = try loadTestData(allocator);
+    defer test_data.parsed.deinit();
+
+    var transliteratior = Transliteration.init(allocator, .orva);
+    for (test_data.avro_tests) |test_case| {
+        const en = test_case.object.get("en").?.string;
+        const bn = test_case.object.get("bn").?.string;
+
+        const result = transliteratior.transliterate(bn);
+        defer allocator.free(result);
+
+        // std.debug.print("\nTest {d}: mode: avro test {d}: {s}..\n", .{ index, index + 1, orva[0..@min(6, orva.len)] });
+        // std.debug.print("Expect: {s}\nGot:    {s}", .{ avroed, result });
+        try testing.expectEqualStrings(en, result);
     }
 }
 

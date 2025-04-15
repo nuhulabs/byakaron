@@ -4,39 +4,25 @@ const json = std.json;
 const zongRules: Grammar = @import("rules.zon");
 
 pub fn main() !void {
-    // const grammar = loadGrammar("rules.json");
+    const allocator = std.heap.page_allocator;
+    const rules_json = std.fs.cwd().readFileAlloc(allocator, "src/assets/orva.json", std.math.maxInt(usize)) catch unreachable;
 
-    // // write zon
-    // var zon_str = std.ArrayList(u8).init(std.heap.page_allocator);
-    // defer zon_str.deinit();
-    // try std.zon.stringify.serialize(grammar, .{
-    //     .emit_codepoint_literals = .never,
-    //     .whitespace = false,
-    // }, zon_str.writer());
-    // try std.fs.cwd().writeFile(.{
-    //     .data = zon_str.items,
-    //     .sub_path = "src/rules.zon",
-    // });
+    const typed_parsed = std.json.parseFromSlice(GrammarFile, allocator, rules_json, .{}) catch unreachable;
+    defer typed_parsed.deinit();
 
-    const my_string = "আa"; // "Hello" in Chinese (two 3-byte characters)
+    const grammar = Grammar.fromJson(allocator, typed_parsed.value) catch unreachable;
 
-    for (my_string) |byte| {
-        std.debug.print("{}\n", .{byte});
-    }
-}
-
-pub fn loadGrammar(comptime rules_file_name: []const u8) Grammar {
-    // const allocator = std.heap.page_allocator;
-    // const rules_json = @embedFile(rules_file_name);
-    // const typed_parsed = std.json.parseFromSlice(GrammarFile, allocator, rules_json, .{}) catch unreachable;
-    // defer typed_parsed.deinit();
-
-    // const json_rules = typed_parsed.value;
-    // const grammar = Grammar.fromJson(allocator, json_rules) catch unreachable;
-    _ = rules_file_name;
-    comptime {
-        return zongRules;
-    }
+    // write zon
+    var zon_str = std.ArrayList(u8).init(std.heap.page_allocator);
+    defer zon_str.deinit();
+    try std.zon.stringify.serialize(grammar, .{
+        .emit_codepoint_literals = .never,
+        .whitespace = false,
+    }, zon_str.writer());
+    try std.fs.cwd().writeFile(.{
+        .data = zon_str.items,
+        .sub_path = "src/assets/orva.zon",
+    });
 }
 
 // Grammar is the internal representation of the grammar
@@ -102,6 +88,7 @@ const RuleMatch = struct {
     pub const Type = enum {
         suffix,
         prefix,
+        exact,
     };
     pub const Scope = enum {
         vowel,

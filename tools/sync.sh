@@ -3,8 +3,9 @@
 # Set the repository URL and file paths
 REPO_URL="git@github.com:nurulhudaapon/bntk.git"
 SOURCE_FILES=(
-    "src/rules.json:packages/core/transliteration/assets/rules.json"
-    "src/transliteration.test.json:packages/core/transliteration/tests/transliterate.test.json"
+    "src/assets/rules.json:packages/core/transliteration/assets/rules.json"
+    "src/assets/orva.json:packages/core/transliteration/assets/orva.json"
+    "src/assets/transliteration.test.json:packages/core/transliteration/tests/transliterate.test.json"
 )
 TEMP_DIR=".temp_sync"
 
