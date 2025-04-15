@@ -308,7 +308,7 @@ pub const Tokenizer = struct {
                 for (sent.tokens) |token| {
                     if (token.kind == .word) {
                         if (options.normalize) {
-                            @compileError("normalize is not implemented yet as it was making things slow");
+                            try words.append(try normalizeWord(self.allocator, token.value));
                         } else {
                             try words.append(token.value);
                         }
@@ -914,4 +914,49 @@ test "normalizeWord" {
     // try std.testing.expectEqualStrings("সময়", normalizeWikiWord("সময়"));
 
     try std.testing.expectEqualStrings("সময়", norm_somoy);
+}
+
+test "performance test - should handle large text quickly" {
+    const allocator = std.testing.allocator;
+    const sample_text = "আমি ভাত খাই। তুমি কী করো? সে স্কুলে যায়!";
+    var large_text = std.ArrayList(u8).init(allocator);
+    defer large_text.deinit();
+
+    // Repeat the sample text 1000 times
+    var i: usize = 0;
+    while (i < 1000) : (i += 1) {
+        try large_text.appendSlice(sample_text);
+    }
+
+    var tokenizer = Tokenizer.init(large_text.items, allocator);
+    defer tokenizer.deinit();
+
+    var total_time: f64 = 0;
+    const NUM_RUNS = 20;
+
+    // Run multiple times and calculate average
+    var run: usize = 0;
+    while (run < NUM_RUNS) : (run += 1) {
+        const start_time = std.time.nanoTimestamp();
+        _ = try tokenizer.parse();
+        const words = try tokenizer.getWords(.{});
+        defer allocator.free(words);
+        try std.testing.expectEqual(9000, words.len);
+        const end_time = std.time.nanoTimestamp();
+
+        const execution_time = @as(f64, @floatFromInt(end_time - start_time)) / 1_000_000.0; // Convert to milliseconds
+        total_time += execution_time;
+    }
+
+    const avg_execution_time = total_time / @as(f64, @floatFromInt(NUM_RUNS));
+    const avg_execution_time_per_thousand_chars = (avg_execution_time / @as(f64, @floatFromInt(large_text.items.len))) * 1000.0;
+
+    // The function should process large text in reasonable time (e.g., under 10ms per 1000 chars)
+    const ALLOWED_TIME_PER_THOUSAND_CHARS: f64 = 0.80;
+    try std.testing.expect(avg_execution_time_per_thousand_chars < ALLOWED_TIME_PER_THOUSAND_CHARS);
+
+    std.debug.print("\nTokenizer Performance Test Results:\n", .{});
+    std.debug.print("Average Time Taken per 1000 chars: {d:.2}ms\n", .{avg_execution_time_per_thousand_chars});
+    std.debug.print("Total Text Length: {d} chars\n", .{large_text.items.len});
+    std.debug.print("Number of Runs: {d}\n", .{NUM_RUNS});
 }
