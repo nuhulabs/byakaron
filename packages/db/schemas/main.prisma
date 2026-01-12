@@ -72,11 +72,12 @@ model words {
 
   // Relations
   /// Groups where this word appears as the previous word
-  prev_pairs word_pairs[] @relation("prev_word")
+  prev_pairs      word_pairs[]      @relation("prev_word")
   /// pairs where this word appears as the next word
-  next_pairs word_pairs[] @relation("next_word")
-  word_roots_word word_roots[] @relation("word")
-  word_roots_root word_roots[] @relation("root")
+  next_pairs      word_pairs[]      @relation("next_word")
+  word_roots_word word_roots[]      @relation("word")
+  word_roots_root word_roots[]      @relation("root")
+  romanized_words romanized_words[] @relation("romanized_word")
 
   @@schema("public")
 }
@@ -91,6 +92,18 @@ model word_roots {
   root words @relation("root", fields: [root_id], references: [id])
 
   @@id([word_id, root_id])
+  @@schema("public")
+}
+
+/// Word with their root words
+model romanized_words {
+  word_id Int
+  value   String
+
+  // Relations
+  word words @relation("romanized_word", fields: [word_id], references: [id])
+
+  @@id([word_id])
   @@schema("public")
 }
 

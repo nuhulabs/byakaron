@@ -24,9 +24,10 @@ async function handler() {
     console.log(`Found ${assetFiles.length} files in asset directory`);
 
     for (const source of sources) {
-      await loadSentences(source);
+      // await loadSentences(source);
       await loadWords(source);
-      await loadWordPairs(source);
+      // await loadWordPairs(source);
+      await loadRomanizedWords(source);
     }
   } catch (error) {
     console.error("Fatal error in dataset loading process:", error);
@@ -169,6 +170,187 @@ async function loadSentences(source: DataSource) {
       `File size processed: ${(fileSize / (1024 * 1024)).toFixed(2)} MB`,
     );
     console.log(`Rows loaded: ${rowCount.toLocaleString()}`);
+  } catch (error) {
+    // Rollback the transaction in case of error
+    try {
+      await pgClient.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error("Error during rollback:", rollbackError);
+    }
+    console.error("Error during database operations:", error);
+    throw error;
+  } finally {
+    // Close the PostgreSQL client connection
+    await pgClient.end();
+    console.log("Database connection closed");
+  }
+}
+
+/**
+ * Load words from CSV file into the words table and calculate word pairs
+ * This function now handles both loading unique words and calculating word pairs
+ * for better performance by avoiding multiple passes through the data
+ */
+async function loadRomanizedWords(source: DataSource) {
+  const romanizedWordsCsvFilePath = path.join(
+    Constants.SOURCE_ASSET_PATH(source),
+    Constants.ROMANIZED_WORDS_FILE,
+  );
+
+  if (!existsSync(romanizedWordsCsvFilePath))
+    return console.log(`No word files found for source ${source.id}`);
+
+  // Create a new PostgreSQL client
+  const pgClient = new Client(process.env.DATABASE_URL);
+  await pgClient.connect();
+  console.log("Connected to PostgreSQL database");
+
+  // Variables for tracking file sizes
+  let romanizedWordsFileSize = 0;
+  try {
+    // Get file size for progress tracking
+    const romanizedWordsFileStats = statSync(romanizedWordsCsvFilePath);
+    romanizedWordsFileSize = romanizedWordsFileStats.size;
+    console.log(
+      `Romanized words file size: ${(
+        romanizedWordsFileSize /
+        (1024 * 1024)
+      ).toFixed(2)} MB`,
+    );
+
+    // Start a transaction
+    await pgClient.query("BEGIN");
+    console.log("Creating staging table for distinct word pairs...");
+    await pgClient.query(`DROP TABLE IF EXISTS  warehouse.romanized_words`);
+    await pgClient.query(`
+        CREATE TABLE IF NOT EXISTS warehouse.romanized_words (
+          value TEXT NULL,
+          romanized TEXT NULL
+        )
+      `);
+
+    // Use COPY command to bulk load data from the distinct words file
+    console.log(
+      "Starting COPY operation from romanized words CSV file to staging table...",
+    );
+
+    // Create a read stream for the file
+    const romanizedWordsFileStream = createReadStream(
+      romanizedWordsCsvFilePath,
+    );
+
+    // Use the COPY FROM STDIN command with pg-copy-streams
+    const romanizedWordsCopyStreamQuery = copyFrom(`
+        COPY warehouse.romanized_words (value, romanized) 
+        FROM STDIN 
+        WITH (FORMAT CSV, HEADER)
+      `);
+
+    // Set up progress tracking
+    let bytesProcessed = 0;
+    let lastProgressUpdate = 0;
+
+    romanizedWordsFileStream.on("data", (chunk) => {
+      bytesProcessed += chunk.length;
+
+      // Only update progress display every 100ms to avoid console flickering
+      const now = Date.now();
+      if (now - lastProgressUpdate > 100) {
+        displayProgress(
+          romanizedWordsFileSize,
+          bytesProcessed,
+          "COPY Progress",
+        );
+        lastProgressUpdate = now;
+      }
+    });
+
+    // Pipe the file stream to the copy stream
+    await pipeline(
+      romanizedWordsFileStream,
+      pgClient.query(romanizedWordsCopyStreamQuery as any),
+    );
+
+    // Ensure we show 100% at the end
+    displayProgress(
+      romanizedWordsFileSize,
+      romanizedWordsFileSize,
+      "COPY Progress",
+    );
+    // Commit the transaction
+    await pgClient.query("COMMIT");
+    console.log("\nCOPY operation completed for romanized words");
+
+    await pgClient.query("BEGIN");
+    // Count the number of rows in the staging table
+    const distinctWordsCountResult = await pgClient.query(
+      "SELECT COUNT(*) FROM warehouse.romanized_words",
+    );
+    const distinctWordsCount = parseInt(distinctWordsCountResult.rows[0].count);
+    console.log(
+      `Loaded ${distinctWordsCount.toLocaleString()} romanized words into staging table`,
+    );
+
+    // Insert all distinct words at once into the words table
+    console.log("Inserting romanized word pairs into the word pairs table...");
+
+    // Process in batches for better performance and progress tracking
+    const batchSize = 10 * 100 * 1000; // 10 * 100k
+    console.log(`Processing romanized words in batches of ${batchSize}...`);
+
+    // Get total count for progress tracking
+    const totalDistinctWords = parseInt(distinctWordsCountResult.rows[0].count);
+    console.log(
+      `Found ${totalDistinctWords.toLocaleString()} valid distinct word pairs to process`,
+    );
+
+    // Calculate number of batches
+    const totalBatches = Math.ceil(totalDistinctWords / batchSize);
+    let processedWords = 0;
+    let totalInserted = 0;
+
+    for (let batchNum = 0; batchNum < totalBatches; batchNum++) {
+      // Display batch progress
+      console.log(`Processing batch ${batchNum + 1} of ${totalBatches}...`);
+
+      const batchResult = await pgClient.query(
+        `
+INSERT INTO
+	public.romanized_words (word_id, value)
+SELECT
+	word.id word_id,
+	rw.romanized value
+FROM
+	warehouse.romanized_words rw
+	JOIN public.words word ON rw.value = word.value
+  WHERE rw.romanized IS NOT NULL
+LIMIT
+	$1
+OFFSET
+	$2
+ON CONFLICT DO NOTHING
+        `,
+        [batchSize, batchNum * batchSize],
+      );
+
+      processedWords += batchSize;
+      totalInserted += batchResult.rowCount ?? 0;
+
+      // Display progress
+      displayProgress(
+        totalDistinctWords,
+        Math.min(processedWords, totalDistinctWords),
+        "Romanized Words Insertion Progress",
+      );
+    }
+
+    console.log(
+      `\nInserted ${totalInserted.toLocaleString()} new romanized words`,
+    );
+
+    // Commit the transaction
+    await pgClient.query("COMMIT");
+    console.log("Committed romanized words data");
   } catch (error) {
     // Rollback the transaction in case of error
     try {

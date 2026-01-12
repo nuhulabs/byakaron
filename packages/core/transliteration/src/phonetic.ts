@@ -1,4 +1,18 @@
+// import { ZON } from "zzon";
+import { getRules } from "./rule" with { type: "macro" };
 import type { RootRule } from "./types";
+
+console.log(await getRules());
+// const minifiedRules = rules.patterns.map((p) => [
+//   p.find,
+//   p.replace,
+//   ...(p.rules ? p.rules : []),
+// ]);
+
+// console.log(JSON.stringify(minifiedRules, null, 2));
+
+// Bun.write("assets/rules.min.json", JSON.stringify(minifiedRules, null, 2));
+// Bun.write("assets/rules.min.zon", ZON.stringify(minifiedRules, null, 2));
 
 /**
  * Phonetic rules for Bangla transliteration

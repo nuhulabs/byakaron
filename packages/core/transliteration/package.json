@@ -3,5 +3,8 @@
   "version": "0.0.0-alpha.2",
   "main": "src/index.ts",
   "module": "src/index.ts",
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "zzon": "^1.1.0"
+  }
 }

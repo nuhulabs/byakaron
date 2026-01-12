@@ -15,6 +15,7 @@ export const SENTENCES_FILE = "sentences.csv" as const;
 export const WORD_PAIRS_FILE = "word_pairs.csv" as const;
 export const UNIQUE_WORDS_FILE = "words_unique.csv" as const;
 export const UNIQUE_WORD_PAIRS_FILE = "word_pairs_unique.csv" as const;
+export const ROMANIZED_WORDS_FILE = "romanized_words.csv" as const;
 export const BANGLISH_WORDS_FILE = "banglish_words.csv" as const;
 
 export const SENTENCE_BATCH_SIZE = 100000 as const;

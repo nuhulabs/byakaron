@@ -1,0 +1,6 @@
+.{
+    .vowel = "aeiou",
+    .consonant = "bcdfghjklmnpqrstvwxyz",
+    .casesensitive = "oiudgjnrstyz",
+    .patterns = .{ .{ .find = "bhl", .replace = "ভ্ল", .rules = null }, .{ .find = "psh", .replace = "পশ", .rules = null }, .{ .find = "bdh", .replace = "ব্ধ", .rules = null }, .{ .find = "bj", .replace = "ব্জ", .rules = null }, .{ .find = "bd", .replace = "ব্দ", .rules = null } },
+}
