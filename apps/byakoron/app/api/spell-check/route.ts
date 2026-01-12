@@ -1,6 +1,7 @@
 import { query } from "@/app/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
+import { tokenizeToWords } from "@bntk/tokenization";
 import { transliterate } from "@bntk/transliteration";
 
 interface WordSuggestion {
@@ -43,7 +44,7 @@ async function ensureExtensions() {
 
 /**
  * Bulk check if words exist in the database and get their frequencies
- * Uses materialized view for fast frequency lookups
+ * Uses word_lookup_mv materialized view for fast lookups
  * Returns a map of word -> { exists, frequency, isRare }
  */
 async function checkWordsBulk(
@@ -54,11 +55,10 @@ async function checkWordsBulk(
   const result = await query<{ value: string; frequency: string }>(
     `
     SELECT 
-      w.value,
-      COALESCE(wf.freq, 0)::text as frequency
-    FROM words w
-    LEFT JOIN word_frequency_mv wf ON w.id = wf.word_id
-    WHERE w.value = ANY($1::text[])
+      value,
+      frequency::text
+    FROM word_lookup_mv
+    WHERE value = ANY($1::text[])
     `,
     [words],
   );
@@ -91,7 +91,7 @@ interface BulkSuggestionInput {
 
 /**
  * Get spelling suggestions for multiple words in a single query
- * Uses materialized view for frequencies, pg_trgm for similarity, and soundex for phonetic matching
+ * Uses word_lookup_mv with pre-computed soundex, frequency, and romanized values
  */
 async function getPhoneticSuggestionsBulk(
   inputs: BulkSuggestionInput[],
@@ -113,38 +113,40 @@ async function getPhoneticSuggestionsBulk(
     `
     WITH input_words AS (
       SELECT 
-        UNNEST($1::text[]) as bangla_word,
-        UNNEST($2::text[]) as romanized_word
+        bangla_word,
+        romanized_word,
+        soundex(romanized_word) as input_soundex
+      FROM UNNEST($1::text[], $2::text[]) AS t(bangla_word, romanized_word)
     ),
-    -- Pre-filter candidate words using indexes
+    -- Use materialized view with pre-computed values
     candidate_words AS (
       SELECT DISTINCT
         iw.bangla_word,
         iw.romanized_word,
-        w.id,
-        w.value,
-        COALESCE(rw.value, '') as romanized,
-        COALESCE(wf.freq, 0) as freq
+        iw.input_soundex,
+        wl.id,
+        wl.value,
+        wl.romanized,
+        wl.romanized_soundex,
+        wl.frequency
       FROM input_words iw
       CROSS JOIN LATERAL (
-        -- Use index-backed similarity search
-        SELECT w.id, w.value
-        FROM words w
-        WHERE length(w.value) BETWEEN 1 AND 50
-          AND w.value != iw.bangla_word
+        -- Use index-backed lookups on materialized view
+        -- Lower the similarity threshold to catch more candidates like ব→ভ swaps
+        SELECT id, value, romanized, romanized_soundex, frequency
+        FROM word_lookup_mv wl
+        WHERE wl.value != iw.bangla_word
+          AND wl.frequency >= $3
           AND (
-            w.value % iw.bangla_word  -- trigram similarity operator (uses GIN index)
-            OR EXISTS (
-              SELECT 1 FROM romanized_words rw2 
-              WHERE rw2.word_id = w.id 
-              AND (rw2.value % iw.romanized_word OR soundex(rw2.value) = soundex(iw.romanized_word))
-            )
+            similarity(wl.value, iw.bangla_word) > 0.15  -- lower threshold for Bangla
+            OR similarity(wl.romanized, iw.romanized_word) > 0.15  -- lower threshold for romanized
+            OR wl.romanized_soundex = iw.input_soundex  -- pre-computed soundex comparison
           )
-        LIMIT 100  -- Limit candidates per input word for performance
-      ) w
-      LEFT JOIN romanized_words rw ON w.id = rw.word_id
-      LEFT JOIN word_frequency_mv wf ON w.id = wf.word_id
-      WHERE COALESCE(wf.freq, 0) >= $3
+        ORDER BY 
+          similarity(wl.romanized, iw.romanized_word) DESC,
+          wl.frequency DESC
+        LIMIT 200
+      ) wl
     ),
     scored_words AS (
       SELECT 
@@ -152,16 +154,16 @@ async function getPhoneticSuggestionsBulk(
         id,
         value,
         romanized,
-        freq as frequency,
+        frequency,
         LEAST((
           COALESCE(similarity(romanized, romanized_word), 0) * 0.5 + 
           COALESCE(similarity(value, bangla_word), 0) * 0.3 + 
-          CASE WHEN soundex(romanized) = soundex(romanized_word) THEN 0.3 ELSE 0 END
+          CASE WHEN romanized_soundex = input_soundex THEN 0.3 ELSE 0 END
         ), 1.0) as similarity,
         CASE WHEN LEAST((
           COALESCE(similarity(romanized, romanized_word), 0) * 0.5 + 
           COALESCE(similarity(value, bangla_word), 0) * 0.3 + 
-          CASE WHEN soundex(romanized) = soundex(romanized_word) THEN 0.3 ELSE 0 END
+          CASE WHEN romanized_soundex = input_soundex THEN 0.3 ELSE 0 END
         ), 1.0) >= 0.5 THEN 1 ELSE 0 END as is_high_match
       FROM candidate_words
     ),
@@ -217,13 +219,40 @@ async function getPhoneticSuggestionsBulk(
     resultMap.set(row.input_word, suggestions);
   }
 
+  // Re-sort suggestions on server side:
+  // - >= 80% similarity: top priority, sorted by similarity descending
+  // - >= 50% similarity: sorted by frequency descending
+  // - < 50% similarity: sorted by similarity descending
+  for (const [word, suggestions] of resultMap) {
+    suggestions.sort((a, b) => {
+      const aIsVeryHigh = a.similarity >= 0.8;
+      const bIsVeryHigh = b.similarity >= 0.8;
+      const aIsHigh = a.similarity >= 0.5;
+      const bIsHigh = b.similarity >= 0.5;
+
+      // Very high matches (>=80%) come first, sorted by similarity
+      if (aIsVeryHigh && !bIsVeryHigh) return -1;
+      if (!aIsVeryHigh && bIsVeryHigh) return 1;
+      if (aIsVeryHigh && bIsVeryHigh) return b.similarity - a.similarity;
+
+      // High matches (>=50%) come next, sorted by frequency
+      if (aIsHigh && !bIsHigh) return -1;
+      if (!aIsHigh && bIsHigh) return 1;
+      if (aIsHigh && bIsHigh) return (b.frequency || 0) - (a.frequency || 0);
+
+      // Low matches sorted by similarity
+      return b.similarity - a.similarity;
+    });
+    resultMap.set(word, suggestions);
+  }
+
   return resultMap;
 }
 
 /**
  * POST /api/spell-check
  * Check spelling and get suggestions for Bangla text
- * Uses bulk queries for efficiency
+ * Uses bulk queries with materialized views for maximum performance
  */
 export async function POST(request: NextRequest) {
   try {
@@ -236,24 +265,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Text is required" }, { status: 400 });
     }
 
-    // Split text into words (handle Bangla punctuation)
-    const allWords = text
-      .split(/[\s।,!?;:'"()[\]{}।॥]+/)
-      .filter((w) => w.length > 0);
+    // Tokenize text into words using BNTK tokenization
+    const allWords = tokenizeToWords(text);
 
-    // Separate Bangla and non-Bangla words
-    const banglaWords: string[] = [];
-    const wordInfo: { word: string; isBangla: boolean; romanized: string }[] =
-      [];
+    // All tokenized words are Bangla (tokenizeToWords filters non-Bangla)
+    const wordInfo = allWords.map((word) => ({
+      word,
+      isBangla: true,
+      romanized: transliterate(word, { mode: "orva" }),
+    }));
 
-    for (const word of allWords) {
-      const isBangla = /[\u0980-\u09FF]/.test(word);
-      const romanized = isBangla ? transliterate(word, { mode: "orva" }) : word;
-      wordInfo.push({ word, isBangla, romanized });
-      if (isBangla) {
-        banglaWords.push(word);
-      }
-    }
+    const banglaWords = allWords;
 
     // Bulk check all Bangla words
     const wordCheckResults = await checkWordsBulk(banglaWords);
@@ -261,7 +283,6 @@ export async function POST(request: NextRequest) {
     // Find words that need suggestions (don't exist or are rare)
     const wordsNeedingSuggestions: BulkSuggestionInput[] = [];
     for (const info of wordInfo) {
-      if (!info.isBangla) continue;
       const checkResult = wordCheckResults.get(info.word);
       if (!checkResult?.exists || checkResult.isRare) {
         wordsNeedingSuggestions.push({
@@ -278,15 +299,6 @@ export async function POST(request: NextRequest) {
 
     // Build final results
     const results: SpellCheckResult[] = wordInfo.map((info) => {
-      if (!info.isBangla) {
-        return {
-          word: info.word,
-          isCorrect: true,
-          suggestions: [],
-          romanized: info.romanized,
-        };
-      }
-
       const checkResult = wordCheckResults.get(info.word);
       const exists = checkResult?.exists ?? false;
       const isRare = checkResult?.isRare ?? false;
@@ -333,15 +345,16 @@ export async function GET() {
   try {
     await ensureExtensions();
 
-    // Test database connection
+    // Test database connection and materialized view
     const result = await query<{ count: string }>(
-      `SELECT COUNT(*) as count FROM words`,
+      `SELECT COUNT(*) as count FROM word_lookup_mv`,
     );
 
     return NextResponse.json({
       status: "healthy",
       wordCount: parseInt(result[0]?.count || "0"),
       extensions: ["pg_trgm", "fuzzystrmatch"],
+      materializedView: "word_lookup_mv",
     });
   } catch (error) {
     return NextResponse.json(

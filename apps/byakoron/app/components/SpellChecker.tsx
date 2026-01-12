@@ -112,8 +112,8 @@ export default function SpellChecker() {
       <div className="editor-container">
         <div className="editor-header">
           <div className="editor-title">
-            <span className="title-icon">✏️</span>
-            <span>বানান পরীক্ষক</span>
+            <span className="logo-icon">ব্যা</span>
+            <span className="app-name">ব্যাকরণ</span>
             <span className="title-badge">Spell Checker</span>
           </div>
           <div className="editor-stats">
@@ -150,7 +150,9 @@ export default function SpellChecker() {
           {/* Highlighted overlay */}
           <div className="text-overlay" aria-hidden="true">
             {text.split(/(\s+)/).map((segment, idx) => {
-              const result = results.find((r) => r.word === segment);
+              // Strip punctuation to match tokenized words from API
+              const cleanedSegment = segment.replace(/[।,;:'"?!()[\]{}॥]+/g, "").trim();
+              const result = results.find((r) => r.word === cleanedSegment);
               if (result && !result.isCorrect) {
                 return (
                   <span
@@ -298,28 +300,31 @@ export default function SpellChecker() {
         .spell-checker {
           display: flex;
           flex-direction: column;
-          gap: 1.5rem;
-          max-width: 900px;
-          margin: 0 auto;
+          height: 100vh;
+          width: 100vw;
+          position: fixed;
+          top: 0;
+          left: 0;
           font-family: var(--font-sans);
+          background: linear-gradient(135deg, #0a0a14 0%, #0d1117 100%);
         }
 
         .editor-container {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
           background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-          border-radius: 1rem;
           overflow: hidden;
-          box-shadow: 
-            0 25px 50px -12px rgba(0, 0, 0, 0.4),
-            0 0 0 1px rgba(255, 255, 255, 0.05);
         }
 
         .editor-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 1rem 1.5rem;
-          background: rgba(0, 0, 0, 0.2);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+          padding: 1rem 2rem;
+          background: rgba(0, 0, 0, 0.3);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          flex-shrink: 0;
         }
 
         .editor-title {
@@ -331,8 +336,28 @@ export default function SpellChecker() {
           color: #e0e0e0;
         }
 
-        .title-icon {
-          font-size: 1.25rem;
+        .logo-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 2.5rem;
+          height: 2.5rem;
+          background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
+          border-radius: 0.5rem;
+          font-size: 1rem;
+          font-weight: 700;
+          color: white;
+          font-family: "Hind Siliguri", "Noto Sans Bengali", sans-serif;
+        }
+
+        .app-name {
+          font-size: 1.5rem;
+          font-weight: 700;
+          background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          font-family: "Hind Siliguri", "Noto Sans Bengali", sans-serif;
         }
 
         .title-badge {
@@ -395,22 +420,26 @@ export default function SpellChecker() {
 
         .editor-body {
           position: relative;
-          min-height: 300px;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
         }
 
         .main-textarea {
           width: 100%;
-          min-height: 300px;
-          padding: 1.5rem;
+          flex: 1;
+          padding: 1.5rem 2rem;
           background: transparent;
           border: none;
           outline: none;
-          resize: vertical;
-          font-size: 1.25rem;
+          resize: none;
+          font-size: 1.5rem;
           line-height: 2;
           color: #f0f0f0;
           font-family: "Hind Siliguri", "Noto Sans Bengali", sans-serif;
           caret-color: #60a5fa;
+          overflow-y: auto;
         }
 
         .main-textarea::placeholder {
@@ -422,14 +451,16 @@ export default function SpellChecker() {
           top: 0;
           left: 0;
           right: 0;
-          padding: 1.5rem;
+          bottom: 0;
+          padding: 1.5rem 2rem;
           pointer-events: none;
-          font-size: 1.25rem;
+          font-size: 1.5rem;
           line-height: 2;
           font-family: "Hind Siliguri", "Noto Sans Bengali", sans-serif;
           color: transparent;
           white-space: pre-wrap;
           word-wrap: break-word;
+          overflow-y: auto;
         }
 
         .error-word {
@@ -460,12 +491,19 @@ export default function SpellChecker() {
         }
 
         .suggestions-panel {
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          max-height: 40vh;
           background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-          border-radius: 1rem;
-          overflow: hidden;
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+          overflow-y: auto;
           box-shadow: 
-            0 25px 50px -12px rgba(0, 0, 0, 0.3),
+            0 -10px 40px rgba(0, 0, 0, 0.4),
             0 0 0 1px rgba(255, 255, 255, 0.05);
+          z-index: 40;
+          animation: slideUp 0.3s ease;
         }
 
         .panel-header {
