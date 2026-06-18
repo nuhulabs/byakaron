@@ -1,5 +1,104 @@
 const std = @import("std");
-const grammar = @import("rules.zig");
+
+const UNICODE_BITSET_SIZE = 0x2100;
+
+// Helper functions to populate bitsets
+fn populateUnicodeSet(data: []const u8) std.StaticBitSet(UNICODE_BITSET_SIZE) {
+    var set = std.StaticBitSet(UNICODE_BITSET_SIZE).empty;
+    const utf = std.unicode.Utf8View.init(data) catch unreachable;
+    var iter = utf.iterator();
+    while (iter.nextCodepoint()) |codepoint| {
+        set.set(codepoint);
+    }
+    return set;
+}
+
+fn populateAsciiSet(data: []const u8) std.StaticBitSet(256) {
+    var set = std.bit_set.Static(256).empty;
+    for (data) |char| {
+        set.set(char); // Store lowercase for ASCII
+    }
+    return set;
+}
+
+const Mode = enum {
+    avro,
+    orva,
+    banglish,
+    lishbang,
+};
+
+const PhoneticSets = union(enum) {
+    ascii: struct {
+        vowel: std.StaticBitSet(256),
+        consonant: std.StaticBitSet(256),
+        casesensitive: std.StaticBitSet(256),
+    },
+    unicode: struct {
+        vowel: std.StaticBitSet(UNICODE_BITSET_SIZE),
+        consonant: std.StaticBitSet(UNICODE_BITSET_SIZE),
+        casesensitive: std.StaticBitSet(UNICODE_BITSET_SIZE),
+    },
+
+    fn init(comptime mode: Mode) PhoneticSets {
+        const rules: Grammar = comptime switch (mode) {
+            .avro => @import("rules.zon"),
+            .orva => @import("orva.zon"),
+            .banglish => @import("rules.zon"),
+            .lishbang => @import("rules.zon"),
+        };
+
+        if (mode == .orva) {
+            @setEvalBranchQuota(30000);
+            return PhoneticSets{ .unicode = .{
+                .vowel = populateUnicodeSet(rules.vowel),
+                .consonant = populateUnicodeSet(rules.consonant),
+                .casesensitive = populateUnicodeSet(rules.casesensitive),
+            } };
+        } else {
+            return PhoneticSets{ .ascii = .{
+                .vowel = populateAsciiSet(rules.vowel),
+                .consonant = populateAsciiSet(rules.consonant),
+                .casesensitive = populateAsciiSet(rules.casesensitive),
+            } };
+        }
+    }
+
+    // Pre-compute lowercase transformation table for faster case conversion
+    const lowercase_table = blk: {
+        var table: [256]u8 = undefined;
+        var i: u16 = 0;
+        while (i < 256) : (i += 1) {
+            table[i] = std.ascii.toLower(@intCast(i));
+        }
+        break :blk table;
+    };
+
+    fn isVowel(self: PhoneticSets, char: u21) bool {
+        return switch (self) {
+            .ascii => |sets| sets.vowel.isSet(lowercase_table[@intCast(char)]),
+            .unicode => |sets| if (char >= UNICODE_BITSET_SIZE) false else sets.vowel.isSet(char),
+        };
+    }
+
+    fn isConsonant(self: PhoneticSets, char: u21) bool {
+        return switch (self) {
+            .ascii => |sets| sets.consonant.isSet(lowercase_table[@intCast(char)]),
+            .unicode => |sets| if (char >= UNICODE_BITSET_SIZE) false else sets.consonant.isSet(char),
+        };
+    }
+
+    fn isCaseSensitive(self: PhoneticSets, char: u21) bool {
+        return switch (self) {
+            .ascii => |sets| sets.casesensitive.isSet(lowercase_table[@intCast(char)]),
+            .unicode => |sets| if (char >= UNICODE_BITSET_SIZE) false else sets.casesensitive.isSet(char),
+        };
+    }
+
+    fn isPunctuation(self: PhoneticSets, char: u21) bool {
+        return !self.isVowel(char) and !self.isConsonant(char);
+    }
+};
 
 /// Provides transliteration capabilities between Latin and Bangla scripts.
 ///
@@ -23,16 +122,11 @@ const grammar = @import("rules.zig");
 /// // result now contains "আমার বাংলা"
 /// ```
 pub const Transliteration = struct {
-    const Mode = enum {
-        avro,
-        orva,
-        banglish,
-        lishbang,
-    };
-
     allocator: std.mem.Allocator,
-    rules: grammar.Grammar,
+    phonetic_sets: PhoneticSets,
+    rules: Grammar,
     trie: *TrieNode,
+    unicode_trie: *UnicodeTrieNode,
     mode: Mode,
     /// Initializes the Transliteration system.
     ///
@@ -42,22 +136,33 @@ pub const Transliteration = struct {
     /// @param allocator Memory allocator for rule storage and trie construction
     /// @return A new Transliteration instance
     pub fn init(allocator: std.mem.Allocator, comptime mode: Mode) Transliteration {
-        const rules: grammar.Grammar = comptime switch (mode) {
+        const phonetic_sets = comptime PhoneticSets.init(mode);
+
+        const rules: Grammar = comptime switch (mode) {
             .avro => @import("rules.zon"),
             .orva => @import("orva.zon"),
             .banglish => @import("rules.zon"),
             .lishbang => @import("rules.zon"),
         };
-        const trie = buildTrie(allocator, rules) catch unreachable;
-        errdefer {
-            trie.deinit();
-            allocator.destroy(trie);
-        }
+
+        // For Latin->Bangla (avro) mode, we use ASCII trie
+        // For Bangla->Latin (orva) mode, we use Unicode trie
+        const trie = if (mode != .orva)
+            buildTrie(allocator, rules) catch unreachable
+        else
+            TrieNode.init(allocator) catch unreachable;
+
+        const unicode_trie = if (mode == .orva)
+            buildUnicodeTrie(allocator, rules) catch unreachable
+        else
+            UnicodeTrieNode.init(allocator) catch unreachable;
 
         return .{
             .rules = rules,
             .allocator = allocator,
+            .phonetic_sets = phonetic_sets,
             .trie = trie,
+            .unicode_trie = unicode_trie,
             .mode = mode,
         };
     }
@@ -69,6 +174,8 @@ pub const Transliteration = struct {
     pub fn deinit(self: *Transliteration) void {
         self.trie.deinit();
         self.allocator.destroy(self.trie);
+        self.unicode_trie.deinit();
+        self.allocator.destroy(self.unicode_trie);
     }
 
     /// Transliterates text between Bangla and Latin scripts using various modes.
@@ -135,35 +242,113 @@ pub const Transliteration = struct {
         defer result_buffer.deinit();
         try result_buffer.ensureTotalCapacity(32); // Typical replacement size
 
-        while (currentIndex < len) {
-            var node = self.trie;
-            var matchLength: usize = 0;
-            var matchPattern: ?*const grammar.Pattern = null;
-            var i: usize = currentIndex;
+        if (self.mode == .orva) {
+            // Unicode mode - for Bangla to Latin conversion
+            while (currentIndex < len) {
+                // Get the next Unicode codepoint and its length
+                var utf8_iter = std.unicode.Utf8Iterator{ .bytes = fixed, .i = currentIndex };
+                const codepoint_opt = utf8_iter.nextCodepoint();
 
-            // Fast trie traversal with direct character indexing
-            while (i < len) {
-                const char = fixed[i];
-                const next_node = node.children[char] orelse break;
-                if (next_node.isEndOfPattern) {
-                    matchLength = i - currentIndex + 1;
-                    matchPattern = next_node.pattern;
+                if (codepoint_opt == null) break;
+
+                const codepoint = codepoint_opt.?;
+                const codepoint_len = utf8_iter.i - currentIndex;
+
+                var node = self.unicode_trie;
+                var matchLength: usize = 0;
+                var matchPattern: ?*const Grammar.Pattern = null;
+
+                // Check if this codepoint has a match in the trie
+                if (node.children.get(codepoint)) |next_node| {
+                    if (next_node.isEndOfPattern) {
+                        matchLength = codepoint_len;
+                        matchPattern = next_node.pattern;
+                    }
+
+                    // Continue matching more codepoints if possible
+                    var i: usize = currentIndex + codepoint_len;
+                    var current_node = next_node;
+
+                    while (i < len) {
+                        var inner_iter = std.unicode.Utf8Iterator{ .bytes = fixed, .i = i };
+                        const next_codepoint_opt = inner_iter.nextCodepoint();
+                        if (next_codepoint_opt == null) break;
+
+                        const next_codepoint = next_codepoint_opt.?;
+                        const next_codepoint_len = inner_iter.i - i;
+
+                        const next_unicode_node = current_node.children.get(next_codepoint) orelse break;
+
+                        current_node = next_unicode_node;
+                        i += next_codepoint_len;
+
+                        if (current_node.isEndOfPattern) {
+                            matchLength = i - currentIndex;
+                            matchPattern = current_node.pattern;
+                        }
+                    }
                 }
-                node = next_node;
-                i += 1;
+
+                if (matchPattern) |pattern| {
+                    const endIndex = currentIndex + matchLength;
+                    // Clear buffer for reuse
+                    result_buffer.clearRetainingCapacity();
+
+                    const result = try self.processPattern(pattern.*, fixed, currentIndex, endIndex, &result_buffer);
+                    try output.appendSlice(result.output);
+                    currentIndex = result.newIndex + 1;
+                } else {
+                    // Just copy the original character
+                    try output.appendSlice(fixed[currentIndex .. currentIndex + codepoint_len]);
+                    currentIndex += codepoint_len;
+                }
             }
 
-            if (matchPattern) |pattern| {
-                const endIndex = currentIndex + matchLength;
-                // Clear buffer for reuse
-                result_buffer.clearRetainingCapacity();
+            // Filter out non-ASCII characters in orva mode
+            var filtered_output = std.array_list.Managed(u8).init(self.allocator);
+            errdefer filtered_output.deinit();
+            try filtered_output.ensureTotalCapacity(output.items.len);
 
-                const result = try self.processPattern(pattern.*, fixed, currentIndex, endIndex, &result_buffer);
-                try output.appendSlice(result.output);
-                currentIndex = result.newIndex + 1;
-            } else {
-                try output.append(fixed[currentIndex]);
-                currentIndex += 1;
+            for (output.items) |char| {
+                if (char <= 127) { // Only keep ASCII characters
+                    try filtered_output.append(char);
+                }
+            }
+
+            output.deinit();
+            return filtered_output.toOwnedSlice();
+        } else {
+            // ASCII mode - original implementation for Latin to Bangla conversion
+            while (currentIndex < len) {
+                var node = self.trie;
+                var matchLength: usize = 0;
+                var matchPattern: ?*const Grammar.Pattern = null;
+                var i: usize = currentIndex;
+
+                // Fast trie traversal with direct character indexing
+                while (i < len) {
+                    const char = fixed[i];
+                    const next_node = node.children[char] orelse break;
+                    if (next_node.isEndOfPattern) {
+                        matchLength = i - currentIndex + 1;
+                        matchPattern = next_node.pattern;
+                    }
+                    node = next_node;
+                    i += 1;
+                }
+
+                if (matchPattern) |pattern| {
+                    const endIndex = currentIndex + matchLength;
+                    // Clear buffer for reuse
+                    result_buffer.clearRetainingCapacity();
+
+                    const result = try self.processPattern(pattern.*, fixed, currentIndex, endIndex, &result_buffer);
+                    try output.appendSlice(result.output);
+                    currentIndex = result.newIndex + 1;
+                } else {
+                    try output.append(fixed[currentIndex]);
+                    currentIndex += 1;
+                }
             }
         }
 
@@ -174,7 +359,7 @@ pub const Transliteration = struct {
     const TrieNode = struct {
         // Direct array indexing for ASCII characters (much faster than HashMap)
         children: [256]?*TrieNode,
-        pattern: ?*const grammar.Pattern,
+        pattern: ?*const Grammar.Pattern,
         isEndOfPattern: bool,
         allocator: std.mem.Allocator,
 
@@ -203,9 +388,37 @@ pub const Transliteration = struct {
         }
     };
 
+    // New Unicode trie node using a hash map for children
+    const UnicodeTrieNode = struct {
+        children: std.AutoHashMap(u21, *UnicodeTrieNode),
+        pattern: ?*const Grammar.Pattern,
+        isEndOfPattern: bool,
+        allocator: std.mem.Allocator,
+
+        fn init(allocator: std.mem.Allocator) !*UnicodeTrieNode {
+            const node = try allocator.create(UnicodeTrieNode);
+
+            node.children = std.AutoHashMap(u21, *UnicodeTrieNode).init(allocator);
+            node.pattern = null;
+            node.isEndOfPattern = false;
+            node.allocator = allocator;
+
+            return node;
+        }
+
+        fn deinit(self: *UnicodeTrieNode) void {
+            var it = self.children.iterator();
+            while (it.next()) |entry| {
+                entry.value_ptr.*.deinit();
+                self.allocator.destroy(entry.value_ptr.*);
+            }
+            self.children.deinit();
+        }
+    };
+
     fn buildTrie(
         allocator: std.mem.Allocator,
-        rules: grammar.Grammar,
+        rules: Grammar,
     ) !*TrieNode {
         const root = try TrieNode.init(allocator);
         errdefer root.deinit();
@@ -227,9 +440,37 @@ pub const Transliteration = struct {
         return root;
     }
 
+    fn buildUnicodeTrie(
+        allocator: std.mem.Allocator,
+        rules: Grammar,
+    ) !*UnicodeTrieNode {
+        const root = try UnicodeTrieNode.init(allocator);
+        errdefer root.deinit();
+
+        for (rules.patterns) |*pattern| {
+            var current = root;
+            const find = pattern.find;
+
+            var utf8_iter = std.unicode.Utf8Iterator{ .bytes = find, .i = 0 };
+
+            while (utf8_iter.nextCodepoint()) |codepoint| {
+                if (!current.children.contains(codepoint)) {
+                    const new_node = try UnicodeTrieNode.init(allocator);
+                    try current.children.put(codepoint, new_node);
+                }
+                current = current.children.get(codepoint).?;
+            }
+
+            current.isEndOfPattern = true;
+            current.pattern = pattern;
+        }
+
+        return root;
+    }
+
     fn processPattern(
         self: *Transliteration,
-        pattern: grammar.Pattern,
+        pattern: Grammar.Pattern,
         chars: []const u8,
         startIndex: usize,
         endIndex: usize,
@@ -260,7 +501,7 @@ pub const Transliteration = struct {
                             const hasPunctuation =
                                 (checkIndex < 0 and !isSuffix) or
                                 (checkIndex >= chars.len and isSuffix) or
-                                (checkIndex >= 0 and checkIndex < chars.len and self.isPunctuation(chars[@intCast(checkIndex)]));
+                                (checkIndex >= 0 and checkIndex < chars.len and self.phonetic_sets.isPunctuation(chars[@intCast(checkIndex)]));
 
                             if (hasPunctuation == isNegative) {
                                 shouldReplace = false;
@@ -271,7 +512,7 @@ pub const Transliteration = struct {
                             const isVowelMatch =
                                 ((checkIndex >= 0 and !isSuffix) or
                                     (checkIndex < chars.len and isSuffix)) and
-                                (checkIndex >= 0 and checkIndex < chars.len and self.isVowel(chars[@intCast(checkIndex)]));
+                                (checkIndex >= 0 and checkIndex < chars.len and self.phonetic_sets.isVowel(chars[@intCast(checkIndex)]));
 
                             if (isVowelMatch == isNegative) {
                                 shouldReplace = false;
@@ -282,7 +523,7 @@ pub const Transliteration = struct {
                             const isConsonantMatch =
                                 ((checkIndex >= 0 and !isSuffix) or
                                     (checkIndex < chars.len and isSuffix)) and
-                                (checkIndex >= 0 and checkIndex < chars.len and self.isConsonant(chars[@intCast(checkIndex)]));
+                                (checkIndex >= 0 and checkIndex < chars.len and self.phonetic_sets.isConsonant(chars[@intCast(checkIndex)]));
 
                             if (isConsonantMatch == isNegative) {
                                 shouldReplace = false;
@@ -339,46 +580,24 @@ pub const Transliteration = struct {
         return .{ .output = result_buffer.items, .newIndex = endIndex - 1 };
     }
 
-    // Pre-compute lowercase transformation table for faster case conversion
-    const lowercase_table = blk: {
-        var table: [256]u8 = undefined;
-        var i: u16 = 0;
-        while (i < 256) : (i += 1) {
-            table[i] = std.ascii.toLower(@intCast(i));
-        }
-        break :blk table;
-    };
-
     fn normalizeInput(self: *Transliteration, input: []const u8, allocator: std.mem.Allocator) ![]u8 {
-        var fixed = try allocator.alloc(u8, input.len);
-        errdefer allocator.free(fixed);
+        if (self.mode == .orva) {
+            // For Orva (Bangla->Latin), no case conversion needed
+            return try allocator.dupe(u8, input);
+        } else {
+            // For other modes (Latin->Bangla), apply case conversion selectively
+            var fixed = try allocator.alloc(u8, input.len);
+            errdefer allocator.free(fixed);
 
-        for (input, 0..) |char, i| {
-            if (self.isCaseSensitive(char)) {
-                fixed[i] = char;
-            } else {
-                fixed[i] = lowercase_table[char];
+            for (input, 0..) |char, i| {
+                if (self.phonetic_sets.isCaseSensitive(char)) {
+                    fixed[i] = char;
+                } else {
+                    fixed[i] = std.ascii.toLower(char);
+                }
             }
+            return fixed;
         }
-        return fixed;
-    }
-
-    fn isVowel(self: *Transliteration, c: u8) bool {
-        if (self.mode == .orva) {
-            return self.rules.vowel.isSet(c);
-        }
-        return self.rules.vowel.isSet(lowercase_table[c]);
-    }
-
-    fn isConsonant(self: *Transliteration, c: u8) bool {
-        if (self.mode == .orva) {
-            return self.rules.consonant.isSet(c);
-        }
-        return self.rules.consonant.isSet(lowercase_table[c]);
-    }
-
-    fn isPunctuation(self: *Transliteration, c: u8) bool {
-        return !self.isVowel(c) and !self.isConsonant(c);
     }
 
     fn isExact(needle: []const u8, heystack: []const u8, start: usize, end: usize, not: bool) bool {
@@ -389,12 +608,44 @@ pub const Transliteration = struct {
         const substring = heystack[start..end];
         return (std.mem.eql(u8, substring, needle)) != not;
     }
-    fn isCaseSensitive(self: *Transliteration, c: u8) bool {
-        if (self.mode == .orva) {
-            return self.rules.casesensitive.isSet(c);
-        }
-        return self.rules.casesensitive.isSet(lowercase_table[c]);
-    }
+};
+
+// Grammar is the internal representation of the grammar
+pub const Grammar = struct {
+    pub const RuleMatch = struct {
+        pub const Type = enum {
+            suffix,
+            prefix,
+            exact,
+        };
+        pub const Scope = enum {
+            vowel,
+            consonant,
+            exact,
+            punctuation,
+        };
+
+        type: Type,
+        scope: ?Scope = null,
+        negative: bool = false,
+        value: ?[]const u8 = null,
+    };
+
+    pub const Pattern = struct {
+        find: []const u8,
+        replace: []const u8,
+        rules: ?[]const Grammar.Rule = null,
+    };
+
+    pub const Rule = struct {
+        matches: []const RuleMatch,
+        replace: []const u8,
+    };
+
+    vowel: []const u8, // Full Unicode range
+    consonant: []const u8, // Full Unicode range
+    casesensitive: []const u8, // Full Unicode range
+    patterns: []const Pattern,
 };
 
 // ------------ TESTING ------------
@@ -445,24 +696,25 @@ test "mode: avro test cases" {
     }
 }
 
-// test "mode: orva test cases" {
-//     const allocator = std.heap.page_allocator;
-//     const test_data = try loadTestData(allocator);
-//     defer test_data.parsed.deinit();
+test "mode: orva test cases" {
+    const allocator = std.heap.page_allocator;
+    const test_data = try loadTestData(allocator);
+    defer test_data.parsed.deinit();
 
-//     var transliteratior = Transliteration.init(allocator, .orva);
-//     for (test_data.avro_tests) |test_case| {
-//         const en = test_case.object.get("en").?.string;
-//         const bn = test_case.object.get("bn").?.string;
+    var transliterator = Transliteration.init(allocator, .orva);
+    defer transliterator.deinit();
 
-//         const result = transliteratior.transliterate(bn);
-//         defer allocator.free(result);
+    for (test_data.avro_tests) |test_case| {
+        const en = test_case.object.get("en").?.string;
+        const bn = test_case.object.get("bn").?.string;
 
-//         // std.debug.print("\nTest {d}: mode: avro test {d}: {s}..\n", .{ index, index + 1, orva[0..@min(6, orva.len)] });
-//         // std.debug.print("Expect: {s}\nGot:    {s}", .{ avroed, result });
-//         try testing.expectEqualStrings(en, result);
-//     }
-// }
+        const result = transliterator.transliterate(bn);
+        defer allocator.free(result);
+
+        std.debug.print("\nTest Orva: Bangla: {s} -> Latin: {s}", .{ bn, result });
+        try testing.expectEqualStrings(en, result);
+    }
+}
 
 test "mode: avro ligature cases" {
     const allocator = std.heap.page_allocator;
@@ -541,4 +793,24 @@ test "performance test - should handle large text quickly" {
     const ALLOWED_TIME_PER_THOUSAND_CHARS: f64 = 0.2;
     std.debug.print("\nAverage Time Taken per 1000 chars: {d:.2}ms\n", .{avg_execution_time_per_thousand_chars});
     try expect(avg_execution_time_per_thousand_chars < ALLOWED_TIME_PER_THOUSAND_CHARS);
+}
+
+test "mode: orva debug test" {
+    const allocator = std.heap.page_allocator;
+    var transliterator = Transliteration.init(allocator, .orva);
+    defer transliterator.deinit();
+
+    const test_cases = [_]struct { input: []const u8, expected: []const u8 }{
+        .{ .input = "কেমন", .expected = "kemon" },
+        .{ .input = "আমার", .expected = "amar" },
+        .{ .input = "বাংলা", .expected = "bangla" },
+    };
+
+    for (test_cases) |tc| {
+        const result = transliterator.transliterate(tc.input);
+        defer allocator.free(result);
+
+        std.debug.print("\nOrva Debug Test: {s} -> {s}", .{ tc.input, result });
+        try testing.expectEqualStrings(tc.expected, result);
+    }
 }
