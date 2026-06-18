@@ -6,10 +6,10 @@ const std = @import("std");
 const bangla_lib = @import("bangla_lib");
 
 /// This imports the separate module containing `root.zig`. Take a look in `build.zig` for details.
-pub fn main() !void {
-    const allocator = std.heap.page_allocator;
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
-    var args = try std.process.argsWithAllocator(allocator);
+    var args = try init.minimal.args.iterateAllocator(allocator);
     defer args.deinit();
 
     // Skip the program name

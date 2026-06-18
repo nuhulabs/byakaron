@@ -251,7 +251,7 @@ pub const Tokenizer = struct {
             freeAST(ast, self.allocator);
         }
 
-        var para_list = std.ArrayList(ParagraphNode).init(self.allocator);
+        var para_list = std.array_list.Managed(ParagraphNode).init(self.allocator);
         defer para_list.deinit();
 
         // Split input into paragraphs by newlines
@@ -300,7 +300,7 @@ pub const Tokenizer = struct {
             _ = try self.parse();
         }
 
-        var words = std.ArrayList([]const u8).init(self.allocator);
+        var words = std.array_list.Managed([]const u8).init(self.allocator);
         defer words.deinit();
 
         for (self.ast.?.tokens) |para| {
@@ -333,22 +333,19 @@ pub const Tokenizer = struct {
                 var arena = std.heap.ArenaAllocator.init(self.allocator);
                 errdefer arena.deinit();
 
-                var json_str = std.ArrayList(u8).init(arena.allocator());
-                try std.json.stringify(self.ast.?, .{ .whitespace = .indent_2 }, json_str.writer());
-
-                // Copy to output buffer
-                const result = try self.allocator.dupe(u8, json_str.items);
-                arena.deinit();
-                return result;
+                var json_str = std.Io.Writer.Allocating.init(arena.allocator());
+                try std.json.Stringify.value(self.ast.?, .{ .whitespace = .indent_2 }, &json_str.writer);
+                return json_str.toOwnedSlice();
             },
         }
     }
 
     fn printReadable(doc: DocumentNode, allocator: std.mem.Allocator) ![]const u8 {
-        var output = std.ArrayList(u8).init(allocator);
+        var output = std.Io.Writer.Allocating.init(allocator);
         errdefer output.deinit();
+        var writer = &output.writer;
 
-        try output.writer().writeAll("--- AST Structure ---\n");
+        try writer.writeAll("--- AST Structure ---\n");
 
         // Helper function to validate and format UTF-8 text
         const formatText = struct {
@@ -359,8 +356,8 @@ pub const Tokenizer = struct {
 
         // Print paragraphs
         for (doc.tokens, 0..) |para, i| {
-            try std.fmt.format(output.writer(), "{s}Paragraph {d} (Len: {d}): {s}\n", .{
-                "    " ** 0,
+            try writer.print("{s}Paragraph {d} (Len: {d}): {s}\n", .{
+                whitespaces(4),
                 i,
                 para.value.len,
                 formatText(para.value),
@@ -368,8 +365,8 @@ pub const Tokenizer = struct {
 
             // Print sentences
             for (para.tokens, 0..) |sent, j| {
-                try std.fmt.format(output.writer(), "{s}Sentence {d} (Len: {d}): {s}\n", .{
-                    "    " ** 1,
+                try writer.print("{s}Sentence {d} (Len: {d}): {s}\n", .{
+                    whitespaces(4),
                     j,
                     sent.value.len,
                     formatText(sent.value),
@@ -378,14 +375,14 @@ pub const Tokenizer = struct {
                 // Print tokens
                 for (sent.tokens, 0..) |node, k| {
                     if (node.value.len == 0) {
-                        try std.fmt.format(output.writer(), "{s}{s} {d}: (Empty String)\n", .{
-                            "    " ** 2,
+                        try writer.print("{s}{s} {d}: (Empty String)\n", .{
+                            whitespaces(8),
                             @tagName(node.kind),
                             k,
                         });
                     } else {
-                        try std.fmt.format(output.writer(), "{s}{s} {d} (Len: {d}): {s}\n", .{
-                            "    " ** 2,
+                        try writer.print("{s}{s} {d} (Len: {d}): {s}\n", .{
+                            whitespaces(16),
                             @tagName(node.kind),
                             k,
                             node.value.len,
@@ -403,7 +400,7 @@ pub const Tokenizer = struct {
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
 
-        var json_str = std.ArrayList(u8).init(arena.allocator());
+        var json_str = std.array_list.Managed(u8).init(arena.allocator());
         try std.json.stringify(doc, .{ .whitespace = .indent_2 }, json_str.writer());
         return json_str.toOwnedSlice();
     }
@@ -527,7 +524,7 @@ pub const Tokenizer = struct {
     }
 
     fn parseParagraph(self: *Tokenizer, start: usize, end: usize) !?ParagraphNode {
-        var sentence_list = std.ArrayList(SentenceNode).init(self.allocator);
+        var sentence_list = std.array_list.Managed(SentenceNode).init(self.allocator);
         var para_success = false;
         defer if (!para_success) sentence_list.deinit();
 
@@ -561,7 +558,7 @@ pub const Tokenizer = struct {
     }
 
     fn parseSentence(self: *Tokenizer) !?SentenceNode {
-        var word_list = std.ArrayList(WordNode).init(self.allocator);
+        var word_list = std.array_list.Managed(WordNode).init(self.allocator);
         var sent_start = self.position;
         var sent_success = false;
         defer if (!sent_success) word_list.deinit();
@@ -634,6 +631,11 @@ fn freeAST(doc: DocumentNode, allocator: std.mem.Allocator) void {
         allocator.free(para.tokens);
     }
     allocator.free(doc.tokens);
+}
+
+fn whitespaces(comptime n: usize) [n]u8 {
+    const ws: [n]u8 = @splat(' ');
+    return ws;
 }
 
 test "tokenizer parse and print" {
@@ -833,7 +835,7 @@ pub fn normalizeWord(allocator: std.mem.Allocator, word: []const u8) ![]u8 {
     }
 
     // If replacements are needed, build the new string iteratively.
-    var buffer = std.ArrayList(u8).init(allocator);
+    var buffer = std.array_list.Managed(u8).init(allocator);
     errdefer buffer.deinit();
 
     var i: usize = 0;
@@ -919,7 +921,7 @@ test "normalizeWord" {
 test "performance test - should handle large text quickly" {
     const allocator = std.testing.allocator;
     const sample_text = "আমি ভাত খাই। তুমি কী করো? সে স্কুলে যায়!";
-    var large_text = std.ArrayList(u8).init(allocator);
+    var large_text = std.array_list.Managed(u8).init(allocator);
     defer large_text.deinit();
 
     // Repeat the sample text 1000 times
@@ -937,14 +939,14 @@ test "performance test - should handle large text quickly" {
     // Run multiple times and calculate average
     var run: usize = 0;
     while (run < NUM_RUNS) : (run += 1) {
-        const start_time = std.time.nanoTimestamp();
+        const start_time = std.Io.Timestamp.now(std.testing.io, .awake);
         _ = try tokenizer.parse();
         const words = try tokenizer.getWords(.{});
         defer allocator.free(words);
         try std.testing.expectEqual(9000, words.len);
-        const end_time = std.time.nanoTimestamp();
+        const end_time = std.Io.Timestamp.now(std.testing.io, .awake);
 
-        const execution_time = @as(f64, @floatFromInt(end_time - start_time)) / 1_000_000.0; // Convert to milliseconds
+        const execution_time = @as(f64, @floatFromInt(end_time.nanoseconds - start_time.nanoseconds)) / 1_000_000.0; // Convert to milliseconds
         total_time += execution_time;
     }
 
