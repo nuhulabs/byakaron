@@ -33,9 +33,6 @@ pub fn build(b: *std.Build) void {
     run_cmd.step.dependOn(b.getInstallStep());
 
     // Run
-    // if (b.args) |args| {
-    //     run_cmd.addArgs(args);
-    // }
     run_cmd.addPassthruArgs();
 
     const run_step = b.step("run", "Run the app");

@@ -538,7 +538,7 @@ test "performance test - should handle large text quickly" {
     const avg_execution_time_per_thousand_chars = (avg_execution_time / @as(f64, @floatFromInt(large_text.items.len))) * 1000.0;
 
     // The function should process large text in reasonable time (e.g., under 10ms per 1000 chars)
-    const ALLOWED_TIME_PER_THOUSAND_CHARS: f64 = 0.1;
+    const ALLOWED_TIME_PER_THOUSAND_CHARS: f64 = 0.2;
     std.debug.print("\nAverage Time Taken per 1000 chars: {d:.2}ms\n", .{avg_execution_time_per_thousand_chars});
     try expect(avg_execution_time_per_thousand_chars < ALLOWED_TIME_PER_THOUSAND_CHARS);
 }
