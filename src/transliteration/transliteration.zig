@@ -123,7 +123,7 @@ pub const Transliteration = struct {
         defer self.allocator.free(fixed);
 
         // Use a fixed buffer for output to reduce allocations, with capacity for expansion
-        var output = std.ArrayList(u8).init(self.allocator);
+        var output = std.array_list.Managed(u8).init(self.allocator);
         errdefer output.deinit();
         try output.ensureTotalCapacity(fixed.len * 3); // Pre-allocate with more space for worst case
 
@@ -131,7 +131,7 @@ pub const Transliteration = struct {
         var currentIndex: usize = 0;
 
         // Reuse buffer for pattern output to avoid allocation in hot loop
-        var result_buffer = std.ArrayList(u8).init(self.allocator);
+        var result_buffer = std.array_list.Managed(u8).init(self.allocator);
         defer result_buffer.deinit();
         try result_buffer.ensureTotalCapacity(32); // Typical replacement size
 
@@ -233,7 +233,7 @@ pub const Transliteration = struct {
         chars: []const u8,
         startIndex: usize,
         endIndex: usize,
-        result_buffer: *std.ArrayList(u8),
+        result_buffer: *std.array_list.Managed(u8),
     ) !struct { output: []const u8, newIndex: usize } {
         if (pattern.rules == null) {
             try result_buffer.appendSlice(pattern.replace);
@@ -404,12 +404,7 @@ const testing = std.testing;
 
 // Helper function to load test data
 fn loadTestData(allocator: std.mem.Allocator) !struct { avro_tests: []const std.json.Value, ligature_tests: std.json.ObjectMap, parsed: std.json.Parsed(std.json.Value) } {
-    const file = try std.fs.cwd().openFile("src/assets/transliteration.test.json", .{});
-    defer file.close();
-
-    const file_content = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
-    defer allocator.free(file_content);
-
+    const file_content = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "src/assets/transliteration.test.json", allocator, .unlimited);
     const parsed = try std.json.parseFromSlice(std.json.Value, allocator, file_content, .{});
     errdefer parsed.deinit();
 
@@ -510,7 +505,7 @@ test "performance test - should handle large text quickly" {
 
     const first_avro = test_data.avro_tests[0];
     const sample_text = first_avro.object.get("en").?.string;
-    var large_text = std.ArrayList(u8).init(allocator);
+    var large_text = std.array_list.Managed(u8).init(allocator);
     defer large_text.deinit();
 
     // Repeat the sample text 1000 times
@@ -526,12 +521,12 @@ test "performance test - should handle large text quickly" {
     // Run 10 times and calculate average
     var run: usize = 0;
     while (run < NUM_RUNS) : (run += 1) {
-        const start_time = std.time.nanoTimestamp();
+        const start_time = std.Io.Timestamp.now(std.testing.io, .awake);
         const result = transliteratior.transliterate(large_text.items);
         defer allocator.free(result);
-        const end_time = std.time.nanoTimestamp();
+        const end_time = std.Io.Timestamp.now(std.testing.io, .awake);
 
-        const execution_time = @as(f64, @floatFromInt(end_time - start_time)) / 1_000_000.0; // Convert to milliseconds
+        const execution_time = @as(f64, @floatFromInt(end_time.nanoseconds - start_time.nanoseconds)) / 1_000_000.0; // Convert to milliseconds
         total_time += execution_time;
 
         // Verify the result is correct (check first few characters)
