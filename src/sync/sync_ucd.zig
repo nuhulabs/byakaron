@@ -45,7 +45,7 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     // Create an ArrayList to store characters
-    var list = std.ArrayList(KeywordsV2.Character).init(allocator);
+    var list = std.array_list.Managed(KeywordsV2.Character).init(allocator);
     defer {
         for (list.items) |item| {
             allocator.free(item.value);
@@ -102,7 +102,7 @@ pub fn main() !void {
     const kwds = KeywordsV2{ .characters = list.items };
 
     // Write as ZON
-    var zon_str = std.ArrayList(u8).init(allocator);
+    var zon_str = std.array_list.Managed(u8).init(allocator);
     defer zon_str.deinit();
 
     try std.zon.stringify.serialize(kwds, .{
@@ -116,12 +116,12 @@ pub fn main() !void {
         .data = zon_str.items,
     });
     // Save to json file
-    var json_str = std.ArrayList(u8).init(allocator);
+    var json_str = std.array_list.Managed(u8).init(allocator);
     defer json_str.deinit();
-    try std.json.stringify(kwds, .{
+    try json_str.writer().print("{f}", .{std.json.fmt(kwds, .{
         .whitespace = .indent_2,
         .escape_unicode = false,
-    }, json_str.writer());
+    })});
     try std.fs.cwd().writeFile(.{
         .sub_path = "src/assets/keywords_v2.json",
         .data = json_str.items,

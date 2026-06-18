@@ -399,7 +399,7 @@ pub const Tokenizer = struct {
         defer arena.deinit();
 
         var json_str = std.array_list.Managed(u8).init(arena.allocator());
-        try std.json.stringify(doc, .{ .whitespace = .indent_2 }, json_str.writer());
+        try std.json.Stringify.value(doc, .{ .whitespace = .indent_2 }, &json_str.writer());
         return json_str.toOwnedSlice();
     }
 
@@ -951,7 +951,8 @@ test "performance test - should handle large text quickly" {
     const avg_execution_time = total_time / @as(f64, @floatFromInt(NUM_RUNS));
     const avg_execution_time_per_thousand_chars = (avg_execution_time / @as(f64, @floatFromInt(large_text.items.len))) * 1000.0;
 
-    // The function should process large text in reasonable time (e.g., under 10ms per 1000 chars)
+    // The function should process large text in reasonable time
+    // Note: threshold is higher because std.testing.allocator (SafeAllocator) has debug overhead
     const ALLOWED_TIME_PER_THOUSAND_CHARS: f64 = 5.0;
 
     std.debug.print("\nTokenizer Performance Test Results:\n", .{});

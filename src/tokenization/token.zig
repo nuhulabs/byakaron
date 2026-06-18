@@ -115,11 +115,11 @@ fn compareCharacters(context: void, a: Keywords.Character, b: Keywords.Character
 test "sav eKeywordsV2" {
     // DEMO: Save patterns as Zon for experimental purposes
 
-    var list = std.ArrayList(Keywords.Character).init(std.heap.page_allocator);
+    var list = std.array_list.Managed(Keywords.Character).init(std.heap.page_allocator);
     defer list.deinit();
 
     // try list.append(.{ .code = 0x0981, .kind = .unassigned, .value = "TEST_VALUE", .name = "TEST_NAME" });
-    var char_str = std.ArrayList(u8).init(std.heap.page_allocator);
+    var char_str = std.array_list.Managed(u8).init(std.heap.page_allocator);
     defer char_str.deinit();
     const bengali_start: u21 = 0x0980;
     const bengali_end: u21 = 0x09FF;
@@ -133,7 +133,7 @@ test "sav eKeywordsV2" {
         const ucd = std.fmt.allocPrint(std.heap.page_allocator, "U+{X:0>4}", .{current}) catch unreachable;
 
         if (existing) |e| {
-            var lower_cased_underscored_name = std.ArrayList(u8).init(std.heap.page_allocator);
+            var lower_cased_underscored_name = std.array_list.Managed(u8).init(std.heap.page_allocator);
             defer lower_cased_underscored_name.deinit();
             for (e.name) |c| {
                 if (c == ' ') {

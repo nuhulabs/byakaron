@@ -7,10 +7,12 @@ const bangla_lib = @import("bangla_lib");
 
 /// This imports the separate module containing `root.zig`. Take a look in `build.zig` for details.
 pub fn main(init: std.process.Init) !void {
-    const allocator = init.gpa;
+    var arena = init.arena;
+    const allocator = arena.allocator();
+    // defer arena.deinit();
 
     var args = try init.minimal.args.iterateAllocator(allocator);
-    defer args.deinit();
+    // defer args.deinit();
 
     // Skip the program name
     _ = args.skip();
@@ -19,7 +21,7 @@ pub fn main(init: std.process.Init) !void {
     if (args.next()) |input| {
         var transliteratior = bangla_lib.Transliteration.init(allocator, .avro);
         const result = transliteratior.transliterate(input);
-        defer allocator.free(result);
+        // defer allocator.free(result);
 
         std.debug.print("{s}\n", .{result});
     } else {

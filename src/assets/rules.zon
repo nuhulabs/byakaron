@@ -1,7 +1,7 @@
 .{
-    .vowel = .{ .masks = .{ 0, 9150281795239936, 0, 0 } },
-    .consonant = .{ .masks = .{ 0, 567310461918248960, 0, 0 } },
-    .casesensitive = .{ .masks = .{ 0, 449452384607797248, 0, 0 } },
+    .vowel = "aeiou",
+    .consonant = "bcdfghjklmnpqrstvwxyz",
+    .casesensitive = "oiudgjnrstyz",
     .patterns = .{
         .{ .find = "bhl", .replace = "ভ্ল", .rules = null },
         .{ .find = "psh", .replace = "পশ", .rules = null },
