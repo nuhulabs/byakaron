@@ -1,8 +1,0 @@
-.zig-cache/
-zig-out/
-.temp_sync
-tmp
-
-*.jsonl
-*.csv
-.DS_Store

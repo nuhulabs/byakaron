@@ -185,3 +185,14 @@ output/*
 
 # Docs
 docs/docs/api
+
+# Xcode unnecessary files
+
+.zig-cache/
+zig-out/
+.temp_sync
+tmp
+
+*.jsonl
+*.csv
+.DS_Store
