@@ -6,7 +6,7 @@ import InputMethodKit
 /// is no engine context, no session object, and no candidate panel. We keep a
 /// buffer of raw Latin keystrokes for the current word, re-transliterate the
 /// whole buffer on every keystroke, and show the result as marked (underlined)
-/// text. The word commits on space/return/escape or any non-letter input.
+/// text. The word commits on space/return/escape or any non-Avro input.
 ///
 /// This is a proof of concept to validate the Zig FFI end-to-end; it
 /// deliberately trades riti's candidate UX for simplicity.
@@ -117,12 +117,17 @@ extension ByakaronInputController {
         )
     }
 
-    /// Whether a character should feed the Avro buffer. Avro phonetic input is
-    /// ASCII letters plus a few punctuation marks used as phonetic modifiers
-    /// (e.g. `.`, `,`, `\`` for hasanta/zero-width joiners). For this POC we keep
-    /// it to ASCII letters; everything else flushes and passes through.
+    /// Whether a character should feed the Avro buffer. Must stay in sync with the
+    /// ASCII symbols handled by `src/transliteration` (e.g. `.` → `।`, `:` → `ঃ`).
     private func isAvroInputScalar(_ scalar: Unicode.Scalar) -> Bool {
         let v = scalar.value
-        return (v >= 0x41 && v <= 0x5A) || (v >= 0x61 && v <= 0x7A) // A-Z, a-z
+        if (v >= 0x41 && v <= 0x5A) || (v >= 0x61 && v <= 0x7A) { return true } // A-Z, a-z
+        if v >= 0x30 && v <= 0x39 { return true } // 0-9 → Bengali digits
+        switch v {
+        case 0x2E, 0x2C, 0x60, 0x3A, 0x5E, 0x24: // . , ` : ^ $
+            return true
+        default:
+            return false
+        }
     }
 }
