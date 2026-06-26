@@ -225,18 +225,16 @@ private struct CandidateSettings: View {
 
 private struct ExperimentalSettings: View {
     // Live: read by the IME. When on, transliteration runs through the Zig
-    // libbyakaron engine (inline phonetic) instead of riti.
     @AppStorage(ByakaronSettings.useZigTransliterationKey, store: ByakaronSettings.defaults)
-    private var useZig = false
+    private var useZig = true
 
     var body: some View {
         Form {
             Section {
                 Toggle(isOn: $useZig) {
                     Text("Use Zig transliteration engine")
-                    Text("Proof of concept. Routes typing through the new Zig engine "
-                        + "(inline phonetic, no candidate list) instead of riti.")
                 }
+                .disabled(true)
                 .onChange(of: useZig) { _, _ in
                     // @AppStorage wrote the shared suite; tell the running IME to rebuild.
                     ByakaronSettings.broadcastChange()
@@ -244,8 +242,7 @@ private struct ExperimentalSettings: View {
             } header: {
                 Text("Engine")
             } footer: {
-                Text("Experimental features may be unstable. Turn this off to return "
-                    + "to the default riti engine with full suggestions.")
+                Text("Experimental features may be unstable. Turn this off to return to the default engine with full suggestions.")
                     .font(.caption).foregroundStyle(.tertiary)
             }
         }

@@ -2,7 +2,6 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-ENGINE_DIR="$PROJECT_ROOT/engine"
 SRC_DIR="$PROJECT_ROOT/Byakaron"           # unified source tree
 RES_DIR="$SRC_DIR/Resources"               # shared Info plists, icons, entitlements
 BUILD_DIR="$PROJECT_ROOT/build"
@@ -34,30 +33,9 @@ if [ "$BUILD_UNIVERSAL" = "true" ]; then
     BUILD_UNIVERSAL="false"
 fi
 
-# Ensure cargo is available
-if ! command -v cargo &>/dev/null; then
-    source "$HOME/.cargo/env" 2>/dev/null || true
-fi
-
 MACOS26_SDK="$(xcrun --sdk macosx26.5 --show-sdk-path)"
 TARGET="arm64-apple-macos26.0"
 
-# ---------------------------------------------------------------------------
-# Step 1: Build Rust static library (arm64 release)
-# ---------------------------------------------------------------------------
-echo ">>> Building Rust engine..."
-
-CARGO_ARGS=""
-if [ "$BUILD_TYPE" = "release" ]; then
-    CARGO_ARGS="--release"
-fi
-
-cd "$ENGINE_DIR"
-cargo build $CARGO_ARGS --target aarch64-apple-darwin
-FINAL_LIB="$ENGINE_DIR/target/aarch64-apple-darwin/${BUILD_TYPE}/libavrobangla_engine.a"
-echo ">>> Rust library built: $FINAL_LIB"
-
-HEADER_SEARCH_PATH="$ENGINE_DIR/include"
 
 # ---------------------------------------------------------------------------
 # Step 1b: Build the Zig transliteration library (libbyakaron.a) from the repo
@@ -89,7 +67,7 @@ echo ">>> Zig library built: $ZIG_LIB_DIR/libbyakaron.a"
 
 # Both header dirs are passed to swiftc (unquoted -> word-split into -I flags);
 # BridgeHeader.h includes both avrobangla_engine.h and byakaron.h.
-HEADER_SEARCH_PATH="-I $HEADER_SEARCH_PATH -I $ZIG_INCLUDE_DIR"
+HEADER_SEARCH_PATH="-I $ZIG_INCLUDE_DIR"
 
 # ---------------------------------------------------------------------------
 # Step 2: Build the embedded IME helper -> "Byakaron Keyboard.app"
@@ -123,8 +101,6 @@ swiftc "${IME_SOURCES[@]}" \
     -module-name "Byakaron" \
     -import-objc-header "$SRC_DIR/Core/Transliteration/BridgeHeader.h" \
     $HEADER_SEARCH_PATH \
-    -L "$(dirname "$FINAL_LIB")" \
-    -lavrobangla_engine \
     -L "$ZIG_LIB_DIR" \
     -lbyakaron \
     -sdk "$MACOS26_SDK" \
