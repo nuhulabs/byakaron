@@ -113,6 +113,7 @@ IME_SOURCES=(
     "$SRC_DIR/Keyboard/Activation/SpellServer.swift"
     "$SRC_DIR/Keyboard/Phonetic/PhoneticInputController.swift"
     "$SRC_DIR/Keyboard/Phonetic/PhoneticInputController+Zig.swift"
+    "$SRC_DIR/Keyboard/Phonetic/PhoneticDictionary.swift"
     "$SRC_DIR/Core/Transliteration/ZigTransliterator.swift"
     "$SRC_DIR/Core/Settings/ByakaronSettings.swift"
 )

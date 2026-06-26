@@ -23,6 +23,19 @@ class ByakaronInputController: IMKInputController {
     /// Buffer of raw Latin keystrokes for the in-progress word in Zig mode.
     var zigLatinBuffer = ""
 
+    /// Built-in macOS candidate window used in Zig mode. Created lazily (it needs
+    /// the global IMKServer) and reused for the controller's lifetime.
+    var zigCandidatesWindow: IMKCandidates?
+
+    /// Current candidate strings shown in `zigCandidatesWindow`. Index 0 is the
+    /// live phonetic transliteration (the default commit). Returned to the panel
+    /// from `candidates(_:)`.
+    var zigCandidates: [String] = []
+
+    /// The candidate that a plain commit (space/focus loss) will insert. Defaults
+    /// to the phonetic transliteration and tracks the panel's highlight.
+    var zigSelected = ""
+
     /// Bengali digits ০-৯ indexed by 0-9
     private static let bengaliDigits: [Character] = [
         "\u{09E6}", "\u{09E7}", "\u{09E8}", "\u{09E9}", "\u{09EA}",
@@ -51,6 +64,10 @@ class ByakaronInputController: IMKInputController {
         usingZig = ByakaronSettings.useZigTransliteration
         if usingZig {
             zigLatinBuffer = ""
+            zigSelected = ""
+            zigCandidates = []
+            // Load the dictionary/suffix data once, off the main thread.
+            PhoneticDictionary.preload()
             return
         }
 
@@ -90,6 +107,9 @@ class ByakaronInputController: IMKInputController {
     private func rebuildEngine() {
         // Drop any in-flight Zig word; the buffer is cleared in initializeEngine.
         zigLatinBuffer = ""
+        zigSelected = ""
+        zigCandidates = []
+        zigCandidatesWindow?.hide()
         if let ctx = engineCtx, riti_context_ongoing_input_session(ctx) {
             riti_context_finish_input_session(ctx)
         }
@@ -655,6 +675,7 @@ class ByakaronInputController: IMKInputController {
             if let client = sender as? (any IMKTextInput) {
                 commitZig(client: client)
             }
+            zigCandidatesWindow?.hide()
             hideCandidates()
             super.deactivateServer(sender)
             return
@@ -669,6 +690,11 @@ class ByakaronInputController: IMKInputController {
     }
 
     override func candidates(_ sender: Any!) -> [Any]! {
+        // Zig mode feeds the built-in candidate window from its own list.
+        if usingZig {
+            return zigCandidates
+        }
+
         // Lonely (Single) suggestions have no candidate list — riti's
         // get_length panics on that variant, so guard before calling it.
         guard let suggestion = currentSuggestion,
@@ -687,6 +713,23 @@ class ByakaronInputController: IMKInputController {
             }
         }
         return result
+    }
+
+    // MARK: - Candidate window callbacks (Zig mode)
+
+    /// The user moved the highlight in the candidate window. Track it so a plain
+    /// commit (space / focus loss) inserts the highlighted candidate.
+    override func candidateSelectionChanged(_ candidateString: NSAttributedString!) {
+        guard usingZig, let text = candidateString?.string, !text.isEmpty else { return }
+        zigSelected = text
+    }
+
+    /// The user picked a candidate (Return, a number key, or a click). Commit it.
+    override func candidateSelected(_ candidateString: NSAttributedString!) {
+        guard usingZig,
+              let text = candidateString?.string,
+              let client = self.client() as (any IMKTextInput)? else { return }
+        commitZigText(text, client: client)
     }
 }
 
