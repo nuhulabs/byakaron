@@ -67,13 +67,13 @@ pub fn build(b: *std.Build) void {
         // Fixed locations matching build.sh ($BUILD_DIR, products, resources).
         const zig_include = rootPath(b, "src/ffi");
         const zig_lib_dir = rootPath(b, "platforms/macos/build/zig");
-        const res_dir = rootPath(b, "platforms/macos/Byakaron/Resources");
+        const res_dir = rootPath(b, "platforms/macos/Resources");
         const data_dir = rootPath(b, "platforms/macos/data");
         const ime_name = "Byakaron Keyboard";
         const ime_bundle = rootPath(b, "platforms/macos/build/Byakaron Keyboard.app");
         const app_bundle = rootPath(b, "platforms/macos/build/Byakaron.app");
-        const entitlements = rootPath(b, "platforms/macos/Byakaron/Resources/Byakaron.entitlements");
-        const bridge_header = rootPath(b, "platforms/macos/Byakaron/Core/Transliteration/BridgeHeader.h");
+        const entitlements = rootPath(b, "platforms/macos/Resources/Byakaron.entitlements");
+        const bridge_header = rootPath(b, "platforms/macos/Core/Transliteration/BridgeHeader.h");
         // const zig_bridge_header = rootPath(b, "platforms/macos/Byakaron/Core/Transliteration/ZigBridge.h");
 
         // Step 1b: Zig engine library (arm64-macos, ReleaseFast) as a real artifact.
@@ -289,7 +289,7 @@ fn rootPath(b: *std.Build, sub: []const u8) []const u8 {
 }
 
 /// Absolute path to a file under the unified macOS source tree
-/// (platforms/macos/Byakaron/...).
+/// (platforms/macos/...).
 fn macSrc(b: *std.Build, comptime rel: []const u8) []const u8 {
-    return rootPath(b, "platforms/macos/Byakaron/" ++ rel);
+    return rootPath(b, "platforms/macos/" ++ rel);
 }

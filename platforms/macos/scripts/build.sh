@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC_DIR="$PROJECT_ROOT/Byakaron"           # unified source tree
+SRC_DIR="$PROJECT_ROOT"                    # unified source tree
 RES_DIR="$SRC_DIR/Resources"               # shared Info plists, icons, entitlements
 BUILD_DIR="$PROJECT_ROOT/build"
 
