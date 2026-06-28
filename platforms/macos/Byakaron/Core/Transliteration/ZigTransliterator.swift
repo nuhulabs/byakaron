@@ -4,8 +4,8 @@ import Foundation
 ///
 /// Word-level transliterator: hand it a run of Latin (Avro-phonetic) text and it
 /// returns the Bangla rendering. It has no notion of a candidate list or an input
-/// session — that richness lives in riti. The IME chooses between this and riti
-/// via `ByakaronSettings.useZigTransliteration`.
+/// session; the IME (`ByakaronInputController`) layers buffering, marked text,
+/// and dictionary candidates on top.
 ///
 /// The engine builds an internal matching trie that is expensive to construct but
 /// cheap to reuse. We therefore create one persistent `ByakaronEngine` per mode
