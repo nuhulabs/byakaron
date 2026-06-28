@@ -47,6 +47,7 @@
 		894ACE392FF1A5EB0042A597 /* Info-keyboard.plist in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDFA2FF1A4970042A597 /* Info-keyboard.plist */; };
 		894ACE3A2FF1A5EB0042A597 /* Probhat.json in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDFB2FF1A4970042A597 /* Probhat.json */; };
 		894ACE3B2FF1A5EB0042A597 /* suffix.json in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDFC2FF1A4970042A597 /* suffix.json */; };
+		894ACE3D2FF1AD140042A597 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 894ACE3C2FF1AD140042A597 /* Assets.xcassets */; };
 		894ACE4A2FF1B24F0042A597 /* byakaron_zcu.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 894ACE492FF1B24F0042A597 /* byakaron_zcu.o */; };
 		894ACE4B2FF1B3D30042A597 /* byakaron_zcu.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 894ACE492FF1B24F0042A597 /* byakaron_zcu.o */; };
 		894ACE4D2FF1B7FB0042A597 /* Byakaron Keyboard.app in CopyFiles */ = {isa = PBXBuildFile; fileRef = 894ACE1D2FF1A5AA0042A597 /* Byakaron Keyboard.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -103,21 +104,10 @@
 		894ACDFB2FF1A4970042A597 /* Probhat.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Probhat.json; sourceTree = "<group>"; };
 		894ACDFC2FF1A4970042A597 /* suffix.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = suffix.json; sourceTree = "<group>"; };
 		894ACE1D2FF1A5AA0042A597 /* Byakaron Keyboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Byakaron Keyboard.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		894ACE3C2FF1AD140042A597 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		894ACE3E2FF1AD140042A597 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		894ACE492FF1B24F0042A597 /* byakaron_zcu.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = byakaron_zcu.o; path = build/zig/byakaron_zcu.o; sourceTree = "<group>"; };
 /* End PBXFileReference section */
-
-/* Begin PBXFileSystemSynchronizedRootGroup section */
-		894ACDCF2FF1A45F0042A597 /* Byakaron */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Byakaron;
-			sourceTree = "<group>";
-		};
-		894ACE1E2FF1A5AA0042A597 /* Byakaron Keyboard */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "Byakaron Keyboard";
-			sourceTree = "<group>";
-		};
-/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		894ACDCA2FF1A45F0042A597 /* Frameworks */ = {
@@ -142,8 +132,6 @@
 				894ACDEC2FF1A4970042A597 /* Core */,
 				894ACDF22FF1A4970042A597 /* Keyboard */,
 				894ACDFD2FF1A4970042A597 /* Resources */,
-				894ACDCF2FF1A45F0042A597 /* Byakaron */,
-				894ACE1E2FF1A5AA0042A597 /* Byakaron Keyboard */,
 				894ACE402FF1AFA40042A597 /* Frameworks */,
 				894ACDCE2FF1A45F0042A597 /* Products */,
 			);
@@ -176,6 +164,7 @@
 				894ACDE02FF1A4970042A597 /* Views */,
 				894ACDE12FF1A4970042A597 /* ByakaronApp.swift */,
 				894ACDE22FF1A4970042A597 /* KeyboardInstaller.swift */,
+				894ACE3C2FF1AD140042A597 /* Assets.xcassets */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -224,6 +213,7 @@
 				894ACDEF2FF1A4970042A597 /* PhoneticDictionary.swift */,
 				894ACDF02FF1A4970042A597 /* PhoneticInputController.swift */,
 				894ACDF12FF1A4970042A597 /* SpellServer.swift */,
+				894ACE3E2FF1AD140042A597 /* Assets.xcassets */,
 			);
 			path = Keyboard;
 			sourceTree = "<group>";
@@ -270,9 +260,6 @@
 			dependencies = (
 				894ACE4F2FF1BCA10042A597 /* PBXTargetDependency */,
 			);
-			fileSystemSynchronizedGroups = (
-				894ACDCF2FF1A45F0042A597 /* Byakaron */,
-			);
 			name = Byakaron;
 			productName = Byakaron;
 			productReference = 894ACDCD2FF1A45F0042A597 /* Byakaron.app */;
@@ -286,9 +273,6 @@
 				894ACE1A2FF1A5AA0042A597 /* Frameworks */,
 			);
 			buildRules = (
-			);
-			fileSystemSynchronizedGroups = (
-				894ACE1E2FF1A5AA0042A597 /* Byakaron Keyboard */,
 			);
 			name = "Byakaron Keyboard";
 			productName = "Byakaron Keyboard";
@@ -341,6 +325,7 @@
 				894ACE0F2FF1A4970042A597 /* Info-keyboard.plist in Resources */,
 				894ACE102FF1A4970042A597 /* AppIcon.icns in Resources */,
 				894ACE112FF1A4970042A597 /* Info-app.plist in Resources */,
+				894ACE3D2FF1AD140042A597 /* Assets.xcassets in Resources */,
 				894ACE122FF1A4970042A597 /* suffix.json in Resources */,
 				894ACE132FF1A4970042A597 /* Probhat.json in Resources */,
 				894ACE142FF1A4970042A597 /* Dictionary.json in Resources */,
