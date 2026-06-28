@@ -14,15 +14,10 @@
 		894ACE022FF1A4970042A597 /* BanglaSpellTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDDB2FF1A4970042A597 /* BanglaSpellTextView.swift */; };
 		894ACE032FF1A4970042A597 /* KeyboardInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDE22FF1A4970042A597 /* KeyboardInstaller.swift */; };
 		894ACE042FF1A4970042A597 /* Dictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDE62FF1A4970042A597 /* Dictionary.swift */; };
-		894ACE052FF1A4970042A597 /* PhoneticInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDF02FF1A4970042A597 /* PhoneticInputController.swift */; };
 		894ACE062FF1A4970042A597 /* LayoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDDD2FF1A4970042A597 /* LayoutView.swift */; };
 		894ACE072FF1A4970042A597 /* Prediction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDE72FF1A4970042A597 /* Prediction.swift */; };
 		894ACE082FF1A4970042A597 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDDF2FF1A4970042A597 /* SettingsView.swift */; };
-		894ACE092FF1A4970042A597 /* SpellServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDF12FF1A4970042A597 /* SpellServer.swift */; };
-		894ACE0A2FF1A4970042A597 /* PhoneticDictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDEF2FF1A4970042A597 /* PhoneticDictionary.swift */; };
 		894ACE0B2FF1A4970042A597 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDDE2FF1A4970042A597 /* MainView.swift */; };
-		894ACE0C2FF1A4970042A597 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDEE2FF1A4970042A597 /* main.swift */; };
-		894ACE0D2FF1A4970042A597 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDED2FF1A4970042A597 /* AppDelegate.swift */; };
 		894ACE0E2FF1A4970042A597 /* iconTemplate.pdf in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF72FF1A4970042A597 /* iconTemplate.pdf */; };
 		894ACE0F2FF1A4970042A597 /* Info-keyboard.plist in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDFA2FF1A4970042A597 /* Info-keyboard.plist */; };
 		894ACE102FF1A4970042A597 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF32FF1A4970042A597 /* AppIcon.icns */; };
@@ -32,7 +27,51 @@
 		894ACE142FF1A4970042A597 /* Dictionary.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF62FF1A4970042A597 /* Dictionary.json */; };
 		894ACE152FF1A4970042A597 /* iconTemplate.tiff in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF82FF1A4970042A597 /* iconTemplate.tiff */; };
 		894ACE162FF1A4970042A597 /* autocorrect.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF42FF1A4970042A597 /* autocorrect.json */; };
+		894ACE282FF1A5EB0042A597 /* ByakaronSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDE42FF1A4970042A597 /* ByakaronSettings.swift */; };
+		894ACE292FF1A5EB0042A597 /* Dictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDE62FF1A4970042A597 /* Dictionary.swift */; };
+		894ACE2A2FF1A5EB0042A597 /* Prediction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDE72FF1A4970042A597 /* Prediction.swift */; };
+		894ACE2B2FF1A5EB0042A597 /* BridgeHeader.h in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDE92FF1A4970042A597 /* BridgeHeader.h */; };
+		894ACE2C2FF1A5EB0042A597 /* Transliterator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDEA2FF1A4970042A597 /* Transliterator.swift */; };
+		894ACE2D2FF1A5EB0042A597 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDED2FF1A4970042A597 /* AppDelegate.swift */; };
+		894ACE2E2FF1A5EB0042A597 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDEE2FF1A4970042A597 /* main.swift */; };
+		894ACE2F2FF1A5EB0042A597 /* PhoneticDictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDEF2FF1A4970042A597 /* PhoneticDictionary.swift */; };
+		894ACE302FF1A5EB0042A597 /* PhoneticInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDF02FF1A4970042A597 /* PhoneticInputController.swift */; };
+		894ACE312FF1A5EB0042A597 /* SpellServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDF12FF1A4970042A597 /* SpellServer.swift */; };
+		894ACE322FF1A5EB0042A597 /* AppIcon.icns in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDF32FF1A4970042A597 /* AppIcon.icns */; };
+		894ACE332FF1A5EB0042A597 /* autocorrect.json in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDF42FF1A4970042A597 /* autocorrect.json */; };
+		894ACE342FF1A5EB0042A597 /* Byakaron.entitlements in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDF52FF1A4970042A597 /* Byakaron.entitlements */; };
+		894ACE352FF1A5EB0042A597 /* Dictionary.json in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDF62FF1A4970042A597 /* Dictionary.json */; };
+		894ACE362FF1A5EB0042A597 /* iconTemplate.pdf in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDF72FF1A4970042A597 /* iconTemplate.pdf */; };
+		894ACE372FF1A5EB0042A597 /* iconTemplate.tiff in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDF82FF1A4970042A597 /* iconTemplate.tiff */; };
+		894ACE382FF1A5EB0042A597 /* Info-app.plist in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDF92FF1A4970042A597 /* Info-app.plist */; };
+		894ACE392FF1A5EB0042A597 /* Info-keyboard.plist in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDFA2FF1A4970042A597 /* Info-keyboard.plist */; };
+		894ACE3A2FF1A5EB0042A597 /* Probhat.json in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDFB2FF1A4970042A597 /* Probhat.json */; };
+		894ACE3B2FF1A5EB0042A597 /* suffix.json in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDFC2FF1A4970042A597 /* suffix.json */; };
+		894ACE4A2FF1B24F0042A597 /* byakaron_zcu.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 894ACE492FF1B24F0042A597 /* byakaron_zcu.o */; };
+		894ACE4B2FF1B3D30042A597 /* byakaron_zcu.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 894ACE492FF1B24F0042A597 /* byakaron_zcu.o */; };
+		894ACE4D2FF1B7FB0042A597 /* Byakaron Keyboard.app in CopyFiles */ = {isa = PBXBuildFile; fileRef = 894ACE1D2FF1A5AA0042A597 /* Byakaron Keyboard.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		894ACE4E2FF1BCA10042A597 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 894ACDC52FF1A45F0042A597 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 894ACE1C2FF1A5AA0042A597;
+			remoteInfo = "Byakaron Keyboard";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		894ACE4C2FF1B6E60042A597 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = Contents/Library/InputMethods;
+			dstSubfolder = Wrapper;
+			files = (
+				894ACE4D2FF1B7FB0042A597 /* Byakaron Keyboard.app in CopyFiles */,
+			);
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		894ACDCD2FF1A45F0042A597 /* Byakaron.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Byakaron.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -63,6 +102,8 @@
 		894ACDFA2FF1A4970042A597 /* Info-keyboard.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info-keyboard.plist"; sourceTree = "<group>"; };
 		894ACDFB2FF1A4970042A597 /* Probhat.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Probhat.json; sourceTree = "<group>"; };
 		894ACDFC2FF1A4970042A597 /* suffix.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = suffix.json; sourceTree = "<group>"; };
+		894ACE1D2FF1A5AA0042A597 /* Byakaron Keyboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Byakaron Keyboard.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		894ACE492FF1B24F0042A597 /* byakaron_zcu.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = byakaron_zcu.o; path = build/zig/byakaron_zcu.o; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -71,12 +112,24 @@
 			path = Byakaron;
 			sourceTree = "<group>";
 		};
+		894ACE1E2FF1A5AA0042A597 /* Byakaron Keyboard */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Byakaron Keyboard";
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		894ACDCA2FF1A45F0042A597 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				894ACE4A2FF1B24F0042A597 /* byakaron_zcu.o in Frameworks */,
+			);
+		};
+		894ACE1A2FF1A5AA0042A597 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				894ACE4B2FF1B3D30042A597 /* byakaron_zcu.o in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -90,6 +143,8 @@
 				894ACDF22FF1A4970042A597 /* Keyboard */,
 				894ACDFD2FF1A4970042A597 /* Resources */,
 				894ACDCF2FF1A45F0042A597 /* Byakaron */,
+				894ACE1E2FF1A5AA0042A597 /* Byakaron Keyboard */,
+				894ACE402FF1AFA40042A597 /* Frameworks */,
 				894ACDCE2FF1A45F0042A597 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -98,6 +153,7 @@
 			isa = PBXGroup;
 			children = (
 				894ACDCD2FF1A45F0042A597 /* Byakaron.app */,
+				894ACE1D2FF1A5AA0042A597 /* Byakaron Keyboard.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -189,6 +245,14 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
+		894ACE402FF1AFA40042A597 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				894ACE492FF1B24F0042A597 /* byakaron_zcu.o */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -199,8 +263,12 @@
 				894ACDC92FF1A45F0042A597 /* Sources */,
 				894ACDCA2FF1A45F0042A597 /* Frameworks */,
 				894ACDCB2FF1A45F0042A597 /* Resources */,
+				894ACE4C2FF1B6E60042A597 /* CopyFiles */,
 			);
 			buildRules = (
+			);
+			dependencies = (
+				894ACE4F2FF1BCA10042A597 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				894ACDCF2FF1A45F0042A597 /* Byakaron */,
@@ -208,6 +276,23 @@
 			name = Byakaron;
 			productName = Byakaron;
 			productReference = 894ACDCD2FF1A45F0042A597 /* Byakaron.app */;
+			productType = "com.apple.product-type.application";
+		};
+		894ACE1C2FF1A5AA0042A597 /* Byakaron Keyboard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 894ACE272FF1A5AB0042A597 /* Build configuration list for PBXNativeTarget "Byakaron Keyboard" */;
+			buildPhases = (
+				894ACE192FF1A5AA0042A597 /* Sources */,
+				894ACE1A2FF1A5AA0042A597 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				894ACE1E2FF1A5AA0042A597 /* Byakaron Keyboard */,
+			);
+			name = "Byakaron Keyboard";
+			productName = "Byakaron Keyboard";
+			productReference = 894ACE1D2FF1A5AA0042A597 /* Byakaron Keyboard.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -221,6 +306,9 @@
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					894ACDCC2FF1A45F0042A597 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					894ACE1C2FF1A5AA0042A597 = {
 						CreatedOnToolsVersion = 27.0;
 					};
 				};
@@ -240,6 +328,7 @@
 			projectRoot = "";
 			targets = (
 				894ACDCC2FF1A45F0042A597 /* Byakaron */,
+				894ACE1C2FF1A5AA0042A597 /* Byakaron Keyboard */,
 			);
 		};
 /* End PBXProject section */
@@ -272,18 +361,46 @@
 				894ACE022FF1A4970042A597 /* BanglaSpellTextView.swift in Sources */,
 				894ACE032FF1A4970042A597 /* KeyboardInstaller.swift in Sources */,
 				894ACE042FF1A4970042A597 /* Dictionary.swift in Sources */,
-				894ACE052FF1A4970042A597 /* PhoneticInputController.swift in Sources */,
 				894ACE062FF1A4970042A597 /* LayoutView.swift in Sources */,
 				894ACE072FF1A4970042A597 /* Prediction.swift in Sources */,
 				894ACE082FF1A4970042A597 /* SettingsView.swift in Sources */,
-				894ACE092FF1A4970042A597 /* SpellServer.swift in Sources */,
-				894ACE0A2FF1A4970042A597 /* PhoneticDictionary.swift in Sources */,
 				894ACE0B2FF1A4970042A597 /* MainView.swift in Sources */,
-				894ACE0C2FF1A4970042A597 /* main.swift in Sources */,
-				894ACE0D2FF1A4970042A597 /* AppDelegate.swift in Sources */,
+			);
+		};
+		894ACE192FF1A5AA0042A597 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+				894ACE282FF1A5EB0042A597 /* ByakaronSettings.swift in Sources */,
+				894ACE292FF1A5EB0042A597 /* Dictionary.swift in Sources */,
+				894ACE2A2FF1A5EB0042A597 /* Prediction.swift in Sources */,
+				894ACE2B2FF1A5EB0042A597 /* BridgeHeader.h in Sources */,
+				894ACE2C2FF1A5EB0042A597 /* Transliterator.swift in Sources */,
+				894ACE2D2FF1A5EB0042A597 /* AppDelegate.swift in Sources */,
+				894ACE2E2FF1A5EB0042A597 /* main.swift in Sources */,
+				894ACE2F2FF1A5EB0042A597 /* PhoneticDictionary.swift in Sources */,
+				894ACE302FF1A5EB0042A597 /* PhoneticInputController.swift in Sources */,
+				894ACE312FF1A5EB0042A597 /* SpellServer.swift in Sources */,
+				894ACE322FF1A5EB0042A597 /* AppIcon.icns in Sources */,
+				894ACE332FF1A5EB0042A597 /* autocorrect.json in Sources */,
+				894ACE342FF1A5EB0042A597 /* Byakaron.entitlements in Sources */,
+				894ACE352FF1A5EB0042A597 /* Dictionary.json in Sources */,
+				894ACE362FF1A5EB0042A597 /* iconTemplate.pdf in Sources */,
+				894ACE372FF1A5EB0042A597 /* iconTemplate.tiff in Sources */,
+				894ACE382FF1A5EB0042A597 /* Info-app.plist in Sources */,
+				894ACE392FF1A5EB0042A597 /* Info-keyboard.plist in Sources */,
+				894ACE3A2FF1A5EB0042A597 /* Probhat.json in Sources */,
+				894ACE3B2FF1A5EB0042A597 /* suffix.json in Sources */,
 			);
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		894ACE4F2FF1BCA10042A597 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 894ACE1C2FF1A5AA0042A597 /* Byakaron Keyboard */;
+			targetProxy = 894ACE4E2FF1BCA10042A597 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		894ACDD62FF1A4600042A597 /* Debug configuration for PBXProject "Byakaron" */ = {
@@ -420,10 +537,17 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/include";
+				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(SRCROOT)/../../zig-out/lib/**",
+					"$(PROJECT_DIR)/build/zig",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.nuhu.labs.Byakaron;
@@ -431,8 +555,10 @@
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_BRIDGING_HEADER_IS_INTERNAL = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/Core/Transliteration/BridgeHeader.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -452,10 +578,17 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/include";
+				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(SRCROOT)/../../zig-out/lib/**",
+					"$(PROJECT_DIR)/build/zig",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.nuhu.labs.Byakaron;
@@ -463,8 +596,82 @@
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_BRIDGING_HEADER_IS_INTERNAL = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/Core/Transliteration/BridgeHeader.h";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		894ACE252FF1A5AB0042A597 /* Debug configuration for PBXNativeTarget "Byakaron Keyboard" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 654MC856Z2;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/include";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/lib/**";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.nuhu.labs.Byakaron.Keyboard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/Core/Transliteration/BridgeHeader.h";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		894ACE262FF1A5AB0042A597 /* Release configuration for PBXNativeTarget "Byakaron Keyboard" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 654MC856Z2;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/include";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/lib/**";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.nuhu.labs.Byakaron.Keyboard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/Core/Transliteration/BridgeHeader.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -486,6 +693,14 @@
 			buildConfigurations = (
 				894ACDD92FF1A4600042A597 /* Debug configuration for PBXNativeTarget "Byakaron" */,
 				894ACDDA2FF1A4600042A597 /* Release configuration for PBXNativeTarget "Byakaron" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		894ACE272FF1A5AB0042A597 /* Build configuration list for PBXNativeTarget "Byakaron Keyboard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				894ACE252FF1A5AB0042A597 /* Debug configuration for PBXNativeTarget "Byakaron Keyboard" */,
+				894ACE262FF1A5AB0042A597 /* Release configuration for PBXNativeTarget "Byakaron Keyboard" */,
 			);
 			defaultConfigurationName = Release;
 		};

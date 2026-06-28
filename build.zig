@@ -59,10 +59,10 @@ pub fn build(b: *std.Build) void {
         // `xcrun --sdk macosx26.5 --show-sdk-path` call in build.sh.
         const sdk_path = std.mem.trim(
             u8,
-            b.run(&.{ "xcrun", "--sdk", "macosx26.5", "--show-sdk-path" }),
+            b.run(&.{ "xcrun", "--sdk", "macosx27.0", "--show-sdk-path" }),
             " \t\r\n",
         );
-        const sdk_target = "arm64-apple-macos26.0";
+        const sdk_target = "arm64-apple-macos27.0";
 
         // Fixed locations matching build.sh ($BUILD_DIR, products, resources).
         const zig_include = rootPath(b, "src/ffi");
@@ -74,7 +74,6 @@ pub fn build(b: *std.Build) void {
         const app_bundle = rootPath(b, "platforms/macos/build/Byakaron.app");
         const entitlements = rootPath(b, "platforms/macos/Resources/Byakaron.entitlements");
         const bridge_header = rootPath(b, "platforms/macos/Core/Transliteration/BridgeHeader.h");
-        // const zig_bridge_header = rootPath(b, "platforms/macos/Byakaron/Core/Transliteration/ZigBridge.h");
 
         // Step 1b: Zig engine library (arm64-macos, ReleaseFast) as a real artifact.
         const mac_target = b.resolveTargetQuery(.{ .cpu_arch = .aarch64, .os_tag = .macos });
