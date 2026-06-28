@@ -196,3 +196,5 @@ tmp
 *.jsonl
 *.csv
 .DS_Store
+
+.build/
