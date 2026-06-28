@@ -85,13 +85,12 @@ cp "$PROJECT_ROOT/data/"*.json    "$IME_BUNDLE/Contents/Resources/data/"
 echo -n "APPL????" > "$IME_BUNDLE/Contents/PkgInfo"
 
 IME_SOURCES=(
-    "$SRC_DIR/Keyboard/Controller/main.swift"
-    "$SRC_DIR/Keyboard/Controller/AppDelegate.swift"
-    # "$SRC_DIR/Keyboard/CandidateUI/CandidatePanel.swift"
-    "$SRC_DIR/Keyboard/Activation/SpellServer.swift"
-    "$SRC_DIR/Keyboard/Phonetic/PhoneticInputController.swift"
-    "$SRC_DIR/Keyboard/Phonetic/PhoneticDictionary.swift"
-    "$SRC_DIR/Core/Transliteration/ZigTransliterator.swift"
+    "$SRC_DIR/Keyboard/main.swift"
+    "$SRC_DIR/Keyboard/AppDelegate.swift"
+    "$SRC_DIR/Keyboard/SpellServer.swift"
+    "$SRC_DIR/Keyboard/PhoneticInputController.swift"
+    "$SRC_DIR/Keyboard/PhoneticDictionary.swift"
+    "$SRC_DIR/Core/Transliteration/Transliterator.swift"
     "$SRC_DIR/Core/Settings/ByakaronSettings.swift"
 )
 
@@ -143,7 +142,7 @@ GUI_SOURCES=(
     "$SRC_DIR/App/KeyboardInstaller.swift"
     "$SRC_DIR/Core/Prediction/SpellChecker.swift"
     "$SRC_DIR/Core/Dictionary/SpellEngine.swift"
-    "$SRC_DIR/Core/Transliteration/ZigTransliterator.swift"
+    "$SRC_DIR/Core/Transliteration/Transliterator.swift"
     "$SRC_DIR/Core/Settings/ByakaronSettings.swift"
 )
 
@@ -153,7 +152,7 @@ GUI_SOURCES=(
 swiftc "${GUI_SOURCES[@]}" \
     -O \
     -module-name "Byakaron_App" \
-    -import-objc-header "$SRC_DIR/Core/Transliteration/ZigBridge.h" \
+    -import-objc-header "$SRC_DIR/Core/Transliteration/BridgeHeader.h" \
     -I "$ZIG_INCLUDE_DIR" \
     -L "$ZIG_LIB_DIR" \
     -lbyakaron \

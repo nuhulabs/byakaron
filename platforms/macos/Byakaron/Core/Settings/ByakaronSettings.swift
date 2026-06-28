@@ -39,7 +39,7 @@ enum ByakaronSettings {
 
     /// EXPERIMENTAL: route transliteration through the Zig libbyakaron engine
     /// instead of riti. When on, the IME runs in an inline phonetic mode (no
-    /// candidate panel) driven by `ZigTransliterator`. Off by default.
+    /// candidate panel) driven by `Transliterator`. Off by default.
     static let useZigTransliterationKey = "ByakaronUseZigTransliteration"
 
     // MARK: - Real settings (read by the IME)
@@ -67,7 +67,8 @@ enum ByakaronSettings {
     static var candidateOrientation: CandidateOrientation {
         get {
             guard let raw = defaults.string(forKey: candidateOrientationKey),
-                  let value = CandidateOrientation(rawValue: raw) else {
+                let value = CandidateOrientation(rawValue: raw)
+            else {
                 return .horizontal
             }
             return value

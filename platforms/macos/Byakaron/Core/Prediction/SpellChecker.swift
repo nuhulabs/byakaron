@@ -37,6 +37,7 @@ final class SpellChecker: ObservableObject {
         let checker = SpellChecker(skipLoad: ())
         checker.text = text
         checker.misspellings = misspellings
+        checker.engine = SpellEngine(words: [""])
         return checker
     }
 

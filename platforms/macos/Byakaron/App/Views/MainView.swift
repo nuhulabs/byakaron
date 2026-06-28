@@ -115,8 +115,8 @@ struct MainView: View {
                     Text("এখানে বাংলা লিখুন বা পেস্ট করুন…")
                         .font(.system(size: 18))
                         .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 21)
-                        .padding(.vertical, 22)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 12)
                         .allowsHitTesting(false)
                 }
             }
