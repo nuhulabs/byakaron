@@ -52,15 +52,15 @@ final class PhoneticDictionary {
         }
     }
 
-    /// Load `dictionary.json` and `suffix.json` from the bundle's `Resources/data`
+    /// Load `dictionary.json` and `suffix.json` from the bundle's `Resources`
     /// directory. Returns nil if the dictionary is missing/malformed.
     static func loadFromBundle(_ bundle: Bundle = .main) -> PhoneticDictionary? {
         guard let dir = bundle.resourcePath else { return nil }
-        let dataDir = dir + "/data"
+        let dataDir = dir
 
         guard
             let dictData = try? Data(
-                contentsOf: URL(fileURLWithPath: dataDir + "/dictionary.json")),
+                contentsOf: URL(fileURLWithPath: dataDir + "/Dictionary.json")),
             let dictObj = try? JSONSerialization.jsonObject(with: dictData) as? [String: [String]]
         else { return nil }
 

@@ -37,9 +37,9 @@ final class SpellEngine {
     /// Convenience: load and parse `dictionary.json` from a bundle, then build.
     /// Returns nil if the resource is missing or malformed.
     static func loadFromBundle(_ bundle: Bundle = .main) -> SpellEngine? {
-        guard let url = bundle.url(forResource: "dictionary", withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: [String]]
+        guard let url = bundle.url(forResource: "Dictionary", withExtension: "json"),
+            let data = try? Data(contentsOf: url),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: [String]]
         else { return nil }
 
         var words = Set<String>()
@@ -85,13 +85,15 @@ final class SpellEngine {
         // so results are stable and the best fix is first. Drop any candidate
         // carrying emoji/pictographic scalars — the dictionary holds a handful
         // of such entries and they're never a sensible spelling correction.
-        return candidates
+        return
+            candidates
             .filter { !Self.containsEmoji($0) }
             .map { (word: $0, distance: Self.boundedEditDistance(wordChars, Array($0), max: 2)) }
             .filter { $0.distance <= 2 }
             .sorted {
                 if $0.distance != $1.distance { return $0.distance < $1.distance }
-                let dl = abs($0.word.count - word.count), dr = abs($1.word.count - word.count)
+                let dl = abs($0.word.count - word.count)
+                let dr = abs($1.word.count - word.count)
                 if dl != dr { return dl < dr }
                 return $0.word < $1.word
             }
@@ -116,7 +118,8 @@ final class SpellEngine {
 
     /// Levenshtein distance, short-circuiting once it provably exceeds `max`.
     private static func boundedEditDistance(_ a: [Character], _ b: [Character], max: Int) -> Int {
-        let la = a.count, lb = b.count
+        let la = a.count
+        let lb = b.count
         if abs(la - lb) > max { return max + 1 }
 
         var prev = Array(0...lb)
@@ -140,8 +143,8 @@ final class SpellEngine {
     /// also carry that property yet are ordinary text.
     private static func containsEmoji(_ string: String) -> Bool {
         string.unicodeScalars.contains { scalar in
-            scalar.properties.isEmojiPresentation ||
-            (scalar.properties.isEmoji && scalar.value > 0x238C)
+            scalar.properties.isEmojiPresentation
+                || (scalar.properties.isEmoji && scalar.value > 0x238C)
         }
     }
 

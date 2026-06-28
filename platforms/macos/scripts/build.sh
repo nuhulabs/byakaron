@@ -76,12 +76,13 @@ HEADER_SEARCH_PATH="-I $ZIG_INCLUDE_DIR"
 echo ">>> Building embedded IME ($IME_NAME.app)..."
 rm -rf "$IME_BUNDLE"
 mkdir -p "$IME_BUNDLE/Contents/MacOS"
-mkdir -p "$IME_BUNDLE/Contents/Resources/data"
+mkdir -p "$IME_BUNDLE/Contents/Resources"
 
 cp "$RES_DIR/Info-keyboard.plist" "$IME_BUNDLE/Contents/Info.plist"
 cp "$RES_DIR/iconTemplate.pdf"    "$IME_BUNDLE/Contents/Resources/iconTemplate.pdf"
 cp "$RES_DIR/AppIcon.icns"        "$IME_BUNDLE/Contents/Resources/AppIcon.icns"
-cp "$PROJECT_ROOT/data/"*.json    "$IME_BUNDLE/Contents/Resources/data/"
+cp "$PROJECT_ROOT/Resources/Dictionary.json"    "$IME_BUNDLE/Contents/Resources/Dictionary.json"
+cp "$PROJECT_ROOT/Resources/suffix.json"    "$IME_BUNDLE/Contents/Resources/suffix.json"
 echo -n "APPL????" > "$IME_BUNDLE/Contents/PkgInfo"
 
 IME_SOURCES=(
@@ -127,7 +128,7 @@ cp "$RES_DIR/Info-app.plist" "$APP_BUNDLE/Contents/Info.plist"
 echo -n "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
 
 # dictionary.json into Resources for SpellEngine.loadFromBundle()
-cp "$PROJECT_ROOT/data/dictionary.json" "$APP_BUNDLE/Contents/Resources/dictionary.json"
+cp "$PROJECT_ROOT/Resources/Dictionary.json" "$APP_BUNDLE/Contents/Resources/Dictionary.json"
 
 # App icon
 cp "$RES_DIR/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
@@ -140,8 +141,8 @@ GUI_SOURCES=(
     "$SRC_DIR/App/Views/LayoutView.swift"
     "$SRC_DIR/App/Views/BanglaSpellTextView.swift"
     "$SRC_DIR/App/KeyboardInstaller.swift"
-    "$SRC_DIR/Core/Prediction/SpellChecker.swift"
-    "$SRC_DIR/Core/Dictionary/SpellEngine.swift"
+    "$SRC_DIR/Core/Suggestion/Prediction.swift"
+    "$SRC_DIR/Core/Suggestion/Dictionary.swift"
     "$SRC_DIR/Core/Transliteration/Transliterator.swift"
     "$SRC_DIR/Core/Settings/ByakaronSettings.swift"
 )

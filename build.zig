@@ -68,7 +68,7 @@ pub fn build(b: *std.Build) void {
         const zig_include = rootPath(b, "src/ffi");
         const zig_lib_dir = rootPath(b, "platforms/macos/build/zig");
         const res_dir = rootPath(b, "platforms/macos/Resources");
-        const data_dir = rootPath(b, "platforms/macos/data");
+        const data_dir = rootPath(b, "platforms/macos/Resources");
         const ime_name = "Byakaron Keyboard";
         const ime_bundle = rootPath(b, "platforms/macos/build/Byakaron Keyboard.app");
         const app_bundle = rootPath(b, "platforms/macos/build/Byakaron.app");
@@ -184,7 +184,7 @@ pub fn build(b: *std.Build) void {
             \\mkdir -p "$A/Contents/Resources"
             \\cp "$RES/Info-app.plist" "$A/Contents/Info.plist"
             \\printf 'APPL????' > "$A/Contents/PkgInfo"
-            \\cp "$DATA/dictionary.json" "$A/Contents/Resources/dictionary.json"
+            \\cp "$DATA/Dictionary.json" "$A/Contents/Resources/Dictionary.json"
             \\cp "$RES/AppIcon.icns"      "$A/Contents/Resources/AppIcon.icns"
             ,
             "_",     app_bundle,
@@ -202,8 +202,8 @@ pub fn build(b: *std.Build) void {
             macSrc(b, "App/Views/LayoutView.swift"),
             macSrc(b, "App/Views/BanglaSpellTextView.swift"),
             macSrc(b, "App/KeyboardInstaller.swift"),
-            macSrc(b, "Core/Prediction/SpellChecker.swift"),
-            macSrc(b, "Core/Dictionary/SpellEngine.swift"),
+            macSrc(b, "Core/Suggestion/Prediction.swift"),
+            macSrc(b, "Core/Suggestion/Dictionary.swift"),
             macSrc(b, "Core/Transliteration/Transliterator.swift"),
             macSrc(b, "Core/Settings/ByakaronSettings.swift"),
         };
