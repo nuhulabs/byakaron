@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- OPTIONAL: the sandboxed app variant. Sign the main app with this file
+         (SANDBOX=1 ./scripts/build.sh) when you want the App Store-style sandbox.
+
+         A sandboxed app can't copy/register the keyboard itself, so users install
+         it via the Setup guide's "Reveal Keyboard" button and drag it into
+         ~/Library/Input Methods.
+
+         NOTE: with the app sandboxed and the keyboard unsandboxed, the named
+         UserDefaults suite no longer resolves to the same plist for both
+         processes. To keep Settings syncing to the keyboard, move both to an App
+         Group (com.apple.security.application-groups) and point
+         ByakaronSettings.suiteName at the group id. -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <!-- UpdateChecker reaches GitHub's releases API. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+</dict>
+</plist>

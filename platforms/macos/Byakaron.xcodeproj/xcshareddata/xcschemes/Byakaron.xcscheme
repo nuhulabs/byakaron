@@ -15,7 +15,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "8941DAB92FE585D700FD0303"
+               BlueprintIdentifier = "894ACDCC2FF1A45F0042A597"
                BuildableName = "Byakaron.app"
                ReferencedContainer = "container:Byakaron.xcodeproj">
             </BuildableReference>
@@ -44,7 +44,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "8941DAB92FE585D700FD0303"
+            BlueprintIdentifier = "894ACDCC2FF1A45F0042A597"
             BuildableName = "Byakaron.app"
             ReferencedContainer = "container:Byakaron.xcodeproj">
          </BuildableReference>
@@ -60,7 +60,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "8941DAB92FE585D700FD0303"
+            BlueprintIdentifier = "894ACDCC2FF1A45F0042A597"
             BuildableName = "Byakaron.app"
             ReferencedContainer = "container:Byakaron.xcodeproj">
          </BuildableReference>
