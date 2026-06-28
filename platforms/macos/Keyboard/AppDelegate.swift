@@ -10,7 +10,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Bundle identifier of the SwiftUI main app that hosts Settings and the guide.
-    private let mainAppBundleID = "dev.nuhu.byakaron.spell"
+    private let mainAppBundleID = "dev.nuhu.labs.Byakaron"
 
     /// Called when the user clicks/reopens the helper while it is already running.
     /// Route them to the main app, which is where everything configurable lives.

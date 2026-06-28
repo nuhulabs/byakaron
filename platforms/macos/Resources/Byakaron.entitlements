@@ -2,7 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!-- Byakaron (the SwiftUI app) ships sandboxed. It no longer installs the
+         keyboard itself; it reveals the bundled "Byakaron Keyboard.app" in Finder
+         and the user drags it into ~/Library/Input Methods. -->
     <key>com.apple.security.app-sandbox</key>
-    <false/>
+    <true/>
+    <!-- UpdateChecker reaches GitHub's releases API. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
 </dict>
 </plist>

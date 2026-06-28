@@ -1,126 +1,77 @@
 #if os(macOS)
-    import Foundation
-    import Carbon
+    import AppKit
 
-    /// Installs and registers the embedded Byakaron Keyboard input method on first
-    /// launch (and whenever the bundled version changes), following the
-    /// mozc/OpenVanilla convention where the GUI app ships its IME inside
-    /// `Contents/Library/InputMethods/`.
+    /// Locates the embedded Byakaron Keyboard input method and helps the user put
+    /// it where macOS can load it.
     ///
-    /// Every step is guarded and logged via NSLog; nothing here ever throws to the
-    /// UI. If the embedded IME is absent (e.g. a dev build), it logs and returns.
+    /// Byakaron now ships sandboxed, so it can no longer copy itself into
+    /// `~/Library/Input Methods`, clear quarantine, or register an input source on
+    /// the user's behalf — the sandbox forbids all of that. Instead we follow the
+    /// well-worn pattern for installing a privileged component: point the user at the
+    /// keyboard bundled inside the app and let them drag it into place.
+    ///
+    /// The embedded keyboard lives at:
+    ///
+    ///     Byakaron.app/Contents/Library/InputMethods/Byakaron Keyboard.app
+    ///
+    /// and needs to end up in `~/Library/Input Methods`.
     enum KeyboardInstaller {
 
-        private static let bundleID = "dev.nuhu.labs.Byakaron.Keyboard"
+        /// File name of the embedded helper bundle. Must match the name produced by
+        /// scripts/build.sh and recorded in Info-keyboard.plist.
+        static let imeBundleName = "Byakaron Keyboard.app"
 
-        /// File name of the embedded helper bundle and its executable. Must match the
-        /// names produced by scripts/build.sh and recorded in Info-keyboard.plist.
-        private static let imeBundleName = "Byakaron Keyboard.app"
-        private static let imeExecutableName = "Byakaron Keyboard"
-
-        static func ensureInstalled() {
-            let embedded = Bundle.main.bundleURL
+        /// The keyboard bundled inside this app, or `nil` for a dev build that
+        /// doesn't embed it.
+        static var embeddedKeyboardURL: URL? {
+            let url = Bundle.main.bundleURL
                 .appendingPathComponent("Contents/Library/InputMethods/\(imeBundleName)")
-
-            guard FileManager.default.fileExists(atPath: embedded.path) else {
-                NSLog(
-                    "IMEInstaller: embedded %@ not found at %@ — skipping", imeBundleName,
-                    embedded.path)
-                return
-            }
-
-            let dest = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Library/Input Methods/\(imeBundleName)")
-
-            let embeddedVersion = bundleVersion(at: embedded)
-            let installedVersion = bundleVersion(at: dest)
-
-            if installedVersion == nil || installedVersion != embeddedVersion {
-                install(from: embedded, to: dest)
-            }
-
-            register(at: dest)
-            enable()
+            return FileManager.default.fileExists(atPath: url.path) ? url : nil
         }
 
-        // MARK: - Install
+        /// Where the keyboard has to live for macOS to load it.
+        static var inputMethodsDirectory: URL {
+            FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Input Methods", isDirectory: true)
+        }
 
-        private static func install(from embedded: URL, to dest: URL) {
-            NSLog(
-                "IMEInstaller: installing IME (embedded=%@ installed=%@)",
-                bundleVersion(at: embedded) ?? "nil",
-                bundleVersion(at: dest) ?? "nil")
+        /// The destination the user should drag the keyboard to.
+        static var installedKeyboardURL: URL {
+            inputMethodsDirectory.appendingPathComponent(imeBundleName)
+        }
 
-            // Stop any running copy so we can replace it.
-            runProcess("/usr/bin/killall", [imeExecutableName])
+        /// Best-effort check for whether the keyboard is already in place.
+        ///
+        /// Inside the sandbox we generally can't read `~/Library/Input Methods`, so
+        /// `false` here means "couldn't confirm", not necessarily "missing". Treat it
+        /// as a soft hint, never as a hard gate.
+        static var isInstalled: Bool {
+            FileManager.default.fileExists(atPath: installedKeyboardURL.path)
+        }
 
+        /// Reveal the embedded keyboard in Finder so the user can drag it into
+        /// `~/Library/Input Methods`. Hands off to Finder, which runs outside our
+        /// sandbox, so this works even though we can't touch that folder ourselves.
+        ///
+        /// - Returns: `false` if there's no embedded keyboard to reveal.
+        @discardableResult
+        static func revealKeyboardInFinder() -> Bool {
+            guard let url = embeddedKeyboardURL else {
+                NSLog("KeyboardInstaller: embedded %@ not found — nothing to reveal", imeBundleName)
+                return false
+            }
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+            return true
+        }
+
+        /// Open the `~/Library/Input Methods` destination in Finder so the user has a
+        /// window to drop the keyboard into. Falls back to `~/Library` if the folder
+        /// doesn't exist yet (macOS creates Input Methods on first install).
+        static func openInputMethodsFolder() {
             let fm = FileManager.default
-            try? fm.removeItem(at: dest)
-
-            do {
-                try fm.createDirectory(
-                    at: dest.deletingLastPathComponent(),
-                    withIntermediateDirectories: true)
-                try fm.copyItem(at: embedded, to: dest)
-            } catch {
-                NSLog("IMEInstaller: copy failed: %@", error.localizedDescription)
-                return
-            }
-
-            // Clear the quarantine flag so the IME can be loaded.
-            runProcess("/usr/bin/xattr", ["-cr", dest.path])
-        }
-
-        // MARK: - Register / enable
-
-        private static func register(at dest: URL) {
-            let cfURL = dest as CFURL
-            let status = TISRegisterInputSource(cfURL)
-            if status != noErr {
-                NSLog("IMEInstaller: TISRegisterInputSource failed (status=%d)", Int(status))
-            }
-        }
-
-        private static func enable() {
-            let filter = [kTISPropertyBundleID as String: bundleID] as CFDictionary
-            guard let cfList = TISCreateInputSourceList(filter, true)?.takeRetainedValue(),
-                let sources = cfList as? [TISInputSource], !sources.isEmpty
-            else {
-                NSLog("IMEInstaller: input source %@ not found to enable", bundleID)
-                return
-            }
-            for source in sources {
-                let status = TISEnableInputSource(source)
-                if status != noErr {
-                    NSLog("IMEInstaller: TISEnableInputSource failed (status=%d)", Int(status))
-                }
-            }
-        }
-
-        // MARK: - Helpers
-
-        private static func bundleVersion(at appURL: URL) -> String? {
-            let plist = appURL.appendingPathComponent("Contents/Info.plist")
-            guard let data = try? Data(contentsOf: plist),
-                let dict = try? PropertyListSerialization.propertyList(from: data, format: nil)
-                    as? [String: Any]
-            else { return nil }
-            return dict["CFBundleVersion"] as? String
-        }
-
-        private static func runProcess(_ launchPath: String, _ args: [String]) {
-            let proc = Process()
-            proc.executableURL = URL(fileURLWithPath: launchPath)
-            proc.arguments = args
-            do {
-                try proc.run()
-                proc.waitUntilExit()
-            } catch {
-                // Swallow — e.g. killall finds no process; not fatal.
-                NSLog(
-                    "IMEInstaller: %@ %@ failed: %@", launchPath, args.joined(separator: " "),
-                    error.localizedDescription)
-            }
+            let dir = inputMethodsDirectory
+            let target = fm.fileExists(atPath: dir.path) ? dir : dir.deletingLastPathComponent()
+            NSWorkspace.shared.open(target)
         }
     }
 #endif

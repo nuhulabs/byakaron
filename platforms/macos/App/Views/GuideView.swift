@@ -47,7 +47,8 @@ struct GettingStartedTab: View {
     @State private var updateStatus: UpdateChecker.Status = .idle
 
     private let setupSteps: [(String, String?)] = [
-        ("Open Byakaron Settings (⌘,) to choose your typing options", nil),
+        ("Click “Reveal Keyboard” below to show the keyboard in Finder", "Byakaron Keyboard.app, bundled inside the app"),
+        ("Drag “Byakaron Keyboard.app” into the Input Methods folder", "~/Library/Input Methods — use “Open Folder” below"),
         ("Open System Settings → Keyboard → Input Sources", nil),
         ("Click  +  → search “Byakaron” → select Byakaron → Add", nil),
         ("Use the Globe key or Ctrl+Space to switch input methods", nil),
@@ -72,6 +73,8 @@ struct GettingStartedTab: View {
                         ForEach(Array(setupSteps.enumerated()), id: \.offset) { index, step in
                             stepRow(number: index + 1, text: step.0, note: step.1)
                         }
+                        Divider().padding(.vertical, 2)
+                        installActions
                     }
                 }
 
@@ -104,6 +107,48 @@ struct GettingStartedTab: View {
             Text("Byakaron")
                 .font(.system(size: 26, weight: .bold))
         }
+    }
+
+    /// Buttons that drive the manual install: reveal the bundled keyboard and open
+    /// its destination folder. Byakaron is sandboxed, so it can't copy the keyboard
+    /// itself — Finder (a separate process) does the move when the user drags it.
+    private var installActions: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Button {
+                    if !KeyboardInstaller.revealKeyboardInFinder() {
+                        Self.presentKeyboardMissingAlert()
+                    }
+                } label: {
+                    Label("Reveal Keyboard", systemImage: "magnifyingglass")
+                }
+                .buttonStyle(.borderedProminent)
+                .help("Show “Byakaron Keyboard.app” in Finder so you can drag it into place")
+
+                Button {
+                    KeyboardInstaller.openInputMethodsFolder()
+                } label: {
+                    Label("Open Folder", systemImage: "folder")
+                }
+                .help("Open ~/Library/Input Methods, where the keyboard belongs")
+            }
+
+            Text("Drag “Byakaron Keyboard.app” from the revealed window into Input Methods, then add it under System Settings → Keyboard → Input Sources.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private static func presentKeyboardMissingAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Keyboard Not Found"
+        alert.informativeText =
+            "This build of Byakaron doesn’t include the embedded keyboard. "
+            + "Reinstall the app from a release build to set up the keyboard."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     private func stepRow(number: Int, text: String, note: String?) -> some View {

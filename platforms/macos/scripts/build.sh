@@ -109,9 +109,12 @@ swiftc "${IME_SOURCES[@]}" \
     -framework SwiftUI \
     -o "$IME_BUNDLE/Contents/MacOS/$IME_NAME"
 
+# The keyboard is installed manually into ~/Library/Input Methods and runs as a
+# standalone, UNsandboxed input method — so it gets its own entitlements, distinct
+# from the sandboxed main app below.
 echo ">>> Signing IME bundle (ad-hoc)..."
 codesign --force --sign - \
-    --entitlements "$RES_DIR/Byakaron.entitlements" \
+    --entitlements "$RES_DIR/Byakaron-keyboard.entitlements" \
     "$IME_BUNDLE"
 
 # ---------------------------------------------------------------------------
@@ -175,6 +178,8 @@ cp -R "$IME_BUNDLE" "$APP_BUNDLE/Contents/Library/InputMethods/$IME_NAME.app"
 # Step 5: Sign the outer app LAST (inner already signed; no --deep so the
 # inner IME signature is preserved).
 # ---------------------------------------------------------------------------
+# The main app is sandboxed (see Byakaron.entitlements). Sign without --deep so the
+# already-signed, unsandboxed inner keyboard keeps its own signature/entitlements.
 echo ">>> Signing main app bundle (ad-hoc)..."
 codesign --force --sign - \
     --entitlements "$RES_DIR/Byakaron.entitlements" \

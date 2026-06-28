@@ -8,18 +8,16 @@ import SwiftUI
 /// in the standard Settings window (⌘,), and setup instructions in the Help menu
 /// (top-right of the menu bar). The IME itself runs as an embedded background
 /// helper and reads its options from the shared settings suite.
+///
+/// Byakaron is sandboxed, so it can't install the keyboard automatically. The
+/// Setup guide instead reveals the embedded "Byakaron Keyboard.app" in Finder and
+/// the user drags it into `~/Library/Input Methods` (see `KeyboardInstaller`).
 @main
 struct ByakaronApp: App {
     @StateObject private var checker = SpellChecker()
 
     /// Stable id for the Help → Guide window so the menu command can open it.
     static let guideWindowID = "byakaron-guide"
-
-    init() {
-        #if os(macOS)
-        KeyboardInstaller.ensureInstalled()
-        #endif
-    }
 
     var body: some Scene {
         WindowGroup {
