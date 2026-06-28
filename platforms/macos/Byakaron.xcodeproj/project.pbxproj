@@ -56,7 +56,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8941DAC52FE585D800FD0303 /* Build configuration list for PBXNativeTarget "Byakaron" */;
 			buildPhases = (
-				8941DB402FE5A00000FD0303 /* Build Engines */,
 				8941DAB62FE585D700FD0303 /* Sources */,
 				8941DAB72FE585D700FD0303 /* Frameworks */,
 				8941DAB82FE585D700FD0303 /* Resources */,
@@ -113,24 +112,6 @@
 			);
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		8941DB402FE5A00000FD0303 /* Build Engines */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			name = "Build Engines";
-			outputPaths = (
-				"$(PROJECT_DIR)/build/xcode-libs/libbyakaron.a",
-				"$(PROJECT_DIR)/build/xcode-libs/libavrobangla_engine.a",
-				"$(PROJECT_DIR)/build/xcode-libs/byakaron.h",
-			);
-			shellPath = /bin/bash;
-			shellScript = (
-				"\"${PROJECT_DIR}/scripts/build_engines.sh\"",
-				"",
-			);
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		8941DAB62FE585D700FD0303 /* Sources */ = {

@@ -46,7 +46,8 @@ final class PhoneticDictionary {
             DispatchQueue.main.async {
                 shared = dict
                 loading = false
-                NSLog("Byakaron: PhoneticDictionary loaded (%d words)", dict?.sortedWords.count ?? 0)
+                NSLog(
+                    "Byakaron: PhoneticDictionary loaded (%d words)", dict?.sortedWords.count ?? 0)
             }
         }
     }
@@ -57,8 +58,10 @@ final class PhoneticDictionary {
         guard let dir = bundle.resourcePath else { return nil }
         let dataDir = dir + "/data"
 
-        guard let dictData = try? Data(contentsOf: URL(fileURLWithPath: dataDir + "/dictionary.json")),
-              let dictObj = try? JSONSerialization.jsonObject(with: dictData) as? [String: [String]]
+        guard
+            let dictData = try? Data(
+                contentsOf: URL(fileURLWithPath: dataDir + "/dictionary.json")),
+            let dictObj = try? JSONSerialization.jsonObject(with: dictData) as? [String: [String]]
         else { return nil }
 
         var set = Set<String>()
@@ -67,7 +70,8 @@ final class PhoneticDictionary {
         // suffix.json is optional — suffix completions just won't appear without it.
         var suffixObj: [String: String] = [:]
         if let suffixData = try? Data(contentsOf: URL(fileURLWithPath: dataDir + "/suffix.json")),
-           let parsed = try? JSONSerialization.jsonObject(with: suffixData) as? [String: String] {
+            let parsed = try? JSONSerialization.jsonObject(with: suffixData) as? [String: String]
+        {
             suffixObj = parsed
         }
 
@@ -82,7 +86,7 @@ final class PhoneticDictionary {
     /// The live phonetic transliteration is always the first candidate so the
     /// default commit matches the marked (underlined) text the user sees.
     func suggestions(forLatin input: String, limit: Int = 24) -> [String] {
-        let phonetic = ZigTransliterator.toBangla(input)
+        let phonetic = Transliterator.toBangla(input)
         guard !phonetic.isEmpty else { return [] }
 
         var ordered: [String] = []
@@ -127,7 +131,8 @@ final class PhoneticDictionary {
 
     /// First index in `sortedWords` whose element is >= `key` (scalar order).
     private func lowerBound(_ key: String) -> Int {
-        var lo = 0, hi = sortedWords.count
+        var lo = 0
+        var hi = sortedWords.count
         while lo < hi {
             let mid = (lo + hi) / 2
             if Self.scalarLess(sortedWords[mid], key) { lo = mid + 1 } else { hi = mid }
@@ -146,7 +151,7 @@ final class PhoneticDictionary {
         for i in stride(from: chars.count - 1, through: 1, by: -1) {
             let suffixKey = String(chars[i...])
             guard let suffixBangla = suffixes[suffixKey] else { continue }
-            let stemBangla = ZigTransliterator.toBangla(String(chars[0..<i]))
+            let stemBangla = Transliterator.toBangla(String(chars[0..<i]))
             guard !stemBangla.isEmpty else { continue }
 
             // Bases: the stem word itself plus a few dictionary completions.
@@ -172,13 +177,13 @@ final class PhoneticDictionary {
         }
         var word = base
         if isVowel(last) && isKar(suffixFirst) {
-            word.append("\u{09DF}") // insert য় between a trailing vowel and a kar
+            word.append("\u{09DF}")  // insert য় between a trailing vowel and a kar
         } else if last == "\u{09CE}" {
             word.removeLast()
-            word.append("\u{09A4}") // ৎ → ত
+            word.append("\u{09A4}")  // ৎ → ত
         } else if last == "\u{0982}" {
             word.removeLast()
-            word.append("\u{0999}") // ং → ঙ
+            word.append("\u{0999}")  // ং → ঙ
         }
         return word + suffix
     }

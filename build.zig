@@ -65,9 +65,6 @@ pub fn build(b: *std.Build) void {
         const sdk_target = "arm64-apple-macos26.0";
 
         // Fixed locations matching build.sh ($BUILD_DIR, products, resources).
-        const engine_dir = rootPath(b, "platforms/macos/engine");
-        const rust_lib_dir = rootPath(b, "platforms/macos/engine/target/aarch64-apple-darwin/release");
-        const rust_include = rootPath(b, "platforms/macos/engine/include");
         const zig_include = rootPath(b, "src/ffi");
         const zig_lib_dir = rootPath(b, "platforms/macos/build/zig");
         const res_dir = rootPath(b, "platforms/macos/Byakaron/Resources");
@@ -77,12 +74,7 @@ pub fn build(b: *std.Build) void {
         const app_bundle = rootPath(b, "platforms/macos/build/Byakaron.app");
         const entitlements = rootPath(b, "platforms/macos/Byakaron/Resources/Byakaron.entitlements");
         const bridge_header = rootPath(b, "platforms/macos/Byakaron/Core/Transliteration/BridgeHeader.h");
-        const zig_bridge_header = rootPath(b, "platforms/macos/Byakaron/Core/Transliteration/ZigBridge.h");
-
-        // Step 1: Rust engine (cargo build --release --target aarch64-apple-darwin).
-        const cargo = b.addSystemCommand(&.{ "cargo", "build", "--release", "--target", "aarch64-apple-darwin" });
-        cargo.setCwd(.{ .cwd_relative = engine_dir });
-        cargo.has_side_effects = true;
+        // const zig_bridge_header = rootPath(b, "platforms/macos/Byakaron/Core/Transliteration/ZigBridge.h");
 
         // Step 1b: Zig engine library (arm64-macos, ReleaseFast) as a real artifact.
         const mac_target = b.resolveTargetQuery(.{ .cpu_arch = .aarch64, .os_tag = .macos });
@@ -99,7 +91,8 @@ pub fn build(b: *std.Build) void {
         });
 
         // Re-archive libbyakaron.a with the system `ar` for member alignment.
-        const rearchive = b.addSystemCommand(&.{ "sh", "-c",
+        const rearchive = b.addSystemCommand(&.{
+            "sh", "-c",
             \\set -e
             \\SRC="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
             \\rm -rf "$1" && mkdir -p "$1"
@@ -107,13 +100,16 @@ pub fn build(b: *std.Build) void {
             \\ar x "$SRC"
             \\chmod 644 ./*.o
             \\ar rcs libbyakaron.a ./*.o
-        , "_" });
+            ,
+            "_",
+        });
         rearchive.addArg(zig_lib_dir);
         rearchive.addFileArg(mac_lib.getEmittedBin());
         rearchive.has_side_effects = true;
 
         // Step 2: Embedded IME helper bundle skeleton ("Byakaron Keyboard.app").
-        const ime_skel = b.addSystemCommand(&.{ "sh", "-c",
+        const ime_skel = b.addSystemCommand(&.{
+            "sh",    "-c",
             \\set -e
             \\B="$1"; RES="$2"; DATA="$3"
             \\rm -rf "$B"
@@ -124,56 +120,63 @@ pub fn build(b: *std.Build) void {
             \\cp "$RES/AppIcon.icns"        "$B/Contents/Resources/AppIcon.icns"
             \\cp "$DATA"/*.json             "$B/Contents/Resources/data/"
             \\printf 'APPL????' > "$B/Contents/PkgInfo"
-        , "_", ime_bundle, res_dir, data_dir });
+            ,
+            "_",     ime_bundle,
+            res_dir, data_dir,
+        });
         ime_skel.has_side_effects = true;
 
         // Compile the IME helper executable into the bundle.
         const ime_swiftc = b.addSystemCommand(&.{"swiftc"});
         const ime_sources = [_][]const u8{
-            macSrc(b, "Keyboard/Controller/main.swift"),
-            macSrc(b, "Keyboard/Controller/AppDelegate.swift"),
-            macSrc(b, "Keyboard/CandidateUI/CandidatePanel.swift"),
-            macSrc(b, "Keyboard/Activation/SpellServer.swift"),
-            macSrc(b, "Keyboard/Phonetic/PhoneticInputController.swift"),
-            macSrc(b, "Keyboard/Phonetic/PhoneticInputController+Zig.swift"),
-            macSrc(b, "Keyboard/Phonetic/PhoneticDictionary.swift"),
-            macSrc(b, "Core/Transliteration/ZigTransliterator.swift"),
+            macSrc(b, "Keyboard/main.swift"),
+            macSrc(b, "Keyboard/AppDelegate.swift"),
+            macSrc(b, "Keyboard/SpellServer.swift"),
+            macSrc(b, "Keyboard/PhoneticInputController.swift"),
+            macSrc(b, "Keyboard/PhoneticDictionary.swift"),
+            macSrc(b, "Core/Transliteration/Transliterator.swift"),
             macSrc(b, "Core/Settings/ByakaronSettings.swift"),
         };
         ime_swiftc.addArgs(&ime_sources);
         ime_swiftc.addArgs(&.{
             "-O",
-            "-module-name",          "Byakaron",
-            "-import-objc-header",    bridge_header,
-            "-I",                     rust_include,
-            "-I",                     zig_include,
-            "-L",                     rust_lib_dir,
-            "-lavrobangla_engine",
-            "-L",                     zig_lib_dir,
+            "-module-name",
+            "Byakaron",
+            "-import-objc-header",
+            bridge_header,
+            "-I",
+            zig_include,
+            "-L",
+            zig_lib_dir,
             "-lbyakaron",
-            "-sdk",                   sdk_path,
-            "-target",                sdk_target,
-            "-framework",             "Cocoa",
-            "-framework",             "InputMethodKit",
-            "-framework",             "SwiftUI",
-            "-o",                     b.fmt("{s}/Contents/MacOS/{s}", .{ ime_bundle, ime_name }),
+            "-sdk",
+            sdk_path,
+            "-target",
+            sdk_target,
+            "-framework",
+            "Cocoa",
+            "-framework",
+            "InputMethodKit",
+            "-framework",
+            "SwiftUI",
+            "-o",
+            b.fmt("{s}/Contents/MacOS/{s}", .{ ime_bundle, ime_name }),
         });
         ime_swiftc.has_side_effects = true;
-        ime_swiftc.step.dependOn(&cargo.step);
         ime_swiftc.step.dependOn(&rearchive.step);
         ime_swiftc.step.dependOn(&ime_skel.step);
 
         // Sign the IME bundle (ad-hoc) with entitlements.
         const ime_sign = b.addSystemCommand(&.{
-            "codesign", "--force", "--sign", "-",
-            "--entitlements", entitlements,
-            ime_bundle,
+            "codesign",       "--force",    "--sign",   "-",
+            "--entitlements", entitlements, ime_bundle,
         });
         ime_sign.has_side_effects = true;
         ime_sign.step.dependOn(&ime_swiftc.step);
 
         // Step 3: SwiftUI main app bundle skeleton (Byakaron.app).
-        const app_skel = b.addSystemCommand(&.{ "sh", "-c",
+        const app_skel = b.addSystemCommand(&.{
+            "sh",    "-c",
             \\set -e
             \\A="$1"; RES="$2"; DATA="$3"
             \\rm -rf "$A"
@@ -183,7 +186,10 @@ pub fn build(b: *std.Build) void {
             \\printf 'APPL????' > "$A/Contents/PkgInfo"
             \\cp "$DATA/dictionary.json" "$A/Contents/Resources/dictionary.json"
             \\cp "$RES/AppIcon.icns"      "$A/Contents/Resources/AppIcon.icns"
-        , "_", app_bundle, res_dir, data_dir });
+            ,
+            "_",     app_bundle,
+            res_dir, data_dir,
+        });
         app_skel.has_side_effects = true;
 
         // Compile the main app executable into the bundle.
@@ -198,44 +204,57 @@ pub fn build(b: *std.Build) void {
             macSrc(b, "App/KeyboardInstaller.swift"),
             macSrc(b, "Core/Prediction/SpellChecker.swift"),
             macSrc(b, "Core/Dictionary/SpellEngine.swift"),
-            macSrc(b, "Core/Transliteration/ZigTransliterator.swift"),
+            macSrc(b, "Core/Transliteration/Transliterator.swift"),
             macSrc(b, "Core/Settings/ByakaronSettings.swift"),
         };
         app_swiftc.addArgs(&gui_sources);
         app_swiftc.addArgs(&.{
             "-O",
-            "-module-name",        "Byakaron_App",
-            "-import-objc-header",  zig_bridge_header,
-            "-I",                   zig_include,
-            "-L",                   zig_lib_dir,
+            "-module-name",
+            "Byakaron_App",
+            "-import-objc-header",
+            bridge_header,
+            "-I",
+            zig_include,
+            "-L",
+            zig_lib_dir,
             "-lbyakaron",
-            "-sdk",                 sdk_path,
-            "-target",              sdk_target,
-            "-framework",           "SwiftUI",
-            "-framework",           "AppKit",
-            "-framework",           "Carbon",
-            "-o",                   b.fmt("{s}/Contents/MacOS/Byakaron", .{app_bundle}),
+            "-sdk",
+            sdk_path,
+            "-target",
+            sdk_target,
+            "-framework",
+            "SwiftUI",
+            "-framework",
+            "AppKit",
+            "-framework",
+            "Carbon",
+            "-o",
+            b.fmt("{s}/Contents/MacOS/Byakaron", .{app_bundle}),
         });
         app_swiftc.has_side_effects = true;
         app_swiftc.step.dependOn(&rearchive.step);
         app_swiftc.step.dependOn(&app_skel.step);
 
         // Step 4: Embed the signed IME inside the main app.
-        const embed = b.addSystemCommand(&.{ "sh", "-c",
+        const embed = b.addSystemCommand(&.{
+            "sh",       "-c",
             \\set -e
             \\mkdir -p "$1/Contents/Library/InputMethods"
             \\rm -rf "$1/Contents/Library/InputMethods/$3.app"
             \\cp -R "$2" "$1/Contents/Library/InputMethods/$3.app"
-        , "_", app_bundle, ime_bundle, ime_name });
+            ,
+            "_",        app_bundle,
+            ime_bundle, ime_name,
+        });
         embed.has_side_effects = true;
         embed.step.dependOn(&app_swiftc.step);
         embed.step.dependOn(&ime_sign.step);
 
         // Step 5: Sign the outer app last (no --deep, preserves inner signature).
         const app_sign = b.addSystemCommand(&.{
-            "codesign", "--force", "--sign", "-",
-            "--entitlements", entitlements,
-            app_bundle,
+            "codesign",       "--force",    "--sign",   "-",
+            "--entitlements", entitlements, app_bundle,
         });
         app_sign.has_side_effects = true;
         app_sign.step.dependOn(&embed.step);

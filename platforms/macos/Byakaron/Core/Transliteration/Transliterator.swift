@@ -12,11 +12,11 @@ import Foundation
 /// (lazily, on first use) and reuse it for the life of the process, rather than
 /// rebuilding the trie on every call. Measured: persistent reuse is ~285x faster
 /// per word than per-call construction.
-final class ZigTransliterator {
+final class Transliterator {
 
     /// Process-wide shared instance. The IME and app each have their own process,
     /// so this is one engine-per-mode per process.
-    static let shared = ZigTransliterator()
+    static let shared = Transliterator()
 
     /// Serializes access to the C engine handles. The engines are created once
     /// and only read afterwards, but riti-style callers may touch this from more
