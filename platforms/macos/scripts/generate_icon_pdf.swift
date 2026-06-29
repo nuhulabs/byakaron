@@ -21,9 +21,9 @@ context.beginPDFPage(nil)
 let font = NSFont.systemFont(ofSize: 12, weight: .medium)
 let attrs: [NSAttributedString.Key: Any] = [
     .font: font,
-    .foregroundColor: NSColor.black
+    .foregroundColor: NSColor.black,
 ]
-let str = "ব্যা" as NSString
+let str = "ব" as NSString
 let strSize = str.size(withAttributes: attrs)
 let point = NSPoint(
     x: (16 - strSize.width) / 2,
@@ -38,8 +38,9 @@ NSGraphicsContext.restoreGraphicsState()
 context.endPDFPage()
 context.closePDF()
 
-let outputPath = CommandLine.arguments.count > 1
+let outputPath =
+    CommandLine.arguments.count > 1
     ? CommandLine.arguments[1]
-    : "iconTemplate.pdf"
+    : "ByakaronMenu.pdf"
 pdfData.write(toFile: outputPath, atomically: true)
 print("PDF icon written to \(outputPath)")

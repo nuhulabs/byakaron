@@ -7,9 +7,9 @@ func makeTemplateImage(width: CGFloat, height: CGFloat, fontSize: CGFloat) -> NS
     let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { rect in
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: fontSize, weight: .medium),
-            .foregroundColor: NSColor.black
+            .foregroundColor: NSColor.white,
         ]
-        let str = "ব্যা" as NSString
+        let str = "ব" as NSString
         let strSize = str.size(withAttributes: attrs)
         let point = NSPoint(
             x: (rect.width - strSize.width) / 2,
@@ -38,8 +38,9 @@ combined.addRepresentation(rep2x)
 combined.isTemplate = true
 
 let tiffData = combined.tiffRepresentation!
-let outputPath = CommandLine.arguments.count > 1
+let outputPath =
+    CommandLine.arguments.count > 1
     ? CommandLine.arguments[1]
-    : "iconTemplate.tiff"
+    : "ByakaronMenu.tiff"
 try! tiffData.write(to: URL(fileURLWithPath: outputPath))
 print("Icon written to \(outputPath)")

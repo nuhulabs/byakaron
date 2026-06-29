@@ -17,6 +17,7 @@
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "894ACDCC2FF1A45F0042A597"
                BuildableName = "Byakaron.app"
+               BlueprintName = "Byakaron"
                ReferencedContainer = "container:Byakaron.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -46,6 +47,7 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "894ACDCC2FF1A45F0042A597"
             BuildableName = "Byakaron.app"
+            BlueprintName = "Byakaron"
             ReferencedContainer = "container:Byakaron.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -62,6 +64,7 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "894ACDCC2FF1A45F0042A597"
             BuildableName = "Byakaron.app"
+            BlueprintName = "Byakaron"
             ReferencedContainer = "container:Byakaron.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
