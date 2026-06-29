@@ -15,53 +15,39 @@ private struct LayoutSection: Identifiable {
     let entries: [LayoutEntry]
 }
 
-/// The full Avro phonetic key map, shown as a reference inside the Guide window.
+/// The full Avro phonetic key map, shown as a reference inside the Settings window.
 struct LayoutTab: View {
     private let sections: [LayoutSection] = LayoutData.sections
 
     private var gridColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 96), spacing: 8)]
+        [GridItem(.adaptive(minimum: 120), spacing: 24)]
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                ForEach(sections) { section in
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(section.title)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color.accentColor)
-
-                        LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 8) {
-                            ForEach(section.entries) { entry in
-                                cell(entry)
-                            }
+        Form {
+            ForEach(sections) { section in
+                Section(section.title) {
+                    LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 8) {
+                        ForEach(section.entries) { entry in
+                            cell(entry)
                         }
                     }
+                    .padding(.vertical, 2)
                 }
             }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .formStyle(.grouped)
     }
 
     private func cell(_ entry: LayoutEntry) -> some View {
         HStack(spacing: 8) {
             Text(entry.bengali)
-                .font(.system(size: 16, weight: .medium))
-                .frame(minWidth: 32, alignment: .center)
+                .frame(minWidth: 32, alignment: .leading)
             Text(entry.key)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(Color.accentColor)
+                .font(.callout.monospaced())
+                .foregroundStyle(.secondary)
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
     }
 }
 
@@ -70,7 +56,7 @@ struct LayoutTab: View {
 private enum LayoutData {
     static let sections: [LayoutSection] = [
         LayoutSection(
-            title: "Consonants ব্যঞ্জনবর্ণ", columns: 4,
+            title: "Consonants (ব্যঞ্জনবর্ণ)", columns: 4,
             entries: pairs([
                 ("ক", "k"), ("ট", "T"), ("প", "p"), ("স", "s"),
                 ("খ", "kh"), ("ঠ", "Th"), ("ফ", "ph, f"), ("হ", "h"),
@@ -85,7 +71,7 @@ private enum LayoutData {
             ])
         ),
         LayoutSection(
-            title: "Vowels স্বরবর্ণ", columns: 3,
+            title: "Vowels (স্বরবর্ণ)", columns: 3,
             entries: pairs([
                 ("অ", "o"), ("ই / কি", "i"), ("উ / কু", "u"),
                 ("আ / কা", "a"), ("ঈ / কী", "I"), ("ঊ / কূ", "U"),
@@ -103,7 +89,8 @@ private enum LayoutData {
             ])
         ),
         LayoutSection(
-            title: "Numbers সংখ্যা", columns: 5,
+            title: "Numbers (সংখ্যা)", columns: 5,
+            
             entries: pairs([
                 ("০", "0"), ("১", "1"), ("২", "2"), ("৩", "3"), ("৪", "4"),
                 ("৫", "5"), ("৬", "6"), ("৭", "7"), ("৮", "8"), ("৯", "9"),
@@ -117,7 +104,7 @@ private enum LayoutData {
 }
 
 #if DEBUG
-#Preview("Avro Layout") {
+#Preview("Layout") {
     LayoutTab()
         .frame(width: 560, height: 640)
 }

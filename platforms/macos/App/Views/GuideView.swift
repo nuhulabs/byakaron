@@ -31,131 +31,88 @@ struct GettingStartedTab: View {
     ]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                header
+        Form {
+            statusSection
 
-                statusBanner
-
-                groupCard(title: "Setup", icon: "checklist") {
-                    VStack(alignment: .leading, spacing: 14) {
-                        ForEach(Array(setupSteps.enumerated()), id: \.offset) { index, step in
-                            stepRow(number: index + 1, text: step.0, note: step.1)
-                        }
-
-                        Button {
-                            KeyboardInstaller.openInputSourcesSettings()
-                        } label: {
-                            Label("Open Input Sources", systemImage: "gearshape")
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .help("Open System Settings → Keyboard → Input Sources to add Byakaron")
-                    }
+            Section("Set Up") {
+                ForEach(Array(setupSteps.enumerated()), id: \.offset) { index, step in
+                    stepRow(number: index + 1, text: step.0, note: step.1)
                 }
-
-                groupCard(title: "Keyboard Not Listed?", icon: "wrench.and.screwdriver") {
-                    installActions
-                }
-
-                groupCard(title: "How to Type", icon: "keyboard") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(Array(typingTips.enumerated()), id: \.offset) { _, tip in
-                            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                                Text(tip.0)
-                                    .font(.system(size: 13, weight: .medium))
-                                    .frame(width: 130, alignment: .leading)
-                                Text(tip.1)
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(.secondary)
-                                Spacer(minLength: 0)
-                            }
-                        }
-                    }
-                }
-
-                footer
             }
-            .padding(24)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(Color(nsColor: .windowBackgroundColor))
-        .onAppear { keyboardAdded = KeyboardInstaller.isInputSourceAdded() }
-    }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Byakaron")
-                .font(.system(size: 26, weight: .bold))
+            Section {
+                Button {
+                    KeyboardInstaller.openInputSourcesSettings()
+                } label: {
+                    Label("Open Input Sources", systemImage: "gearshape")
+                }
+                .help("Open System Settings → Keyboard → Input Sources to add Byakaron")
+
+                Button {
+                    if !KeyboardInstaller.startManualInstall() {
+                        Self.presentKeyboardMissingAlert()
+                    }
+                } label: {
+                    Label("Install Manually…", systemImage: "square.and.arrow.down.on.square")
+                }
+                .help(
+                    "Open both “Byakaron Keyboard.app” and the Input Methods folder so you can drag it in"
+                )
+            } footer: {
+                Text(
+                    "If the keyboard isn’t listed above, install it by hand: drag “Byakaron Keyboard.app” into your Input Methods folder, then add it under Input Sources."
+                )
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            }
+
+            Section("How to Type") {
+                ForEach(Array(typingTips.enumerated()), id: \.offset) { _, tip in
+                    LabeledContent(tip.0) {
+                        Text(tip.1).foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            footer
         }
+        .formStyle(.grouped)
+        .onAppear { keyboardAdded = KeyboardInstaller.isInputSourceAdded() }
     }
 
     /// Live status of the Byakaron input source so the user knows whether there's
     /// anything left to do. Refreshable, since adding the source happens outside the
     /// app in System Settings.
-    private var statusBanner: some View {
+    private var statusSection: some View {
         let tint: Color = keyboardAdded ? .green : .orange
-        return HStack(alignment: .top, spacing: 10) {
-            Image(
-                systemName: keyboardAdded
-                    ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-            )
-            .font(.system(size: 18))
-            .foregroundStyle(tint)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(keyboardAdded ? "Keyboard is added" : "Keyboard isn’t added yet")
-                    .font(.system(size: 14, weight: .semibold))
-                Text(
-                    keyboardAdded
-                        ? "Press the Globe key or Ctrl+Space to switch to Byakaron."
-                        : "Follow the steps below to add Byakaron in System Settings."
+        return Section {
+            HStack(spacing: 12) {
+                Image(
+                    systemName: keyboardAdded
+                        ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
                 )
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 8)
-            Button("Re-check") { keyboardAdded = KeyboardInstaller.isInputSourceAdded() }
-                .controlSize(.small)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(tint.opacity(0.12))
-        )
-    }
+                .font(.title2)
+                .foregroundStyle(tint)
 
-    /// Manual install fallback: reveal the bundled keyboard and open its destination
-    /// folder. Used when the automatic install couldn't run (e.g. a sandboxed build)
-    /// or the keyboard doesn't appear in the Input Sources list. Finder runs outside
-    /// our sandbox, so it can perform the move even when the app can't.
-    private var installActions: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(
-                "Byakaron normally installs the keyboard for you. If it doesn’t appear in the list above, install it by hand:"
-            )
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-
-            Button {
-                if !KeyboardInstaller.startManualInstall() {
-                    Self.presentKeyboardMissingAlert()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(keyboardAdded ? "Keyboard is added" : "Keyboard isn’t added yet")
+                        .font(.headline)
+                    Text(
+                        keyboardAdded
+                            ? "Press the Globe key or Ctrl+Space to switch to Byakaron."
+                            : "Follow the steps below to add Byakaron in System Settings."
+                    )
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
-            } label: {
-                Label("Install Manually…", systemImage: "square.and.arrow.down.on.square")
-            }
-            .buttonStyle(.borderedProminent)
-            .help(
-                "Open both “Byakaron Keyboard.app” and the Input Methods folder so you can drag it in"
-            )
 
-            Text(
-                "This opens “Byakaron Keyboard.app” and your Input Methods folder side by side — drag the keyboard into the folder, then add it under System Settings → Keyboard → Input Sources."
-            )
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+
+                Button("Re-check") { keyboardAdded = KeyboardInstaller.isInputSourceAdded() }
+                    .controlSize(.small)
+            }
+            .padding(.vertical, 4)
         }
     }
 
@@ -171,47 +128,30 @@ struct GettingStartedTab: View {
     }
 
     private func stepRow(number: Int, text: String, note: String?) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text("\(number)")
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .font(.callout.weight(.semibold).monospacedDigit())
                 .foregroundStyle(.white)
                 .frame(width: 22, height: 22)
                 .background(Circle().fill(Color.accentColor))
             VStack(alignment: .leading, spacing: 2) {
                 Text(text)
-                    .font(.system(size: 13))
                 if let note {
                     Text(note)
-                        .font(.system(size: 12))
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }
+            Spacer(minLength: 0)
         }
+        .padding(.vertical, 2)
     }
 
     private var footer: some View {
-        VStack(spacing: 10) {
-            Divider()
-
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Developed by **Nurul Huda (Apon)**")
-                        .font(.system(size: 12))
-                    HStack(spacing: 6) {
-                        Link(
-                            "github.com/nuhulabs",
-                            destination: URL(string: "https://github.com/nuhulabs")!)
-                        Text("·").foregroundStyle(.secondary)
-                        Link(
-                            "nuhulabs.github.io",
-                            destination: URL(string: "https://nuhulabs.github.io")!)
-                    }
-                    .font(.system(size: 11))
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 6) {
+        Section {
+            LabeledContent {
+                HStack(spacing: 8) {
+                    updateStatusLabel
                     Button(action: checkForUpdate) {
                         if case .checking = updateStatus {
                             ProgressView().controlSize(.small)
@@ -220,10 +160,28 @@ struct GettingStartedTab: View {
                         }
                     }
                     .disabled(updateStatus == .checking)
-                    updateStatusLabel
                 }
+            } label: {
+                Text("Version")
+                Text(appVersion)
             }
+        } header: {
+            Text("About")
+        } footer: {
+            HStack(spacing: 6) {
+                Text("Developed by Nurul Huda (Apon)")
+                Spacer(minLength: 0)
+                Link("GitHub", destination: URL(string: "https://github.com/nuhulabs")!)
+                Text("·").foregroundStyle(.secondary)
+                Link("Website", destination: URL(string: "https://nuhulabs.github.io")!)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
+    }
+
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
     }
 
     @ViewBuilder
@@ -231,38 +189,20 @@ struct GettingStartedTab: View {
         switch updateStatus {
         case .idle, .checking:
             EmptyView()
-        case .upToDate(let version):
-            Text("You’re up to date (\(version))")
-                .font(.system(size: 10))
+        case .upToDate:
+            Text("Up to date")
+                .font(.caption)
                 .foregroundStyle(.secondary)
         case .available(let version, _):
             Text("Update \(version) available")
-                .font(.system(size: 10))
+                .font(.caption)
                 .foregroundStyle(Color.accentColor)
         case .failed(let message):
             Text(message)
-                .font(.system(size: 10))
+                .font(.caption)
                 .foregroundStyle(.red)
                 .lineLimit(1)
         }
-    }
-
-    @ViewBuilder
-    private func groupCard<Content: View>(
-        title: String, icon: String, @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label(title, systemImage: icon)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
-            content()
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
     }
 
     private func checkForUpdate() {
