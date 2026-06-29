@@ -34,12 +34,12 @@ struct SettingsView: View {
                 .tag(SettingsTab.suggestions.rawValue)
 
             LayoutTab()
-                .tabItem { Label("Avro Layout", systemImage: "keyboard.badge.ellipsis") }
+                .tabItem { Label("Layout", systemImage: "keyboard.badge.ellipsis") }
                 .tag(SettingsTab.layout.rawValue)
 
-            ExperimentalSettings()
-                .tabItem { Label("Experimental", systemImage: "flask") }
-                .tag(SettingsTab.experimental.rawValue)
+//            ExperimentalSettings()
+//                .tabItem { Label("Experimental", systemImage: "flask") }
+//                .tag(SettingsTab.experimental.rawValue)
         }
         .frame(width: 580, height: 620)
     }
@@ -277,6 +277,9 @@ private struct ExperimentalSettings: View {
 }
 
 #if DEBUG
+#Preview("Setup") {
+    GettingStartedTab().frame(width: 540)
+}
 #Preview("General") {
     GeneralSettings().frame(width: 540)
 }

@@ -10,7 +10,6 @@
 		894A7D712FF273890032AE26 /* Byakaron.icon in Resources */ = {isa = PBXBuildFile; fileRef = 894A7D702FF273890032AE26 /* Byakaron.icon */; };
 		894A7D722FF273890032AE26 /* Byakaron.icon in Resources */ = {isa = PBXBuildFile; fileRef = 894A7D702FF273890032AE26 /* Byakaron.icon */; };
 		894ACE122FF1A4970042A597 /* Suffix.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDFC2FF1A4970042A597 /* Suffix.json */; };
-		894ACE132FF1A4970042A597 /* Probhat.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDFB2FF1A4970042A597 /* Probhat.json */; };
 		894ACE142FF1A4970042A597 /* Dictionary.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF62FF1A4970042A597 /* Dictionary.json */; };
 		894ACE162FF1A4970042A597 /* Autocorrect.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF42FF1A4970042A597 /* Autocorrect.json */; };
 		894ACE4A2FF1B24F0042A597 /* byakaron_zcu.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 894ACE492FF1B24F0042A597 /* byakaron_zcu.o */; };
@@ -52,7 +51,6 @@
 		894ACDF52FF1A4970042A597 /* Byakaron.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Byakaron.entitlements; sourceTree = "<group>"; };
 		894ACDF62FF1A4970042A597 /* Dictionary.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Dictionary.json; sourceTree = "<group>"; };
 		894ACDFA2FF1A4970042A597 /* Info-keyboard.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info-keyboard.plist"; sourceTree = "<group>"; };
-		894ACDFB2FF1A4970042A597 /* Probhat.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Probhat.json; sourceTree = "<group>"; };
 		894ACDFC2FF1A4970042A597 /* Suffix.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Suffix.json; sourceTree = "<group>"; };
 		894ACE1D2FF1A5AA0042A597 /* Byakaron Keyboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Byakaron Keyboard.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		894ACE492FF1B24F0042A597 /* byakaron_zcu.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = byakaron_zcu.o; path = build/zig/byakaron_zcu.o; sourceTree = "<group>"; };
@@ -167,7 +165,6 @@
 				894ACDF52FF1A4970042A597 /* Byakaron.entitlements */,
 				894ACDF62FF1A4970042A597 /* Dictionary.json */,
 				894ACDFA2FF1A4970042A597 /* Info-keyboard.plist */,
-				894ACDFB2FF1A4970042A597 /* Probhat.json */,
 				894ACDFC2FF1A4970042A597 /* Suffix.json */,
 			);
 			path = Resources;
@@ -270,7 +267,6 @@
 			isa = PBXResourcesBuildPhase;
 			files = (
 				894ACE122FF1A4970042A597 /* Suffix.json in Resources */,
-				894ACE132FF1A4970042A597 /* Probhat.json in Resources */,
 				894ACE142FF1A4970042A597 /* Dictionary.json in Resources */,
 				899FBAAA2FF2975C002BEA94 /* MenuIcon.pdf in Resources */,
 				899FBAAB2FF2975C002BEA94 /* MenuIcon.tiff in Resources */,
