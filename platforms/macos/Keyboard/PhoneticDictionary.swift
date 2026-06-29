@@ -2,7 +2,7 @@ import Foundation
 
 /// Dictionary-backed suggestion source for the Zig (inline phonetic) input mode.
 ///
-/// Fully self-contained: it uses the bundled `dictionary.json` (the Avro word
+/// Fully self-contained: it uses the bundled `Dictionary.json` (the Avro word
 /// list, keyed by first-letter group) and `suffix.json`, combined with the Zig
 /// transliterator, to produce Bangla candidates for a run of Latin keystrokes.
 ///
@@ -52,7 +52,7 @@ final class PhoneticDictionary {
         }
     }
 
-    /// Load `dictionary.json` and `suffix.json` from the bundle's `Resources`
+    /// Load `Dictionary.json` and `suffix.json` from the bundle's `Resources`
     /// directory. Returns nil if the dictionary is missing/malformed.
     static func loadFromBundle(_ bundle: Bundle = .main) -> PhoneticDictionary? {
         guard let dir = bundle.resourcePath else { return nil }

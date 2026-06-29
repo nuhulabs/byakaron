@@ -1,204 +1,87 @@
 #!/bin/bash
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC_DIR="$PROJECT_ROOT"                    # unified source tree
-RES_DIR="$SRC_DIR/Resources"               # shared Info plists, icons, entitlements
+# ---------------------------------------------------------------------------
+# Byakaron build script
+#
+# This is now a thin wrapper around `xcodebuild`: Xcode owns everything — the
+# app + embedded keyboard build, code signing, Info.plist generation, the embed
+# (CopyFiles) step, and even the Zig engine (a "Build Zig engine" run-script
+# phase on the keyboard target runs scripts/build_zig.sh before linking).
+#
+# Usage:
+#   ./scripts/build.sh [release|debug]
+#   SANDBOX=1 ./scripts/build.sh        # sandboxed app variant
+# ---------------------------------------------------------------------------
+
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"   # platforms/macos
 BUILD_DIR="$PROJECT_ROOT/build"
-
-# Final shippable product: Byakaron.app (SwiftUI app) embedding the IME helper.
+DERIVED_DIR="$BUILD_DIR/DerivedData"
 APP_NAME="Byakaron"
-APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
+SCHEME="Byakaron"
 
-# Embedded IME helper. Bundle + executable are user-facing as "Byakaron Keyboard";
-# the Swift MODULE name stays "Byakaron" so the Info.plist
-# InputMethodServerControllerClass "Byakaron.ByakaronInputController" resolves.
-IME_NAME="Byakaron Keyboard"
-IME_BUNDLE="$BUILD_DIR/$IME_NAME.app"
-
-# Parse arguments
 BUILD_TYPE="${1:-release}"
 BUILD_UNIVERSAL="${2:-false}"
 
-# Two distribution options are kept available:
-#   • Default: non-sandboxed app that auto-installs the keyboard.
-#   • SANDBOX=1: sandboxed app that relies on the manual "Reveal Keyboard" flow.
-# The keyboard helper itself is always unsandboxed (it runs as a system IME).
-APP_ENTITLEMENTS="$RES_DIR/Byakaron.entitlements"
+# Configuration selection:
+#   • Default        -> Release           (non-sandboxed, auto-installs keyboard)
+#   • debug arg      -> Debug
+#   • SANDBOX=1      -> Release-Sandboxed  (sandboxed app, manual keyboard install)
+# The keyboard helper is always unsandboxed (it runs as a system IME).
+CONFIG="Release"
+[ "$BUILD_TYPE" = "debug" ] && CONFIG="Debug"
 if [ "${SANDBOX:-0}" = "1" ]; then
-    APP_ENTITLEMENTS="$RES_DIR/Byakaron-sandboxed.entitlements"
+    CONFIG="Release-Sandboxed"
 fi
 
 echo "=== Byakaron Build ==="
-echo "Build type: $BUILD_TYPE"
-echo "Universal binary: $BUILD_UNIVERSAL"
-echo "App entitlements: $(basename "$APP_ENTITLEMENTS")"
+echo "Build type:    $BUILD_TYPE"
+echo "Configuration: $CONFIG"
 echo ""
 
-# NOTE: Both products require the macOS 26 SDK and target arm64-apple-macos26.0,
-# so universal (lipo) builds are not supported. If requested, warn and fall back.
+# arm64-only: both products require the macOS 26 SDK and target arm64-macos.
 if [ "$BUILD_UNIVERSAL" = "true" ]; then
-    echo ">>> WARNING: universal build is not supported for Byakaron.app."
-    echo ">>>          Falling back to arm64-only release build."
+    echo ">>> WARNING: universal build is not supported; building arm64 only."
     BUILD_UNIVERSAL="false"
 fi
 
-MACOS26_SDK="$(xcrun --sdk macosx27.0 --show-sdk-path)"
-TARGET="arm64-apple-macos27.0"
-
-
 # ---------------------------------------------------------------------------
-# Step 1b: Build the Zig transliteration library (libbyakaron.a) from the repo
-# root and re-archive it so the macOS linker accepts it.
+# Build Byakaron.app (with the embedded keyboard) via xcodebuild.
 #
-# The Zig 0.17-dev archiver emits non-8-byte-aligned mach-o members that ld
-# rejects ("not 8-byte aligned"); re-packing the extracted objects with the
-# system `ar` fixes the alignment. The repacked lib + installed header land in
-# $ZIG_LIB_DIR / $ZIG_INCLUDE_DIR for swiftc to link against.
+# The Zig engine is built by the keyboard target's "Build Zig engine" run-script
+# phase (scripts/build_zig.sh), so there is nothing to compile by hand here.
+#
+# Signed ad-hoc ("-") so the result installs/runs locally without a developer
+# cert. Each target's entitlements come from its CODE_SIGN_ENTITLEMENTS build
+# setting, so the inner keyboard stays unsandboxed while the app honors the
+# selected (sandboxed / non-sandboxed) configuration.
 # ---------------------------------------------------------------------------
-echo ">>> Building Zig engine (libbyakaron)..."
-ZIG_REPO_ROOT="$(cd "$PROJECT_ROOT/../.." && pwd)"   # platforms/macos -> repo root
-ZIG_OPTIMIZE="ReleaseFast"
-[ "$BUILD_TYPE" = "debug" ] && ZIG_OPTIMIZE="Debug"
-
-( cd "$ZIG_REPO_ROOT" && zig build -Doptimize="$ZIG_OPTIMIZE" -Dtarget=aarch64-macos )
-
-ZIG_LIB_DIR="$BUILD_DIR/zig"
-ZIG_INCLUDE_DIR="$ZIG_REPO_ROOT/zig-out/include"
-rm -rf "$ZIG_LIB_DIR" && mkdir -p "$ZIG_LIB_DIR"
-(
-    cd "$ZIG_LIB_DIR"
-    ar x "$ZIG_REPO_ROOT/zig-out/lib/libbyakaron.a"
-    chmod 644 ./*.o
-    rm -f libbyakaron.a
-    ar rcs libbyakaron.a ./*.o
-)
-echo ">>> Zig library built: $ZIG_LIB_DIR/libbyakaron.a"
-
-# Both header dirs are passed to swiftc (unquoted -> word-split into -I flags);
-# BridgeHeader.h includes both avrobangla_engine.h and byakaron.h.
-HEADER_SEARCH_PATH="-I $ZIG_INCLUDE_DIR"
+echo ">>> Building $APP_NAME.app via xcodebuild ($CONFIG)..."
+xcodebuild \
+    -project "$PROJECT_ROOT/Byakaron.xcodeproj" \
+    -scheme "$SCHEME" \
+    -configuration "$CONFIG" \
+    -derivedDataPath "$DERIVED_DIR" \
+    CODE_SIGN_STYLE=Manual \
+    CODE_SIGN_IDENTITY="-" \
+    DEVELOPMENT_TEAM="" \
+    PROVISIONING_PROFILE_SPECIFIER="" \
+    CODE_SIGNING_REQUIRED=YES \
+    CODE_SIGNING_ALLOWED=YES \
+    build
 
 # ---------------------------------------------------------------------------
-# Step 2: Build the embedded IME helper -> "Byakaron Keyboard.app"
-#   Sources: IME/, Keyboard/, Core/Settings, Core/Transliteration bridge.
+# Stage the product at build/Byakaron.app so install.sh / create_dmg.sh keep
+# working unchanged.
 # ---------------------------------------------------------------------------
-echo ">>> Building embedded IME ($IME_NAME.app)..."
-rm -rf "$IME_BUNDLE"
-mkdir -p "$IME_BUNDLE/Contents/MacOS"
-mkdir -p "$IME_BUNDLE/Contents/Resources"
-
-cp "$RES_DIR/Info-keyboard.plist" "$IME_BUNDLE/Contents/Info.plist"
-cp "$RES_DIR/iconTemplate.pdf"    "$IME_BUNDLE/Contents/Resources/iconTemplate.pdf"
-cp "$RES_DIR/AppIcon.icns"        "$IME_BUNDLE/Contents/Resources/AppIcon.icns"
-cp "$PROJECT_ROOT/Resources/Dictionary.json"    "$IME_BUNDLE/Contents/Resources/Dictionary.json"
-cp "$PROJECT_ROOT/Resources/suffix.json"    "$IME_BUNDLE/Contents/Resources/suffix.json"
-echo -n "APPL????" > "$IME_BUNDLE/Contents/PkgInfo"
-
-IME_SOURCES=(
-    "$SRC_DIR/Keyboard/main.swift"
-    "$SRC_DIR/Keyboard/AppDelegate.swift"
-    "$SRC_DIR/Keyboard/SpellServer.swift"
-    "$SRC_DIR/Keyboard/PhoneticInputController.swift"
-    "$SRC_DIR/Keyboard/PhoneticDictionary.swift"
-    "$SRC_DIR/Core/Transliteration/Transliterator.swift"
-    "$SRC_DIR/Core/Settings/ByakaronSettings.swift"
-)
-
-swiftc "${IME_SOURCES[@]}" \
-    -O \
-    -module-name "Byakaron" \
-    -import-objc-header "$SRC_DIR/Core/Transliteration/BridgeHeader.h" \
-    $HEADER_SEARCH_PATH \
-    -L "$ZIG_LIB_DIR" \
-    -lbyakaron \
-    -sdk "$MACOS26_SDK" \
-    -target "$TARGET" \
-    -framework Cocoa \
-    -framework InputMethodKit \
-    -framework SwiftUI \
-    -o "$IME_BUNDLE/Contents/MacOS/$IME_NAME"
-
-# The keyboard is installed manually into ~/Library/Input Methods and runs as a
-# standalone, UNsandboxed input method — so it gets its own entitlements, distinct
-# from the sandboxed main app below.
-echo ">>> Signing IME bundle (ad-hoc)..."
-codesign --force --sign - \
-    --entitlements "$RES_DIR/Byakaron-keyboard.entitlements" \
-    "$IME_BUNDLE"
-
-# ---------------------------------------------------------------------------
-# Step 3: Build the SwiftUI main app -> Byakaron.app
-#   Sources: App/, Preferences/, Core/Dictionary, Core/Prediction,
-#            Core/Settings, IME/Activation/IMEInstaller.
-# ---------------------------------------------------------------------------
-echo ">>> Building main app ($APP_NAME.app)..."
+PRODUCT_APP="$DERIVED_DIR/Build/Products/$CONFIG/$APP_NAME.app"
+APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_BUNDLE/Contents/MacOS"
-mkdir -p "$APP_BUNDLE/Contents/Resources"
-
-cp "$RES_DIR/Info-app.plist" "$APP_BUNDLE/Contents/Info.plist"
-echo -n "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
-
-# dictionary.json into Resources for SpellEngine.loadFromBundle()
-cp "$PROJECT_ROOT/Resources/Dictionary.json" "$APP_BUNDLE/Contents/Resources/Dictionary.json"
-
-# App icon
-cp "$RES_DIR/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
-
-GUI_SOURCES=(
-    "$SRC_DIR/App/ByakaronApp.swift"
-    "$SRC_DIR/App/Views/MainView.swift"
-    "$SRC_DIR/App/Views/SettingsView.swift"
-    "$SRC_DIR/App/Views/GuideView.swift"
-    "$SRC_DIR/App/Views/LayoutView.swift"
-    "$SRC_DIR/App/Views/BanglaSpellTextView.swift"
-    "$SRC_DIR/App/KeyboardInstaller.swift"
-    "$SRC_DIR/Core/Suggestion/Prediction.swift"
-    "$SRC_DIR/Core/Suggestion/Dictionary.swift"
-    "$SRC_DIR/Core/Transliteration/Transliterator.swift"
-    "$SRC_DIR/Core/Settings/ByakaronSettings.swift"
-)
-
-# The app links the Zig engine too so the shared transliteration wrapper is
-# available app-side (e.g. for previews/spell views). It imports only the Zig
-# header, not riti's, via a small dedicated bridging header.
-swiftc "${GUI_SOURCES[@]}" \
-    -O \
-    -module-name "Byakaron_App" \
-    -import-objc-header "$SRC_DIR/Core/Transliteration/BridgeHeader.h" \
-    -I "$ZIG_INCLUDE_DIR" \
-    -L "$ZIG_LIB_DIR" \
-    -lbyakaron \
-    -sdk "$MACOS26_SDK" \
-    -target "$TARGET" \
-    -framework SwiftUI \
-    -framework AppKit \
-    -framework Carbon \
-    -o "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-
-# ---------------------------------------------------------------------------
-# Step 4: Embed the signed IME inside the main app
-# ---------------------------------------------------------------------------
-echo ">>> Embedding IME into main app..."
-mkdir -p "$APP_BUNDLE/Contents/Library/InputMethods"
-cp -R "$IME_BUNDLE" "$APP_BUNDLE/Contents/Library/InputMethods/$IME_NAME.app"
-
-# ---------------------------------------------------------------------------
-# Step 5: Sign the outer app LAST (inner already signed; no --deep so the
-# inner IME signature is preserved).
-# ---------------------------------------------------------------------------
-# Sign the main app with the selected entitlements (non-sandboxed by default,
-# sandboxed when SANDBOX=1). No --deep, so the already-signed, unsandboxed inner
-# keyboard keeps its own signature/entitlements.
-echo ">>> Signing main app bundle (ad-hoc)..."
-codesign --force --sign - \
-    --entitlements "$APP_ENTITLEMENTS" \
-    "$APP_BUNDLE"
+cp -R "$PRODUCT_APP" "$APP_BUNDLE"
 
 echo ""
 echo "=== Build complete ==="
-echo "App bundle: $APP_BUNDLE"
-echo "Embedded IME: $APP_BUNDLE/Contents/Library/InputMethods/$IME_NAME.app"
+echo "App bundle:   $APP_BUNDLE"
+echo "Embedded IME: $APP_BUNDLE/Contents/Library/InputMethods/$APP_NAME Keyboard.app"
 echo ""
 echo "To install, run: ./scripts/install.sh"

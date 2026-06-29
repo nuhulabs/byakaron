@@ -1,6 +1,6 @@
 import Foundation
 
-/// Bengali spell-checking engine backed by `dictionary.json`.
+/// Bengali spell-checking engine backed by `Dictionary.json`.
 ///
 /// Pure Foundation — no AppKit/UIKit — so it compiles unchanged on macOS and iOS.
 /// Membership testing is an O(1) `Set` lookup. Correction suggestions use a
@@ -34,7 +34,7 @@ final class SpellEngine {
         self.deletionIndex = index
     }
 
-    /// Convenience: load and parse `dictionary.json` from a bundle, then build.
+    /// Convenience: load and parse `Dictionary.json` from a bundle, then build.
     /// Returns nil if the resource is missing or malformed.
     static func loadFromBundle(_ bundle: Bundle = .main) -> SpellEngine? {
         guard let url = bundle.url(forResource: "Dictionary", withExtension: "json"),

@@ -8,9 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		894ACE0E2FF1A4970042A597 /* iconTemplate.pdf in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF72FF1A4970042A597 /* iconTemplate.pdf */; };
-		894ACE0F2FF1A4970042A597 /* Info-keyboard.plist in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDFA2FF1A4970042A597 /* Info-keyboard.plist */; };
 		894ACE102FF1A4970042A597 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF32FF1A4970042A597 /* AppIcon.icns */; };
-		894ACE112FF1A4970042A597 /* Info-app.plist in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF92FF1A4970042A597 /* Info-app.plist */; };
 		894ACE122FF1A4970042A597 /* suffix.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDFC2FF1A4970042A597 /* suffix.json */; };
 		894ACE132FF1A4970042A597 /* Probhat.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDFB2FF1A4970042A597 /* Probhat.json */; };
 		894ACE142FF1A4970042A597 /* Dictionary.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF62FF1A4970042A597 /* Dictionary.json */; };
@@ -54,7 +52,6 @@
 		894ACDF62FF1A4970042A597 /* Dictionary.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Dictionary.json; sourceTree = "<group>"; };
 		894ACDF72FF1A4970042A597 /* iconTemplate.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = iconTemplate.pdf; sourceTree = "<group>"; };
 		894ACDF82FF1A4970042A597 /* iconTemplate.tiff */ = {isa = PBXFileReference; lastKnownFileType = image.tiff; path = iconTemplate.tiff; sourceTree = "<group>"; };
-		894ACDF92FF1A4970042A597 /* Info-app.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info-app.plist"; sourceTree = "<group>"; };
 		894ACDFA2FF1A4970042A597 /* Info-keyboard.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info-keyboard.plist"; sourceTree = "<group>"; };
 		894ACDFB2FF1A4970042A597 /* Probhat.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Probhat.json; sourceTree = "<group>"; };
 		894ACDFC2FF1A4970042A597 /* suffix.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = suffix.json; sourceTree = "<group>"; };
@@ -169,7 +166,6 @@
 				894ACDF62FF1A4970042A597 /* Dictionary.json */,
 				894ACDF72FF1A4970042A597 /* iconTemplate.pdf */,
 				894ACDF82FF1A4970042A597 /* iconTemplate.tiff */,
-				894ACDF92FF1A4970042A597 /* Info-app.plist */,
 				894ACDFA2FF1A4970042A597 /* Info-keyboard.plist */,
 				894ACDFB2FF1A4970042A597 /* Probhat.json */,
 				894ACDFC2FF1A4970042A597 /* suffix.json */,
@@ -216,6 +212,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 894ACE272FF1A5AB0042A597 /* Build configuration list for PBXNativeTarget "Byakaron Keyboard" */;
 			buildPhases = (
+				894ACED02FF1C7000042A597 /* Build Zig engine */,
 				894ACE192FF1A5AA0042A597 /* Sources */,
 				894ACE1A2FF1A5AA0042A597 /* Frameworks */,
 				894ACEB02FF1C6000042A597 /* Resources */,
@@ -273,9 +270,7 @@
 			isa = PBXResourcesBuildPhase;
 			files = (
 				894ACE0E2FF1A4970042A597 /* iconTemplate.pdf in Resources */,
-				894ACE0F2FF1A4970042A597 /* Info-keyboard.plist in Resources */,
 				894ACE102FF1A4970042A597 /* AppIcon.icns in Resources */,
-				894ACE112FF1A4970042A597 /* Info-app.plist in Resources */,
 				894ACE122FF1A4970042A597 /* suffix.json in Resources */,
 				894ACE132FF1A4970042A597 /* Probhat.json in Resources */,
 				894ACE142FF1A4970042A597 /* Dictionary.json in Resources */,
@@ -311,6 +306,29 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section (keyboard) */
+
+/* Begin PBXShellScriptBuildPhase section */
+		894ACED02FF1C7000042A597 /* Build Zig engine */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Zig engine";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/build/zig/byakaron_zcu.o",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "\"$SRCROOT/scripts/build_zig.sh\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXTargetDependency section */
 		894ACE4F2FF1BCA10042A597 /* PBXTargetDependency */ = {
@@ -359,7 +377,7 @@
 				DEVELOPMENT_TEAM = 654MC856Z2;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -423,7 +441,7 @@
 				DEVELOPMENT_TEAM = 654MC856Z2;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -536,9 +554,12 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = NO;
+				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/include";
 				INFOPLIST_FILE = "Resources/Info-keyboard.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -571,9 +592,12 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = NO;
+				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/include";
 				INFOPLIST_FILE = "Resources/Info-keyboard.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -631,7 +655,7 @@
 				DEVELOPMENT_TEAM = 654MC856Z2;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -703,9 +727,12 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = NO;
+				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/include";
 				INFOPLIST_FILE = "Resources/Info-keyboard.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

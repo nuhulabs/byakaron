@@ -88,7 +88,10 @@ func startSpellServer() {
             NSLog("Byakaron: NSSpellServer.run returned")
         }
     } else {
-        NSLog("Byakaron: NSSpellServer.registerLanguage(bn) failed")
+        // Expected on recent macOS: the system no longer surfaces third-party
+        // NSSpellServer language vendors. Not an error — spell-check/suggestions
+        // are delivered through IMK, not this route.
+        NSLog("Byakaron: NSSpellServer 'bn' vendor not accepted by the system (expected on recent macOS); using IMK-based checking instead")
     }
 }
 startSpellServer()

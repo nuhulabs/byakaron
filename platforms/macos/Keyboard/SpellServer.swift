@@ -4,7 +4,7 @@ import Cocoa
 ///
 /// macOS may no longer honor third-party NSSpellServer language vendors on
 /// recent releases (the route is largely inert), but we register it anyway per
-/// product decision. It loads the SAME `data/dictionary.json` the IME bundles
+/// product decision. It loads the SAME `Dictionary.json` the IME bundles
 /// (format: `[String: [String]]`) into a `Set<String>` for O(1) membership, and
 /// uses a deletion-index for fast edit-distance suggestions — mirroring the
 /// SwiftUI app's SpellEngine.
@@ -16,11 +16,12 @@ final class ByakaronSpellServerDelegate: NSObject, NSSpellServerDelegate {
     override init() {
         var loaded = Set<String>()
         if let dir = Bundle.main.resourcePath,
-           let data = try? Data(contentsOf: URL(fileURLWithPath: dir + "/data/dictionary.json")),
-           let object = try? JSONSerialization.jsonObject(with: data) as? [String: [String]] {
+            let data = try? Data(contentsOf: URL(fileURLWithPath: dir + "/Dictionary.json")),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: [String]]
+        {
             for (_, list) in object { loaded.formUnion(list) }
         } else {
-            NSLog("Byakaron SpellServer: failed to load data/dictionary.json")
+            NSLog("Byakaron SpellServer: failed to load Dictionary.json")
         }
         self.words = loaded
 
@@ -38,18 +39,22 @@ final class ByakaronSpellServerDelegate: NSObject, NSSpellServerDelegate {
 
     // MARK: - NSSpellServerDelegate
 
-    func spellServer(_ sender: NSSpellServer,
-                     findMisspelledWordIn stringToCheck: String,
-                     language: String,
-                     wordCount: UnsafeMutablePointer<Int>,
-                     countOnly: Bool) -> NSRange {
+    func spellServer(
+        _ sender: NSSpellServer,
+        findMisspelledWordIn stringToCheck: String,
+        language: String,
+        wordCount: UnsafeMutablePointer<Int>,
+        countOnly: Bool
+    ) -> NSRange {
         let ns = stringToCheck as NSString
         var count = 0
         var firstMisspelled = NSRange(location: NSNotFound, length: 0)
 
         let opts: NSString.EnumerationOptions = [.byWords, .localized]
-        ns.enumerateSubstrings(in: NSRange(location: 0, length: ns.length),
-                               options: opts) { word, range, _, stop in
+        ns.enumerateSubstrings(
+            in: NSRange(location: 0, length: ns.length),
+            options: opts
+        ) { word, range, _, stop in
             guard let word = word else { return }
             count += 1
             if !countOnly, !self.isCorrect(word) {
@@ -62,9 +67,11 @@ final class ByakaronSpellServerDelegate: NSObject, NSSpellServerDelegate {
         return countOnly ? NSRange(location: NSNotFound, length: 0) : firstMisspelled
     }
 
-    func spellServer(_ sender: NSSpellServer,
-                     suggestGuessesForWord word: String,
-                     inLanguage language: String) -> [String]? {
+    func spellServer(
+        _ sender: NSSpellServer,
+        suggestGuessesForWord word: String,
+        inLanguage language: String
+    ) -> [String]? {
         suggestions(for: word)
     }
 
@@ -84,12 +91,14 @@ final class ByakaronSpellServerDelegate: NSObject, NSSpellServerDelegate {
         }
         candidates.remove(word)
 
-        return candidates
+        return
+            candidates
             .map { (word: $0, distance: Self.boundedEditDistance(wordChars, Array($0), max: 2)) }
             .filter { $0.distance <= 2 }
             .sorted {
                 if $0.distance != $1.distance { return $0.distance < $1.distance }
-                let dl = abs($0.word.count - word.count), dr = abs($1.word.count - word.count)
+                let dl = abs($0.word.count - word.count)
+                let dr = abs($1.word.count - word.count)
                 if dl != dr { return dl < dr }
                 return $0.word < $1.word
             }
@@ -112,7 +121,8 @@ final class ByakaronSpellServerDelegate: NSObject, NSSpellServerDelegate {
     }
 
     private static func boundedEditDistance(_ a: [Character], _ b: [Character], max: Int) -> Int {
-        let la = a.count, lb = b.count
+        let la = a.count
+        let lb = b.count
         if abs(la - lb) > max { return max + 1 }
         if lb == 0 { return la }
 
