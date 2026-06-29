@@ -2,7 +2,7 @@ import Cocoa
 import InputMethodKit
 
 // Connection name MUST match Info.plist's InputMethodConnectionName
-let kConnectionName = "dev.nuhu.byakaron.inputmethod.Byakaron_Connection"
+let kConnectionName = "dev.nuhu.labs.Byakaron.Keyboard_Connection"
 
 // IMKServer must be a global to stay alive for the process lifetime
 var server: IMKServer!

@@ -16,7 +16,7 @@ enum ByakaronSettings {
     /// sandboxed app group (the IME isn't sandboxed — see Byakaron.entitlements);
     /// it's a named `UserDefaults` suite, which on an unsandboxed Mac is a plain
     /// `~/Library/Preferences/<suite>.plist` both processes can read and write.
-    static let suiteName = "dev.nuhu.byakaron.shared"
+    static let suiteName = "dev.nuhu.labs.Byakaron.shared"
 
     /// The shared defaults both processes talk to.
     static let defaults = UserDefaults(suiteName: suiteName) ?? .standard
@@ -97,7 +97,7 @@ enum ByakaronSettings {
     /// Name broadcast over `DistributedNotificationCenter` whenever a setting the
     /// IME cares about changes. The IME observes this to rebuild its engine; a
     /// plain `NotificationCenter` would stay inside one process and never arrive.
-    static let didChangeNotification = Notification.Name("dev.nuhu.byakaron.settingsDidChange")
+    static let didChangeNotification = Notification.Name("dev.nuhu.labs.Byakaron.settingsDidChange")
 
     /// Tell every Byakaron process that a shared setting changed.
     static func broadcastChange() {

@@ -1,57 +1,24 @@
 import SwiftUI
+
 #if canImport(AppKit)
-import AppKit
+    import AppKit
 #endif
-
-/// Setup-and-help surface for Byakaron, opened from the Help menu (top-right of
-/// the menu bar) rather than shown automatically. Two tabs: how to set the
-/// keyboard up + how to type, and the full Avro phonetic layout reference.
-struct GuideView: View {
-    private enum Tab: String, CaseIterable, Identifiable {
-        case gettingStarted = "Getting Started"
-        case layout = "Avro Layout"
-        var id: String { rawValue }
-        var symbol: String {
-            switch self {
-            case .gettingStarted: return "sparkles"
-            case .layout: return "keyboard"
-            }
-        }
-    }
-
-    @State private var selection: Tab = .gettingStarted
-
-    var body: some View {
-        TabView(selection: $selection) {
-            ForEach(Tab.allCases) { tab in
-                content(tab)
-                    .tabItem { Label(tab.rawValue, systemImage: tab.symbol) }
-                    .tag(tab)
-            }
-        }
-        .frame(minWidth: 520, minHeight: 560)
-    }
-
-    @ViewBuilder
-    private func content(_ tab: Tab) -> some View {
-        switch tab {
-        case .gettingStarted: GettingStartedTab()
-        case .layout: LayoutTab()
-        }
-    }
-}
 
 // MARK: - Getting Started Tab
 
+/// The Setup tab shown inside the Settings window: keyboard status, how to enable
+/// it, a manual install fallback, and a typing cheat-sheet.
 struct GettingStartedTab: View {
     @State private var updateStatus: UpdateChecker.Status = .idle
+    @State private var keyboardAdded = KeyboardInstaller.isInputSourceAdded()
 
     private let setupSteps: [(String, String?)] = [
-        ("Click “Reveal Keyboard” below to show the keyboard in Finder", "Byakaron Keyboard.app, bundled inside the app"),
-        ("Drag “Byakaron Keyboard.app” into the Input Methods folder", "~/Library/Input Methods — use “Open Folder” below"),
-        ("Open System Settings → Keyboard → Input Sources", nil),
-        ("Click  +  → search “Byakaron” → select Byakaron → Add", nil),
-        ("Use the Globe key or Ctrl+Space to switch input methods", nil),
+        (
+            "Open System Settings → Keyboard → Input Sources",
+            "Byakaron installs the keyboard automatically"
+        ),
+        ("Click  +  → choose Bangla → select Byakaron → Add", nil),
+        ("Use the Globe key or Ctrl+Space to switch to Byakaron", nil),
     ]
 
     private let typingTips: [(String, String)] = [
@@ -68,14 +35,18 @@ struct GettingStartedTab: View {
             VStack(alignment: .leading, spacing: 20) {
                 header
 
+                statusBanner
+
                 groupCard(title: "Setup", icon: "checklist") {
                     VStack(alignment: .leading, spacing: 14) {
                         ForEach(Array(setupSteps.enumerated()), id: \.offset) { index, step in
                             stepRow(number: index + 1, text: step.0, note: step.1)
                         }
-                        Divider().padding(.vertical, 2)
-                        installActions
                     }
+                }
+
+                groupCard(title: "Keyboard Not Listed?", icon: "wrench.and.screwdriver") {
+                    installActions
                 }
 
                 groupCard(title: "How to Type", icon: "keyboard") {
@@ -100,6 +71,7 @@ struct GettingStartedTab: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear { keyboardAdded = KeyboardInstaller.isInputSourceAdded() }
     }
 
     private var header: some View {
@@ -109,11 +81,55 @@ struct GettingStartedTab: View {
         }
     }
 
-    /// Buttons that drive the manual install: reveal the bundled keyboard and open
-    /// its destination folder. Byakaron is sandboxed, so it can't copy the keyboard
-    /// itself — Finder (a separate process) does the move when the user drags it.
+    /// Live status of the Byakaron input source so the user knows whether there's
+    /// anything left to do. Refreshable, since adding the source happens outside the
+    /// app in System Settings.
+    private var statusBanner: some View {
+        let tint: Color = keyboardAdded ? .green : .orange
+        return HStack(alignment: .top, spacing: 10) {
+            Image(
+                systemName: keyboardAdded
+                    ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+            )
+            .font(.system(size: 18))
+            .foregroundStyle(tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(keyboardAdded ? "Keyboard is added" : "Keyboard isn’t added yet")
+                    .font(.system(size: 14, weight: .semibold))
+                Text(
+                    keyboardAdded
+                        ? "Press the Globe key or Ctrl+Space to switch to Byakaron."
+                        : "Follow the steps below to add Byakaron in System Settings."
+                )
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Button("Re-check") { keyboardAdded = KeyboardInstaller.isInputSourceAdded() }
+                .controlSize(.small)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(tint.opacity(0.12))
+        )
+    }
+
+    /// Manual install fallback: reveal the bundled keyboard and open its destination
+    /// folder. Used when the automatic install couldn't run (e.g. a sandboxed build)
+    /// or the keyboard doesn't appear in the Input Sources list. Finder runs outside
+    /// our sandbox, so it can perform the move even when the app can't.
     private var installActions: some View {
         VStack(alignment: .leading, spacing: 8) {
+            Text(
+                "Byakaron normally installs the keyboard for you. If it doesn’t appear in the list above, install it by hand:"
+            )
+            .font(.system(size: 12))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
             HStack(spacing: 10) {
                 Button {
                     if !KeyboardInstaller.revealKeyboardInFinder() {
@@ -133,10 +149,12 @@ struct GettingStartedTab: View {
                 .help("Open ~/Library/Input Methods, where the keyboard belongs")
             }
 
-            Text("Drag “Byakaron Keyboard.app” from the revealed window into Input Methods, then add it under System Settings → Keyboard → Input Sources.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Drag “Byakaron Keyboard.app” into Input Methods, then add it under System Settings → Keyboard → Input Sources."
+            )
+            .font(.system(size: 12))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -179,9 +197,13 @@ struct GettingStartedTab: View {
                     Text("Developed by **Nurul Huda (Apon)**")
                         .font(.system(size: 12))
                     HStack(spacing: 6) {
-                        Link("github.com/nuhulabs", destination: URL(string: "https://github.com/nuhulabs")!)
+                        Link(
+                            "github.com/nuhulabs",
+                            destination: URL(string: "https://github.com/nuhulabs")!)
                         Text("·").foregroundStyle(.secondary)
-                        Link("nuhulabs.github.io", destination: URL(string: "https://nuhulabs.github.io")!)
+                        Link(
+                            "nuhulabs.github.io",
+                            destination: URL(string: "https://nuhulabs.github.io")!)
                     }
                     .font(.system(size: 11))
                 }
@@ -200,12 +222,6 @@ struct GettingStartedTab: View {
                     updateStatusLabel
                 }
             }
-
-            Text("Powered by OpenBangla’s riti engine. Built for the Bengali community on macOS.")
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity)
-                .multilineTextAlignment(.center)
         }
     }
 
@@ -261,8 +277,10 @@ struct GettingStartedTab: View {
     private static func presentUpdateAlert(version: String, url: URL) {
         let alert = NSAlert()
         alert.messageText = "Update Available"
-        let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
-        alert.informativeText = "Byakaron \(version) is available. You are currently running \(current)."
+        let current =
+            Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        alert.informativeText =
+            "Byakaron \(version) is available. You are currently running \(current)."
         alert.alertStyle = .informational
         alert.addButton(withTitle: "Download")
         alert.addButton(withTitle: "Later")
@@ -284,7 +302,8 @@ enum UpdateChecker {
     }
 
     static func check(completion: @escaping (Status) -> Void) {
-        let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+        let currentVersion =
+            Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
         let url = URL(string: "https://api.github.com/repos/nuhulabs/Byakaron/releases/latest")!
 
         var request = URLRequest(url: url)
@@ -298,8 +317,8 @@ enum UpdateChecker {
                     return
                 }
                 guard let data = data,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let tagName = json["tag_name"] as? String
+                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                    let tagName = json["tag_name"] as? String
                 else {
                     completion(.failed("Could not read release info."))
                     return
@@ -307,7 +326,8 @@ enum UpdateChecker {
 
                 let latest = tagName.hasPrefix("v") ? String(tagName.dropFirst()) : tagName
                 if isVersion(latest, newerThan: currentVersion) {
-                    let html = json["html_url"] as? String
+                    let html =
+                        json["html_url"] as? String
                         ?? "https://github.com/nuhulabs/Byakaron/releases/latest"
                     completion(.available(latest, URL(string: html)!))
                 } else {
@@ -331,13 +351,8 @@ enum UpdateChecker {
 }
 
 #if DEBUG
-#Preview("Guide") {
-    GuideView()
-        .frame(width: 560, height: 640)
-}
-
-#Preview("Getting Started") {
-    GettingStartedTab()
-        .frame(width: 560, height: 640)
-}
+    #Preview("Getting Started") {
+        GettingStartedTab()
+            .frame(width: 560, height: 640)
+    }
 #endif

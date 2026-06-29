@@ -11,7 +11,7 @@
     <key>CFBundleDisplayName</key>
     <string>Byakaron</string>
     <key>CFBundleIdentifier</key>
-    <string>dev.nuhu.byakaron.spell</string>
+    <string>dev.nuhu.labs.Byakaron</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundlePackageType</key>

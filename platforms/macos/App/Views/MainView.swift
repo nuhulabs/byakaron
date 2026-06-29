@@ -11,6 +11,12 @@ struct MainView: View {
     /// The issue currently selected in the sidebar.
     @State private var selection: Misspelling.ID?
 
+    #if os(macOS)
+    @Environment(\.openSettings) private var openSettings
+    /// Guard so we only nudge the user toward setup once per launch.
+    @State private var didCheckSetup = false
+    #endif
+
     var body: some View {
         Group {
             if checker.engine == nil {
@@ -25,7 +31,27 @@ struct MainView: View {
             }
         }
         .frame(minWidth: 720, minHeight: 460)
+        #if os(macOS)
+        .onAppear { promptSetupIfNeeded() }
+        #endif
     }
+
+    #if os(macOS)
+    /// On first appearance, if the Byakaron input source hasn't been added yet, open
+    /// Settings to the Setup tab so the user can finish enabling the keyboard.
+    private func promptSetupIfNeeded() {
+        guard !didCheckSetup else { return }
+        didCheckSetup = true
+        guard !KeyboardInstaller.isInputSourceAdded() else { return }
+
+        // Deep-link Settings to the Setup tab, then open it (slightly delayed so the
+        // main window has settled first).
+        ByakaronSettings.defaults.set(SettingsTab.setup.rawValue, forKey: SettingsTab.selectionKey)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            openSettings()
+        }
+    }
+    #endif
 
     // MARK: - Derived counts
 

@@ -7,17 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		894ACDFE2FF1A4970042A597 /* Transliterator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDEA2FF1A4970042A597 /* Transliterator.swift */; };
-		894ACDFF2FF1A4970042A597 /* GuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDDC2FF1A4970042A597 /* GuideView.swift */; };
-		894ACE002FF1A4970042A597 /* ByakaronApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDE12FF1A4970042A597 /* ByakaronApp.swift */; };
-		894ACE012FF1A4970042A597 /* ByakaronSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDE42FF1A4970042A597 /* ByakaronSettings.swift */; };
-		894ACE022FF1A4970042A597 /* BanglaSpellTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDDB2FF1A4970042A597 /* BanglaSpellTextView.swift */; };
-		894ACE032FF1A4970042A597 /* KeyboardInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDE22FF1A4970042A597 /* KeyboardInstaller.swift */; };
-		894ACE042FF1A4970042A597 /* Dictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDE62FF1A4970042A597 /* Dictionary.swift */; };
-		894ACE062FF1A4970042A597 /* LayoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDDD2FF1A4970042A597 /* LayoutView.swift */; };
-		894ACE072FF1A4970042A597 /* Prediction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDE72FF1A4970042A597 /* Prediction.swift */; };
-		894ACE082FF1A4970042A597 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDDF2FF1A4970042A597 /* SettingsView.swift */; };
-		894ACE0B2FF1A4970042A597 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDDE2FF1A4970042A597 /* MainView.swift */; };
 		894ACE0E2FF1A4970042A597 /* iconTemplate.pdf in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF72FF1A4970042A597 /* iconTemplate.pdf */; };
 		894ACE0F2FF1A4970042A597 /* Info-keyboard.plist in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDFA2FF1A4970042A597 /* Info-keyboard.plist */; };
 		894ACE102FF1A4970042A597 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF32FF1A4970042A597 /* AppIcon.icns */; };
@@ -27,16 +16,6 @@
 		894ACE142FF1A4970042A597 /* Dictionary.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF62FF1A4970042A597 /* Dictionary.json */; };
 		894ACE152FF1A4970042A597 /* iconTemplate.tiff in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF82FF1A4970042A597 /* iconTemplate.tiff */; };
 		894ACE162FF1A4970042A597 /* autocorrect.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF42FF1A4970042A597 /* autocorrect.json */; };
-		894ACE282FF1A5EB0042A597 /* ByakaronSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDE42FF1A4970042A597 /* ByakaronSettings.swift */; };
-		894ACE292FF1A5EB0042A597 /* Dictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDE62FF1A4970042A597 /* Dictionary.swift */; };
-		894ACE2A2FF1A5EB0042A597 /* Prediction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDE72FF1A4970042A597 /* Prediction.swift */; };
-		894ACE2B2FF1A5EB0042A597 /* BridgeHeader.h in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDE92FF1A4970042A597 /* BridgeHeader.h */; };
-		894ACE2C2FF1A5EB0042A597 /* Transliterator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDEA2FF1A4970042A597 /* Transliterator.swift */; };
-		894ACE2D2FF1A5EB0042A597 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDED2FF1A4970042A597 /* AppDelegate.swift */; };
-		894ACE2E2FF1A5EB0042A597 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDEE2FF1A4970042A597 /* main.swift */; };
-		894ACE2F2FF1A5EB0042A597 /* PhoneticDictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDEF2FF1A4970042A597 /* PhoneticDictionary.swift */; };
-		894ACE302FF1A5EB0042A597 /* PhoneticInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDF02FF1A4970042A597 /* PhoneticInputController.swift */; };
-		894ACE312FF1A5EB0042A597 /* SpellServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDF12FF1A4970042A597 /* SpellServer.swift */; };
 		894ACE322FF1A5EB0042A597 /* AppIcon.icns in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDF32FF1A4970042A597 /* AppIcon.icns */; };
 		894ACE332FF1A5EB0042A597 /* autocorrect.json in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDF42FF1A4970042A597 /* autocorrect.json */; };
 		894ACE342FF1A5EB0042A597 /* Byakaron.entitlements in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDF52FF1A4970042A597 /* Byakaron.entitlements */; };
@@ -47,7 +26,6 @@
 		894ACE392FF1A5EB0042A597 /* Info-keyboard.plist in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDFA2FF1A4970042A597 /* Info-keyboard.plist */; };
 		894ACE3A2FF1A5EB0042A597 /* Probhat.json in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDFB2FF1A4970042A597 /* Probhat.json */; };
 		894ACE3B2FF1A5EB0042A597 /* suffix.json in Sources */ = {isa = PBXBuildFile; fileRef = 894ACDFC2FF1A4970042A597 /* suffix.json */; };
-		894ACE3D2FF1AD140042A597 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 894ACE3C2FF1AD140042A597 /* Assets.xcassets */; };
 		894ACE4A2FF1B24F0042A597 /* byakaron_zcu.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 894ACE492FF1B24F0042A597 /* byakaron_zcu.o */; };
 		894ACE4B2FF1B3D30042A597 /* byakaron_zcu.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 894ACE492FF1B24F0042A597 /* byakaron_zcu.o */; };
 		894ACE4D2FF1B7FB0042A597 /* Byakaron Keyboard.app in CopyFiles */ = {isa = PBXBuildFile; fileRef = 894ACE1D2FF1A5AA0042A597 /* Byakaron Keyboard.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -76,23 +54,6 @@
 
 /* Begin PBXFileReference section */
 		894ACDCD2FF1A45F0042A597 /* Byakaron.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Byakaron.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		894ACDDB2FF1A4970042A597 /* BanglaSpellTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BanglaSpellTextView.swift; sourceTree = "<group>"; };
-		894ACDDC2FF1A4970042A597 /* GuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuideView.swift; sourceTree = "<group>"; };
-		894ACDDD2FF1A4970042A597 /* LayoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutView.swift; sourceTree = "<group>"; };
-		894ACDDE2FF1A4970042A597 /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
-		894ACDDF2FF1A4970042A597 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		894ACDE12FF1A4970042A597 /* ByakaronApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ByakaronApp.swift; sourceTree = "<group>"; };
-		894ACDE22FF1A4970042A597 /* KeyboardInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardInstaller.swift; sourceTree = "<group>"; };
-		894ACDE42FF1A4970042A597 /* ByakaronSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ByakaronSettings.swift; sourceTree = "<group>"; };
-		894ACDE62FF1A4970042A597 /* Dictionary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dictionary.swift; sourceTree = "<group>"; };
-		894ACDE72FF1A4970042A597 /* Prediction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Prediction.swift; sourceTree = "<group>"; };
-		894ACDE92FF1A4970042A597 /* BridgeHeader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BridgeHeader.h; sourceTree = "<group>"; };
-		894ACDEA2FF1A4970042A597 /* Transliterator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transliterator.swift; sourceTree = "<group>"; };
-		894ACDED2FF1A4970042A597 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		894ACDEE2FF1A4970042A597 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
-		894ACDEF2FF1A4970042A597 /* PhoneticDictionary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneticDictionary.swift; sourceTree = "<group>"; };
-		894ACDF02FF1A4970042A597 /* PhoneticInputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneticInputController.swift; sourceTree = "<group>"; };
-		894ACDF12FF1A4970042A597 /* SpellServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpellServer.swift; sourceTree = "<group>"; };
 		894ACDF32FF1A4970042A597 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		894ACDF42FF1A4970042A597 /* autocorrect.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = autocorrect.json; sourceTree = "<group>"; };
 		894ACDF52FF1A4970042A597 /* Byakaron.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Byakaron.entitlements; sourceTree = "<group>"; };
@@ -104,10 +65,69 @@
 		894ACDFB2FF1A4970042A597 /* Probhat.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Probhat.json; sourceTree = "<group>"; };
 		894ACDFC2FF1A4970042A597 /* suffix.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = suffix.json; sourceTree = "<group>"; };
 		894ACE1D2FF1A5AA0042A597 /* Byakaron Keyboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Byakaron Keyboard.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		894ACE3C2FF1AD140042A597 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		894ACE3E2FF1AD140042A597 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		894ACE492FF1B24F0042A597 /* byakaron_zcu.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = byakaron_zcu.o; path = build/zig/byakaron_zcu.o; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		894ACE882FF1C5050042A597 /* Exceptions for "Keyboard" folder in "Byakaron" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				AppDelegate.swift,
+				Assets.xcassets,
+				main.swift,
+				PhoneticDictionary.swift,
+				PhoneticInputController.swift,
+				SpellServer.swift,
+			);
+			target = 894ACDCC2FF1A45F0042A597 /* Byakaron */;
+		};
+		894ACE892FF1C5050042A597 /* Exceptions for "Keyboard" folder in "Byakaron Keyboard" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				AppDelegate.swift,
+				main.swift,
+				PhoneticDictionary.swift,
+				PhoneticInputController.swift,
+				SpellServer.swift,
+			);
+			target = 894ACE1C2FF1A5AA0042A597 /* Byakaron Keyboard */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		894ACE9C2FF1C5200042A597 /* Exceptions for "Core" folder in "Compile Sources" phase from "Byakaron Keyboard" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = 894ACE192FF1A5AA0042A597 /* Sources */;
+			membershipExceptions = (
+				Transliteration/BridgeHeader.h,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		894ACE592FF1C4F10042A597 /* App */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = App;
+			sourceTree = "<group>";
+		};
+		894ACE822FF1C5040042A597 /* Keyboard */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				894ACE882FF1C5050042A597 /* Exceptions for "Keyboard" folder in "Byakaron" target */,
+				894ACE892FF1C5050042A597 /* Exceptions for "Keyboard" folder in "Byakaron Keyboard" target */,
+			);
+			path = Keyboard;
+			sourceTree = "<group>";
+		};
+		894ACE922FF1C5120042A597 /* Core */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				894ACE9C2FF1C5200042A597 /* Exceptions for "Core" folder in "Compile Sources" phase from "Byakaron Keyboard" target */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		894ACDCA2FF1A45F0042A597 /* Frameworks */ = {
@@ -128,9 +148,9 @@
 		894ACDC42FF1A45F0042A597 = {
 			isa = PBXGroup;
 			children = (
-				894ACDE32FF1A4970042A597 /* App */,
-				894ACDEC2FF1A4970042A597 /* Core */,
-				894ACDF22FF1A4970042A597 /* Keyboard */,
+				894ACE592FF1C4F10042A597 /* App */,
+				894ACE822FF1C5040042A597 /* Keyboard */,
+				894ACE922FF1C5120042A597 /* Core */,
 				894ACDFD2FF1A4970042A597 /* Resources */,
 				894ACE402FF1AFA40042A597 /* Frameworks */,
 				894ACDCE2FF1A45F0042A597 /* Products */,
@@ -144,78 +164,6 @@
 				894ACE1D2FF1A5AA0042A597 /* Byakaron Keyboard.app */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		894ACDE02FF1A4970042A597 /* Views */ = {
-			isa = PBXGroup;
-			children = (
-				894ACDDB2FF1A4970042A597 /* BanglaSpellTextView.swift */,
-				894ACDDC2FF1A4970042A597 /* GuideView.swift */,
-				894ACDDD2FF1A4970042A597 /* LayoutView.swift */,
-				894ACDDE2FF1A4970042A597 /* MainView.swift */,
-				894ACDDF2FF1A4970042A597 /* SettingsView.swift */,
-			);
-			path = Views;
-			sourceTree = "<group>";
-		};
-		894ACDE32FF1A4970042A597 /* App */ = {
-			isa = PBXGroup;
-			children = (
-				894ACDE02FF1A4970042A597 /* Views */,
-				894ACDE12FF1A4970042A597 /* ByakaronApp.swift */,
-				894ACDE22FF1A4970042A597 /* KeyboardInstaller.swift */,
-				894ACE3C2FF1AD140042A597 /* Assets.xcassets */,
-			);
-			path = App;
-			sourceTree = "<group>";
-		};
-		894ACDE52FF1A4970042A597 /* Settings */ = {
-			isa = PBXGroup;
-			children = (
-				894ACDE42FF1A4970042A597 /* ByakaronSettings.swift */,
-			);
-			path = Settings;
-			sourceTree = "<group>";
-		};
-		894ACDE82FF1A4970042A597 /* Suggestion */ = {
-			isa = PBXGroup;
-			children = (
-				894ACDE62FF1A4970042A597 /* Dictionary.swift */,
-				894ACDE72FF1A4970042A597 /* Prediction.swift */,
-			);
-			path = Suggestion;
-			sourceTree = "<group>";
-		};
-		894ACDEB2FF1A4970042A597 /* Transliteration */ = {
-			isa = PBXGroup;
-			children = (
-				894ACDE92FF1A4970042A597 /* BridgeHeader.h */,
-				894ACDEA2FF1A4970042A597 /* Transliterator.swift */,
-			);
-			path = Transliteration;
-			sourceTree = "<group>";
-		};
-		894ACDEC2FF1A4970042A597 /* Core */ = {
-			isa = PBXGroup;
-			children = (
-				894ACDE52FF1A4970042A597 /* Settings */,
-				894ACDE82FF1A4970042A597 /* Suggestion */,
-				894ACDEB2FF1A4970042A597 /* Transliteration */,
-			);
-			path = Core;
-			sourceTree = "<group>";
-		};
-		894ACDF22FF1A4970042A597 /* Keyboard */ = {
-			isa = PBXGroup;
-			children = (
-				894ACDED2FF1A4970042A597 /* AppDelegate.swift */,
-				894ACDEE2FF1A4970042A597 /* main.swift */,
-				894ACDEF2FF1A4970042A597 /* PhoneticDictionary.swift */,
-				894ACDF02FF1A4970042A597 /* PhoneticInputController.swift */,
-				894ACDF12FF1A4970042A597 /* SpellServer.swift */,
-				894ACE3E2FF1AD140042A597 /* Assets.xcassets */,
-			);
-			path = Keyboard;
 			sourceTree = "<group>";
 		};
 		894ACDFD2FF1A4970042A597 /* Resources */ = {
@@ -260,6 +208,11 @@
 			dependencies = (
 				894ACE4F2FF1BCA10042A597 /* PBXTargetDependency */,
 			);
+			fileSystemSynchronizedGroups = (
+				894ACE592FF1C4F10042A597 /* App */,
+				894ACE822FF1C5040042A597 /* Keyboard */,
+				894ACE922FF1C5120042A597 /* Core */,
+			);
 			name = Byakaron;
 			productName = Byakaron;
 			productReference = 894ACDCD2FF1A45F0042A597 /* Byakaron.app */;
@@ -273,6 +226,9 @@
 				894ACE1A2FF1A5AA0042A597 /* Frameworks */,
 			);
 			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				894ACE922FF1C5120042A597 /* Core */,
 			);
 			name = "Byakaron Keyboard";
 			productName = "Byakaron Keyboard";
@@ -325,7 +281,6 @@
 				894ACE0F2FF1A4970042A597 /* Info-keyboard.plist in Resources */,
 				894ACE102FF1A4970042A597 /* AppIcon.icns in Resources */,
 				894ACE112FF1A4970042A597 /* Info-app.plist in Resources */,
-				894ACE3D2FF1AD140042A597 /* Assets.xcassets in Resources */,
 				894ACE122FF1A4970042A597 /* suffix.json in Resources */,
 				894ACE132FF1A4970042A597 /* Probhat.json in Resources */,
 				894ACE142FF1A4970042A597 /* Dictionary.json in Resources */,
@@ -339,32 +294,11 @@
 		894ACDC92FF1A45F0042A597 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
-				894ACDFE2FF1A4970042A597 /* Transliterator.swift in Sources */,
-				894ACDFF2FF1A4970042A597 /* GuideView.swift in Sources */,
-				894ACE002FF1A4970042A597 /* ByakaronApp.swift in Sources */,
-				894ACE012FF1A4970042A597 /* ByakaronSettings.swift in Sources */,
-				894ACE022FF1A4970042A597 /* BanglaSpellTextView.swift in Sources */,
-				894ACE032FF1A4970042A597 /* KeyboardInstaller.swift in Sources */,
-				894ACE042FF1A4970042A597 /* Dictionary.swift in Sources */,
-				894ACE062FF1A4970042A597 /* LayoutView.swift in Sources */,
-				894ACE072FF1A4970042A597 /* Prediction.swift in Sources */,
-				894ACE082FF1A4970042A597 /* SettingsView.swift in Sources */,
-				894ACE0B2FF1A4970042A597 /* MainView.swift in Sources */,
 			);
 		};
 		894ACE192FF1A5AA0042A597 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
-				894ACE282FF1A5EB0042A597 /* ByakaronSettings.swift in Sources */,
-				894ACE292FF1A5EB0042A597 /* Dictionary.swift in Sources */,
-				894ACE2A2FF1A5EB0042A597 /* Prediction.swift in Sources */,
-				894ACE2B2FF1A5EB0042A597 /* BridgeHeader.h in Sources */,
-				894ACE2C2FF1A5EB0042A597 /* Transliterator.swift in Sources */,
-				894ACE2D2FF1A5EB0042A597 /* AppDelegate.swift in Sources */,
-				894ACE2E2FF1A5EB0042A597 /* main.swift in Sources */,
-				894ACE2F2FF1A5EB0042A597 /* PhoneticDictionary.swift in Sources */,
-				894ACE302FF1A5EB0042A597 /* PhoneticInputController.swift in Sources */,
-				894ACE312FF1A5EB0042A597 /* SpellServer.swift in Sources */,
 				894ACE322FF1A5EB0042A597 /* AppIcon.icns in Sources */,
 				894ACE332FF1A5EB0042A597 /* autocorrect.json in Sources */,
 				894ACE342FF1A5EB0042A597 /* Byakaron.entitlements in Sources */,

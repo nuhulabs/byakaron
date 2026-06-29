@@ -1,21 +1,47 @@
 import SwiftUI
 
+/// Tabs of the Settings window. The raw values double as the persisted selection
+/// key, so other parts of the app (e.g. the launch-time setup check in `MainView`)
+/// can deep-link to a specific tab by writing `selectionKey` before opening
+/// Settings.
+enum SettingsTab: String, CaseIterable {
+    case setup, general, typing, suggestions, layout, experimental
+
+    /// UserDefaults key (in the shared suite) backing the selected tab.
+    static let selectionKey = "ByakaronSettingsTab"
+}
+
 struct SettingsView: View {
+    @AppStorage(SettingsTab.selectionKey, store: ByakaronSettings.defaults)
+    private var selection = SettingsTab.setup.rawValue
+
     var body: some View {
-        TabView {
+        TabView(selection: $selection) {
+            GettingStartedTab()
+                .tabItem { Label("Setup", systemImage: "sparkles") }
+                .tag(SettingsTab.setup.rawValue)
+
             GeneralSettings()
                 .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(SettingsTab.general.rawValue)
 
             TypingSettings()
                 .tabItem { Label("Typing", systemImage: "keyboard") }
+                .tag(SettingsTab.typing.rawValue)
 
             CandidateSettings()
                 .tabItem { Label("Suggestions", systemImage: "list.bullet.rectangle") }
+                .tag(SettingsTab.suggestions.rawValue)
+
+            LayoutTab()
+                .tabItem { Label("Avro Layout", systemImage: "keyboard.badge.ellipsis") }
+                .tag(SettingsTab.layout.rawValue)
 
             ExperimentalSettings()
                 .tabItem { Label("Experimental", systemImage: "flask") }
+                .tag(SettingsTab.experimental.rawValue)
         }
-        .frame(width: 540)
+        .frame(width: 580, height: 620)
     }
 }
 

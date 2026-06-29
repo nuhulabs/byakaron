@@ -4,20 +4,23 @@ import SwiftUI
 /// the phonetic input method (installed and configured from here) and a dedicated
 /// Bangla spell-checking editor.
 ///
-/// Everything the user configures lives in this single app: input-method options
-/// in the standard Settings window (⌘,), and setup instructions in the Help menu
-/// (top-right of the menu bar). The IME itself runs as an embedded background
-/// helper and reads its options from the shared settings suite.
+/// Everything the user configures lives in the Settings window (⌘,): the Setup tab
+/// walks through enabling the keyboard, alongside the input-method options the
+/// embedded IME reads from the shared settings suite.
 ///
-/// Byakaron is sandboxed, so it can't install the keyboard automatically. The
-/// Setup guide instead reveals the embedded "Byakaron Keyboard.app" in Finder and
-/// the user drags it into `~/Library/Input Methods` (see `KeyboardInstaller`).
+/// By default Byakaron ships non-sandboxed and installs the keyboard automatically
+/// on launch (`KeyboardInstaller.ensureInstalled`). A sandboxed build instead uses
+/// the Setup tab's "Reveal Keyboard" flow, where the user drags the embedded
+/// "Byakaron Keyboard.app" into `~/Library/Input Methods`.
 @main
 struct ByakaronApp: App {
     @StateObject private var checker = SpellChecker()
 
-    /// Stable id for the Help → Guide window so the menu command can open it.
-    static let guideWindowID = "byakaron-guide"
+    init() {
+        #if os(macOS)
+        KeyboardInstaller.ensureInstalled()
+        #endif
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -30,31 +33,22 @@ struct ByakaronApp: App {
         #endif
 
         #if os(macOS)
-        // Settings window (⌘,) — input-method options the embedded IME reads.
+        // Settings window (⌘,) — Setup guide + input-method options.
         Settings {
             SettingsView()
         }
-
-        // Setup & layout guide, opened from the Help menu (top-right menu bar).
-        Window("Byakaron Guide", id: Self.guideWindowID) {
-            GuideView()
-        }
-        .defaultSize(width: 560, height: 640)
-        .windowResizability(.contentMinSize)
         #endif
     }
 }
 
 #if os(macOS)
-/// Adds "Byakaron Setup Guide" to the standard Help menu (the rightmost app menu),
-/// which is exactly where macOS users expect setup/how-to material.
+/// Points the standard Help menu (the rightmost app menu) at the Setup tab, which
+/// now lives in Settings — exactly where macOS users expect setup/how-to material.
 private struct GuideCommands: Commands {
-    @Environment(\.openWindow) private var openWindow
-
     var body: some Commands {
         CommandGroup(replacing: .help) {
-            Button("Byakaron Setup Guide") {
-                openWindow(id: ByakaronApp.guideWindowID)
+            SettingsLink {
+                Text("Byakaron Setup Guide")
             }
             .keyboardShortcut("?", modifiers: .command)
 

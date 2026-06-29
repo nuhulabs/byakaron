@@ -20,9 +20,19 @@ IME_BUNDLE="$BUILD_DIR/$IME_NAME.app"
 BUILD_TYPE="${1:-release}"
 BUILD_UNIVERSAL="${2:-false}"
 
+# Two distribution options are kept available:
+#   • Default: non-sandboxed app that auto-installs the keyboard.
+#   • SANDBOX=1: sandboxed app that relies on the manual "Reveal Keyboard" flow.
+# The keyboard helper itself is always unsandboxed (it runs as a system IME).
+APP_ENTITLEMENTS="$RES_DIR/Byakaron.entitlements"
+if [ "${SANDBOX:-0}" = "1" ]; then
+    APP_ENTITLEMENTS="$RES_DIR/Byakaron-sandboxed.entitlements"
+fi
+
 echo "=== Byakaron Build ==="
 echo "Build type: $BUILD_TYPE"
 echo "Universal binary: $BUILD_UNIVERSAL"
+echo "App entitlements: $(basename "$APP_ENTITLEMENTS")"
 echo ""
 
 # NOTE: Both products require the macOS 26 SDK and target arm64-apple-macos26.0,
@@ -33,8 +43,8 @@ if [ "$BUILD_UNIVERSAL" = "true" ]; then
     BUILD_UNIVERSAL="false"
 fi
 
-MACOS26_SDK="$(xcrun --sdk macosx26.5 --show-sdk-path)"
-TARGET="arm64-apple-macos26.0"
+MACOS26_SDK="$(xcrun --sdk macosx27.0 --show-sdk-path)"
+TARGET="arm64-apple-macos27.0"
 
 
 # ---------------------------------------------------------------------------
@@ -178,11 +188,12 @@ cp -R "$IME_BUNDLE" "$APP_BUNDLE/Contents/Library/InputMethods/$IME_NAME.app"
 # Step 5: Sign the outer app LAST (inner already signed; no --deep so the
 # inner IME signature is preserved).
 # ---------------------------------------------------------------------------
-# The main app is sandboxed (see Byakaron.entitlements). Sign without --deep so the
-# already-signed, unsandboxed inner keyboard keeps its own signature/entitlements.
+# Sign the main app with the selected entitlements (non-sandboxed by default,
+# sandboxed when SANDBOX=1). No --deep, so the already-signed, unsandboxed inner
+# keyboard keeps its own signature/entitlements.
 echo ">>> Signing main app bundle (ad-hoc)..."
 codesign --force --sign - \
-    --entitlements "$RES_DIR/Byakaron.entitlements" \
+    --entitlements "$APP_ENTITLEMENTS" \
     "$APP_BUNDLE"
 
 echo ""
