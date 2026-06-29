@@ -42,6 +42,14 @@ struct GettingStartedTab: View {
                         ForEach(Array(setupSteps.enumerated()), id: \.offset) { index, step in
                             stepRow(number: index + 1, text: step.0, note: step.1)
                         }
+
+                        Button {
+                            KeyboardInstaller.openInputSourcesSettings()
+                        } label: {
+                            Label("Open Input Sources", systemImage: "gearshape")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .help("Open System Settings → Keyboard → Input Sources to add Byakaron")
                     }
                 }
 
@@ -130,27 +138,20 @@ struct GettingStartedTab: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 10) {
-                Button {
-                    if !KeyboardInstaller.revealKeyboardInFinder() {
-                        Self.presentKeyboardMissingAlert()
-                    }
-                } label: {
-                    Label("Reveal Keyboard", systemImage: "magnifyingglass")
+            Button {
+                if !KeyboardInstaller.startManualInstall() {
+                    Self.presentKeyboardMissingAlert()
                 }
-                .buttonStyle(.borderedProminent)
-                .help("Show “Byakaron Keyboard.app” in Finder so you can drag it into place")
-
-                Button {
-                    KeyboardInstaller.openInputMethodsFolder()
-                } label: {
-                    Label("Open Folder", systemImage: "folder")
-                }
-                .help("Open ~/Library/Input Methods, where the keyboard belongs")
+            } label: {
+                Label("Install Manually…", systemImage: "square.and.arrow.down.on.square")
             }
+            .buttonStyle(.borderedProminent)
+            .help(
+                "Open both “Byakaron Keyboard.app” and the Input Methods folder so you can drag it in"
+            )
 
             Text(
-                "Drag “Byakaron Keyboard.app” into Input Methods, then add it under System Settings → Keyboard → Input Sources."
+                "This opens “Byakaron Keyboard.app” and your Input Methods folder side by side — drag the keyboard into the folder, then add it under System Settings → Keyboard → Input Sources."
             )
             .font(.system(size: 12))
             .foregroundStyle(.secondary)

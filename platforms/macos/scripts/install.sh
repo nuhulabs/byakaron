@@ -6,6 +6,27 @@ APP_NAME="Byakaron"
 APP_BUNDLE="$PROJECT_ROOT/build/$APP_NAME.app"
 APPLICATIONS_DIR="/Applications"
 
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+
+# Drop stale LaunchServices registrations for every Byakaron bundle EXCEPT the one
+# we just installed in /Applications. macOS resolves a bundle id to a single
+# canonical path, so leftover copies (old build/ outputs, Xcode DerivedData, the
+# Trash, previous installs) can make it resolve the input source to the wrong path
+# — and then the keyboard never appears in System Settings → Input Sources.
+prune_stale_registrations() {
+    [ -x "$LSREGISTER" ] || return 0
+    local keep="$APPLICATIONS_DIR/$APP_NAME.app"
+    "$LSREGISTER" -dump 2>/dev/null \
+        | grep -oE '/[^"]*Byakaron[^"]*\.app' \
+        | sort -u \
+        | while IFS= read -r p; do
+            case "$p" in
+                "$keep" | "$keep"/*) continue ;;  # keep the freshly installed app + its embed
+            esac
+            "$LSREGISTER" -u "$p" >/dev/null 2>&1 && echo ">>> Unregistered stale copy: $p"
+        done
+}
+
 if [ ! -d "$APP_BUNDLE" ]; then
     echo "Error: $APP_BUNDLE not found. Run ./scripts/build.sh first."
     exit 1
@@ -36,6 +57,12 @@ cp -R "$APP_BUNDLE" "$APPLICATIONS_DIR/"
 
 # Clear extended attributes so Gatekeeper doesn't block the ad-hoc-signed build.
 xattr -cr "$APPLICATIONS_DIR/$APP_NAME.app" 2>/dev/null || true
+
+# Register the just-installed app (and its embedded keyboard) with LaunchServices,
+# then prune any other Byakaron copies so the bundle ids resolve to /Applications.
+echo ">>> Cleaning up stale LaunchServices registrations..."
+"$LSREGISTER" -f "$APPLICATIONS_DIR/$APP_NAME.app" >/dev/null 2>&1 || true
+prune_stale_registrations
 
 # Launch the app so it installs + registers the keyboard, then opens the Setup tab
 # automatically if the input source still needs to be added.

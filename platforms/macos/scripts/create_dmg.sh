@@ -103,7 +103,7 @@ echo ">>> Building package..."
 pkgbuild \
     --nopayload \
     --scripts "$PKG_DIR/scripts" \
-    --identifier "dev.nuhu.labs.Byakaron.Keyboard" \
+    --identifier "dev.nuhu.labs.inputmethod.Byakaron" \
     --version "0.1.0" \
     "$PKG_DIR/Byakaron-component.pkg"
 
@@ -129,14 +129,14 @@ and log back in for the keyboard to appear.
     ]]></welcome>
     <choices-outline>
         <line choice="default">
-            <line choice="dev.nuhu.labs.Byakaron.Keyboard"/>
+            <line choice="dev.nuhu.labs.inputmethod.Byakaron"/>
         </line>
     </choices-outline>
     <choice id="default"/>
-    <choice id="dev.nuhu.labs.Byakaron.Keyboard" visible="false">
-        <pkg-ref id="dev.nuhu.labs.Byakaron.Keyboard"/>
+    <choice id="dev.nuhu.labs.inputmethod.Byakaron" visible="false">
+        <pkg-ref id="dev.nuhu.labs.inputmethod.Byakaron"/>
     </choice>
-    <pkg-ref id="dev.nuhu.labs.Byakaron.Keyboard"
+    <pkg-ref id="dev.nuhu.labs.inputmethod.Byakaron"
              version="0.1.0"
              onConclusion="none">Byakaron-component.pkg</pkg-ref>
 </installer-gui-script>

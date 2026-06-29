@@ -9,7 +9,7 @@
     <key>CFBundleExecutable</key>
     <string>Byakaron Keyboard</string>
     <key>CFBundleIdentifier</key>
-    <string>dev.nuhu.labs.Byakaron.Keyboard</string>
+    <string>dev.nuhu.labs.inputmethod.Byakaron</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
@@ -27,11 +27,11 @@
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>InputMethodConnectionName</key>
-    <string>dev.nuhu.labs.Byakaron.Keyboard_Connection</string>
+    <string>dev.nuhu.labs.inputmethod.Byakaron_Connection</string>
     <key>InputMethodServerControllerClass</key>
     <string>Byakaron.ByakaronInputController</string>
     <key>TISInputSourceID</key>
-    <string>dev.nuhu.labs.Byakaron.Keyboard</string>
+    <string>dev.nuhu.labs.inputmethod.Byakaron</string>
     <key>TISIntendedLanguage</key>
     <string>bn</string>
     <key>TISIconIsTemplate</key>

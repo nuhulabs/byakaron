@@ -24,13 +24,16 @@
         static let imeBundleName = "Byakaron Keyboard.app"
         private static let imeExecutableName = "Byakaron Keyboard"
 
-        /// Known identifiers for the Byakaron input source. The two build systems in
-        /// this repo (scripts/build.sh and Byakaron.xcodeproj) stamp slightly
-        /// different ids, so we accept either when registering, enabling, and
-        /// detecting the keyboard.
+        /// Identifier of the Byakaron input source. Both build systems in this repo
+        /// (scripts/build.sh and Byakaron.xcodeproj) now stamp the same id, recorded
+        /// in Resources/Info-keyboard.plist as TISInputSourceID / CFBundleIdentifier.
+        ///
+        /// IMPORTANT: macOS only treats a bundle as a keyboard input source when its
+        /// identifier contains the `inputmethod` token (cf. Apple's own ids such as
+        /// `com.apple.inputmethod.Tamil`). Dropping it makes the keyboard vanish from
+        /// System Settings → Keyboard → Input Sources, so keep it in any rename.
         private static let knownInputSourceIDs: Set<String> = [
-            "dev.nuhu.labs.Byakaron.Keyboard",  // scripts/build.sh (Info-keyboard.plist)
-            "dev.nuhu.labs.Byakaron.Keyboard",         // Byakaron.xcodeproj target
+            "dev.nuhu.labs.inputmethod.Byakaron"
         ]
 
         // MARK: - Locations
@@ -151,8 +154,42 @@
         static func openInputMethodsFolder() {
             let fm = FileManager.default
             let dir = inputMethodsDirectory
+            // Make sure the destination exists so the drag target is always present.
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
             let target = fm.fileExists(atPath: dir.path) ? dir : dir.deletingLastPathComponent()
             NSWorkspace.shared.open(target)
+        }
+
+        /// One-click manual install: reveal the bundled keyboard *and* open its
+        /// `~/Library/Input Methods` destination so the user can drag it across — the
+        /// same "drag the app into the folder" gesture as a .dmg installer, just with
+        /// the two windows opened for them. Used for sandboxed builds (or whenever the
+        /// automatic copy can't run).
+        ///
+        /// - Returns: `false` if there's no embedded keyboard to reveal.
+        @discardableResult
+        static func startManualInstall() -> Bool {
+            // Open the destination first so the revealed keyboard ends up frontmost.
+            openInputMethodsFolder()
+            return revealKeyboardInFinder()
+        }
+
+        // MARK: - System Settings
+
+        /// Open System Settings straight to Keyboard → Input Sources, where the user
+        /// adds/removes Byakaron with the "+" button. Falls back to the Keyboard pane
+        /// (and then System Settings itself) on OS versions that don't accept the
+        /// deep-link URL.
+        static func openInputSourcesSettings() {
+            let urls = [
+                // Keyboard settings pane (Ventura+ System Settings).
+                "x-apple.systempreferences:com.apple.Keyboard-Settings.extension",
+                // Last-resort: just open System Settings.
+                "x-apple.systempreferences:",
+            ]
+            for string in urls {
+                if let url = URL(string: string), NSWorkspace.shared.open(url) { return }
+            }
         }
 
         // MARK: - Detection
