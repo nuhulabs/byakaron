@@ -69,7 +69,7 @@ final class PhoneticDictionary {
 
         // suffix.json is optional — suffix completions just won't appear without it.
         var suffixObj: [String: String] = [:]
-        if let suffixData = try? Data(contentsOf: URL(fileURLWithPath: dataDir + "/suffix.json")),
+        if let suffixData = try? Data(contentsOf: URL(fileURLWithPath: dataDir + "/Suffix.json")),
             let parsed = try? JSONSerialization.jsonObject(with: suffixData) as? [String: String]
         {
             suffixObj = parsed
