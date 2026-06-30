@@ -2,7 +2,7 @@
 import { getRules } from "./rule" with { type: "macro" };
 import type { RootRule } from "./types";
 
-console.log(await getRules());
+// console.log(await getRules());
 // const minifiedRules = rules.patterns.map((p) => [
 //   p.find,
 //   p.replace,

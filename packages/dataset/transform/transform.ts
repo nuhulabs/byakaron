@@ -34,22 +34,22 @@ async function handler() {
     // Display updated overall progress
     stateManager.displayOverallProgress(sources);
 
-    await Promise.all(sources.map((source) => writeWordPairs(source)));
+    // await Promise.all(sources.map((source) => writeWordPairs(source)));
 
-    // Display updated overall progress
-    stateManager.displayOverallProgress(sources);
+    // // Display updated overall progress
+    // stateManager.displayOverallProgress(sources);
 
-    await Promise.all(sources.map((source) => writeUniqueWords(source)));
+    // await Promise.all(sources.map((source) => writeUniqueWords(source)));
 
-    // Display updated overall progress
-    stateManager.displayOverallProgress(sources);
+    // // Display updated overall progress
+    // stateManager.displayOverallProgress(sources);
 
-    await Promise.all(sources.map((source) => writeUniqueWordPairs(source)));
+    // await Promise.all(sources.map((source) => writeUniqueWordPairs(source)));
 
-    // Display updated overall progress
-    stateManager.displayOverallProgress(sources);
+    // // Display updated overall progress
+    // stateManager.displayOverallProgress(sources);
 
-    await Promise.all(sources.map((source) => writeBanglishWords(source)));
+    // await Promise.all(sources.map((source) => writeBanglishWords(source)));
 
     // Display final overall progress
     stateManager.displayOverallProgress(sources, true);
