@@ -565,12 +565,19 @@ pub const Tokenizer = struct {
         while (self.peek()) |token| {
             if (token.kind == .whitespace) {
                 _ = try self.next();
-                sent_start = self.position;
             } else break;
         }
 
         // Check if we're at the end
         if (self.peek() == null) return null;
+
+        // The current (peeked) token is already one step ahead of
+        // `self.position`, so derive the sentence start from the token's slice
+        // offset within the input rather than from `self.position` (which points
+        // just past the first token).
+        if (self.peek()) |token| {
+            sent_start = @intFromPtr(token.value.ptr) - @intFromPtr(self.input.ptr);
+        }
 
         // Process words until we hit a sentence delimiter or end of input
         var had_content = false;
@@ -677,8 +684,12 @@ test "tokenizer parse and print wiki" {
     const readable = try tokenizer.print(.readable);
     defer allocator.free(readable);
 
+    // std.debug.print("Readable: {s}\n", .{readable});
+
     const json = try tokenizer.print(.json);
     defer allocator.free(json);
+
+    std.debug.print("JSON: {s}\n", .{json});
 
     const words = try tokenizer.getWords(.{});
     defer allocator.free(words);
