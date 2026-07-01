@@ -6,6 +6,8 @@ services:
       POSTGRES_USER: bngc
       POSTGRES_PASSWORD: bngc
       POSTGRES_DB: bngc
+    volumes:
+      - ./packages/data:/byakaron/data
     ports:
       - "5432:5432"
     healthcheck:
