@@ -9,9 +9,31 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
 
     const args = try init.minimal.args.toSlice(arena);
-    if (args.len != 2) return error.InvalidArguments; // usage: data <wiki.xml>
 
-    var input_file = try Io.Dir.cwd().openFile(io, args[1], .{});
+    // Parse a tiny CLI: an optional `--wordpairs` flag plus a single positional
+    // input path. Without the flag we turn a MediaWiki XML dump into
+    // sentences.csv; with it we turn sentences.csv into word_pairs.csv.
+    var wordpairs = false;
+    var positional: ?[]const u8 = null;
+    for (args[1..]) |a| {
+        if (std.mem.eql(u8, a, "--wordpairs")) {
+            wordpairs = true;
+        } else {
+            positional = a;
+        }
+    }
+
+    if (wordpairs) {
+        try runWordPairs(gpa, io, positional orelse "sentences.csv");
+    } else {
+        try runSentences(gpa, io, positional orelse return error.InvalidArguments);
+    }
+}
+
+/// Streams a MediaWiki XML dump and writes one clean Bangla sentence per row to
+/// sentences.csv (page_id, rev_id, value).
+fn runSentences(gpa: std.mem.Allocator, io: Io, input_path: []const u8) !void {
+    var input_file = try Io.Dir.cwd().openFile(io, input_path, .{});
     defer input_file.close(io);
     var input_buf: [64 * 1024]u8 = undefined;
     var input_reader = input_file.reader(io, &input_buf);
@@ -121,6 +143,186 @@ pub fn main(init: std.process.Init) !void {
     try out.flush();
     reportProgress(input_reader.pos, total_size, page_count, sentence_count, title);
     std.debug.print("\nDone. {d} pages, {d} sentences -> sentences.csv\n", .{ page_count, sentence_count });
+}
+
+/// Reads the `value` column of sentences.csv, tokenizes each sentence into
+/// words and writes every adjacent word pair to word_pairs.csv (value,
+/// next_value). The whole thing streams line-by-line, so memory stays flat
+/// regardless of how large the input is.
+fn runWordPairs(gpa: std.mem.Allocator, io: Io, input_path: []const u8) !void {
+    var in_file = try Io.Dir.cwd().openFile(io, input_path, .{});
+    defer in_file.close(io);
+    var in_buf: [64 * 1024]u8 = undefined;
+    var in_reader = in_file.reader(io, &in_buf);
+    const total_size: u64 = in_reader.getSize() catch 0;
+    const in = &in_reader.interface;
+
+    var out_file = try Io.Dir.cwd().createFile(io, "word_pairs.csv", .{});
+    defer out_file.close(io);
+    var out_buf: [64 * 1024]u8 = undefined;
+    var out_writer = out_file.writer(io, &out_buf);
+    const out = &out_writer.interface;
+    try out.writeAll("value,next_value\n");
+
+    // Per-line scratch for the tokenized words; reset (not freed) each line.
+    var line_arena_state: std.heap.ArenaAllocator = .init(gpa);
+    defer line_arena_state.deinit();
+    var words: std.array_list.Managed([]const u8) = .init(gpa);
+    defer words.deinit();
+
+    var line_count: usize = 0;
+    var pair_count: usize = 0;
+    var last_report: usize = 0;
+    var header_checked = false;
+
+    while (try in.takeDelimiter('\n')) |raw_line| {
+        // Drop the CSV header if present.
+        if (!header_checked) {
+            header_checked = true;
+            if (std.mem.startsWith(u8, raw_line, "page_id")) continue;
+        }
+
+        const value = extractCsvValue(raw_line) orelse continue;
+
+        _ = line_arena_state.reset(.retain_capacity);
+        words.clearRetainingCapacity();
+        try tokenizeWords(line_arena_state.allocator(), value, &words);
+
+        if (words.items.len >= 2) {
+            line_count += 1;
+            var i: usize = 0;
+            while (i + 1 < words.items.len) : (i += 1) {
+                try writePairRow(out, words.items[i], words.items[i + 1]);
+                pair_count += 1;
+            }
+        }
+
+        if (line_count - last_report >= 100_000) {
+            last_report = line_count;
+            reportPairProgress(in_reader.pos, total_size, line_count, pair_count);
+        }
+    }
+
+    try out.flush();
+    reportPairProgress(in_reader.pos, total_size, line_count, pair_count);
+    std.debug.print("\nDone. {d} sentences, {d} word pairs -> word_pairs.csv\n", .{ line_count, pair_count });
+}
+
+/// Extracts the third CSV column (`value`) from a `page_id,rev_id,"value"` row.
+/// Surrounding quotes are stripped; any residual punctuation is later removed by
+/// `tokenizeWords`, so we don't bother un-escaping `""` here.
+fn extractCsvValue(line: []const u8) ?[]const u8 {
+    const c1 = std.mem.indexOfScalar(u8, line, ',') orelse return null;
+    const c2 = std.mem.indexOfScalarPos(u8, line, c1 + 1, ',') orelse return null;
+    var field = std.mem.trimEnd(u8, line[c2 + 1 ..], "\r\n");
+    if (field.len >= 2 and field[0] == '"' and field[field.len - 1] == '"') {
+        field = field[1 .. field.len - 1];
+    }
+    return field;
+}
+
+/// Port of the JS `tokenizeToWords`: split on whitespace, then on punctuation
+/// (`, ; : ' " ? !` and the Bengali danda `।`), keeping hyphens for compound
+/// words. Each token is cleaned (non-Bangla/hyphen characters removed, edge
+/// hyphens trimmed, pure-digit tokens dropped) before being collected.
+fn tokenizeWords(
+    allocator: std.mem.Allocator,
+    sentence: []const u8,
+    out: *std.array_list.Managed([]const u8),
+) !void {
+    var ws = std.mem.tokenizeAny(u8, sentence, " \t\r\n");
+    while (ws.next()) |segment| {
+        var start: usize = 0;
+        var i: usize = 0;
+        while (i <= segment.len) {
+            const at_end = i == segment.len;
+            const is_danda = !at_end and i + 3 <= segment.len and
+                segment[i] == 0xE0 and segment[i + 1] == 0xA5 and segment[i + 2] == 0xA4;
+            const is_punct = !at_end and isWordPunct(segment[i]);
+
+            if (at_end or is_punct or is_danda) {
+                try emitWord(allocator, segment[start..i], out);
+                i += if (is_danda) 3 else 1;
+                start = i;
+            } else {
+                i += 1;
+            }
+        }
+    }
+}
+
+fn emitWord(
+    allocator: std.mem.Allocator,
+    raw: []const u8,
+    out: *std.array_list.Managed([]const u8),
+) !void {
+    const word = try cleanupWord(allocator, raw);
+    if (word.len != 0) try out.append(word);
+}
+
+/// Keeps only Bangla codepoints and hyphens, trims edge hyphens, and returns an
+/// empty slice for tokens that are blank or purely Bengali digits.
+fn cleanupWord(allocator: std.mem.Allocator, raw: []const u8) ![]const u8 {
+    var buf: std.array_list.Managed(u8) = .init(allocator);
+    errdefer buf.deinit();
+
+    var it: std.unicode.Utf8Iterator = .{ .bytes = raw, .i = 0 };
+    while (it.nextCodepointSlice()) |slice| {
+        const cp = std.unicode.utf8Decode(slice) catch continue;
+        if ((cp >= 0x0980 and cp <= 0x09FF) or cp == '-') try buf.appendSlice(slice);
+    }
+
+    const trimmed = std.mem.trim(u8, buf.items, "-");
+    if (trimmed.len == 0 or isAllBengaliDigits(trimmed)) return "";
+    return trimmed;
+}
+
+fn isWordPunct(c: u8) bool {
+    return switch (c) {
+        ',', ';', ':', '\'', '"', '?', '!' => true,
+        else => false,
+    };
+}
+
+fn isAllBengaliDigits(s: []const u8) bool {
+    var it: std.unicode.Utf8Iterator = .{ .bytes = s, .i = 0 };
+    var any = false;
+    while (it.nextCodepointSlice()) |slice| {
+        const cp = std.unicode.utf8Decode(slice) catch return false;
+        if (cp < 0x09E6 or cp > 0x09EF) return false;
+        any = true;
+    }
+    return any;
+}
+
+fn writePairRow(out: *Io.Writer, value: []const u8, next_value: []const u8) !void {
+    try writeCsvField(out, value);
+    try out.writeByte(',');
+    try writeCsvField(out, next_value);
+    try out.writeByte('\n');
+}
+
+/// Writes a CSV field, quoting/escaping only when the value contains a comma,
+/// quote or newline (it won't for clean Bangla words, but stay correct anyway).
+fn writeCsvField(out: *Io.Writer, s: []const u8) !void {
+    if (std.mem.indexOfAny(u8, s, ",\"\n\r") == null) {
+        try out.writeAll(s);
+        return;
+    }
+    try out.writeByte('"');
+    for (s) |c| {
+        if (c == '"') try out.writeByte('"');
+        try out.writeByte(c);
+    }
+    try out.writeByte('"');
+}
+
+fn reportPairProgress(pos: u64, total: u64, sentences: usize, pairs: usize) void {
+    const percent: f64 = if (total > 0)
+        @as(f64, @floatFromInt(pos)) / @as(f64, @floatFromInt(total)) * 100.0
+    else
+        0.0;
+    std.debug.print("\r{d:6.2}% | {d} sentences | {d} word pairs\x1b[K", .{ percent, sentences, pairs });
 }
 
 /// Splits `text` into clean Bangla sentences and appends one CSV row per
