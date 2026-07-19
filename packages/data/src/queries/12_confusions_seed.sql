@@ -1,6 +1,6 @@
--- Orthographic confusion seed → Postgres staging (optional before SQLite export).
--- Shipable artifact for SQLite is confusions_seed.csv (imported by export_spell_db_id.sh).
--- Prefer zig --mine-confusions to reweight from the Wikipedia-derived lexicon.
+-- Orthographic confusion seed → Postgres staging (optional).
+-- Source of truth for shipping: confusions_seed.csv
+-- prepare.zig runs --mine-confusions against this seed → export_id/confusions.csv → spell.db
 
 CREATE TABLE IF NOT EXISTS confusions (
     from_g TEXT NOT NULL,
@@ -20,7 +20,6 @@ INSERT INTO confusions (from_g, to_g, weight, kind) VALUES
     ('ন', 'ণ', 0.25, 'ortho'),
     ('ণ', 'ন', 0.25, 'ortho'),
     ('য', 'য়', 0.30, 'ortho'),
-    ('য়', 'য', 0.30, 'ortho'),
     ('র', 'ড়', 0.40, 'ortho'),
     ('ড়', 'র', 0.40, 'ortho'),
     ('ড়', 'ঢ়', 0.35, 'ortho'),
@@ -38,5 +37,25 @@ INSERT INTO confusions (from_g, to_g, weight, kind) VALUES
     ('ং', 'ঁ', 0.40, 'ortho'),
     ('ঁ', 'ং', 0.40, 'ortho'),
     ('জ', 'য', 0.45, 'ortho'),
-    ('য', 'জ', 0.45, 'ortho')
+    ('য', 'জ', 0.45, 'ortho'),
+    ('ক', 'খ', 0.30, 'ortho'),
+    ('খ', 'ক', 0.30, 'ortho'),
+    ('গ', 'ঘ', 0.35, 'ortho'),
+    ('ঘ', 'গ', 0.35, 'ortho'),
+    ('চ', 'ছ', 0.30, 'ortho'),
+    ('ছ', 'চ', 0.30, 'ortho'),
+    ('জ', 'ঝ', 0.35, 'ortho'),
+    ('ঝ', 'জ', 0.35, 'ortho'),
+    ('ট', 'ঠ', 0.30, 'ortho'),
+    ('ঠ', 'ট', 0.30, 'ortho'),
+    ('ত', 'থ', 0.30, 'ortho'),
+    ('থ', 'ত', 0.30, 'ortho'),
+    ('দ', 'ধ', 0.30, 'ortho'),
+    ('ধ', 'দ', 0.30, 'ortho'),
+    ('প', 'ফ', 0.35, 'ortho'),
+    ('ফ', 'প', 0.35, 'ortho'),
+    ('ব', 'ভ', 0.30, 'ortho'),
+    ('ভ', 'ব', 0.30, 'ortho'),
+    ('ড', 'ঢ', 0.35, 'ortho'),
+    ('ঢ', 'ড', 0.35, 'ortho')
 ON CONFLICT (from_g, to_g, kind) DO UPDATE SET weight = EXCLUDED.weight;

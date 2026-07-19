@@ -31,7 +31,6 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
             <header class="spell-brand">
                 <p class="spell-mark">byakaron</p>
                 <h1 class="spell-title">বাংলা বানান পরীক্ষা</h1>
-                <p class="spell-lead">লেখা পরীক্ষা করুন — অজানা শব্দের জন্য পরামর্শ দেখাবে।</p>
             </header>
 
             <form class="spell-form" method="post" action="/">
@@ -55,7 +54,7 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
                         <p class="spell-status spell-status-ok">সব শব্দ অভিধানে আছে।</p>
                     )}
                     {if (!all_ok) (
-                        <p class="spell-status spell-status-warn">কিছু শব্দ অজানা — নিচে পরামর্শ দেখুন।</p>
+                        <p class="spell-status spell-status-warn">কিছু শব্দ অজানা — নিচে পরামর্শ দেখাবে।</p>
                     )}
 
                     <ul class="spell-tokens">
