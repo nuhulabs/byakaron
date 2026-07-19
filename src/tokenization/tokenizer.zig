@@ -93,6 +93,7 @@ const SPECS = [_]Spec{
             .{ .start = 0x09D7, .end = 0x09D7 }, // AU Length Mark
             .{ .start = 0x09DC, .end = 0x09DD }, // Letters RRA, RHA
             .{ .start = 0x09DF, .end = 0x09E3 }, // Letter YYA, Vocalic RR, LL, Vowel Signs VOCALIC L, LL
+            .{ .start = 0x09F0, .end = 0x09F1 }, // Assamese Ra, Va (appear in BN corpus)
             .{ .start = 0x09FA, .end = 0x09FB }, // Isshar, Ganda Mark
             .{ .start = 0x09FE, .end = 0x09FE }, // Sandhi Mark
         },
@@ -291,7 +292,9 @@ pub const Tokenizer = struct {
         return self.ast.?;
     }
 
-    const GetWordOptions = struct {
+    pub const GetWordOptions = struct {
+        /// Fold YA/DDA/DDHA + NUKTA into precomposed YYA/RRA/RHA.
+        /// When true, each string is allocator-owned (in addition to the slice).
         normalize: bool = false,
     };
 
@@ -306,18 +309,30 @@ pub const Tokenizer = struct {
         for (self.ast.?.tokens) |para| {
             for (para.tokens) |sent| {
                 for (sent.tokens) |token| {
-                    if (token.kind == .word) {
-                        if (options.normalize) {
-                            try words.append(try normalizeWord(self.allocator, token.value));
-                        } else {
-                            try words.append(token.value);
+                    if (token.kind != .word) continue;
+                    if (options.normalize) {
+                        const norm = try normalizeWord(self.allocator, token.value);
+                        if (norm.len == 0) {
+                            self.allocator.free(norm);
+                            continue;
                         }
+                        try words.append(norm);
+                    } else {
+                        try words.append(token.value);
                     }
                 }
             }
         }
 
         return words.toOwnedSlice();
+    }
+
+    /// Parse `text` and return Bangla word tokens (optionally nukta-normalized).
+    /// Caller owns the returned slice; when `normalize`, also owns each string.
+    pub fn wordsFromText(allocator: std.mem.Allocator, text: []const u8, options: GetWordOptions) ![]const []const u8 {
+        var tokenizer = Tokenizer.init(text, allocator);
+        defer tokenizer.deinit();
+        return try tokenizer.getWords(options);
     }
 
     pub fn print(self: *Tokenizer, format: PrintFormat) ![]const u8 {
@@ -414,8 +429,7 @@ pub const Tokenizer = struct {
         while (self.position < self.input.len) {
             var iter = std.unicode.Utf8Iterator{ .bytes = self.input, .i = self.position };
             const codepoint_slice = iter.nextCodepointSlice() orelse break;
-            const codepoint = std.unicode.utf8Decode(codepoint_slice) catch |err| {
-                std.debug.print("Warning: UTF-8 decode error in tokenizer: {any}\n", .{err});
+            const codepoint = std.unicode.utf8Decode(codepoint_slice) catch {
                 self.position += codepoint_slice.len;
                 continue;
             };
@@ -462,8 +476,7 @@ pub const Tokenizer = struct {
         // Then proceed with regular tokenization
         var iter = std.unicode.Utf8Iterator{ .bytes = self.input, .i = self.position };
         const first_codepoint_slice = iter.nextCodepointSlice() orelse return null;
-        const first_codepoint = std.unicode.utf8Decode(first_codepoint_slice) catch |err| {
-            std.debug.print("Warning: UTF-8 decode error in tokenizer: {any}\n", .{err});
+        const first_codepoint = std.unicode.utf8Decode(first_codepoint_slice) catch {
             self.position += first_codepoint_slice.len;
             return Token{
                 .kind = .foreign,
@@ -483,7 +496,9 @@ pub const Tokenizer = struct {
             };
         }
 
-        // For other kinds, we collect all consecutive characters of the same kind
+        // For other kinds, we collect all consecutive characters of the same kind.
+        // Bangla words may also include ZWNJ/ZWJ and a single ASCII hyphen between
+        // letters (করে-করে style compounds from the old corpus splitter).
         while (end_pos < self.input.len) {
             var next_iter = std.unicode.Utf8Iterator{ .bytes = self.input, .i = end_pos };
             const next_slice = next_iter.nextCodepointSlice() orelse break;
@@ -492,9 +507,20 @@ pub const Tokenizer = struct {
 
             if (next_kind == kind) {
                 end_pos += next_slice.len;
-            } else {
-                break;
+                continue;
             }
+
+            if (kind == .word and isWordJoiner(next_codepoint)) {
+                end_pos += next_slice.len;
+                continue;
+            }
+
+            if (kind == .word and next_codepoint == '-' and wordContinuesAfter(self.input, end_pos + next_slice.len)) {
+                end_pos += next_slice.len;
+                continue;
+            }
+
+            break;
         }
 
         self.position = end_pos;
@@ -502,6 +528,19 @@ pub const Tokenizer = struct {
             .kind = kind,
             .value = self.input[start_pos..end_pos],
         };
+    }
+
+    fn isWordJoiner(cp: u21) bool {
+        return cp == 0x200C or cp == 0x200D; // ZWNJ, ZWJ
+    }
+
+    /// True when `at` starts another Bangla word codepoint (for hyphen compounds).
+    fn wordContinuesAfter(input: []const u8, at: usize) bool {
+        if (at >= input.len) return false;
+        var iter = std.unicode.Utf8Iterator{ .bytes = input, .i = at };
+        const slice = iter.nextCodepointSlice() orelse return false;
+        const cp = std.unicode.utf8Decode(slice) catch return false;
+        return getCharKindFromSpecs(cp) == .word;
     }
 
     pub fn eat(self: *Tokenizer, expected_kind: TokenKind) !Token {
@@ -866,6 +905,21 @@ pub fn normalizeWord(allocator: std.mem.Allocator, word: []const u8) ![]u8 {
 
     // Shrink the buffer to fit and return the owned slice.
     return buffer.toOwnedSlice();
+}
+
+test "wordsFromText normalizes nukta and keeps hyphen compounds" {
+    const allocator = std.testing.allocator;
+
+    const words = try Tokenizer.wordsFromText(allocator, "সময় আর বাড়ি-ঘর।", .{ .normalize = true });
+    defer {
+        for (words) |w| allocator.free(w);
+        allocator.free(words);
+    }
+
+    try std.testing.expectEqual(@as(usize, 3), words.len);
+    try std.testing.expectEqualStrings("সময়", words[0]);
+    try std.testing.expectEqualStrings("আর", words[1]);
+    try std.testing.expectEqualStrings("বা\u{09dc}ি-ঘর", words[2]);
 }
 
 test "normalizeWord" {

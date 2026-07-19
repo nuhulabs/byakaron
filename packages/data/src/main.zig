@@ -2,6 +2,8 @@ const std = @import("std");
 const Io = std.Io;
 const log = std.log;
 const xml = @import("xml");
+const byakaron = @import("byakaron");
+const Tokenizer = byakaron.Tokenization.Tokenizer;
 
 pub fn main(init: std.process.Init) !void {
     const gpa = init.gpa;
@@ -13,6 +15,7 @@ pub fn main(init: std.process.Init) !void {
     // Parse a tiny CLI: optional mode flag plus a single positional input path.
     //   (default)              MediaWiki XML → sentences.csv
     //   --wordtriplets         sentences.csv → word_triplets.csv
+    //                          optional --limit N (sample run → *_sample.csv + words_sample.csv)
     //   --symspell-deletes     dictionary.csv → deletes.csv
     //                          accepts word,frequency OR id,word,frequency
     //   --mine-confusions      dictionary.csv [confusions_seed.csv]
@@ -20,13 +23,20 @@ pub fn main(init: std.process.Init) !void {
     var mode: enum { sentences, word_triplets, symspell_deletes, mine_confusions } = .sentences;
     var positional: ?[]const u8 = null;
     var secondary: ?[]const u8 = null;
-    for (args[1..]) |a| {
+    var limit: ?usize = null;
+    var i: usize = 1;
+    while (i < args.len) : (i += 1) {
+        const a = args[i];
         if (std.mem.eql(u8, a, "--wordtriplets")) {
             mode = .word_triplets;
         } else if (std.mem.eql(u8, a, "--symspell-deletes")) {
             mode = .symspell_deletes;
         } else if (std.mem.eql(u8, a, "--mine-confusions")) {
             mode = .mine_confusions;
+        } else if (std.mem.eql(u8, a, "--limit")) {
+            i += 1;
+            if (i >= args.len) return error.InvalidArguments;
+            limit = try std.fmt.parseInt(usize, args[i], 10);
         } else if (positional == null) {
             positional = a;
         } else {
@@ -35,7 +45,7 @@ pub fn main(init: std.process.Init) !void {
     }
 
     switch (mode) {
-        .word_triplets => try runWordTriplets(gpa, io, positional orelse "sentences.csv"),
+        .word_triplets => try runWordTriplets(gpa, io, positional orelse "sentences.csv", limit),
         .symspell_deletes => try runSymSpellDeletes(gpa, io, positional orelse "dictionary.csv"),
         .mine_confusions => try runMineConfusions(
             gpa,
@@ -162,10 +172,13 @@ fn runSentences(gpa: std.mem.Allocator, io: Io, input_path: []const u8) !void {
     std.debug.print("\nDone. {d} pages, {d} sentences -> sentences.csv\n", .{ page_count, sentence_count });
 }
 
-/// Reads the `value` column of sentences.csv, tokenizes each sentence into
-/// words and writes every consecutive word triplet to word_triplets.csv
-/// (value, mid_value, next_value). Streams line-by-line so memory stays flat.
-fn runWordTriplets(gpa: std.mem.Allocator, io: Io, input_path: []const u8) !void {
+/// Reads the `value` column of sentences.csv, tokenizes each sentence with
+/// `byakaron.Tokenization` (nukta-normalized Bangla words), and writes every
+/// consecutive word triplet to word_triplets.csv (value, mid_value, next_value).
+///
+/// With `--limit N`, writes sample outputs (`word_triplets_sample.csv` +
+/// `words_sample.csv`) so a full corpus file is not overwritten.
+fn runWordTriplets(gpa: std.mem.Allocator, io: Io, input_path: []const u8, limit: ?usize) !void {
     var in_file = try Io.Dir.cwd().openFile(io, input_path, .{});
     defer in_file.close(io);
     var in_buf: [64 * 1024]u8 = undefined;
@@ -173,43 +186,63 @@ fn runWordTriplets(gpa: std.mem.Allocator, io: Io, input_path: []const u8) !void
     const total_size: u64 = in_reader.getSize() catch 0;
     const in = &in_reader.interface;
 
-    var out_file = try Io.Dir.cwd().createFile(io, "word_triplets.csv", .{});
+    const triplets_path: []const u8 = if (limit != null) "word_triplets_sample.csv" else "word_triplets.csv";
+    var out_file = try Io.Dir.cwd().createFile(io, triplets_path, .{});
     defer out_file.close(io);
     var out_buf: [64 * 1024]u8 = undefined;
     var out_writer = out_file.writer(io, &out_buf);
     const out = &out_writer.interface;
     try out.writeAll("value,mid_value,next_value\n");
 
-    // Per-line scratch for the tokenized words; reset (not freed) each line.
+    // Per-line scratch for tokenizer AST + normalized strings.
     var line_arena_state: std.heap.ArenaAllocator = .init(gpa);
     defer line_arena_state.deinit();
-    var words: std.array_list.Managed([]const u8) = .init(gpa);
-    defer words.deinit();
+
+    // Unique words when sampling (for words_sample.csv validation).
+    var unique: std.StringHashMapUnmanaged(void) = .empty;
+    defer unique.deinit(gpa);
+    var unique_arena_state: std.heap.ArenaAllocator = .init(gpa);
+    defer unique_arena_state.deinit();
 
     var line_count: usize = 0;
+    var sentence_rows: usize = 0;
     var triplet_count: usize = 0;
     var last_report: usize = 0;
     var header_checked = false;
 
     while (try in.takeDelimiter('\n')) |raw_line| {
-        // Drop the CSV header if present.
         if (!header_checked) {
             header_checked = true;
             if (std.mem.startsWith(u8, raw_line, "page_id")) continue;
         }
 
+        if (limit) |n| {
+            if (sentence_rows >= n) break;
+        }
+
         const value = extractCsvValue(raw_line) orelse continue;
+        sentence_rows += 1;
 
         _ = line_arena_state.reset(.retain_capacity);
-        words.clearRetainingCapacity();
-        try tokenizeWords(line_arena_state.allocator(), value, &words);
+        const arena = line_arena_state.allocator();
 
-        if (words.items.len >= 3) {
-            line_count += 1;
-            var i: usize = 0;
-            while (i + 2 < words.items.len) : (i += 1) {
-                try writeTripletRow(out, words.items[i], words.items[i + 1], words.items[i + 2]);
-                triplet_count += 1;
+        const words = Tokenizer.wordsFromText(arena, value, .{ .normalize = true }) catch continue;
+        if (words.len < 3) continue;
+
+        line_count += 1;
+        var wi: usize = 0;
+        while (wi + 2 < words.len) : (wi += 1) {
+            try writeTripletRow(out, words[wi], words[wi + 1], words[wi + 2]);
+            triplet_count += 1;
+        }
+
+        if (limit != null) {
+            const ua = unique_arena_state.allocator();
+            for (words) |w| {
+                const gop = try unique.getOrPut(gpa, w);
+                if (!gop.found_existing) {
+                    gop.key_ptr.* = try ua.dupe(u8, w);
+                }
             }
         }
 
@@ -221,16 +254,25 @@ fn runWordTriplets(gpa: std.mem.Allocator, io: Io, input_path: []const u8) !void
 
     try out.flush();
     reportTripletProgress(in_reader.pos, total_size, line_count, triplet_count);
-    std.debug.print("\nDone. {d} sentences, {d} word triplets -> word_triplets.csv\n", .{ line_count, triplet_count });
+    std.debug.print("\nDone. {d} sentences, {d} word triplets -> {s}\n", .{ line_count, triplet_count, triplets_path });
+
+    if (limit != null) {
+        var words_file = try Io.Dir.cwd().createFile(io, "words_sample.csv", .{});
+        defer words_file.close(io);
+        var words_buf: [16 * 1024]u8 = undefined;
+        var words_writer = words_file.writer(io, &words_buf);
+        const wout = &words_writer.interface;
+        try wout.writeAll("word\n");
+        var uit = unique.keyIterator();
+        while (uit.next()) |k| {
+            try writeCsvField(wout, k.*);
+            try wout.writeByte('\n');
+        }
+        try wout.flush();
+        std.debug.print("Wrote {d} unique words -> words_sample.csv\n", .{unique.count()});
+    }
 }
 
-/// Reads dictionary.csv and writes SymSpell delete variants to deletes.csv.
-///
-/// Input formats:
-///   - `word,frequency`          → output `delete_key,word`
-///   - `id,word,frequency`       → output `delete_key,word_id` (optimized)
-///
-/// Deletes are generated on Unicode codepoints up to edit distance 2.
 /// Counts lexicon word pairs that differ by exactly one seeded confusion
 /// substitution (built from the Wikipedia-derived dictionary). Rewrites
 /// confusions.csv with soft-blended weights: known lookalikes stay prioritized
@@ -432,6 +474,13 @@ fn writeCsvRow4(out: *Io.Writer, a: []const u8, b: []const u8, c: []const u8, n:
     try out.print("{d}\n", .{n});
 }
 
+/// Reads dictionary.csv and writes SymSpell delete variants to deletes.csv.
+///
+/// Input formats:
+///   - `word,frequency`          → output `delete_key,word`
+///   - `id,word,frequency`       → output `delete_key,word_id` (optimized)
+///
+/// Deletes are generated on Unicode codepoints up to edit distance 2.
 fn runSymSpellDeletes(gpa: std.mem.Allocator, io: Io, input_path: []const u8) !void {
     const max_edit_distance: u8 = 2;
 
@@ -600,8 +649,8 @@ fn writeDeleteRow(out: *Io.Writer, delete_key: []const u8, ref: []const u8) !voi
 }
 
 /// Extracts the third CSV column (`value`) from a `page_id,rev_id,"value"` row.
-/// Surrounding quotes are stripped; any residual punctuation is later removed by
-/// `tokenizeWords`, so we don't bother un-escaping `""` here.
+/// Surrounding quotes are stripped; residual punctuation is handled by the
+/// shared Bangla tokenizer, so we don't bother un-escaping `""` here.
 fn extractCsvValue(line: []const u8) ?[]const u8 {
     const c1 = std.mem.indexOfScalar(u8, line, ',') orelse return null;
     const c2 = std.mem.indexOfScalarPos(u8, line, c1 + 1, ',') orelse return null;
@@ -610,80 +659,6 @@ fn extractCsvValue(line: []const u8) ?[]const u8 {
         field = field[1 .. field.len - 1];
     }
     return field;
-}
-
-/// Port of the JS `tokenizeToWords`: split on whitespace, then on punctuation
-/// (`, ; : ' " ? !` and the Bengali danda `।`), keeping hyphens for compound
-/// words. Each token is cleaned (non-Bangla/hyphen characters removed, edge
-/// hyphens trimmed, pure-digit tokens dropped) before being collected.
-fn tokenizeWords(
-    allocator: std.mem.Allocator,
-    sentence: []const u8,
-    out: *std.array_list.Managed([]const u8),
-) !void {
-    var ws = std.mem.tokenizeAny(u8, sentence, " \t\r\n");
-    while (ws.next()) |segment| {
-        var start: usize = 0;
-        var i: usize = 0;
-        while (i <= segment.len) {
-            const at_end = i == segment.len;
-            const is_danda = !at_end and i + 3 <= segment.len and
-                segment[i] == 0xE0 and segment[i + 1] == 0xA5 and segment[i + 2] == 0xA4;
-            const is_punct = !at_end and isWordPunct(segment[i]);
-
-            if (at_end or is_punct or is_danda) {
-                try emitWord(allocator, segment[start..i], out);
-                i += if (is_danda) 3 else 1;
-                start = i;
-            } else {
-                i += 1;
-            }
-        }
-    }
-}
-
-fn emitWord(
-    allocator: std.mem.Allocator,
-    raw: []const u8,
-    out: *std.array_list.Managed([]const u8),
-) !void {
-    const word = try cleanupWord(allocator, raw);
-    if (word.len != 0) try out.append(word);
-}
-
-/// Keeps only Bangla codepoints and hyphens, trims edge hyphens, and returns an
-/// empty slice for tokens that are blank or purely Bengali digits.
-fn cleanupWord(allocator: std.mem.Allocator, raw: []const u8) ![]const u8 {
-    var buf: std.array_list.Managed(u8) = .init(allocator);
-    errdefer buf.deinit();
-
-    var it: std.unicode.Utf8Iterator = .{ .bytes = raw, .i = 0 };
-    while (it.nextCodepointSlice()) |slice| {
-        const cp = std.unicode.utf8Decode(slice) catch continue;
-        if ((cp >= 0x0980 and cp <= 0x09FF) or cp == '-') try buf.appendSlice(slice);
-    }
-
-    const trimmed = std.mem.trim(u8, buf.items, "-");
-    if (trimmed.len == 0 or isAllBengaliDigits(trimmed)) return "";
-    return trimmed;
-}
-
-fn isWordPunct(c: u8) bool {
-    return switch (c) {
-        ',', ';', ':', '\'', '"', '?', '!' => true,
-        else => false,
-    };
-}
-
-fn isAllBengaliDigits(s: []const u8) bool {
-    var it: std.unicode.Utf8Iterator = .{ .bytes = s, .i = 0 };
-    var any = false;
-    while (it.nextCodepointSlice()) |slice| {
-        const cp = std.unicode.utf8Decode(slice) catch return false;
-        if (cp < 0x09E6 or cp > 0x09EF) return false;
-        any = true;
-    }
-    return any;
 }
 
 fn writeTripletRow(out: *Io.Writer, value: []const u8, mid_value: []const u8, next_value: []const u8) !void {
