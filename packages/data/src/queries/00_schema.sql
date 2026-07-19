@@ -2,26 +2,16 @@
 -- Schema: Postgres staging forge vs SQLite product artifacts
 -- ============================================================================
 -- Postgres is used only to load CSVs, aggregate, filter, and validate.
--- Two SQLite products can be built from the same staging tables:
+-- Postgres is optional legacy staging. Preferred product path:
 --
--- Manual (Postgres only):
---   06_export_csvs.sql    → ./export/
---   09_export_csvs_id.sql → ./export_id/
+--   zig build run -- --wordtriplets sentences.csv   → word_triplets.csv
+--   zig build export                                → export/ + export_id/
+--   zig build prepare                               → export + spell.db + spell_debug.db
 --
--- Then (packages/data):
---   zig build prepare
---     → spell_debug.db  (text-keyed, readable / debug)
---     → spell.db        (id-keyed product + confusions)
---     → spell_id.db     (symlink → spell.db, compat)
+-- `export` aggregates triplets in Zig (single pass, progress on stderr).
+-- `prepare` depends on export, then SymSpell + confusions + sqlite3 import.
 --
--- Pipeline (shared staging):
---   word_triplets.csv
---     -> 01_staging_word_triplets.sql
---     -> 02_words.sql
---     -> 03_word_triplets.sql
---     -> 04_dictionary.sql
---     -> 05_bigrams.sql
---     -> 12_confusions_seed.sql (optional Postgres)
+-- Legacy Postgres forge still documented under queries/01–09 if needed.
 -- ============================================================================
 
 -- --------------------------------------------------------------------------
