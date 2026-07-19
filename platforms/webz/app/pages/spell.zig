@@ -5,6 +5,8 @@ pub const Suggestion = struct {
     word: []const u8,
     frequency: i64,
     distance: usize = 0,
+    /// Higher is better; combines distance, onset match, length, log-frequency.
+    score: i64 = 0,
 };
 
 pub const TokenResult = struct {
@@ -27,6 +29,7 @@ const CandidateRow = struct {
 const Ranked = struct {
     frequency: i64,
     distance: usize,
+    score: i64,
 };
 
 /// All allocations use the request arena — do not free the returned slices.
@@ -123,12 +126,13 @@ fn suggest(allocator: std.mem.Allocator, word: []const u8, limit: usize) ![]cons
             .word = entry.key_ptr.*,
             .frequency = entry.value_ptr.frequency,
             .distance = entry.value_ptr.distance,
+            .score = entry.value_ptr.score,
         });
     }
 
     std.mem.sort(Suggestion, list.items, {}, struct {
         fn less(_: void, a: Suggestion, b: Suggestion) bool {
-            if (a.distance != b.distance) return a.distance < b.distance;
+            if (a.score != b.score) return a.score > b.score;
             return a.frequency > b.frequency;
         }
     }.less);
@@ -155,15 +159,57 @@ fn considerDeleteKey(
     for (rows) |row| {
         const dist = codepointEditDistance(typed, row.word);
         if (dist > 2) continue;
+        const score = rankScore(typed, row.word, dist, row.frequency);
         const gop = try best.getOrPut(allocator, row.word);
         if (!gop.found_existing) {
-            gop.value_ptr.* = .{ .frequency = row.frequency, .distance = dist };
-        } else {
-            if (dist < gop.value_ptr.distance or (dist == gop.value_ptr.distance and row.frequency > gop.value_ptr.frequency)) {
-                gop.value_ptr.* = .{ .frequency = row.frequency, .distance = dist };
-            }
+            gop.value_ptr.* = .{ .frequency = row.frequency, .distance = dist, .score = score };
+        } else if (score > gop.value_ptr.score) {
+            gop.value_ptr.* = .{ .frequency = row.frequency, .distance = dist, .score = score };
         }
     }
+}
+
+/// Noisy-channel style rank.
+/// Priority: edit distance → how much of the typed string is kept (LCS) →
+/// onset → length → soft log-frequency.
+/// LCS is why `বংলা` → `বাংলা` beats `বেলা` (same dist, but `ং` is preserved).
+fn rankScore(typed: []const u8, candidate: []const u8, dist: usize, freq: i64) i64 {
+    var typed_cps: [64]u21 = undefined;
+    var cand_cps: [64]u21 = undefined;
+    const tn = fillCodepoints(typed, &typed_cps) orelse return std.math.minInt(i64);
+    const cn = fillCodepoints(candidate, &cand_cps) orelse return std.math.minInt(i64);
+    const len_diff: i64 = @intCast(if (tn > cn) tn - cn else cn - tn);
+    const lcs = longestCommonSubseq(typed_cps[0..tn], cand_cps[0..cn]);
+
+    var score: i64 = 0;
+    score -= @as(i64, @intCast(dist)) * 1_000_000;
+    // Prefer keeping typed codepoints in order (insertions OK; substitutions hurt).
+    score += @as(i64, @intCast(lcs)) * 100_000;
+    if (tn > 0 and cn > 0 and typed_cps[0] == cand_cps[0]) score += 80_000;
+    score -= len_diff * 20_000;
+    const f: u64 = if (freq > 0) @intCast(freq) else 1;
+    score += @as(i64, @intCast(std.math.log2_int(u64, f)));
+    return score;
+}
+
+fn longestCommonSubseq(a: []const u21, b: []const u21) usize {
+    // Classic DP with rolling rows; lengths are small (Bangla words ≪ 64).
+    var prev: [65]usize = undefined;
+    var cur: [65]usize = undefined;
+    @memset(&prev, 0);
+    @memset(&cur, 0);
+    for (a) |ca| {
+        @memset(cur[0 .. b.len + 1], 0);
+        for (b, 0..) |cb, j| {
+            if (ca == cb) {
+                cur[j + 1] = prev[j] + 1;
+            } else {
+                cur[j + 1] = @max(prev[j + 1], cur[j]);
+            }
+        }
+        @memcpy(prev[0 .. b.len + 1], cur[0 .. b.len + 1]);
+    }
+    return prev[b.len];
 }
 
 fn toSuggestions(allocator: std.mem.Allocator, rows: []const CandidateRow) ![]const Suggestion {
