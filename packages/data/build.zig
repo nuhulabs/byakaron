@@ -28,7 +28,6 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(exe);
 
-    // Fast aggregations: word_triplets.csv → export/ + export_id/
     const export_exe = b.addExecutable(.{
         .name = "export",
         .root_module = b.createModule(.{
@@ -38,6 +37,16 @@ pub fn build(b: *std.Build) void {
         }),
     });
     b.installArtifact(export_exe);
+
+    const prepare_exe = b.addExecutable(.{
+        .name = "prepare",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/prepare.zig"),
+            .target = target,
+            .optimize = .ReleaseFast,
+        }),
+    });
+    b.installArtifact(prepare_exe);
 
     const run_step = b.step("run", "Run the app");
     const run_cmd = b.addRunArtifact(exe);
@@ -51,6 +60,17 @@ pub fn build(b: *std.Build) void {
     export_run.addPassthruArgs();
     export_step.dependOn(&export_run.step);
 
+    // prepare does NOT re-run export (export is slow). Run `zig build export` first when CSVs are stale.
+    const prepare_step = b.step(
+        "prepare",
+        "Assemble spell.db from export_id/ (sqlite3); optional --debug-db",
+    );
+    const prepare_run = b.addRunArtifact(prepare_exe);
+    prepare_run.setCwd(b.path("."));
+    prepare_run.addArtifactArg(exe);
+    prepare_run.addPassthruArgs();
+    prepare_step.dependOn(&prepare_run.step);
+
     const mod_tests = b.addTest(.{ .root_module = mod });
     const run_mod_tests = b.addRunArtifact(mod_tests);
     const exe_tests = b.addTest(.{ .root_module = exe.root_module });
@@ -58,16 +78,4 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
-
-    // export → SymSpell + sqlite3 assemble → spell.db + spell_debug.db
-    const prepare_step = b.step(
-        "prepare",
-        "Export triplets then assemble spell.db + spell_debug.db (needs sqlite3)",
-    );
-    const prepare_run = b.addSystemCommand(&.{"bash"});
-    prepare_run.setCwd(b.path("."));
-    prepare_run.addFileArg(b.path("src/queries/prepare_spell_dbs.sh"));
-    prepare_run.addArtifactArg(exe);
-    prepare_run.step.dependOn(&export_run.step);
-    prepare_step.dependOn(&prepare_run.step);
 }
