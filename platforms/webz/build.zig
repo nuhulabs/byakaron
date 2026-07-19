@@ -22,4 +22,11 @@ pub fn build(b: *std.Build) !void {
         .kv = .enabled,
     } } });
     ziex_b = ziex_b; // ignore unused
+
+    // Ship the optimized spell lexicon as the app sqlite file.
+    const spell_db = b.addInstallFile(
+        b.path("../../packages/data/spell_id.db"),
+        "data/db/default.db",
+    );
+    b.getInstallStep().dependOn(&spell_db.step);
 }

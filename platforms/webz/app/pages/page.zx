@@ -1,33 +1,135 @@
 pub fn Page(ctx: zx.PageContext) !zx.Component {
-    const query = ctx.request.queries;
-
-    if (query.get("reset")) |_|
-        count = 0
-    else if (query.get("increment")) |_|
-        count += 1
-    else if (query.get("decrement")) |_|
-        count -= 1
+    const text = try readInputText(ctx);
+    const results = if (text.len > 0)
+        try spell.checkText(ctx.arena, text)
     else
-        count += 1;
+        @as([]const spell.TokenResult, &.{});
+
+    const last_word = lastBanglaWord(text);
+    const prefixes = if (last_word.len > 0)
+        try spell.prefixSuggest(ctx.arena, last_word, 8)
+    else
+        @as([]const spell.Suggestion, &.{});
+
+    const nexts = blk: {
+        if (results.len == 0) break :blk @as([]const spell.Suggestion, &.{});
+        const prev = results[results.len - 1];
+        const key = if (prev.known) prev.token else if (prev.suggestions.len > 0) prev.suggestions[0].word else "";
+        if (key.len == 0) break :blk @as([]const spell.Suggestion, &.{});
+        break :blk try spell.nextWordSuggest(ctx.arena, key, 8);
+    };
+
+    var unknown_count: usize = 0;
+    for (results) |r| {
+        if (!r.known) unknown_count += 1;
+    }
+    const has_results = results.len > 0;
+    const all_ok = has_results and unknown_count == 0;
 
     return (
-        <main @allocator={ctx.arena}>
-            <p>Ziex is a framework for building web applications with Zig.</p>
-            <a href={zx.info.homepage} target="_blank">See Ziex Docs →</a>
-            <br />
-            <CounterComponent @rendering={.client} count={count} />
-            <br />
-            <hr />
-            <div class="link-row">
-                <a href="/form">Server State</a>
-                <a href="/actions">Server Action</a>
-                <a href="/actions/client">Client Action</a>
-                <a href="/actions/server">Server Event</a>
-            </div>
+        <main @allocator={ctx.arena} class="spell-page">
+            <header class="spell-brand">
+                <p class="spell-mark">byakaron</p>
+                <h1 class="spell-title">বাংলা বানান পরীক্ষা</h1>
+                <p class="spell-lead">লেখা পরীক্ষা করুন — অজানা শব্দের জন্য পরামর্শ দেখাবে।</p>
+            </header>
+
+            <form class="spell-form" method="post" action="/">
+                <label class="spell-label" for="text">আপনার লেখা</label>
+                <textarea
+                    id="text"
+                    class="spell-input"
+                    name="text"
+                    rows="5"
+                    autofocus
+                    placeholder="এখানে বাংলা লিখুন…"
+                >{text}</textarea>
+                <div class="spell-actions">
+                    <button class="spell-submit" type="submit">পরীক্ষা করুন</button>
+                </div>
+            </form>
+
+            {if (has_results) (
+                <section class="spell-results">
+                    {if (all_ok) (
+                        <p class="spell-status spell-status-ok">সব শব্দ অভিধানে আছে।</p>
+                    )}
+                    {if (!all_ok) (
+                        <p class="spell-status spell-status-warn">কিছু শব্দ অজানা — নিচে পরামর্শ দেখুন।</p>
+                    )}
+
+                    <ul class="spell-tokens">
+                        {for (results) |r| (
+                            <li class={if (r.known) "spell-token spell-token-ok" else "spell-token spell-token-bad"}>
+                                <div class="spell-token-head">
+                                    <span class="spell-token-word">{r.token}</span>
+                                    {if (r.known) (
+                                        <span class="spell-tag spell-tag-ok">ঠিক আছে</span>
+                                    )}
+                                    {if (!r.known) (
+                                        <span class="spell-tag spell-tag-bad">অজানা</span>
+                                    )}
+                                </div>
+                                {if (!r.known and r.suggestions.len > 0) (
+                                    <div class="spell-chips">
+                                        {for (r.suggestions) |s| (
+                                            <span class="spell-chip">{s.word}</span>
+                                        )}
+                                    </div>
+                                )}
+                            </li>
+                        )}
+                    </ul>
+                </section>
+            )}
+
+            {if (prefixes.len > 0) (
+                <section class="spell-panel">
+                    <h2 class="spell-panel-title">সম্পূর্ণকরণ</h2>
+                    <div class="spell-chips">
+                        {for (prefixes) |s| (
+                            <span class="spell-chip">{s.word}</span>
+                        )}
+                    </div>
+                </section>
+            )}
+
+            {if (nexts.len > 0) (
+                <section class="spell-panel">
+                    <h2 class="spell-panel-title">পরবর্তী শব্দ</h2>
+                    <div class="spell-chips">
+                        {for (nexts) |s| (
+                            <span class="spell-chip spell-chip-next">{s.word}</span>
+                        )}
+                    </div>
+                </section>
+            )}
         </main>
     );
 }
-var count: i128 = 0;
 
+fn readInputText(ctx: zx.PageContext) ![]const u8 {
+    if (ctx.request.method == .POST) {
+        const form = ctx.request.formData();
+        if (form.get("text")) |t| return std.mem.trim(u8, t, " \t\r\n");
+    }
+    if (ctx.request.queries.get("q")) |q| return std.mem.trim(u8, q, " \t\r\n");
+    return "";
+}
+
+fn lastBanglaWord(text: []const u8) []const u8 {
+    var end = text.len;
+    while (end > 0 and (text[end - 1] == ' ' or text[end - 1] == '\n' or text[end - 1] == '\t')) end -= 1;
+    var start = end;
+    while (start > 0 and text[start - 1] != ' ' and text[start - 1] != '\n' and text[start - 1] != '\t') start -= 1;
+    return text[start..end];
+}
+
+pub const options: zx.PageOptions = .{
+    .methods = &.{ .GET, .POST },
+    .dynamic = true,
+};
+
+const std = @import("std");
 const zx = @import("zx");
-pub const CounterComponent = @import("./client.zx").CounterComponent;
+const spell = @import("./spell.zig");
