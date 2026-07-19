@@ -1,17 +1,11 @@
 #!/usr/bin/env bash
-# Build SQLite spell artifacts from Postgres-exported CSVs.
+# Assemble spell.db + spell_debug.db from export CSVs.
 #
-# Manual prerequisite (once):
-#   Postgres 00–05, then:
-#     06_export_csvs.sql    → ./export/{dictionary,bigrams,trigrams}.csv
-#     09_export_csvs_id.sql → ./export_id/{dictionary,bigrams,trigrams}.csv
+# Prefer:
+#   zig build export     # word_triplets.csv → export/ + export_id/  (Zig, fast)
+#   zig build prepare    # runs export, then SymSpell + sqlite3 assemble
 #
-# Then:
-#   zig build prepare
-#     → spell.db       (id-keyed product)
-#     → spell_debug.db (text-keyed debug)
-#
-# Or invoke directly:
+# Or invoke assemble only (CSVs already present):
 #   ./src/queries/prepare_spell_dbs.sh [path/to/data-exe]
 
 set -euo pipefail
@@ -69,9 +63,9 @@ echo "==> sqlite3:   $(command -v sqlite3)"
 # --------------------------------------------------------------------------
 # spell_debug.db — text-keyed (export/)
 # --------------------------------------------------------------------------
-need_file "$EXPORT_DEBUG/dictionary.csv" "run Postgres 06_export_csvs.sql → export/"
-need_file "$EXPORT_DEBUG/bigrams.csv" "run Postgres 06_export_csvs.sql → export/"
-need_file "$EXPORT_DEBUG/trigrams.csv" "run Postgres 06_export_csvs.sql → export/"
+need_file "$EXPORT_DEBUG/dictionary.csv" "run: zig build export"
+need_file "$EXPORT_DEBUG/bigrams.csv" "run: zig build export"
+need_file "$EXPORT_DEBUG/trigrams.csv" "run: zig build export"
 
 if ! head -n1 "$EXPORT_DEBUG/dictionary.csv" | grep -q '^word,'; then
   echo "error: export/dictionary.csv must start with word,frequency (got: $(head -n1 "$EXPORT_DEBUG/dictionary.csv"))" >&2
@@ -104,9 +98,9 @@ SQL
 # --------------------------------------------------------------------------
 # spell.db — id-keyed product (export_id/)
 # --------------------------------------------------------------------------
-need_file "$EXPORT_ID/dictionary.csv" "run Postgres 09_export_csvs_id.sql → export_id/"
-need_file "$EXPORT_ID/bigrams.csv" "run Postgres 09_export_csvs_id.sql → export_id/"
-need_file "$EXPORT_ID/trigrams.csv" "run Postgres 09_export_csvs_id.sql → export_id/"
+need_file "$EXPORT_ID/dictionary.csv" "run: zig build export"
+need_file "$EXPORT_ID/bigrams.csv" "run: zig build export"
+need_file "$EXPORT_ID/trigrams.csv" "run: zig build export"
 need_file "$SEED" "shipped confusion seed missing"
 
 if ! head -n1 "$EXPORT_ID/dictionary.csv" | grep -q '^id,'; then
@@ -121,7 +115,6 @@ mv -f "$ROOT/deletes.csv" "$EXPORT_ID/deletes.csv"
 echo "==> Mining confusion weights"
 run_data --mine-confusions "$EXPORT_ID/dictionary.csv" "$SEED"
 mv -f "$ROOT/confusions.csv" "$EXPORT_ID/confusions.csv"
-# mined companion is optional output next to root; leave or move
 if [[ -f "$ROOT/confusions_mined.csv" ]]; then
   mv -f "$ROOT/confusions_mined.csv" "$EXPORT_ID/confusions_mined.csv"
 fi
@@ -136,10 +129,8 @@ import_csv "$DB_ID" trigrams "$EXPORT_ID/trigrams.csv"
 import_csv "$DB_ID" confusions "$EXPORT_ID/confusions.csv"
 sqlite3 "$DB_ID" "VACUUM; ANALYZE;"
 
-# Compat alias for older paths that expect spell_id.db
 rm -f "$ROOT/spell_id.db"
 ln -s "$(basename "$DB_ID")" "$ROOT/spell_id.db"
-
 
 echo "Wrote $DB_ID (and spell_id.db → spell.db)"
 sqlite3 "$DB_ID" <<'SQL'

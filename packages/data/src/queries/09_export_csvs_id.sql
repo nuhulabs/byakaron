@@ -58,7 +58,9 @@ COPY (
 ) TO '/byakaron/data/export_id/trigrams.csv'
 WITH (FORMAT CSV, HEADER true);
 
--- After both 06 + 09 have filled export/ and export_id/:
---   zig build prepare
---     → spell_debug.db (text) + spell.db (id / product)
--- SymSpell deletes + confusion mining are done inside prepare.
+-- Prefer (no Postgres):
+--   zig build run -- --wordtriplets sentences.csv
+--   zig build export          # fast Zig aggregation → export/ + export_id/
+--   zig build prepare         # runs export, then SymSpell + sqlite assemble
+--
+-- Legacy SQL forge (14_aggregate_triplets.sql) is optional / unused by prepare.
