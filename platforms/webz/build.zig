@@ -25,7 +25,7 @@ pub fn build(b: *std.Build) !void {
 
     // Ship the optimized spell lexicon as the app sqlite file.
     const spell_db = b.addInstallFile(
-        b.path("../../packages/data/spell_id.db"),
+        b.path("../../packages/data/spell.db"),
         "data/db/default.db",
     );
     b.getInstallStep().dependOn(&spell_db.step);

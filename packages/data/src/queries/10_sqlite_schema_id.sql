@@ -9,6 +9,7 @@ PRAGMA foreign_keys = OFF;
 DROP TABLE IF EXISTS deletes;
 DROP TABLE IF EXISTS bigrams;
 DROP TABLE IF EXISTS trigrams;
+DROP TABLE IF EXISTS confusions;
 DROP TABLE IF EXISTS dictionary;
 
 CREATE TABLE dictionary (
@@ -37,8 +38,19 @@ CREATE TABLE trigrams (
     PRIMARY KEY (w1_id, w2_id, w3_id)
 );
 
+-- Hunspell-style REP table for Bangla lookalikes / matras.
+CREATE TABLE confusions (
+    from_g TEXT NOT NULL,
+    to_g TEXT NOT NULL,
+    weight REAL NOT NULL,
+    kind TEXT NOT NULL,
+    PRIMARY KEY (from_g, to_g, kind)
+);
+
 CREATE INDEX idx_deletes_key ON deletes (delete_key);
 CREATE INDEX idx_dictionary_word ON dictionary (word);
 CREATE INDEX idx_dictionary_freq ON dictionary (frequency DESC);
 CREATE INDEX idx_bigrams_w1_freq ON bigrams (w1_id, frequency DESC);
 CREATE INDEX idx_trigrams_w1_w2_freq ON trigrams (w1_id, w2_id, frequency DESC);
+CREATE INDEX idx_confusions_from ON confusions (from_g);
+

@@ -4,13 +4,15 @@
 -- Postgres is used only to load CSVs, aggregate, filter, and validate.
 -- Two SQLite products can be built from the same staging tables:
 --
--- A) Text-keyed (legacy / readable)
---   06_export_csvs.sql → zig --symspell-deletes → 07 + export_spell_db.sh
---   → spell.db
+-- Manual (Postgres only):
+--   06_export_csvs.sql    → ./export/
+--   09_export_csvs_id.sql → ./export_id/
 --
--- B) ID-keyed optimized (smaller)
---   09_export_csvs_id.sql → zig --symspell-deletes → 10 + export_spell_db_id.sh
---   → spell_id.db
+-- Then (packages/data):
+--   zig build prepare
+--     → spell_debug.db  (text-keyed, readable / debug)
+--     → spell.db        (id-keyed product + confusions)
+--     → spell_id.db     (symlink → spell.db, compat)
 --
 -- Pipeline (shared staging):
 --   word_triplets.csv
@@ -19,6 +21,7 @@
 --     -> 03_word_triplets.sql
 --     -> 04_dictionary.sql
 --     -> 05_bigrams.sql
+--     -> 12_confusions_seed.sql (optional Postgres)
 -- ============================================================================
 
 -- --------------------------------------------------------------------------
@@ -56,6 +59,14 @@ CREATE TABLE IF NOT EXISTS bigrams (
     PRIMARY KEY (w1_id, w2_id)
 );
 
+CREATE TABLE IF NOT EXISTS confusions (
+    from_g TEXT NOT NULL,
+    to_g TEXT NOT NULL,
+    weight DOUBLE PRECISION NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'ortho',
+    PRIMARY KEY (from_g, to_g, kind)
+);
+
 CREATE INDEX IF NOT EXISTS idx_word_triplets_prev_mid
     ON word_triplets (prev_id, mid_id);
 
@@ -77,4 +88,5 @@ CREATE INDEX IF NOT EXISTS idx_bigrams_w1
 -- deletes(delete_key TEXT, word_id INTEGER)
 -- bigrams(w1_id, w2_id, frequency, PRIMARY KEY (w1_id, w2_id))
 -- trigrams(w1_id, w2_id, w3_id, frequency, PRIMARY KEY (w1_id, w2_id, w3_id))
+-- confusions(from_g, to_g, weight, kind)  -- Hunspell-style REP
 -- Dense ids remapped 1..N at export (09_export_csvs_id.sql).

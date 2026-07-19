@@ -38,5 +38,6 @@ COPY (
 ) TO '/byakaron/data/export/trigrams.csv'
 WITH (FORMAT CSV, HEADER true);
 
--- deletes.csv is produced next:
---   zig build run -- --symspell-deletes export/dictionary.csv
+-- After both 06 + 09 have filled export/ and export_id/:
+--   zig build prepare
+--     → spell_debug.db (text) + spell.db (id / product)

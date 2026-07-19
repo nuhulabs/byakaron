@@ -15,21 +15,34 @@ pub fn main(init: std.process.Init) !void {
     //   --wordtriplets         sentences.csv → word_triplets.csv
     //   --symspell-deletes     dictionary.csv → deletes.csv
     //                          accepts word,frequency OR id,word,frequency
-    var mode: enum { sentences, word_triplets, symspell_deletes } = .sentences;
+    //   --mine-confusions      dictionary.csv [confusions_seed.csv]
+    //                          → confusions_mined.csv + confusions.csv (reweighted)
+    var mode: enum { sentences, word_triplets, symspell_deletes, mine_confusions } = .sentences;
     var positional: ?[]const u8 = null;
+    var secondary: ?[]const u8 = null;
     for (args[1..]) |a| {
         if (std.mem.eql(u8, a, "--wordtriplets")) {
             mode = .word_triplets;
         } else if (std.mem.eql(u8, a, "--symspell-deletes")) {
             mode = .symspell_deletes;
-        } else {
+        } else if (std.mem.eql(u8, a, "--mine-confusions")) {
+            mode = .mine_confusions;
+        } else if (positional == null) {
             positional = a;
+        } else {
+            secondary = a;
         }
     }
 
     switch (mode) {
         .word_triplets => try runWordTriplets(gpa, io, positional orelse "sentences.csv"),
         .symspell_deletes => try runSymSpellDeletes(gpa, io, positional orelse "dictionary.csv"),
+        .mine_confusions => try runMineConfusions(
+            gpa,
+            io,
+            positional orelse "dictionary.csv",
+            secondary orelse "src/queries/confusions_seed.csv",
+        ),
         .sentences => try runSentences(gpa, io, positional orelse return error.InvalidArguments),
     }
 }
@@ -218,6 +231,207 @@ fn runWordTriplets(gpa: std.mem.Allocator, io: Io, input_path: []const u8) !void
 ///   - `id,word,frequency`       → output `delete_key,word_id` (optimized)
 ///
 /// Deletes are generated on Unicode codepoints up to edit distance 2.
+/// Counts lexicon word pairs that differ by exactly one seeded confusion
+/// substitution (built from the Wikipedia-derived dictionary). Rewrites
+/// confusions.csv with soft-blended weights: known lookalikes stay prioritized
+/// when many real orthographic twins exist in the corpus lexicon.
+fn runMineConfusions(
+    gpa: std.mem.Allocator,
+    io: Io,
+    dictionary_path: []const u8,
+    seed_path: []const u8,
+) !void {
+    var arena_state: std.heap.ArenaAllocator = .init(gpa);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    var words: std.StringHashMapUnmanaged(void) = .empty;
+    try loadDictionaryWords(gpa, io, arena, dictionary_path, &words);
+
+    const edges = try loadConfusionSeed(arena, io, seed_path);
+    var counts: std.StringHashMapUnmanaged(u64) = .empty;
+
+    var wit = words.keyIterator();
+    var scanned: usize = 0;
+    while (wit.next()) |wp| {
+        const word = wp.*;
+        scanned += 1;
+        for (edges) |edge| {
+            var i: usize = 0;
+            while (i < word.len) {
+                if (std.mem.startsWith(u8, word[i..], edge.from_g)) {
+                    const variant = try concatReplace(arena, word, i, edge.from_g.len, edge.to_g);
+                    if (!std.mem.eql(u8, variant, word) and words.contains(variant)) {
+                        const key = try std.fmt.allocPrint(arena, "{s}\x1f{s}\x1f{s}", .{ edge.from_g, edge.to_g, edge.kind });
+                        const gop = try counts.getOrPut(arena, key);
+                        if (!gop.found_existing) gop.value_ptr.* = 0;
+                        gop.value_ptr.* += 1;
+                    }
+                }
+                const len = std.unicode.utf8ByteSequenceLength(word[i]) catch {
+                    i += 1;
+                    continue;
+                };
+                if (i + len > word.len) break;
+                i += len;
+            }
+        }
+        if (scanned % 50_000 == 0) {
+            std.debug.print("\r{d} words scanned\x1b[K", .{scanned});
+        }
+    }
+
+    var mined_file = try Io.Dir.cwd().createFile(io, "confusions_mined.csv", .{});
+    defer mined_file.close(io);
+    var mined_buf: [16 * 1024]u8 = undefined;
+    var mined_writer = mined_file.writer(io, &mined_buf);
+    const mined_out = &mined_writer.interface;
+    try mined_out.writeAll("from_g,to_g,kind,pair_count\n");
+
+    var count_lookup: std.StringHashMapUnmanaged(u64) = .empty;
+    var cit = counts.iterator();
+    var edge_hits: usize = 0;
+    while (cit.next()) |e| {
+        var parts = std.mem.splitScalar(u8, e.key_ptr.*, '\x1f');
+        const from_g = parts.next() orelse continue;
+        const to_g = parts.next() orelse continue;
+        const kind = parts.next() orelse continue;
+        try writeCsvRow4(mined_out, from_g, to_g, kind, e.value_ptr.*);
+        const key = try std.fmt.allocPrint(arena, "{s}\x1f{s}\x1f{s}", .{ from_g, to_g, kind });
+        try count_lookup.put(arena, key, e.value_ptr.*);
+        edge_hits += 1;
+    }
+    try mined_out.flush();
+
+    var out_file = try Io.Dir.cwd().createFile(io, "confusions.csv", .{});
+    defer out_file.close(io);
+    var out_buf: [16 * 1024]u8 = undefined;
+    var out_writer = out_file.writer(io, &out_buf);
+    const out = &out_writer.interface;
+    try out.writeAll("from_g,to_g,weight,kind\n");
+
+    for (edges) |edge| {
+        const key = try std.fmt.allocPrint(arena, "{s}\x1f{s}\x1f{s}", .{ edge.from_g, edge.to_g, edge.kind });
+        var weight = edge.weight;
+        if (count_lookup.get(key)) |n| {
+            // Soft blend: more lexicon twins → slightly lower weight (more likely).
+            const mined = 1.0 / (1.0 + @log(@as(f64, @floatFromInt(n + 1))));
+            weight = @max(0.12, @min(edge.weight, mined));
+        }
+        try writeConfusionRow(out, edge.from_g, edge.to_g, weight, edge.kind);
+    }
+    try out.flush();
+
+    std.debug.print(
+        "\nDone. {d} lexicon words, {d} mined edges -> confusions_mined.csv + confusions.csv\n",
+        .{ scanned, edge_hits },
+    );
+}
+
+const SeedEdge = struct {
+    from_g: []const u8,
+    to_g: []const u8,
+    weight: f64,
+    kind: []const u8,
+};
+
+fn loadDictionaryWords(
+    gpa: std.mem.Allocator,
+    io: Io,
+    arena: std.mem.Allocator,
+    path: []const u8,
+    words: *std.StringHashMapUnmanaged(void),
+) !void {
+    _ = gpa;
+    var in_file = try Io.Dir.cwd().openFile(io, path, .{});
+    defer in_file.close(io);
+    var in_buf: [64 * 1024]u8 = undefined;
+    var in_reader = in_file.reader(io, &in_buf);
+    const in = &in_reader.interface;
+
+    var header_checked = false;
+    var id_mode = false;
+    while (try in.takeDelimiter('\n')) |raw_line| {
+        if (!header_checked) {
+            header_checked = true;
+            const header = std.mem.trimEnd(u8, raw_line, "\r\n");
+            if (std.mem.startsWith(u8, header, "id,")) {
+                id_mode = true;
+                continue;
+            }
+            if (std.mem.startsWith(u8, header, "word")) continue;
+        }
+        const line = std.mem.trimEnd(u8, raw_line, "\r\n");
+        if (line.len == 0) continue;
+        const parsed = if (id_mode) parseDictionaryIdRow(line) else parseDictionaryWordRow(line);
+        const row = parsed orelse continue;
+        const duped = try arena.dupe(u8, row.word);
+        try words.put(arena, duped, {});
+    }
+}
+
+fn loadConfusionSeed(arena: std.mem.Allocator, io: Io, path: []const u8) ![]const SeedEdge {
+    var in_file = try Io.Dir.cwd().openFile(io, path, .{});
+    defer in_file.close(io);
+    var in_buf: [16 * 1024]u8 = undefined;
+    var in_reader = in_file.reader(io, &in_buf);
+    const in = &in_reader.interface;
+
+    var list: std.ArrayList(SeedEdge) = .empty;
+    var header_checked = false;
+    while (try in.takeDelimiter('\n')) |raw_line| {
+        const line = std.mem.trimEnd(u8, raw_line, "\r\n");
+        if (line.len == 0) continue;
+        if (!header_checked) {
+            header_checked = true;
+            if (std.mem.startsWith(u8, line, "from_g")) continue;
+        }
+        var parts = std.mem.splitScalar(u8, line, ',');
+        const from_g = parts.next() orelse continue;
+        const to_g = parts.next() orelse continue;
+        const weight_s = parts.next() orelse continue;
+        const kind = parts.next() orelse "ortho";
+        const weight = std.fmt.parseFloat(f64, weight_s) catch continue;
+        try list.append(arena, .{
+            .from_g = try arena.dupe(u8, from_g),
+            .to_g = try arena.dupe(u8, to_g),
+            .weight = weight,
+            .kind = try arena.dupe(u8, kind),
+        });
+    }
+    return try list.toOwnedSlice(arena);
+}
+
+fn concatReplace(allocator: std.mem.Allocator, s: []const u8, at: usize, from_len: usize, to_g: []const u8) ![]const u8 {
+    const after = at + from_len;
+    const buf = try allocator.alloc(u8, at + to_g.len + (s.len - after));
+    @memcpy(buf[0..at], s[0..at]);
+    @memcpy(buf[at .. at + to_g.len], to_g);
+    @memcpy(buf[at + to_g.len ..], s[after..]);
+    return buf;
+}
+
+fn writeConfusionRow(out: *Io.Writer, from_g: []const u8, to_g: []const u8, weight: f64, kind: []const u8) !void {
+    try writeCsvField(out, from_g);
+    try out.writeByte(',');
+    try writeCsvField(out, to_g);
+    try out.writeByte(',');
+    try out.print("{d:.2}", .{weight});
+    try out.writeByte(',');
+    try writeCsvField(out, kind);
+    try out.writeByte('\n');
+}
+
+fn writeCsvRow4(out: *Io.Writer, a: []const u8, b: []const u8, c: []const u8, n: u64) !void {
+    try writeCsvField(out, a);
+    try out.writeByte(',');
+    try writeCsvField(out, b);
+    try out.writeByte(',');
+    try writeCsvField(out, c);
+    try out.writeByte(',');
+    try out.print("{d}\n", .{n});
+}
+
 fn runSymSpellDeletes(gpa: std.mem.Allocator, io: Io, input_path: []const u8) !void {
     const max_edit_distance: u8 = 2;
 

@@ -58,6 +58,7 @@ COPY (
 ) TO '/byakaron/data/export_id/trigrams.csv'
 WITH (FORMAT CSV, HEADER true);
 
--- deletes.csv is produced next:
---   zig build run -- --symspell-deletes export_id/dictionary.csv
---   (auto-detects id,word,frequency → delete_key,word_id)
+-- After both 06 + 09 have filled export/ and export_id/:
+--   zig build prepare
+--     → spell_debug.db (text) + spell.db (id / product)
+-- SymSpell deletes + confusion mining are done inside prepare.
