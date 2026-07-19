@@ -2,7 +2,7 @@
     .name = .byakaron,
     .version = "0.1.0",
     .fingerprint = 0x3fd6609b9d3cf29c,
-    .minimum_zig_version = "0.17.0-dev.877+a3ae499dc",
+    .minimum_zig_version = "0.17.0-dev.1422+e863bf3be",
     .dependencies = .{},
     .paths = .{
         "build.zig",

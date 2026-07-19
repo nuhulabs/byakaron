@@ -200,3 +200,4 @@ tmp
 
 .build/
 tmp
+*.db
