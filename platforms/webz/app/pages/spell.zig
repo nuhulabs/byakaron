@@ -5,7 +5,6 @@ pub const Suggestion = struct {
     word: []const u8,
     frequency: i64,
     distance: usize = 0,
-    /// Higher is better; combines distance, onset match, length, log-frequency.
     score: i64 = 0,
 };
 
@@ -15,13 +14,13 @@ pub const TokenResult = struct {
     suggestions: []const Suggestion,
 };
 
-const DictRow = struct {
-    id: i64,
+const CandidateRow = struct {
     word: []const u8,
     frequency: i64,
 };
 
-const CandidateRow = struct {
+const DeleteHit = struct {
+    delete_key: []const u8,
     word: []const u8,
     frequency: i64,
 };
@@ -32,9 +31,15 @@ const Ranked = struct {
     score: i64,
 };
 
-/// All allocations use the request arena — do not free the returned slices.
+/// Spell-check a paragraph with **batched** SQLite access:
+/// 1) one `dictionary WHERE word IN (...)` for all unique tokens
+/// 2) one `deletes WHERE delete_key IN (...)` for SymSpell keys of all OOVs
+///
+/// Note: ziex does **not** reopen the DB per request (connection is process-lifetime),
+/// but each `zx.db.rows` **re-prepares** SQL — so fewer queries ≫ fewer prepares.
 pub fn checkText(allocator: std.mem.Allocator, text: []const u8) ![]const TokenResult {
-    var tokens: std.ArrayList(TokenResult) = .empty;
+    var order: std.ArrayList([]const u8) = .empty;
+    var unique: std.StringHashMapUnmanaged(void) = .empty;
 
     var start: usize = 0;
     var i: usize = 0;
@@ -45,7 +50,8 @@ pub fn checkText(allocator: std.mem.Allocator, text: []const u8) ![]const TokenR
             if (i > start) {
                 const raw = text[start..i];
                 if (isCheckableWord(raw)) {
-                    try tokens.append(allocator, try checkWord(allocator, raw));
+                    try order.append(allocator, raw);
+                    _ = try unique.getOrPut(allocator, raw);
                 }
             }
             if (at_end) break;
@@ -56,7 +62,93 @@ pub fn checkText(allocator: std.mem.Allocator, text: []const u8) ![]const TokenR
         }
     }
 
-    return try tokens.toOwnedSlice(allocator);
+    if (order.items.len == 0) return &.{};
+
+    // --- Pass 1: unique words that exist in the lexicon (one query) ---
+    var known: std.StringHashMapUnmanaged(i64) = .empty;
+    {
+        var words: std.ArrayList([]const u8) = .empty;
+        var it = unique.keyIterator();
+        while (it.next()) |k| try words.append(allocator, k.*);
+        const rows = try queryWordsIn(allocator, words.items);
+        for (rows) |row| {
+            try known.put(allocator, row.word, row.frequency);
+        }
+    }
+
+    // --- Pass 2: SymSpell deletes for unique OOVs (one/chunked query) ---
+    var oov_words: std.ArrayList([]const u8) = .empty;
+    var delete_keys: std.ArrayList([]const u8) = .empty;
+    var key_seen: std.StringHashMapUnmanaged(void) = .empty;
+    var keys_by_oov: std.StringHashMapUnmanaged([]const []const u8) = .empty;
+
+    var uit = unique.keyIterator();
+    while (uit.next()) |k| {
+        const w = k.*;
+        if (known.contains(w)) continue;
+        try oov_words.append(allocator, w);
+
+        const max_dist: u8 = if (countCodepoints(w) <= 6) 2 else 1;
+        var local_keys: std.ArrayList([]const u8) = .empty;
+        var local_seen: std.StringHashMapUnmanaged(void) = .empty;
+        try emitDeletes(allocator, &local_seen, &local_keys, w, max_dist);
+        try local_keys.append(allocator, w);
+
+        for (local_keys.items) |dk| {
+            const gop = try key_seen.getOrPut(allocator, dk);
+            if (!gop.found_existing) try delete_keys.append(allocator, dk);
+        }
+        try keys_by_oov.put(allocator, w, try local_keys.toOwnedSlice(allocator));
+    }
+
+    var cand_by_key: std.StringHashMapUnmanaged([]const CandidateRow) = .empty;
+    if (delete_keys.items.len > 0) {
+        const hits = try queryDeletesIn(allocator, delete_keys.items);
+        var staging: std.StringHashMapUnmanaged(std.ArrayList(CandidateRow)) = .empty;
+        for (hits) |h| {
+            const gop = try staging.getOrPut(allocator, h.delete_key);
+            if (!gop.found_existing) gop.value_ptr.* = .empty;
+            try gop.value_ptr.append(allocator, .{ .word = h.word, .frequency = h.frequency });
+        }
+        var sit = staging.iterator();
+        while (sit.next()) |e| {
+            try cand_by_key.put(allocator, e.key_ptr.*, try e.value_ptr.toOwnedSlice(allocator));
+        }
+    }
+
+    var suggest_by_word: std.StringHashMapUnmanaged([]const Suggestion) = .empty;
+    for (oov_words.items) |w| {
+        var best: std.StringHashMapUnmanaged(Ranked) = .empty;
+        const keys = keys_by_oov.get(w) orelse &.{};
+        for (keys) |dk| {
+            const cands = cand_by_key.get(dk) orelse continue;
+            for (cands) |c| {
+                const dist = codepointEditDistance(w, c.word);
+                if (dist > 2) continue;
+                const score = rankScore(w, c.word, dist, c.frequency);
+                const gop = try best.getOrPut(allocator, c.word);
+                if (!gop.found_existing or score > gop.value_ptr.score) {
+                    gop.value_ptr.* = .{ .frequency = c.frequency, .distance = dist, .score = score };
+                }
+            }
+        }
+        try suggest_by_word.put(allocator, w, try finishSuggestions(allocator, &best, 8));
+    }
+
+    // Emit one result per occurrence (same order as input tokens).
+    var out: std.ArrayList(TokenResult) = .empty;
+    for (order.items) |tok| {
+        if (known.contains(tok)) {
+            try out.append(allocator, .{ .token = tok, .known = true, .suggestions = &.{} });
+        } else {
+            try out.append(allocator, .{
+                .token = tok,
+                .known = false,
+                .suggestions = suggest_by_word.get(tok) orelse &.{},
+            });
+        }
+    }
+    return try out.toOwnedSlice(allocator);
 }
 
 pub fn prefixSuggest(allocator: std.mem.Allocator, prefix: []const u8, limit: i64) ![]const Suggestion {
@@ -85,40 +177,67 @@ pub fn nextWordSuggest(allocator: std.mem.Allocator, prev: []const u8, limit: i6
     return try toSuggestions(allocator, rows);
 }
 
-fn checkWord(allocator: std.mem.Allocator, word: []const u8) !TokenResult {
-    if (try lookupExact(allocator, word)) |_| {
-        return .{
-            .token = word,
-            .known = true,
-            .suggestions = &.{},
-        };
+/// `WHERE word IN ('a','b',...)` — literals avoid ziex's comptime-only bind tuples.
+fn queryWordsIn(allocator: std.mem.Allocator, words: []const []const u8) ![]const CandidateRow {
+    if (words.len == 0) return &.{};
+    var sql: std.ArrayList(u8) = .empty;
+    try sql.appendSlice(allocator, "SELECT word, frequency FROM dictionary WHERE word IN (");
+    for (words, 0..) |w, i| {
+        if (i > 0) try sql.append(allocator, ',');
+        try appendSqlString(allocator, &sql, w);
     }
-
-    return .{
-        .token = word,
-        .known = false,
-        .suggestions = try suggest(allocator, word, 8),
-    };
+    try sql.appendSlice(allocator, ")");
+    return try zx.db.rows(allocator, CandidateRow, sql.items, .{});
 }
 
-fn lookupExact(allocator: std.mem.Allocator, word: []const u8) !?DictRow {
-    return try zx.db.row(allocator, DictRow,
-        \\SELECT id, word, frequency FROM dictionary WHERE word = ?1 LIMIT 1
-    , .{word});
+fn queryDeletesIn(allocator: std.mem.Allocator, keys: []const []const u8) ![]const DeleteHit {
+    if (keys.len == 0) return &.{};
+
+    // Chunk to keep SQL text and SQLite planner happy on huge paragraphs.
+    const chunk_size = 80;
+    var out: std.ArrayList(DeleteHit) = .empty;
+    var offset: usize = 0;
+    while (offset < keys.len) {
+        const end = @min(offset + chunk_size, keys.len);
+        const chunk = keys[offset..end];
+        offset = end;
+
+        var sql: std.ArrayList(u8) = .empty;
+        try sql.appendSlice(allocator,
+            \\SELECT d.delete_key AS delete_key, dict.word AS word, dict.frequency AS frequency
+            \\FROM deletes d
+            \\JOIN dictionary dict ON dict.id = d.word_id
+            \\WHERE d.delete_key IN (
+        );
+        for (chunk, 0..) |k, i| {
+            if (i > 0) try sql.append(allocator, ',');
+            try appendSqlString(allocator, &sql, k);
+        }
+        try sql.appendSlice(allocator, ") ORDER BY dict.frequency DESC");
+
+        const rows = try zx.db.rows(allocator, DeleteHit, sql.items, .{});
+        try out.appendSlice(allocator, rows);
+    }
+    return try out.toOwnedSlice(allocator);
 }
 
-fn suggest(allocator: std.mem.Allocator, word: []const u8, limit: usize) ![]const Suggestion {
-    var delete_keys: std.ArrayList([]const u8) = .empty;
-    var seen: std.StringHashMapUnmanaged(void) = .empty;
-    try emitDeletes(allocator, &seen, &delete_keys, word, 2);
-
-    var best: std.StringHashMapUnmanaged(Ranked) = .empty;
-
-    try considerDeleteKey(allocator, &best, word, word);
-    for (delete_keys.items) |key| {
-        try considerDeleteKey(allocator, &best, word, key);
+fn appendSqlString(allocator: std.mem.Allocator, sql: *std.ArrayList(u8), s: []const u8) !void {
+    try sql.append(allocator, '\'');
+    for (s) |c| {
+        if (c == '\'') {
+            try sql.appendSlice(allocator, "''");
+        } else {
+            try sql.append(allocator, c);
+        }
     }
+    try sql.append(allocator, '\'');
+}
 
+fn finishSuggestions(
+    allocator: std.mem.Allocator,
+    best: *std.StringHashMapUnmanaged(Ranked),
+    limit: usize,
+) ![]const Suggestion {
     var list: std.ArrayList(Suggestion) = .empty;
     var it = best.iterator();
     while (it.next()) |entry| {
@@ -129,50 +248,16 @@ fn suggest(allocator: std.mem.Allocator, word: []const u8, limit: usize) ![]cons
             .score = entry.value_ptr.score,
         });
     }
-
     std.mem.sort(Suggestion, list.items, {}, struct {
         fn less(_: void, a: Suggestion, b: Suggestion) bool {
             if (a.score != b.score) return a.score > b.score;
             return a.frequency > b.frequency;
         }
     }.less);
-
     if (list.items.len > limit) list.shrinkRetainingCapacity(limit);
     return try list.toOwnedSlice(allocator);
 }
 
-fn considerDeleteKey(
-    allocator: std.mem.Allocator,
-    best: *std.StringHashMapUnmanaged(Ranked),
-    typed: []const u8,
-    key: []const u8,
-) !void {
-    const rows = try zx.db.rows(allocator, CandidateRow,
-        \\SELECT dict.word AS word, dict.frequency AS frequency
-        \\FROM deletes d
-        \\JOIN dictionary dict ON dict.id = d.word_id
-        \\WHERE d.delete_key = ?1
-        \\ORDER BY dict.frequency DESC
-        \\LIMIT 40
-    , .{key});
-
-    for (rows) |row| {
-        const dist = codepointEditDistance(typed, row.word);
-        if (dist > 2) continue;
-        const score = rankScore(typed, row.word, dist, row.frequency);
-        const gop = try best.getOrPut(allocator, row.word);
-        if (!gop.found_existing) {
-            gop.value_ptr.* = .{ .frequency = row.frequency, .distance = dist, .score = score };
-        } else if (score > gop.value_ptr.score) {
-            gop.value_ptr.* = .{ .frequency = row.frequency, .distance = dist, .score = score };
-        }
-    }
-}
-
-/// Noisy-channel style rank.
-/// Priority: edit distance → how much of the typed string is kept (LCS) →
-/// onset → length → soft log-frequency.
-/// LCS is why `বংলা` → `বাংলা` beats `বেলা` (same dist, but `ং` is preserved).
 fn rankScore(typed: []const u8, candidate: []const u8, dist: usize, freq: i64) i64 {
     var typed_cps: [64]u21 = undefined;
     var cand_cps: [64]u21 = undefined;
@@ -183,7 +268,6 @@ fn rankScore(typed: []const u8, candidate: []const u8, dist: usize, freq: i64) i
 
     var score: i64 = 0;
     score -= @as(i64, @intCast(dist)) * 1_000_000;
-    // Prefer keeping typed codepoints in order (insertions OK; substitutions hurt).
     score += @as(i64, @intCast(lcs)) * 100_000;
     if (tn > 0 and cn > 0 and typed_cps[0] == cand_cps[0]) score += 80_000;
     score -= len_diff * 20_000;
@@ -193,7 +277,6 @@ fn rankScore(typed: []const u8, candidate: []const u8, dist: usize, freq: i64) i
 }
 
 fn longestCommonSubseq(a: []const u21, b: []const u21) usize {
-    // Classic DP with rolling rows; lengths are small (Bangla words ≪ 64).
     var prev: [65]usize = undefined;
     var cur: [65]usize = undefined;
     @memset(&prev, 0);
@@ -215,10 +298,7 @@ fn longestCommonSubseq(a: []const u21, b: []const u21) usize {
 fn toSuggestions(allocator: std.mem.Allocator, rows: []const CandidateRow) ![]const Suggestion {
     var out: std.ArrayList(Suggestion) = .empty;
     for (rows) |row| {
-        try out.append(allocator, .{
-            .word = row.word,
-            .frequency = row.frequency,
-        });
+        try out.append(allocator, .{ .word = row.word, .frequency = row.frequency });
     }
     return try out.toOwnedSlice(allocator);
 }
@@ -291,7 +371,13 @@ fn isCheckableWord(s: []const u8) bool {
     return bangla;
 }
 
-/// Damerau–Levenshtein on Unicode codepoints, capped early above `max`.
+fn countCodepoints(s: []const u8) usize {
+    var it: std.unicode.Utf8Iterator = .{ .bytes = s, .i = 0 };
+    var n: usize = 0;
+    while (it.nextCodepoint()) |_| n += 1;
+    return n;
+}
+
 fn codepointEditDistance(a: []const u8, b: []const u8) usize {
     const max_dist: usize = 2;
     var a_cps: [64]u21 = undefined;
@@ -317,7 +403,7 @@ fn codepointEditDistance(a: []const u8, b: []const u8) usize {
             const sub = prev[j] + cost;
             var best = @min(del, @min(ins, sub));
             if (i > 0 and j > 0 and a_cps[i] == b_cps[j - 1] and a_cps[i - 1] == b_cps[j]) {
-                best = @min(best, prev[j - 1] + 1); // transpose uses prev-prev conceptually; approx with prev
+                best = @min(best, prev[j - 1] + 1);
             }
             cur[j + 1] = best;
             row_min = @min(row_min, best);
