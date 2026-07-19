@@ -207,8 +207,8 @@ fn runExport(gpa: std.mem.Allocator, io: Io, opts: Options) !void {
     try Io.Dir.cwd().createDirPath(io, opts.export_debug_dir);
     try Io.Dir.cwd().createDirPath(io, opts.export_id_dir);
 
-    std.debug.print("Writing {s}/ …\n", .{opts.export_debug_dir});
-    try writeTextExports(gpa, io, opts, id_to_word.items, uni_counts.items, &bi_counts, &tri_counts);
+    // std.debug.print("Writing {s}/ …\n", .{opts.export_debug_dir});
+    // try writeTextExports(gpa, io, opts, id_to_word.items, uni_counts.items, &bi_counts, &tri_counts);
 
     std.debug.print("Writing {s}/ …\n", .{opts.export_id_dir});
     try writeIdExports(gpa, io, opts, id_to_word.items, uni_counts.items, &bi_counts, &tri_counts);

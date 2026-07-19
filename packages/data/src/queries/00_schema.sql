@@ -1,15 +1,15 @@
 -- ============================================================================
 -- Schema: Postgres staging forge vs SQLite product artifacts
 -- ============================================================================
--- Postgres is used only to load CSVs, aggregate, filter, and validate.
--- Postgres is optional legacy staging. Preferred product path:
+-- Preferred path (no Postgres):
 --
 --   zig build run -- --wordtriplets sentences.csv   → word_triplets.csv
 --   zig build export                                → export/ + export_id/
---   zig build prepare                               → export + spell.db + spell_debug.db
+--   zig build prepare                               → spell.db (+ webz default.db)
+--   zig build prepare -- --debug-db                 → also spell_debug.db
 --
--- `export` aggregates triplets in Zig (single pass, progress on stderr).
--- `prepare` depends on export, then SymSpell + confusions + sqlite3 import.
+-- `export` aggregates triplets in Zig. `prepare` (src/prepare.zig) runs SymSpell,
+-- confusions, and sqlite3 import — it does not re-run export.
 --
 -- Legacy Postgres forge still documented under queries/01–09 if needed.
 -- ============================================================================
@@ -64,7 +64,7 @@ CREATE INDEX IF NOT EXISTS idx_bigrams_w1
     ON bigrams (w1_id);
 
 -- --------------------------------------------------------------------------
--- SQLite A — text keys (07_sqlite_schema.sql)
+-- SQLite A — text keys (07_sqlite_schema.sql)  [debug only]
 -- --------------------------------------------------------------------------
 -- dictionary(word TEXT PRIMARY KEY, frequency INTEGER)
 -- deletes(delete_key TEXT, word TEXT)
@@ -72,11 +72,11 @@ CREATE INDEX IF NOT EXISTS idx_bigrams_w1
 -- trigrams(w1 TEXT, w2 TEXT, w3 TEXT, frequency INTEGER, PRIMARY KEY (w1, w2, w3))
 
 -- --------------------------------------------------------------------------
--- SQLite B — integer FKs (10_sqlite_schema_id.sql)  [preferred for size]
+-- SQLite B — integer FKs (10_sqlite_schema_id.sql)  [spell.db product]
 -- --------------------------------------------------------------------------
 -- dictionary(id INTEGER PRIMARY KEY, word TEXT UNIQUE, frequency INTEGER)
 -- deletes(delete_key TEXT, word_id INTEGER)
 -- bigrams(w1_id, w2_id, frequency, PRIMARY KEY (w1_id, w2_id))
 -- trigrams(w1_id, w2_id, w3_id, frequency, PRIMARY KEY (w1_id, w2_id, w3_id))
--- confusions(from_g, to_g, weight, kind)  -- Hunspell-style REP
--- Dense ids remapped 1..N at export (09_export_csvs_id.sql).
+-- confusions(from_g, to_g, weight, kind)
+-- ============================================================================
