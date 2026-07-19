@@ -10,23 +10,27 @@ pub fn main(init: std.process.Init) !void {
 
     const args = try init.minimal.args.toSlice(arena);
 
-    // Parse a tiny CLI: an optional `--wordpairs` flag plus a single positional
-    // input path. Without the flag we turn a MediaWiki XML dump into
-    // sentences.csv; with it we turn sentences.csv into word_pairs.csv.
-    var wordpairs = false;
+    // Parse a tiny CLI: optional mode flag plus a single positional input path.
+    //   (default)              MediaWiki XML → sentences.csv
+    //   --wordtriplets         sentences.csv → word_triplets.csv
+    //   --symspell-deletes     dictionary.csv → deletes.csv
+    //                          accepts word,frequency OR id,word,frequency
+    var mode: enum { sentences, word_triplets, symspell_deletes } = .sentences;
     var positional: ?[]const u8 = null;
     for (args[1..]) |a| {
-        if (std.mem.eql(u8, a, "--wordpairs")) {
-            wordpairs = true;
+        if (std.mem.eql(u8, a, "--wordtriplets")) {
+            mode = .word_triplets;
+        } else if (std.mem.eql(u8, a, "--symspell-deletes")) {
+            mode = .symspell_deletes;
         } else {
             positional = a;
         }
     }
 
-    if (wordpairs) {
-        try runWordPairs(gpa, io, positional orelse "sentences.csv");
-    } else {
-        try runSentences(gpa, io, positional orelse return error.InvalidArguments);
+    switch (mode) {
+        .word_triplets => try runWordTriplets(gpa, io, positional orelse "sentences.csv"),
+        .symspell_deletes => try runSymSpellDeletes(gpa, io, positional orelse "dictionary.csv"),
+        .sentences => try runSentences(gpa, io, positional orelse return error.InvalidArguments),
     }
 }
 
@@ -146,10 +150,9 @@ fn runSentences(gpa: std.mem.Allocator, io: Io, input_path: []const u8) !void {
 }
 
 /// Reads the `value` column of sentences.csv, tokenizes each sentence into
-/// words and writes every adjacent word pair to word_pairs.csv (value,
-/// next_value). The whole thing streams line-by-line, so memory stays flat
-/// regardless of how large the input is.
-fn runWordPairs(gpa: std.mem.Allocator, io: Io, input_path: []const u8) !void {
+/// words and writes every consecutive word triplet to word_triplets.csv
+/// (value, mid_value, next_value). Streams line-by-line so memory stays flat.
+fn runWordTriplets(gpa: std.mem.Allocator, io: Io, input_path: []const u8) !void {
     var in_file = try Io.Dir.cwd().openFile(io, input_path, .{});
     defer in_file.close(io);
     var in_buf: [64 * 1024]u8 = undefined;
@@ -157,12 +160,12 @@ fn runWordPairs(gpa: std.mem.Allocator, io: Io, input_path: []const u8) !void {
     const total_size: u64 = in_reader.getSize() catch 0;
     const in = &in_reader.interface;
 
-    var out_file = try Io.Dir.cwd().createFile(io, "word_pairs.csv", .{});
+    var out_file = try Io.Dir.cwd().createFile(io, "word_triplets.csv", .{});
     defer out_file.close(io);
     var out_buf: [64 * 1024]u8 = undefined;
     var out_writer = out_file.writer(io, &out_buf);
     const out = &out_writer.interface;
-    try out.writeAll("value,next_value\n");
+    try out.writeAll("value,mid_value,next_value\n");
 
     // Per-line scratch for the tokenized words; reset (not freed) each line.
     var line_arena_state: std.heap.ArenaAllocator = .init(gpa);
@@ -171,7 +174,7 @@ fn runWordPairs(gpa: std.mem.Allocator, io: Io, input_path: []const u8) !void {
     defer words.deinit();
 
     var line_count: usize = 0;
-    var pair_count: usize = 0;
+    var triplet_count: usize = 0;
     var last_report: usize = 0;
     var header_checked = false;
 
@@ -188,24 +191,198 @@ fn runWordPairs(gpa: std.mem.Allocator, io: Io, input_path: []const u8) !void {
         words.clearRetainingCapacity();
         try tokenizeWords(line_arena_state.allocator(), value, &words);
 
-        if (words.items.len >= 2) {
+        if (words.items.len >= 3) {
             line_count += 1;
             var i: usize = 0;
-            while (i + 1 < words.items.len) : (i += 1) {
-                try writePairRow(out, words.items[i], words.items[i + 1]);
-                pair_count += 1;
+            while (i + 2 < words.items.len) : (i += 1) {
+                try writeTripletRow(out, words.items[i], words.items[i + 1], words.items[i + 2]);
+                triplet_count += 1;
             }
         }
 
         if (line_count - last_report >= 100_000) {
             last_report = line_count;
-            reportPairProgress(in_reader.pos, total_size, line_count, pair_count);
+            reportTripletProgress(in_reader.pos, total_size, line_count, triplet_count);
         }
     }
 
     try out.flush();
-    reportPairProgress(in_reader.pos, total_size, line_count, pair_count);
-    std.debug.print("\nDone. {d} sentences, {d} word pairs -> word_pairs.csv\n", .{ line_count, pair_count });
+    reportTripletProgress(in_reader.pos, total_size, line_count, triplet_count);
+    std.debug.print("\nDone. {d} sentences, {d} word triplets -> word_triplets.csv\n", .{ line_count, triplet_count });
+}
+
+/// Reads dictionary.csv and writes SymSpell delete variants to deletes.csv.
+///
+/// Input formats:
+///   - `word,frequency`          → output `delete_key,word`
+///   - `id,word,frequency`       → output `delete_key,word_id` (optimized)
+///
+/// Deletes are generated on Unicode codepoints up to edit distance 2.
+fn runSymSpellDeletes(gpa: std.mem.Allocator, io: Io, input_path: []const u8) !void {
+    const max_edit_distance: u8 = 2;
+
+    var in_file = try Io.Dir.cwd().openFile(io, input_path, .{});
+    defer in_file.close(io);
+    var in_buf: [64 * 1024]u8 = undefined;
+    var in_reader = in_file.reader(io, &in_buf);
+    const in = &in_reader.interface;
+
+    var out_file = try Io.Dir.cwd().createFile(io, "deletes.csv", .{});
+    defer out_file.close(io);
+    var out_buf: [64 * 1024]u8 = undefined;
+    var out_writer = out_file.writer(io, &out_buf);
+    const out = &out_writer.interface;
+
+    var line_arena_state: std.heap.ArenaAllocator = .init(gpa);
+    defer line_arena_state.deinit();
+
+    var seen: std.StringHashMap(void) = .init(gpa);
+    defer seen.deinit();
+
+    var word_count: usize = 0;
+    var delete_count: usize = 0;
+    var header_checked = false;
+    var id_mode = false;
+
+    while (try in.takeDelimiter('\n')) |raw_line| {
+        if (!header_checked) {
+            header_checked = true;
+            const header = std.mem.trimEnd(u8, raw_line, "\r\n");
+            if (std.mem.startsWith(u8, header, "id,")) {
+                id_mode = true;
+                try out.writeAll("delete_key,word_id\n");
+                continue;
+            }
+            if (std.mem.startsWith(u8, header, "word")) {
+                try out.writeAll("delete_key,word\n");
+                continue;
+            }
+            // No header — assume text mode and process this line.
+            try out.writeAll("delete_key,word\n");
+        }
+
+        const line = std.mem.trimEnd(u8, raw_line, "\r\n");
+        if (line.len == 0) continue;
+
+        const parsed = if (id_mode)
+            parseDictionaryIdRow(line)
+        else
+            parseDictionaryWordRow(line);
+        const row = parsed orelse continue;
+
+        // Clear hash keys before resetting the arena that owns them.
+        seen.clearRetainingCapacity();
+        _ = line_arena_state.reset(.retain_capacity);
+        const arena = line_arena_state.allocator();
+
+        try emitDeletes(arena, &seen, out, row.ref, row.word, max_edit_distance, &delete_count);
+        word_count += 1;
+        if (word_count % 10_000 == 0) {
+            std.debug.print("\r{d} words | {d} deletes\x1b[K", .{ word_count, delete_count });
+        }
+    }
+
+    try out.flush();
+    std.debug.print("\nDone. {d} words, {d} deletes -> deletes.csv ({s})\n", .{
+        word_count,
+        delete_count,
+        if (id_mode) "word_id" else "word",
+    });
+}
+
+const DictionaryRow = struct {
+    /// Value written in the second CSV column (word text or word_id).
+    ref: []const u8,
+    /// Surface form used to generate delete variants.
+    word: []const u8,
+};
+
+fn parseDictionaryWordRow(line: []const u8) ?DictionaryRow {
+    const comma = std.mem.indexOfScalar(u8, line, ',') orelse return null;
+    var word = line[0..comma];
+    if (word.len >= 2 and word[0] == '"' and word[word.len - 1] == '"') {
+        word = word[1 .. word.len - 1];
+    }
+    if (word.len == 0) return null;
+    return .{ .ref = word, .word = word };
+}
+
+fn parseDictionaryIdRow(line: []const u8) ?DictionaryRow {
+    const c1 = std.mem.indexOfScalar(u8, line, ',') orelse return null;
+    const c2 = std.mem.indexOfScalarPos(u8, line, c1 + 1, ',') orelse return null;
+    const id = std.mem.trim(u8, line[0..c1], " \t");
+    var word = line[c1 + 1 .. c2];
+    if (word.len >= 2 and word[0] == '"' and word[word.len - 1] == '"') {
+        word = word[1 .. word.len - 1];
+    }
+    if (id.len == 0 or word.len == 0) return null;
+    return .{ .ref = id, .word = word };
+}
+
+/// Recursively emits delete-only variants of `current` that map back to `ref`
+/// (`ref` is either the original word or its integer id as text).
+fn emitDeletes(
+    allocator: std.mem.Allocator,
+    seen: *std.StringHashMap(void),
+    out: *Io.Writer,
+    ref: []const u8,
+    current: []const u8,
+    distance_left: u8,
+    delete_count: *usize,
+) !void {
+    if (distance_left == 0) return;
+
+    var cps: std.array_list.Managed([]const u8) = .init(allocator);
+    defer cps.deinit();
+    try utf8CodepointSlices(current, &cps);
+    if (cps.items.len == 0) return;
+
+    var i: usize = 0;
+    while (i < cps.items.len) : (i += 1) {
+        const deleted = try concatCodepointsExcept(allocator, cps.items, i);
+        const gop = try seen.getOrPut(deleted);
+        if (gop.found_existing) continue;
+        gop.value_ptr.* = {};
+
+        try writeDeleteRow(out, deleted, ref);
+        delete_count.* += 1;
+        try emitDeletes(allocator, seen, out, ref, deleted, distance_left - 1, delete_count);
+    }
+}
+
+fn utf8CodepointSlices(s: []const u8, out: *std.array_list.Managed([]const u8)) !void {
+    var i: usize = 0;
+    while (i < s.len) {
+        const len = std.unicode.utf8ByteSequenceLength(s[i]) catch {
+            i += 1;
+            continue;
+        };
+        if (i + len > s.len) break;
+        try out.append(s[i .. i + len]);
+        i += len;
+    }
+}
+
+fn concatCodepointsExcept(allocator: std.mem.Allocator, cps: []const []const u8, skip: usize) ![]const u8 {
+    var total: usize = 0;
+    for (cps, 0..) |cp, i| {
+        if (i != skip) total += cp.len;
+    }
+    const buf = try allocator.alloc(u8, total);
+    var o: usize = 0;
+    for (cps, 0..) |cp, i| {
+        if (i == skip) continue;
+        @memcpy(buf[o .. o + cp.len], cp);
+        o += cp.len;
+    }
+    return buf;
+}
+
+fn writeDeleteRow(out: *Io.Writer, delete_key: []const u8, ref: []const u8) !void {
+    try writeCsvField(out, delete_key);
+    try out.writeByte(',');
+    try writeCsvField(out, ref);
+    try out.writeByte('\n');
 }
 
 /// Extracts the third CSV column (`value`) from a `page_id,rev_id,"value"` row.
@@ -295,8 +472,10 @@ fn isAllBengaliDigits(s: []const u8) bool {
     return any;
 }
 
-fn writePairRow(out: *Io.Writer, value: []const u8, next_value: []const u8) !void {
+fn writeTripletRow(out: *Io.Writer, value: []const u8, mid_value: []const u8, next_value: []const u8) !void {
     try writeCsvField(out, value);
+    try out.writeByte(',');
+    try writeCsvField(out, mid_value);
     try out.writeByte(',');
     try writeCsvField(out, next_value);
     try out.writeByte('\n');
@@ -317,12 +496,12 @@ fn writeCsvField(out: *Io.Writer, s: []const u8) !void {
     try out.writeByte('"');
 }
 
-fn reportPairProgress(pos: u64, total: u64, sentences: usize, pairs: usize) void {
+fn reportTripletProgress(pos: u64, total: u64, sentences: usize, triplets: usize) void {
     const percent: f64 = if (total > 0)
         @as(f64, @floatFromInt(pos)) / @as(f64, @floatFromInt(total)) * 100.0
     else
         0.0;
-    std.debug.print("\r{d:6.2}% | {d} sentences | {d} word pairs\x1b[K", .{ percent, sentences, pairs });
+    std.debug.print("\r{d:6.2}% | {d} sentences | {d} word triplets\x1b[K", .{ percent, sentences, triplets });
 }
 
 /// Splits `text` into clean Bangla sentences and appends one CSV row per
