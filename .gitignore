@@ -196,6 +196,7 @@ tmp
 
 *.jsonl
 *.csv
+!packages/data/src/queries/confusions_seed.csv
 .DS_Store
 
 .build/

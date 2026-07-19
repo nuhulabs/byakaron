@@ -7,7 +7,10 @@
 SELECT 'dictionary' AS t, COUNT(*) AS n FROM dictionary
 UNION ALL SELECT 'deletes', COUNT(*) FROM deletes
 UNION ALL SELECT 'bigrams', COUNT(*) FROM bigrams
-UNION ALL SELECT 'trigrams', COUNT(*) FROM trigrams;
+UNION ALL SELECT 'trigrams', COUNT(*) FROM trigrams
+UNION ALL SELECT 'confusions', COUNT(*) FROM confusions;
+
+SELECT from_g, to_g, weight, kind FROM confusions ORDER BY kind, from_g, to_g LIMIT 20;
 
 SELECT ROUND(page_count * page_size / 1024.0 / 1024.0, 1) AS db_mb
 FROM pragma_page_count(), pragma_page_size();
