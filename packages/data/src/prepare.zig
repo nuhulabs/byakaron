@@ -1,8 +1,12 @@
 //! Assemble `spell.db` from `export_id/` CSVs via the `sqlite3` CLI.
 //!
 //!   zig build export            # once (word_triplets → CSVs)
-//!   zig build prepare           # SymSpell + confusions + sqlite3 → spell.db
+//!   zig build prepare           # merge Avro + SymSpell + confusions + sqlite3 → spell.db
 //!   zig build prepare -- --debug-db
+//!   zig build prepare -- --no-avro          # wiki-only lexicon
+//!
+//! By default, Avro IME words from `dictionary_macos.csv` are appended to the
+//! Wikipedia dictionary (synthetic frequency 1) before SymSpell / import.
 //!
 //! Requires `sqlite3` on PATH. Pass the `data` exe path as the first argument
 //! when invoked from the build system.
@@ -19,6 +23,12 @@ const EXPORT_DEBUG = "export";
 const SPELL_DB = "spell.db";
 const SPELL_DEBUG_DB = "spell_debug.db";
 const WEBZ_DEFAULT_DB = "../../platforms/webz/zig-out/data/db/default.db";
+const AVRO_DICT = "dictionary_macos.csv";
+const DICT_PREPARED_ID = "export_id/dictionary_prepared.csv";
+const DICT_PREPARED_DEBUG = "export/dictionary_prepared.csv";
+/// Frequency assigned to Avro-only lemmas (unattested in wiki). Kept low so
+/// Wikipedia-attested candidates still win ranking ties.
+const AVRO_FREQUENCY: u64 = 1;
 
 pub fn main(init: std.process.Init) !void {
     const gpa = init.gpa;
@@ -30,6 +40,7 @@ pub fn main(init: std.process.Init) !void {
     var data_exe: ?[]const u8 = null;
     var debug_db = false;
     var webz_copy = true;
+    var include_avro = true;
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
         const a = args[i];
@@ -37,6 +48,8 @@ pub fn main(init: std.process.Init) !void {
             debug_db = true;
         } else if (std.mem.eql(u8, a, "--no-webz-copy")) {
             webz_copy = false;
+        } else if (std.mem.eql(u8, a, "--no-avro")) {
+            include_avro = false;
         } else if (std.mem.startsWith(u8, a, "-")) {
             std.debug.print("unknown flag: {s}\n", .{a});
             return error.InvalidArguments;
@@ -61,20 +74,38 @@ pub fn main(init: std.process.Init) !void {
     try needFile(io, SEED, "missing confusion seed");
     try needFile(io, SCHEMA_ID, "missing sqlite schema");
 
+    const dict_id = if (include_avro) DICT_PREPARED_ID else EXPORT_ID ++ "/dictionary.csv";
+    if (include_avro) {
+        try needFile(io, AVRO_DICT, "convert Avro Dictionary.json → dictionary_macos.csv");
+        std.debug.print("\n==> [0/5] Merge Avro lexicon into Wikipedia dictionary\n", .{});
+        const stats = try mergeAvroDictionary(gpa, io, .{
+            .wiki_csv = EXPORT_ID ++ "/dictionary.csv",
+            .avro_csv = AVRO_DICT,
+            .out_csv = DICT_PREPARED_ID,
+            .id_mode = true,
+        });
+        std.debug.print(
+            "    wiki={d} + avro_new={d} → {d} words ({s})\n",
+            .{ stats.wiki_count, stats.avro_added, stats.total, DICT_PREPARED_ID },
+        );
+    } else {
+        std.debug.print("\n==> [0/5] skip Avro merge (--no-avro)\n", .{});
+    }
+
     // --- Product spell.db (id-keyed) ---
     std.debug.print("\n==> [1/5] SymSpell deletes (export_id, word_id mode)\n", .{});
-    try runData(gpa, io, data, &.{ "--symspell-deletes", EXPORT_ID ++ "/dictionary.csv" });
+    try runData(gpa, io, data, &.{ "--symspell-deletes", dict_id });
     try moveFile(io, "deletes.csv", EXPORT_ID ++ "/deletes.csv");
 
     std.debug.print("\n==> [2/5] Mine confusion weights\n", .{});
-    try runData(gpa, io, data, &.{ "--mine-confusions", EXPORT_ID ++ "/dictionary.csv", SEED });
+    try runData(gpa, io, data, &.{ "--mine-confusions", dict_id, SEED });
     try moveFile(io, "confusions.csv", EXPORT_ID ++ "/confusions.csv");
     if (try fileExists(io, "confusions_mined.csv")) {
         try moveFile(io, "confusions_mined.csv", EXPORT_ID ++ "/confusions_mined.csv");
     }
 
     std.debug.print("\n==> [3/5] Assemble {s} via sqlite3\n", .{SPELL_DB});
-    try assembleIdDb(gpa, io);
+    try assembleIdDb(gpa, io, dict_id);
 
     if (webz_copy) {
         std.debug.print("\n==> [4/5] Copy {s} → {s}\n", .{ SPELL_DB, WEBZ_DEFAULT_DB });
@@ -90,10 +121,25 @@ pub fn main(init: std.process.Init) !void {
         try needFile(io, EXPORT_DEBUG ++ "/trigrams.csv", "run: zig build export");
         try needFile(io, SCHEMA_DEBUG, "missing debug sqlite schema");
 
+        const dict_debug = if (include_avro) DICT_PREPARED_DEBUG else EXPORT_DEBUG ++ "/dictionary.csv";
+        if (include_avro) {
+            std.debug.print("    Merge Avro into debug dictionary…\n", .{});
+            const stats = try mergeAvroDictionary(gpa, io, .{
+                .wiki_csv = EXPORT_DEBUG ++ "/dictionary.csv",
+                .avro_csv = AVRO_DICT,
+                .out_csv = DICT_PREPARED_DEBUG,
+                .id_mode = false,
+            });
+            std.debug.print(
+                "    wiki={d} + avro_new={d} → {d} words\n",
+                .{ stats.wiki_count, stats.avro_added, stats.total },
+            );
+        }
+
         std.debug.print("    SymSpell deletes (text mode) — large!\n", .{});
-        try runData(gpa, io, data, &.{ "--symspell-deletes", EXPORT_DEBUG ++ "/dictionary.csv" });
+        try runData(gpa, io, data, &.{ "--symspell-deletes", dict_debug });
         try moveFile(io, "deletes.csv", EXPORT_DEBUG ++ "/deletes.csv");
-        try assembleDebugDb(gpa, io);
+        try assembleDebugDb(gpa, io, dict_debug);
     } else {
         std.debug.print("\n==> [5/5] skip spell_debug.db (pass --debug-db to build it)\n", .{});
     }
@@ -101,20 +147,175 @@ pub fn main(init: std.process.Init) !void {
     std.debug.print("\n==> prepare done → {s}\n", .{SPELL_DB});
 }
 
-fn assembleIdDb(gpa: std.mem.Allocator, io: Io) !void {
+const MergeStats = struct {
+    wiki_count: usize,
+    avro_added: usize,
+    total: usize,
+};
+
+const MergeOptions = struct {
+    wiki_csv: []const u8,
+    avro_csv: []const u8,
+    out_csv: []const u8,
+    /// true → input/output `id,word,frequency`; false → `word,frequency`
+    id_mode: bool,
+};
+
+/// Append Avro-only words onto the Wikipedia dictionary CSV.
+/// Existing wiki frequencies are preserved; new lemmas get `AVRO_FREQUENCY`.
+fn mergeAvroDictionary(gpa: std.mem.Allocator, io: Io, opts: MergeOptions) !MergeStats {
+    var arena_state: std.heap.ArenaAllocator = .init(gpa);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    var seen: std.StringHashMapUnmanaged(void) = .empty;
+
+    var out_file = try Io.Dir.cwd().createFile(io, opts.out_csv, .{});
+    defer out_file.close(io);
+    var out_buf: [64 * 1024]u8 = undefined;
+    var out_writer = out_file.writer(io, &out_buf);
+    const out = &out_writer.interface;
+
+    if (opts.id_mode) {
+        try out.writeAll("id,word,frequency\n");
+    } else {
+        try out.writeAll("word,frequency\n");
+    }
+
+    var wiki_count: usize = 0;
+    var next_id: u64 = 1;
+
+    {
+        var in_file = try Io.Dir.cwd().openFile(io, opts.wiki_csv, .{});
+        defer in_file.close(io);
+        var in_buf: [64 * 1024]u8 = undefined;
+        var in_reader = in_file.reader(io, &in_buf);
+        const in = &in_reader.interface;
+
+        var header_done = false;
+        while (try in.takeDelimiter('\n')) |raw_line| {
+            const line = std.mem.trimEnd(u8, raw_line, "\r\n");
+            if (!header_done) {
+                header_done = true;
+                continue;
+            }
+            if (line.len == 0) continue;
+
+            const word = if (opts.id_mode)
+                parseIdWord(line) orelse continue
+            else
+                parseWordFreqWord(line) orelse continue;
+
+            const owned = try arena.dupe(u8, word);
+            try seen.put(arena, owned, {});
+
+            try out.writeAll(line);
+            try out.writeByte('\n');
+            wiki_count += 1;
+
+            if (opts.id_mode) {
+                if (parseId(line)) |id| {
+                    if (id >= next_id) next_id = id + 1;
+                }
+            }
+        }
+    }
+
+    var avro_added: usize = 0;
+    {
+        var in_file = try Io.Dir.cwd().openFile(io, opts.avro_csv, .{});
+        defer in_file.close(io);
+        var in_buf: [64 * 1024]u8 = undefined;
+        var in_reader = in_file.reader(io, &in_buf);
+        const in = &in_reader.interface;
+
+        var header_done = false;
+        while (try in.takeDelimiter('\n')) |raw_line| {
+            const line = std.mem.trimEnd(u8, raw_line, "\r\n");
+            if (!header_done) {
+                header_done = true;
+                continue;
+            }
+            if (line.len == 0) continue;
+
+            const word = stripCsvQuotes(line);
+            if (word.len == 0) continue;
+            if (seen.contains(word)) continue;
+
+            const owned = try arena.dupe(u8, word);
+            try seen.put(arena, owned, {});
+
+            if (opts.id_mode) {
+                try out.print("{d},", .{next_id});
+                next_id += 1;
+            }
+            try writeCsvField(out, word);
+            try out.print(",{d}\n", .{AVRO_FREQUENCY});
+            avro_added += 1;
+        }
+    }
+
+    try out.flush();
+    return .{
+        .wiki_count = wiki_count,
+        .avro_added = avro_added,
+        .total = wiki_count + avro_added,
+    };
+}
+
+fn parseId(line: []const u8) ?u64 {
+    const c1 = std.mem.indexOfScalar(u8, line, ',') orelse return null;
+    return std.fmt.parseInt(u64, std.mem.trim(u8, line[0..c1], " \t"), 10) catch null;
+}
+
+fn parseIdWord(line: []const u8) ?[]const u8 {
+    const c1 = std.mem.indexOfScalar(u8, line, ',') orelse return null;
+    const c2 = std.mem.indexOfScalarPos(u8, line, c1 + 1, ',') orelse return null;
+    return stripCsvQuotes(line[c1 + 1 .. c2]);
+}
+
+fn parseWordFreqWord(line: []const u8) ?[]const u8 {
+    const comma = std.mem.indexOfScalar(u8, line, ',') orelse return null;
+    return stripCsvQuotes(line[0..comma]);
+}
+
+fn stripCsvQuotes(field: []const u8) []const u8 {
+    if (field.len >= 2 and field[0] == '"' and field[field.len - 1] == '"') {
+        return field[1 .. field.len - 1];
+    }
+    return field;
+}
+
+fn writeCsvField(out: anytype, field: []const u8) !void {
+    const needs_quote = std.mem.indexOfAny(u8, field, ",\"\n\r") != null;
+    if (!needs_quote) {
+        try out.writeAll(field);
+        return;
+    }
+    try out.writeByte('"');
+    for (field) |c| {
+        if (c == '"') try out.writeAll("\"\"") else try out.writeByte(c);
+    }
+    try out.writeByte('"');
+}
+
+fn assembleIdDb(gpa: std.mem.Allocator, io: Io, dictionary_csv: []const u8) !void {
     Io.Dir.cwd().deleteFile(io, SPELL_DB) catch |err| switch (err) {
         error.FileNotFound => {},
         else => |e| return e,
     };
 
-    const script =
+    // sqlite3 .import needs a literal path; build the script with the chosen CSV.
+    var script_buf: std.ArrayList(u8) = .empty;
+    defer script_buf.deinit(gpa);
+    try script_buf.print(gpa,
         \\.echo off
         \\.timer on
         \\.print '→ creating schema…'
         \\.read src/queries/10_sqlite_schema_id.sql
         \\.print '→ importing dictionary…'
         \\.mode csv
-        \\.import --skip 1 'export_id/dictionary.csv' dictionary
+        \\.import --skip 1 '{s}' dictionary
         \\.print '→ importing deletes (largest step)…'
         \\.import --skip 1 'export_id/deletes.csv' deletes
         \\.print '→ importing bigrams…'
@@ -136,29 +337,31 @@ fn assembleIdDb(gpa: std.mem.Allocator, io: Io) !void {
         \\SELECT ROUND(page_count * page_size / 1024.0 / 1024.0, 1) AS db_mb
         \\FROM pragma_page_count(), pragma_page_size();
         \\.print 'spell.db ready'
-    ;
+    , .{dictionary_csv});
 
     const script_path = ".prepare_spell_id.sql";
-    try writeAll(io, script_path, script);
+    try writeAll(io, script_path, script_buf.items);
     defer Io.Dir.cwd().deleteFile(io, script_path) catch {};
 
     try runSqlite3(gpa, io, SPELL_DB, script_path);
 }
 
-fn assembleDebugDb(gpa: std.mem.Allocator, io: Io) !void {
+fn assembleDebugDb(gpa: std.mem.Allocator, io: Io, dictionary_csv: []const u8) !void {
     Io.Dir.cwd().deleteFile(io, SPELL_DEBUG_DB) catch |err| switch (err) {
         error.FileNotFound => {},
         else => |e| return e,
     };
 
-    const script =
+    var script_buf: std.ArrayList(u8) = .empty;
+    defer script_buf.deinit(gpa);
+    try script_buf.print(gpa,
         \\.echo off
         \\.timer on
         \\.print '→ creating schema…'
         \\.read src/queries/07_sqlite_schema.sql
         \\.print '→ importing dictionary…'
         \\.mode csv
-        \\.import --skip 1 'export/dictionary.csv' dictionary
+        \\.import --skip 1 '{s}' dictionary
         \\.print '→ importing deletes (very large for debug)…'
         \\.import --skip 1 'export/deletes.csv' deletes
         \\.print '→ importing bigrams…'
@@ -175,10 +378,10 @@ fn assembleDebugDb(gpa: std.mem.Allocator, io: Io) !void {
         \\UNION ALL SELECT 'bigrams', COUNT(*) FROM bigrams
         \\UNION ALL SELECT 'trigrams', COUNT(*) FROM trigrams;
         \\.print 'spell_debug.db ready'
-    ;
+    , .{dictionary_csv});
 
     const script_path = ".prepare_spell_debug.sql";
-    try writeAll(io, script_path, script);
+    try writeAll(io, script_path, script_buf.items);
     defer Io.Dir.cwd().deleteFile(io, script_path) catch {};
 
     try runSqlite3(gpa, io, SPELL_DEBUG_DB, script_path);
