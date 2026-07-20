@@ -9,6 +9,7 @@ const testing = std.testing;
 
 pub const Transliteration = @import("transliteration/transliteration.zig").Transliteration;
 pub const Tokenization = @import("tokenization/tokenizer.zig");
+pub const Spell = @import("Spell.zig");
 pub const TransliterationMode = @import("transliteration/transliteration.zig").Mode;
 
 // Pull in the C-ABI FFI exports (byakaron_transliterate / byakaron_string_free)

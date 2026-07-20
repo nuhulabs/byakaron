@@ -15,10 +15,19 @@ pub fn build(b: *std.Build) void {
     });
 
     // Tokenizer-only module (no FFI / libc) for wasm-friendly consumers like webz.
-    _ = b.addModule("tokenization", .{
+    const tokenization_mod = b.addModule("tokenization", .{
         .root_source_file = b.path("src/tokenization/tokenizer.zig"),
         .target = target,
         .optimize = optimize,
+    });
+
+    _ = b.addModule("spell", .{
+        .root_source_file = b.path("src/Spell.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "tokenization", .module = tokenization_mod },
+        },
     });
 
     {
