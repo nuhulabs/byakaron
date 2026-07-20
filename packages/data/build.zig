@@ -61,9 +61,10 @@ pub fn build(b: *std.Build) void {
     export_step.dependOn(&export_run.step);
 
     // prepare does NOT re-run export (export is slow). Run `zig build export` first when CSVs are stale.
+    // Default: merge dictionary_macos.csv (Avro). Opt out: zig build prepare -- --no-avro
     const prepare_step = b.step(
         "prepare",
-        "Assemble spell.db from export_id/ (sqlite3); optional --debug-db",
+        "Assemble spell.db from export_id/ (+ Avro by default); --no-avro / --debug-db",
     );
     const prepare_run = b.addRunArtifact(prepare_exe);
     prepare_run.setCwd(b.path("."));

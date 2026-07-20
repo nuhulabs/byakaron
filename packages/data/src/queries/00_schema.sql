@@ -5,11 +5,13 @@
 --
 --   zig build run -- --wordtriplets sentences.csv   → word_triplets.csv
 --   zig build export                                → export/ + export_id/
---   zig build prepare                               → spell.db (+ webz default.db)
+--   zig build prepare                               → spell.db (+ Avro + webz default.db)
+--   zig build prepare -- --no-avro                  → wiki-only spell.db
 --   zig build prepare -- --debug-db                 → also spell_debug.db
 --
--- `export` aggregates triplets in Zig. `prepare` (src/prepare.zig) runs SymSpell,
--- confusions, and sqlite3 import — it does not re-run export.
+-- `export` aggregates triplets in Zig. `prepare` (src/prepare.zig) merges
+-- dictionary_macos.csv (Avro) by default, then runs SymSpell, confusions, and
+-- sqlite3 import — it does not re-run export.
 --
 -- Legacy Postgres forge still documented under queries/01–09 if needed.
 -- ============================================================================
