@@ -7,6 +7,9 @@
         .ziex = .{
             .path = "../../../../ziex-dev/ziex",
         },
+        .byakaron = .{
+            .path = "../../",
+        },
     },
     .paths = .{
         "build.zig",

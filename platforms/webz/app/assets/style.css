@@ -290,7 +290,7 @@ body {
     text-underline-offset: 3px;
 }
 
-.editor-backdrop .tok + .tok::before {
+.editor-backdrop .tok+.tok::before {
     content: " ";
 }
 
@@ -404,7 +404,7 @@ body {
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding: 0.65rem 1.25rem 0.9rem;
+    padding: 0.65rem;
     border-top: 1px solid var(--line);
     color: var(--muted);
     font-size: 0.88rem;
