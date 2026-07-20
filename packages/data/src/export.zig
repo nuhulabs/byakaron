@@ -10,7 +10,7 @@ const Io = std.Io;
 
 const DEFAULT_INPUT = "word_triplets.csv";
 const DEFAULT_MIN_DEBUG: u64 = 2;
-const DEFAULT_MIN_ID: u64 = 150;
+const DEFAULT_MIN_ID: u64 = 15;
 
 pub fn main(init: std.process.Init) !void {
     const gpa = init.gpa;

@@ -12,6 +12,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     const tokenization_mod = byakaron_dep.module("tokenization");
+    const spell_mod = byakaron_dep.module("spell");
 
     // --- Ziex App Executable ---
     const app_exe = b.addExecutable(.{
@@ -22,6 +23,7 @@ pub fn build(b: *std.Build) !void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "tokenization", .module = tokenization_mod },
+                .{ .name = "spell", .module = spell_mod },
             },
         }),
     });
