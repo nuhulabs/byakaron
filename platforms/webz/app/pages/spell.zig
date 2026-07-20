@@ -1,5 +1,6 @@
 const std = @import("std");
 const zx = @import("zx");
+const Tokenizer = @import("tokenization").Tokenizer;
 
 pub const Suggestion = struct {
     word: []const u8,
@@ -104,28 +105,16 @@ fn ensureConfusions() void {
 pub fn checkText(allocator: std.mem.Allocator, text: []const u8) ![]const TokenResult {
     ensureConfusions();
 
+    // Shared Bangla tokenizer (nukta-normalized), same path as packages/data.
+    const tokens = try Tokenizer.wordsFromText(allocator, text, .{ .normalize = true });
+    if (tokens.len == 0) return &.{};
+
     var order: std.ArrayList([]const u8) = .empty;
     var unique: std.StringHashMapUnmanaged(void) = .empty;
-
-    var start: usize = 0;
-    var i: usize = 0;
-    while (i <= text.len) {
-        const at_end = i == text.len;
-        const is_space = !at_end and isTokenSep(text[i]);
-        if (at_end or is_space) {
-            if (i > start) {
-                const raw = text[start..i];
-                if (isCheckableWord(raw)) {
-                    try order.append(allocator, raw);
-                    _ = try unique.getOrPut(allocator, raw);
-                }
-            }
-            if (at_end) break;
-            i += 1;
-            start = i;
-        } else {
-            i += 1;
-        }
+    for (tokens) |w| {
+        if (w.len == 0) continue;
+        try order.append(allocator, w);
+        _ = try unique.getOrPut(allocator, w);
     }
 
     if (order.items.len == 0) return &.{};
@@ -530,22 +519,6 @@ fn concatCodepointsExcept(allocator: std.mem.Allocator, cps: []const []const u8,
         o += cp.len;
     }
     return buf;
-}
-
-fn isTokenSep(c: u8) bool {
-    return switch (c) {
-        ' ', '\t', '\n', '\r', ',', ';', ':', '?', '!', '"', '\'', '(', ')', '[', ']', '{', '}', '/', '\\' => true,
-        else => false,
-    };
-}
-
-fn isCheckableWord(s: []const u8) bool {
-    var it: std.unicode.Utf8Iterator = .{ .bytes = s, .i = 0 };
-    var bangla = false;
-    while (it.nextCodepoint()) |cp| {
-        if (cp >= 0x0980 and cp <= 0x09FF) bangla = true;
-    }
-    return bangla;
 }
 
 fn countCodepoints(s: []const u8) usize {

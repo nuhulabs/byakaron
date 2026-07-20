@@ -6,6 +6,13 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // --- Shared Bangla tokenizer (from byakaron; no libc, wasm-safe) ---
+    const byakaron_dep = b.dependency("byakaron", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const tokenization_mod = byakaron_dep.module("tokenization");
+
     // --- Ziex App Executable ---
     const app_exe = b.addExecutable(.{
         .name = "ziex_app",
@@ -13,6 +20,9 @@ pub fn build(b: *std.Build) !void {
             .root_source_file = b.path("app/main.zig"),
             .target = target,
             .optimize = optimize,
+            .imports = &.{
+                .{ .name = "tokenization", .module = tokenization_mod },
+            },
         }),
     });
 

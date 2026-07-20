@@ -14,6 +14,13 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
 
+    // Tokenizer-only module (no FFI / libc) for wasm-friendly consumers like webz.
+    _ = b.addModule("tokenization", .{
+        .root_source_file = b.path("src/tokenization/tokenizer.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     {
         const lib = b.addLibrary(.{
             .linkage = .static,
