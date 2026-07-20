@@ -17,19 +17,10 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
 
     return (
         <main @allocator={ctx.arena} class="app-shell">
-            <div class="app-window">
+            <form class="app-layout" method="post" action="/">
                 <aside class="sidebar">
-                    <div class="sidebar-top">
-                        <div class="traffic">
-                            <span class="dot red"></span>
-                            <span class="dot yellow"></span>
-                            <span class="dot green"></span>
-                        </div>
-                        <span class="sidebar-toggle" aria-hidden="true"></span>
-                    </div>
                     <h2 class="sidebar-title">Issues ({unknown_count})</h2>
-                    <form class="issue-list" method="post" action="/">
-                        <textarea class="sr-only" name="text" tabindex="-1" aria-hidden="true">{text}</textarea>
+                    <div class="issue-list">
                         {if (unknown_count == 0) (
                             <p class="issue-empty">No issues yet</p>
                         )}
@@ -45,7 +36,7 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
                                 <span class="issue-count">{issue.suggestion_count}</span>
                             </button>
                         )}
-                    </form>
+                    </div>
                 </aside>
 
                 <section class="main-pane">
@@ -54,62 +45,52 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
                             <h1 class="brand">Byakaron</h1>
                             <p class="brand-meta">{word_count} words · {unknown_count} issues</p>
                         </div>
-                        <form class="toolbar" method="post" action="/">
-                            <textarea class="sr-only" name="text" tabindex="-1" aria-hidden="true">{text}</textarea>
+                        <div class="toolbar">
                             <button class="tool-btn" type="submit" name="action" value="check" title="Check spelling" aria-label="Check spelling">
                                 <span class="icon-wand" aria-hidden="true"></span>
                             </button>
                             <button class="tool-btn" type="submit" name="action" value="clear" title="Clear" aria-label="Clear">
                                 <span class="icon-trash" aria-hidden="true"></span>
                             </button>
-                        </form>
+                        </div>
                     </header>
 
-                    <form class="editor-form" method="post" action="/">
-                        <input type="hidden" name="issue" value={selected_issue} />
-                        <div class="editor">
-                            {if (results.len > 0) (
-                                <div class="editor-backdrop" aria-hidden="true">
-                                    {for (results) |r| (
-                                        <span class={if (r.known) "tok" else "tok tok-bad"}>{r.token}</span>
-                                    )}
-                                </div>
-                            )}
-                            <textarea
-                                id="text"
-                                class="editor-input"
-                                name="text"
-                                rows="8"
-                                autofocus
-                                placeholder="এখানে বাংলা লিখুন…"
-                                spellcheck="false"
-                            >{text}</textarea>
-                        </div>
+                    <input type="hidden" name="issue" value={selected_issue} />
 
-                        {if (selected) |sel| (
-                            <div class="fix-bar">
-                                <div class="fix-target">
-                                    <span class="fix-word">{sel.token}</span>
-                                    <span class="fix-label">Replace with</span>
-                                </div>
-                                <div class="fix-chips">
-                                    {if (sel.suggestions.len == 0) (
-                                        <span class="fix-none">No suggestions</span>
-                                    )}
-                                    {for (sel.suggestions) |s| (
-                                        <button class="fix-chip" type="submit" name="replace" value={s.word}>{s.word}</button>
-                                    )}
-                                </div>
-                                <button class="fix-ignore" type="submit" name="action" value="ignore">Ignore</button>
+                    <div class="editor">
+                        {if (results.len > 0) (
+                            <div class="editor-backdrop" aria-hidden="true">
+                                {for (results) |r| (
+                                    <span class={if (r.known) "tok" else "tok tok-bad"}>{r.token}</span>
+                                )}
                             </div>
                         )}
-                        {if (selected == null and text.len > 0) (
-                            <div class="fix-bar fix-bar-ok">
-                                <span class="fix-ok">All words look good.</span>
-                                <button class="fix-ignore" type="submit" name="action" value="check">Recheck</button>
+                        <SpellEditor text={text} @rendering={.client} />
+                    </div>
+
+                    {if (selected) |sel| (
+                        <div class="fix-bar">
+                            <div class="fix-target">
+                                <span class="fix-word">{sel.token}</span>
+                                <span class="fix-label">Replace with</span>
                             </div>
-                        )}
-                    </form>
+                            <div class="fix-chips">
+                                {if (sel.suggestions.len == 0) (
+                                    <span class="fix-none">No suggestions</span>
+                                )}
+                                {for (sel.suggestions) |s| (
+                                    <button class="fix-chip" type="submit" name="replace" value={s.word}>{s.word}</button>
+                                )}
+                            </div>
+                            <button class="fix-ignore" type="submit" name="action" value="ignore">Ignore</button>
+                        </div>
+                    )}
+                    {if (selected == null and text.len > 0) (
+                        <div class="fix-bar fix-bar-ok">
+                            <span class="fix-ok">All words look good.</span>
+                            <button class="fix-ignore" type="submit" name="action" value="check">Recheck</button>
+                        </div>
+                    )}
 
                     <footer class="status-bar">
                         <div class="status-left">
@@ -130,9 +111,32 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
                         </div>
                     </footer>
                 </section>
-            </div>
+            </form>
         </main>
     );
+}
+
+pub fn SpellEditor(ctx: *zx.ComponentCtx(struct { text: []const u8 })) zx.Component {
+    const text = ctx.state([]const u8, ctx.props.text);
+
+    return (
+        <textarea
+            @allocator={ctx.allocator}
+            id="text"
+            class="editor-input"
+            name="text"
+            rows="8"
+            autofocus
+            placeholder="এখানে বাংলা লিখুন…"
+            spellcheck="false"
+            onchange={ctx.bind(onTextChange)}
+        >{text.get()}</textarea>
+    );
+}
+
+fn onTextChange(e: *zx.server.Event.Stateful) void {
+    const text = e.state([]const u8);
+    text.set(e.value() orelse "");
 }
 
 fn readInputText(ctx: zx.PageContext) ![]const u8 {
