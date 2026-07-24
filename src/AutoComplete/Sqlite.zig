@@ -1,4 +1,7 @@
 //! SQLite-backed AutoComplete via `zx.Db.Sqlite`.
+//!
+//! - `init` — open a private readonly connection to `path`.
+//! - `initBorrowed` — use an existing `zx.Db` (ziex app global `zx.db`).
 
 const Sqlite = @This();
 
@@ -7,7 +10,9 @@ const zx = @import("zx");
 const AutoComplete = @import("autocomplete");
 
 allocator: std.mem.Allocator,
-db: zx.Db,
+owned_db: zx.Db = undefined,
+owns_db: bool = false,
+db: *zx.Db,
 engine: AutoComplete,
 
 pub fn init(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !*Sqlite {
@@ -16,22 +21,43 @@ pub fn init(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !*Sqlite
 
     self.* = .{
         .allocator = allocator,
-        .db = try zx.Db.Sqlite.open(allocator, io, path, .{
+        .owned_db = try zx.Db.Sqlite.open(allocator, io, path, .{
             .readonly = true,
             .create = false,
             .readwrite = false,
             .max_pool_size = 1,
         }),
+        .owns_db = true,
+        .db = undefined,
         .engine = undefined,
     };
-    errdefer self.db.deinit();
+    errdefer self.owned_db.deinit();
+    self.db = &self.owned_db;
 
     self.engine = AutoComplete.init(&vtable, self);
     return self;
 }
 
+/// Wrap an existing app database into a caller-owned slot (no heap alloc).
+pub fn initBorrowedInto(self: *Sqlite, db: *zx.Db) void {
+    self.* = .{
+        .allocator = undefined,
+        .owns_db = false,
+        .db = db,
+        .engine = undefined,
+    };
+    self.engine = AutoComplete.init(&vtable, self);
+}
+
+pub fn initBorrowed(allocator: std.mem.Allocator, db: *zx.Db) !*Sqlite {
+    const self = try allocator.create(Sqlite);
+    initBorrowedInto(self, db);
+    self.allocator = allocator;
+    return self;
+}
+
 pub fn deinit(self: *Sqlite) void {
-    self.db.deinit();
+    if (self.owns_db) self.owned_db.deinit();
     self.allocator.destroy(self);
 }
 
