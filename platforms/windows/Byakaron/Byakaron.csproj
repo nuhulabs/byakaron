@@ -59,9 +59,11 @@
   </PropertyGroup>
 
   <!-- Zig FFI DLL + spell.db staged by platforms/windows/scripts/build_zig.ps1.
-       Named byakaron_ffi.dll so it does not overwrite the managed Byakaron.dll. -->
+       Named byakaron_ffi.dll so it does not overwrite the managed Byakaron.dll.
+       IME payload (ByakaronIME.dll + byakaron.dll) from build_ime.ps1. -->
   <Target Name="CopyNativeFfi" AfterTargets="Build">
     <MakeDir Directories="$(OutputPath)native" Condition="Exists('native\spell.db')" />
+    <MakeDir Directories="$(OutputPath)ime" Condition="Exists('ime\ByakaronIME.dll')" />
     <Copy
       SourceFiles="native\byakaron.dll"
       DestinationFiles="$(OutputPath)byakaron_ffi.dll"
@@ -72,5 +74,15 @@
       DestinationFiles="$(OutputPath)native\spell.db"
       SkipUnchangedFiles="true"
       Condition="Exists('native\spell.db')" />
+    <Copy
+      SourceFiles="ime\ByakaronIME.dll"
+      DestinationFiles="$(OutputPath)ime\ByakaronIME.dll"
+      SkipUnchangedFiles="true"
+      Condition="Exists('ime\ByakaronIME.dll')" />
+    <Copy
+      SourceFiles="ime\byakaron.dll"
+      DestinationFiles="$(OutputPath)ime\byakaron.dll"
+      SkipUnchangedFiles="true"
+      Condition="Exists('ime\byakaron.dll')" />
   </Target>
 </Project>
