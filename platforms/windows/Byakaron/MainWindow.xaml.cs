@@ -87,15 +87,13 @@ public sealed partial class MainWindow : Window
 
         foreach (var miss in _checker.Misspellings)
         {
-            // Suggestions are fetched on selection (see UpdateCorrectionBar) so we
-            // don't pay for suggest_ctx on every keystroke for the whole list.
             _issues.Add(new SpellIssue
             {
                 Id = miss.Id,
                 Word = miss.Word,
                 Offset = miss.Offset,
                 Length = miss.Length,
-                Suggestions = Array.Empty<string>(),
+                Suggestions = _checker.Suggestions(miss),
             });
         }
 
@@ -116,10 +114,21 @@ public sealed partial class MainWindow : Window
     private void SidebarToggleButton_Click(object sender, RoutedEventArgs e)
     {
         _sidebarVisible = !_sidebarVisible;
-        SidebarColumn.Width = _sidebarVisible
-            ? new GridLength(268)
-            : new GridLength(0);
-        SidebarPane.Visibility = _sidebarVisible ? Visibility.Visible : Visibility.Collapsed;
+        if (_sidebarVisible)
+        {
+            SidebarColumn.MinWidth = 220;
+            SidebarColumn.MaxWidth = 340;
+            SidebarColumn.Width = new GridLength(268);
+            SidebarPane.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            // MinWidth must drop too — otherwise the column stays ~220px empty.
+            SidebarColumn.MinWidth = 0;
+            SidebarColumn.MaxWidth = 0;
+            SidebarColumn.Width = new GridLength(0);
+            SidebarPane.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void EditorTextBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -216,7 +225,7 @@ public sealed partial class MainWindow : Window
         }
 
         var miss = _checker.Misspellings.FirstOrDefault(m => m.Id == issue.Id);
-        if (miss is not null)
+        if (miss is not null && issue.Suggestions.Count == 0)
         {
             issue.Suggestions = _checker.Suggestions(miss);
         }

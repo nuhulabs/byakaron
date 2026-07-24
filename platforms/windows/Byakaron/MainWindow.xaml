@@ -50,7 +50,7 @@
         <!-- Body: sidebar | detail (macOS NavigationSplitView → Win11 split) -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="SidebarColumn" Width="268" MinWidth="220" MaxWidth="340" />
+                <ColumnDefinition x:Name="SidebarColumn" Width="268" MinWidth="0" MaxWidth="340" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
@@ -121,7 +121,7 @@
                                             VerticalAlignment="Center"
                                             FontSize="11"
                                             Foreground="{StaticResource AppMutedTextBrush}"
-                                            Text="{x:Bind SuggestionCount}" />
+                                            Text="{x:Bind SuggestionCount, Mode=OneWay}" />
                                     </Border>
                                 </Grid>
                             </DataTemplate>
