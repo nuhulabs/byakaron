@@ -12,6 +12,7 @@
     <WinUISDKReferences>false</WinUISDKReferences>
     <EnableMsixTooling>true</EnableMsixTooling>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,8 +25,7 @@
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
   </ItemGroup>
 
-  <!-- Exclude the nested AppX copy of the app from the root project build.
-       It contains its own generated sources and would otherwise cause duplicate types. -->
+  <!-- Exclude nested AppX copies that would duplicate types. -->
   <ItemGroup>
     <Compile Remove="AppX\**\*.cs" />
     <Page Remove="AppX\**\*.xaml" />
@@ -38,33 +38,39 @@
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 
-  <!--
-    Defining the "Msix" ProjectCapability here allows the Single-project MSIX Packaging
-    Tools extension to be activated for this project even if the Windows App SDK Nuget
-    package has not yet been restored.
-  -->
   <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
     <ProjectCapability Include="Msix" />
   </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.2.0" />
   </ItemGroup>
 
-  <!--
-    Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution
-    Explorer "Package and Publish" context menu entry to be enabled for this project even if
-    the Windows App SDK Nuget package has not yet been restored.
-  -->
   <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
     <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
   </PropertyGroup>
 
-  <!-- Publish Properties -->
   <PropertyGroup>
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
   </PropertyGroup>
+
+  <!-- Zig FFI DLL + spell.db staged by platforms/windows/scripts/build_zig.ps1.
+       Named byakaron_ffi.dll so it does not overwrite the managed Byakaron.dll. -->
+  <Target Name="CopyNativeFfi" AfterTargets="Build">
+    <MakeDir Directories="$(OutputPath)native" Condition="Exists('native\spell.db')" />
+    <Copy
+      SourceFiles="native\byakaron.dll"
+      DestinationFiles="$(OutputPath)byakaron_ffi.dll"
+      SkipUnchangedFiles="true"
+      Condition="Exists('native\byakaron.dll')" />
+    <Copy
+      SourceFiles="native\spell.db"
+      DestinationFiles="$(OutputPath)native\spell.db"
+      SkipUnchangedFiles="true"
+      Condition="Exists('native\spell.db')" />
+  </Target>
 </Project>

@@ -66,9 +66,12 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    // Static lib (macOS Xcode links extracted objects). Shared lib (Windows C#
+    // P/Invoke loads byakaron.dll). `-Dshared` selects dynamic linkage.
+    const shared = b.option(bool, "shared", "Build shared library (DLL/dylib/so) for FFI") orelse false;
     {
         const lib = b.addLibrary(.{
-            .linkage = .static,
+            .linkage = if (shared) .dynamic else .static,
             .name = "byakaron",
             .root_module = mod,
         });
@@ -141,6 +144,21 @@ pub fn build(b: *std.Build) void {
         web_dev.setCwd(b.path("platforms/webz"));
         const run_web_step = b.step("run-web", "Run platforms/webz (`zig build dev`)");
         run_web_step.dependOn(&web_dev.step);
+    }
+
+    // Windows WinUI app — build shared FFI + stage native assets, then `dotnet build`.
+    if (builtin.os.tag == .windows) {
+        const win_script = rootPath(b, "platforms/windows/scripts/build_zig.ps1");
+        const win_zig = b.addSystemCommand(&.{ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", win_script });
+        win_zig.setCwd(b.path("platforms/windows"));
+        win_zig.has_side_effects = true;
+        const zig_dir = std.fs.path.dirname(b.graph.zig_exe) orelse "C:\\Windows\\System32";
+        const prev_path = win_zig.getEnvMap().get("PATH") orelse "";
+        win_zig.setEnvironmentVariable("PATH", b.fmt("{s};{s}", .{ zig_dir, prev_path }));
+        win_zig.setEnvironmentVariable("ZIG_EXE", b.graph.zig_exe);
+
+        const windows_step = b.step("windows", "Build Zig FFI DLL and stage for WinUI app");
+        windows_step.dependOn(&win_zig.step);
     }
 
     // Testing
