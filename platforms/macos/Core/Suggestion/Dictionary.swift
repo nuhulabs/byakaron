@@ -56,9 +56,18 @@ final class SpellEngine {
     // MARK: - Suggestions
 
     /// Ranked correction candidates for a (presumed misspelled) word.
-    func suggestions(for word: String, limit: Int = 8) -> [String] {
+    /// Optional neighbors boost ranking via bigram/trigram frequencies in spell.db.
+    func suggestions(
+        for word: String,
+        prev2: String = "",
+        prev1: String = "",
+        next: String = "",
+        limit: Int = 8
+    ) -> [String] {
         guard let handle else { return [] }
-        guard let cstr = byakaron_spell_suggest(handle, word, Int32(limit)) else { return [] }
+        guard let cstr = byakaron_spell_suggest_ctx(
+            handle, word, prev2, prev1, next, Int32(limit)
+        ) else { return [] }
         defer { byakaron_string_free(cstr) }
         let json = String(cString: cstr)
         guard let data = json.data(using: .utf8),

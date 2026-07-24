@@ -560,23 +560,37 @@ pub const Tokenizer = struct {
         return self.current_token;
     }
 
+    fn tokenOffset(self: *const Tokenizer, token: Token) usize {
+        return @intFromPtr(token.value.ptr) - @intFromPtr(self.input.ptr);
+    }
+
+    /// True when a peeked token still belongs to `[0, end)` of the current paragraph.
+    /// Needed because `parse()` pre-loads `current_token`, which advances `position`
+    /// past that token — a single-word paragraph can have `position == end` while
+    /// the word is still sitting in `current_token`.
+    fn peekedTokenInRange(self: *const Tokenizer, end: usize) bool {
+        const tok = self.current_token orelse return false;
+        return self.tokenOffset(tok) < end;
+    }
+
     fn parseParagraph(self: *Tokenizer, start: usize, end: usize) !?ParagraphNode {
         var sentence_list = std.array_list.Managed(SentenceNode).init(self.allocator);
         var para_success = false;
         defer if (!para_success) sentence_list.deinit();
 
-        // Process sentences
-        while (self.position < end) {
+        while (self.position < end or self.peekedTokenInRange(end)) {
             const sentence = try self.parseSentence();
             if (sentence) |s| {
                 try sentence_list.append(s);
+            } else if (!self.peekedTokenInRange(end)) {
+                break;
             }
 
-            // Skip whitespace between sentences
-            while (self.peek()) |token| {
-                if (token.kind == .whitespace and self.position < end) {
-                    _ = try self.next();
-                } else break;
+            // Skip whitespace between sentences without peeking into the next paragraph.
+            while (self.position < end) {
+                const token = self.peek() orelse break;
+                if (token.kind != .whitespace or self.tokenOffset(token) >= end) break;
+                _ = try self.next();
             }
         }
 
@@ -905,6 +919,17 @@ pub fn normalizeWord(allocator: std.mem.Allocator, word: []const u8) ![]u8 {
 
     // Shrink the buffer to fit and return the owned slice.
     return buffer.toOwnedSlice();
+}
+
+test "wordsFromText single bangla word" {
+    const allocator = std.testing.allocator;
+    const words = try Tokenizer.wordsFromText(allocator, "বালাদেশ", .{ .normalize = true });
+    defer {
+        for (words) |w| allocator.free(w);
+        allocator.free(words);
+    }
+    std.debug.print("\nsingle-word count={d}\n", .{words.len});
+    try std.testing.expectEqual(@as(usize, 1), words.len);
 }
 
 test "wordsFromText normalizes nukta and keeps hyphen compounds" {

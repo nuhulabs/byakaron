@@ -62,6 +62,34 @@ pub const VTable = struct {
         limit: i64,
     ) anyerror![]const LexiconEntry,
 
+    /// Bigram frequencies for fixed `left` × each of `rights` (hits only).
+    /// `LexiconEntry.word` is the right word; `.frequency` is the bigram count.
+    lookup_bigrams: *const fn (
+        ctx: *anyopaque,
+        allocator: std.mem.Allocator,
+        left: []const u8,
+        rights: []const []const u8,
+    ) anyerror![]const LexiconEntry,
+
+    /// Bigram frequencies for each of `lefts` × fixed `right` (hits only).
+    /// `LexiconEntry.word` is the left word; `.frequency` is the bigram count.
+    lookup_bigrams_right: *const fn (
+        ctx: *anyopaque,
+        allocator: std.mem.Allocator,
+        lefts: []const []const u8,
+        right: []const u8,
+    ) anyerror![]const LexiconEntry,
+
+    /// Trigram frequencies for fixed `(w1, w2)` × each of `w3s` (hits only).
+    /// `LexiconEntry.word` is w3; `.frequency` is the trigram count.
+    lookup_trigrams: *const fn (
+        ctx: *anyopaque,
+        allocator: std.mem.Allocator,
+        w1: []const u8,
+        w2: []const u8,
+        w3s: []const []const u8,
+    ) anyerror![]const LexiconEntry,
+
     load_confusions: *const fn (
         ctx: *anyopaque,
         allocator: std.mem.Allocator,
@@ -161,7 +189,7 @@ pub fn checkText(self: *Spell, allocator: std.mem.Allocator, text: []const u8) !
         for (rows) |row| try confuse_hits.put(allocator, row.word, row);
     }
 
-    var suggest_by_word: std.StringHashMapUnmanaged([]const Suggestion) = .empty;
+    var cand_by_oov: std.StringHashMapUnmanaged(std.StringHashMapUnmanaged(RankedCandidate)) = .empty;
     for (oov_words.items) |w| {
         var best: std.StringHashMapUnmanaged(RankedCandidate) = .empty;
 
@@ -179,22 +207,78 @@ pub fn checkText(self: *Spell, allocator: std.mem.Allocator, text: []const u8) !
             try considerCandidate(allocator, &best, &self.confusions, w, hit.word, hit.frequency);
         }
 
-        try suggest_by_word.put(allocator, w, try finishSuggestions(allocator, &best, 8));
+        try cand_by_oov.put(allocator, w, best);
     }
 
     var out: std.ArrayList(TokenResult) = .empty;
-    for (order.items) |tok| {
+    for (order.items, 0..) |tok, i| {
         if (known.contains(tok)) {
             try out.append(allocator, .{ .token = tok, .known = true, .suggestions = &.{} });
-        } else {
-            try out.append(allocator, .{
-                .token = tok,
-                .known = false,
-                .suggestions = suggest_by_word.get(tok) orelse &.{},
-            });
+            continue;
         }
+
+        const base = cand_by_oov.getPtr(tok) orelse {
+            try out.append(allocator, .{ .token = tok, .known = false, .suggestions = &.{} });
+            continue;
+        };
+
+        var ranked = try cloneRanked(allocator, base.*);
+        const prev2: []const u8 = if (i >= 2) order.items[i - 2] else "";
+        const prev1: []const u8 = if (i >= 1) order.items[i - 1] else "";
+        const next: []const u8 = if (i + 1 < order.items.len) order.items[i + 1] else "";
+        try applyNgramContext(self, allocator, &ranked, prev2, prev1, next);
+
+        try out.append(allocator, .{
+            .token = tok,
+            .known = false,
+            .suggestions = try finishSuggestions(allocator, &ranked, 8),
+        });
     }
     return try out.toOwnedSlice(allocator);
+}
+
+/// Ranked corrections for a single misspelled word, optionally boosted by
+/// left/right n-gram context (`prev2 prev1 _ next`).
+pub fn suggestWord(
+    self: *Spell,
+    allocator: std.mem.Allocator,
+    word: []const u8,
+    prev2: []const u8,
+    prev1: []const u8,
+    next: []const u8,
+    limit: usize,
+) ![]const Suggestion {
+    if (word.len == 0) return &.{};
+    try self.ensureConfusions();
+
+    // Reuse checkText on a tiny synthetic phrase so SymSpell + confusions stay
+    // in one path; context words that are empty are omitted.
+    var buf: std.ArrayList(u8) = .empty;
+    if (prev2.len > 0) {
+        try buf.appendSlice(allocator, prev2);
+        try buf.append(allocator, ' ');
+    }
+    if (prev1.len > 0) {
+        try buf.appendSlice(allocator, prev1);
+        try buf.append(allocator, ' ');
+    }
+    const target_index: usize = blk: {
+        var n: usize = 0;
+        if (prev2.len > 0) n += 1;
+        if (prev1.len > 0) n += 1;
+        break :blk n;
+    };
+    try buf.appendSlice(allocator, word);
+    if (next.len > 0) {
+        try buf.append(allocator, ' ');
+        try buf.appendSlice(allocator, next);
+    }
+
+    const results = try self.checkText(allocator, buf.items);
+    if (target_index >= results.len) return &.{};
+    const ranked = results[target_index].suggestions;
+    if (ranked.len <= limit) return ranked;
+    return ranked[0..limit];
 }
 
 pub fn prefixSuggest(self: *Spell, allocator: std.mem.Allocator, prefix: []const u8, limit: i64) ![]const Suggestion {
@@ -302,6 +386,72 @@ const RankedCandidate = struct {
     distance: usize,
     score: i64,
 };
+
+/// log2 boost weights — trigrams dominate left bigrams; right bigrams are a light tie-break.
+const trigram_context_weight: i64 = 140_000;
+const bigram_left_weight: i64 = 70_000;
+const bigram_right_weight: i64 = 45_000;
+
+fn cloneRanked(
+    allocator: std.mem.Allocator,
+    src: std.StringHashMapUnmanaged(RankedCandidate),
+) !std.StringHashMapUnmanaged(RankedCandidate) {
+    var dst: std.StringHashMapUnmanaged(RankedCandidate) = .empty;
+    var it = src.iterator();
+    while (it.next()) |e| {
+        try dst.put(allocator, e.key_ptr.*, e.value_ptr.*);
+    }
+    return dst;
+}
+
+fn ngramScoreBoost(freq: i64, weight: i64) i64 {
+    if (freq <= 0) return 0;
+    const f: u64 = @intCast(freq);
+    return @as(i64, @intCast(std.math.log2_int(u64, f + 1))) * weight;
+}
+
+fn applyNgramContext(
+    self: *Spell,
+    allocator: std.mem.Allocator,
+    best: *std.StringHashMapUnmanaged(RankedCandidate),
+    prev2: []const u8,
+    prev1: []const u8,
+    next: []const u8,
+) !void {
+    if (best.count() == 0) return;
+
+    var cands: std.ArrayList([]const u8) = .empty;
+    var it = best.keyIterator();
+    while (it.next()) |k| try cands.append(allocator, k.*);
+    if (cands.items.len == 0) return;
+
+    if (prev1.len > 0) {
+        const hits = try self.vtable.lookup_bigrams(self.ctx, allocator, prev1, cands.items);
+        for (hits) |h| {
+            if (best.getPtr(h.word)) |rc| {
+                rc.score += ngramScoreBoost(h.frequency, bigram_left_weight);
+            }
+        }
+    }
+
+    if (prev2.len > 0 and prev1.len > 0) {
+        const hits = try self.vtable.lookup_trigrams(self.ctx, allocator, prev2, prev1, cands.items);
+        for (hits) |h| {
+            if (best.getPtr(h.word)) |rc| {
+                rc.score += ngramScoreBoost(h.frequency, trigram_context_weight);
+            }
+        }
+    }
+
+    if (next.len > 0) {
+        const hits = try self.vtable.lookup_bigrams_right(self.ctx, allocator, cands.items, next);
+        for (hits) |h| {
+            if (best.getPtr(h.word)) |rc| {
+                rc.score += ngramScoreBoost(h.frequency, bigram_right_weight);
+            }
+        }
+    }
+}
 
 fn considerCandidate(
     allocator: std.mem.Allocator,

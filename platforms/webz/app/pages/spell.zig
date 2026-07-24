@@ -31,6 +31,9 @@ const db_vtable = Spell.VTable{
     .lookup_deletes = lookupDeletes,
     .prefix_suggest = prefixSuggestDb,
     .next_word_suggest = nextWordSuggestDb,
+    .lookup_bigrams = lookupBigrams,
+    .lookup_bigrams_right = lookupBigramsRight,
+    .lookup_trigrams = lookupTrigrams,
     .load_confusions = loadConfusions,
 };
 
@@ -72,6 +75,24 @@ fn nextWordSuggestDb(ctx: *anyopaque, allocator: std.mem.Allocator, previous_wor
         \\ORDER BY b.frequency DESC
         \\LIMIT ?2
     , .{ previous_word, limit });
+}
+
+fn lookupBigrams(ctx: *anyopaque, allocator: std.mem.Allocator, left: []const u8, rights: []const []const u8) ![]const Spell.LexiconEntry {
+    _ = ctx;
+    if (left.len == 0 or rights.len == 0) return &.{};
+    return try queryBigramsLeft(allocator, left, rights);
+}
+
+fn lookupBigramsRight(ctx: *anyopaque, allocator: std.mem.Allocator, lefts: []const []const u8, right: []const u8) ![]const Spell.LexiconEntry {
+    _ = ctx;
+    if (right.len == 0 or lefts.len == 0) return &.{};
+    return try queryBigramsRight(allocator, lefts, right);
+}
+
+fn lookupTrigrams(ctx: *anyopaque, allocator: std.mem.Allocator, w1: []const u8, w2: []const u8, w3s: []const []const u8) ![]const Spell.LexiconEntry {
+    _ = ctx;
+    if (w1.len == 0 or w2.len == 0 or w3s.len == 0) return &.{};
+    return try queryTrigrams(allocator, w1, w2, w3s);
 }
 
 fn loadConfusions(ctx: *anyopaque, allocator: std.mem.Allocator) ![]const Spell.ConfusionRule {
@@ -140,6 +161,104 @@ fn queryDeletesIn(allocator: std.mem.Allocator, keys: []const []const u8) ![]con
         try sql.appendSlice(allocator, ") ORDER BY dict.frequency DESC");
 
         const rows = try zx.db.rows(allocator, Spell.DeleteLookupHit, sql.items, .{});
+        try out.appendSlice(allocator, rows);
+    }
+    return try out.toOwnedSlice(allocator);
+}
+
+fn queryBigramsLeft(allocator: std.mem.Allocator, left: []const u8, rights: []const []const u8) ![]const Spell.LexiconEntry {
+    const chunk_size = 80;
+    var out: std.ArrayList(Spell.LexiconEntry) = .empty;
+    var offset: usize = 0;
+    while (offset < rights.len) {
+        const end = @min(offset + chunk_size, rights.len);
+        const chunk = rights[offset..end];
+        offset = end;
+
+        var sql: std.ArrayList(u8) = .empty;
+        try sql.appendSlice(allocator,
+            \\SELECT d2.word AS word, b.frequency AS frequency
+            \\FROM dictionary d1
+            \\JOIN bigrams b ON b.w1_id = d1.id
+            \\JOIN dictionary d2 ON d2.id = b.w2_id
+            \\WHERE d1.word =
+        );
+        try appendSqlString(allocator, &sql, left);
+        try sql.appendSlice(allocator, " AND d2.word IN (");
+        for (chunk, 0..) |w, i| {
+            if (i > 0) try sql.append(allocator, ',');
+            try appendSqlString(allocator, &sql, w);
+        }
+        try sql.append(allocator, ')');
+
+        const rows = try zx.db.rows(allocator, Spell.LexiconEntry, sql.items, .{});
+        try out.appendSlice(allocator, rows);
+    }
+    return try out.toOwnedSlice(allocator);
+}
+
+fn queryBigramsRight(allocator: std.mem.Allocator, lefts: []const []const u8, right: []const u8) ![]const Spell.LexiconEntry {
+    const chunk_size = 80;
+    var out: std.ArrayList(Spell.LexiconEntry) = .empty;
+    var offset: usize = 0;
+    while (offset < lefts.len) {
+        const end = @min(offset + chunk_size, lefts.len);
+        const chunk = lefts[offset..end];
+        offset = end;
+
+        var sql: std.ArrayList(u8) = .empty;
+        try sql.appendSlice(allocator,
+            \\SELECT d1.word AS word, b.frequency AS frequency
+            \\FROM dictionary d1
+            \\JOIN bigrams b ON b.w1_id = d1.id
+            \\JOIN dictionary d2 ON d2.id = b.w2_id
+            \\WHERE d2.word =
+        );
+        try appendSqlString(allocator, &sql, right);
+        try sql.appendSlice(allocator, " AND d1.word IN (");
+        for (chunk, 0..) |w, i| {
+            if (i > 0) try sql.append(allocator, ',');
+            try appendSqlString(allocator, &sql, w);
+        }
+        try sql.append(allocator, ')');
+
+        const rows = try zx.db.rows(allocator, Spell.LexiconEntry, sql.items, .{});
+        try out.appendSlice(allocator, rows);
+    }
+    return try out.toOwnedSlice(allocator);
+}
+
+fn queryTrigrams(allocator: std.mem.Allocator, w1: []const u8, w2: []const u8, w3s: []const []const u8) ![]const Spell.LexiconEntry {
+    const chunk_size = 80;
+    var out: std.ArrayList(Spell.LexiconEntry) = .empty;
+    var offset: usize = 0;
+    while (offset < w3s.len) {
+        const end = @min(offset + chunk_size, w3s.len);
+        const chunk = w3s[offset..end];
+        offset = end;
+
+        var sql: std.ArrayList(u8) = .empty;
+        try sql.appendSlice(allocator,
+            \\SELECT d3.word AS word, t.frequency AS frequency
+            \\FROM dictionary d1
+            \\JOIN dictionary d2 ON d2.word =
+        );
+        try appendSqlString(allocator, &sql, w2);
+        try sql.appendSlice(allocator,
+            \\
+            \\JOIN trigrams t ON t.w1_id = d1.id AND t.w2_id = d2.id
+            \\JOIN dictionary d3 ON d3.id = t.w3_id
+            \\WHERE d1.word =
+        );
+        try appendSqlString(allocator, &sql, w1);
+        try sql.appendSlice(allocator, " AND d3.word IN (");
+        for (chunk, 0..) |w, i| {
+            if (i > 0) try sql.append(allocator, ',');
+            try appendSqlString(allocator, &sql, w);
+        }
+        try sql.append(allocator, ')');
+
+        const rows = try zx.db.rows(allocator, Spell.LexiconEntry, sql.items, .{});
         try out.appendSlice(allocator, rows);
     }
     return try out.toOwnedSlice(allocator);

@@ -77,6 +77,20 @@ char *byakaron_spell_check(ByakaronSpell *spell, const char *text);
 char *byakaron_spell_suggest(ByakaronSpell *spell, const char *word, int limit);
 
 /*
+ * Like byakaron_spell_suggest, but ranks with trigram/bigram context:
+ *   prev2 prev1 [word] next
+ * Pass empty strings for unused neighbors.
+ */
+char *byakaron_spell_suggest_ctx(
+    ByakaronSpell *spell,
+    const char *word,
+    const char *prev2,
+    const char *prev1,
+    const char *next,
+    int limit
+);
+
+/*
  * 1 if the word is in the lexicon, 0 if unknown, -1 on error.
  */
 int byakaron_spell_is_correct(ByakaronSpell *spell, const char *word);
