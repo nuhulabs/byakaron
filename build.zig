@@ -135,6 +135,14 @@ pub fn build(b: *std.Build) void {
         run_macos_step.dependOn(&open_app.step);
     }
 
+    // Web spell UI (platforms/webz) — `zig build run-web` → `zig build dev` there.
+    {
+        const web_dev = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "dev" });
+        web_dev.setCwd(b.path("platforms/webz"));
+        const run_web_step = b.step("run-web", "Run platforms/webz (`zig build dev`)");
+        run_web_step.dependOn(&web_dev.step);
+    }
+
     // Testing
     {
         const lib_unit_tests = b.addTest(.{
