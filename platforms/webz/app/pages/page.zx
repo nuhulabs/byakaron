@@ -33,6 +33,12 @@ var check_seq: u32 = 0;
 var fetch_seq: u32 = 0;
 var ignored: std.StringHashMapUnmanaged(void) = .empty;
 
+/// Trailing throttle: at most one `/api/spell` per `check_throttle_ms` while typing.
+/// (zx.client has setTimeout but no clearTimeout, so we coalesce with an armed flag.)
+const check_throttle_ms: u32 = 400;
+var check_dirty: bool = false;
+var check_timer_armed: bool = false;
+
 pub fn Page(ctx: zx.PageContext) !zx.Component {
     // Seed from ?q= for shareable links; client takes over after hydrate.
     if (ctx.request.queries.get("q")) |q| {
@@ -297,11 +303,19 @@ fn onIgnore(_: zx.client.Event) void {
 
 fn scheduleCheck() void {
     check_seq += 1;
-    _ = zx.client.setTimeout(&onDebounceFire, 280);
+    check_dirty = true;
+    if (check_timer_armed) return;
+    check_timer_armed = true;
+    _ = zx.client.setTimeout(&onThrottleFire, check_throttle_ms);
 }
 
-fn onDebounceFire() void {
+fn onThrottleFire() void {
+    check_timer_armed = false;
+    if (!check_dirty) return;
+    check_dirty = false;
     startFetch();
+    // More keystrokes arrived while we were starting the fetch — arm another window.
+    if (check_dirty) scheduleCheck();
 }
 
 fn startFetch() void {

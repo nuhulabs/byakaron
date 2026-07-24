@@ -118,6 +118,9 @@ body {
     background: #fff;
     box-shadow: inset 2px 0 0 var(--warn);
     position: relative;
+    /* Clicks must hit the <button>, not child nodes — otherwise
+       Event.value() falls back to the span (no value) and selection no-ops. */
+    pointer-events: none;
 }
 
 .issue-icon::after {
@@ -130,6 +133,7 @@ body {
     font-family: system-ui, sans-serif;
     color: var(--warn);
     letter-spacing: -0.04em;
+    pointer-events: none;
 }
 
 .issue-item.is-active .issue-icon::after {
@@ -142,15 +146,20 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    pointer-events: none;
 }
 
 .issue-count {
     font-size: 0.85rem;
     color: var(--muted);
     font-variant-numeric: tabular-nums;
+    pointer-events: none;
 }
 
-/* —— Main pane —— */
+.tool-btn .icon-wand,
+.tool-btn .icon-trash {
+    pointer-events: none;
+}
 .main-pane {
     background: var(--panel);
     display: flex;
