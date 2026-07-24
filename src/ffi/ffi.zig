@@ -166,6 +166,17 @@ export fn byakaron_spell_check(spell: ?*SpellHandle, text: [*:0]const u8) ?[*:0]
 }
 
 export fn byakaron_spell_suggest(spell: ?*SpellHandle, word: [*:0]const u8, limit: c_int) ?[*:0]u8 {
+    return byakaron_spell_suggest_ctx(spell, word, "", "", "", limit);
+}
+
+export fn byakaron_spell_suggest_ctx(
+    spell: ?*SpellHandle,
+    word: [*:0]const u8,
+    prev2: [*:0]const u8,
+    prev1: [*:0]const u8,
+    next: [*:0]const u8,
+    limit: c_int,
+) ?[*:0]u8 {
     const handle = spell orelse return null;
     const allocator = std.heap.c_allocator;
     var arena = std.heap.ArenaAllocator.init(allocator);
@@ -173,11 +184,16 @@ export fn byakaron_spell_suggest(spell: ?*SpellHandle, word: [*:0]const u8, limi
     const a = arena.allocator();
 
     const lim: usize = if (limit > 0) @intCast(limit) else 8;
-    const suggestions = handle.backend.engine().checkText(a, std.mem.span(word)) catch return null;
-    const ranked = if (suggestions.len > 0) suggestions[0].suggestions else &.{};
-    const capped = if (ranked.len > lim) ranked[0..lim] else ranked;
+    const ranked = handle.backend.engine().suggestWord(
+        a,
+        std.mem.span(word),
+        std.mem.span(prev2),
+        std.mem.span(prev1),
+        std.mem.span(next),
+        lim,
+    ) catch return null;
 
-    const json = stringifyWords(a, capped) catch return null;
+    const json = stringifyWords(a, ranked) catch return null;
     return dupeCString(allocator, json);
 }
 

@@ -14,12 +14,19 @@ import AppKit
 struct BanglaSpellTextView: NSViewRepresentable {
     @Binding var text: String
 
+    /// When set, scroll/reveal this misspelled span in the editor.
+    var selectedRange: Range<String.Index>?
+
     /// Returns whether a token is spelled correctly.
     let isCorrect: (String) -> Bool
-    /// Returns ranked correction candidates for a misspelled token.
-    let suggestions: (String) -> [String]
+    /// Ranked corrections for a misspelled token at a known range (for context).
+    let suggestions: (String, Range<String.Index>) -> [String]
     /// Called when the user accepts a word ("Learn"/"Ignore") from the menu.
     let onLearn: (String) -> Void
+    /// Called just before a context-menu correction is committed, with the
+    /// UTF-16 range being replaced and the replacement's UTF-16 length — so the
+    /// parent can jump the issue list to the next misspelling.
+    var onApplied: ((NSRange, Int) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -49,6 +56,7 @@ struct BanglaSpellTextView: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let textView = scroll.documentView as? NSTextView else { return }
+        context.coordinator.parent = self
         // Sync text in when it changed from outside (e.g. a correction applied
         // from the sidebar), then always re-underline: a SwiftUI update can also
         // reach us with the *same* text but changed correctness — e.g. "Ignore"
@@ -57,16 +65,20 @@ struct BanglaSpellTextView: NSViewRepresentable {
             textView.string = text
         }
         context.coordinator.recheck()
+        context.coordinator.revealSelectionIfNeeded()
     }
 
     // MARK: - Coordinator
 
     final class Coordinator: NSObject, NSTextViewDelegate {
-        private let parent: BanglaSpellTextView
+        var parent: BanglaSpellTextView
         weak var textView: NSTextView?
 
         /// Debounce token so rapid typing coalesces into one recheck.
         private var pendingRecheck: DispatchWorkItem?
+
+        /// Last range we scrolled to, so we don't fight the user while they type.
+        private var lastRevealed: Range<String.Index>?
 
         init(_ parent: BanglaSpellTextView) {
             self.parent = parent
@@ -107,6 +119,17 @@ struct BanglaSpellTextView: NSViewRepresentable {
             _ = storage // silence unused in case layoutManager is nil
         }
 
+        /// Scroll the selected misspelling into view when the sidebar selection moves.
+        func revealSelectionIfNeeded() {
+            guard let textView, let selected = parent.selectedRange else { return }
+            guard selected != lastRevealed else { return }
+            lastRevealed = selected
+            let nsRange = NSRange(selected, in: parent.text)
+            guard nsRange.location != NSNotFound else { return }
+            textView.scrollRangeToVisible(nsRange)
+            textView.setSelectedRange(nsRange)
+        }
+
         // MARK: Context menu
 
         /// Inject our Bangla corrections at the top of the right-click menu when
@@ -120,8 +143,10 @@ struct BanglaSpellTextView: NSViewRepresentable {
             let word = ns.substring(with: wordRange)
             guard !parent.isCorrect(word) else { return menu }
 
+            let swiftRange = Range(wordRange, in: parent.text) ?? parent.text.startIndex..<parent.text.startIndex
+
             var insertAt = 0
-            let guesses = parent.suggestions(word)
+            let guesses = parent.suggestions(word, swiftRange)
             if guesses.isEmpty {
                 let none = NSMenuItem(title: "No suggestions", action: nil, keyEquivalent: "")
                 none.isEnabled = false
@@ -147,6 +172,8 @@ struct BanglaSpellTextView: NSViewRepresentable {
 
         @objc private func applyCorrection(_ sender: NSMenuItem) {
             guard let textView, let c = sender.representedObject as? Correction else { return }
+            let replacementUTF16 = (c.replacement as NSString).length
+            parent.onApplied?(c.range, replacementUTF16)
             if textView.shouldChangeText(in: c.range, replacementString: c.replacement) {
                 textView.replaceCharacters(in: c.range, with: c.replacement)
                 textView.didChangeText()
