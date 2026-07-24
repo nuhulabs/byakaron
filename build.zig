@@ -5,14 +5,29 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const mod = b.addModule("byakaron", .{
-        .root_source_file = b.path("src/root.zig"),
+    // zx (ziex) with SQLite — used by Spell/Sqlite.zig. `app_opts` is required by
+    // zx.App even though we only consume zx.Db from the library.
+    const ziex_dep = b.dependency("ziex", .{
         .target = target,
         .optimize = optimize,
-        // The C-ABI FFI layer (src/ffi/ffi.zig) uses std.heap.c_allocator so
-        // strings can be freed across the FFI boundary; that needs libc.
-        .link_libc = true,
+        .@"exclude-core-lang" = true,
+        .@"feature-sqlite" = true,
     });
+    const zx_mod = ziex_dep.module("zx");
+    {
+        const app_opts = b.addOptions();
+        app_opts.addOption(?[]const u8, "app_base_path", null);
+        app_opts.addOption(?u16, "server_port", null);
+        app_opts.addOption(?[]const u8, "server_address", null);
+        app_opts.addOption([]const u8, "cli_command", "--");
+        app_opts.addOption(bool, "introspect", false);
+        app_opts.addOption(bool, "feat_sqlite_server", false);
+        app_opts.addOption(bool, "feat_pg_server", false);
+        app_opts.addOption(bool, "feat_kv_server", false);
+        app_opts.addOption(bool, "feat_kv_client", false);
+        app_opts.addOption(bool, "feat_cache_server", false);
+        zx_mod.addOptions("app_opts", app_opts);
+    }
 
     // Tokenizer-only module (no FFI / libc) for wasm-friendly consumers like webz.
     const tokenization_mod = b.addModule("tokenization", .{
@@ -21,12 +36,33 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    _ = b.addModule("spell", .{
+    const spell_mod = b.addModule("spell", .{
         .root_source_file = b.path("src/Spell.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
             .{ .name = "tokenization", .module = tokenization_mod },
+        },
+    });
+
+    const autocomplete_mod = b.addModule("autocomplete", .{
+        .root_source_file = b.path("src/AutoComplete.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const mod = b.addModule("byakaron", .{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+        // The C-ABI FFI layer (src/ffi/ffi.zig) uses std.heap.c_allocator so
+        // strings can be freed across the FFI boundary; that needs libc.
+        .link_libc = true,
+        .imports = &.{
+            .{ .name = "zx", .module = zx_mod },
+            .{ .name = "tokenization", .module = tokenization_mod },
+            .{ .name = "spell", .module = spell_mod },
+            .{ .name = "autocomplete", .module = autocomplete_mod },
         },
     });
 
@@ -48,6 +84,12 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
+            .imports = &.{
+                .{ .name = "zx", .module = zx_mod },
+                .{ .name = "tokenization", .module = tokenization_mod },
+                .{ .name = "spell", .module = spell_mod },
+                .{ .name = "autocomplete", .module = autocomplete_mod },
+            },
         }),
     });
     b.installArtifact(exe);
@@ -57,224 +99,40 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    // Build macOS
-    //
-    // Replicates platforms/macos/scripts/build.sh as a graph of zig build steps:
-    //   1. cargo: build the Rust engine (libavrobangla_engine.a, arm64 release)
-    //   2. mac_lib + rearchive: build libbyakaron.a (arm64 ReleaseFast) and
-    //      re-pack it with the system `ar` so the macOS linker accepts the
-    //      member alignment (the Zig 0.17-dev archiver emits unaligned members).
-    //   3. swiftc x2: build the embedded IME helper and the SwiftUI main app.
-    //   4. codesign / embed: ad-hoc sign the IME, embed it, ad-hoc sign the app.
-    //
-    // Only wired up on macOS hosts (xcrun / swiftc / codesign are macOS-only).
+    // Build / run macOS app via the Xcode project (platforms/macos/scripts/build.sh).
+    // The old hand-rolled swiftc graph depended on removed resources (Info-app.plist,
+    // AppIcon.icns, iconTemplate.pdf); Xcode owns Info.plist generation and icons now.
     if (builtin.os.tag == .macos) {
-        const macos_step = b.step("macos", "Build macOS app (Byakaron.app)");
+        const macos_config = b.option(
+            []const u8,
+            "macos-config",
+            "Xcode configuration for macos / run-macos: debug or release",
+        ) orelse "debug";
 
-        // Resolve the macOS SDK path at configure time, mirroring the
-        // `xcrun --sdk macosx26.5 --show-sdk-path` call in build.sh.
-        const sdk_path = std.mem.trim(
-            u8,
-            b.run(&.{ "xcrun", "--sdk", "macosx27.0", "--show-sdk-path" }),
-            " \t\r\n",
-        );
-        const sdk_target = "arm64-apple-macos27.0";
-
-        // Fixed locations matching build.sh ($BUILD_DIR, products, resources).
-        const zig_include = rootPath(b, "src/ffi");
-        const zig_lib_dir = rootPath(b, "platforms/macos/build/zig");
-        const res_dir = rootPath(b, "platforms/macos/Resources");
-        const data_dir = rootPath(b, "platforms/macos/Resources");
-        const ime_name = "Byakaron Keyboard";
-        const ime_bundle = rootPath(b, "platforms/macos/build/Byakaron Keyboard.app");
+        const build_script = rootPath(b, "platforms/macos/scripts/build.sh");
         const app_bundle = rootPath(b, "platforms/macos/build/Byakaron.app");
-        const entitlements = rootPath(b, "platforms/macos/Resources/Byakaron.entitlements");
-        const bridge_header = rootPath(b, "platforms/macos/Core/Transliteration/BridgeHeader.h");
 
-        // Step 1b: Zig engine library (arm64-macos, ReleaseFast) as a real artifact.
-        const mac_target = b.resolveTargetQuery(.{ .cpu_arch = .aarch64, .os_tag = .macos });
-        const mac_mod = b.createModule(.{
-            .root_source_file = b.path("src/root.zig"),
-            .target = mac_target,
-            .optimize = .ReleaseFast,
-            .link_libc = true,
-        });
-        const mac_lib = b.addLibrary(.{
-            .linkage = .static,
-            .name = "byakaron",
-            .root_module = mac_mod,
-        });
+        const macos_build = b.addSystemCommand(&.{ "bash", build_script, macos_config });
+        macos_build.setCwd(b.path("platforms/macos"));
+        macos_build.has_side_effects = true;
+        // Xcode / build_zig.sh need zig on PATH (Cursor toolchain + common shims).
+        // Preserve the rest of the inherited environment; only prepend zig + Homebrew.
+        const zig_dir = std.fs.path.dirname(b.graph.zig_exe) orelse "/usr/bin";
+        const prev_path = macos_build.getEnvMap().get("PATH") orelse "/usr/bin:/bin";
+        macos_build.setEnvironmentVariable(
+            "PATH",
+            b.fmt("{s}:/opt/homebrew/bin:/usr/local/bin:{s}", .{ zig_dir, prev_path }),
+        );
 
-        // Re-archive libbyakaron.a with the system `ar` for member alignment.
-        const rearchive = b.addSystemCommand(&.{
-            "sh", "-c",
-            \\set -e
-            \\SRC="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
-            \\rm -rf "$1" && mkdir -p "$1"
-            \\cd "$1"
-            \\ar x "$SRC"
-            \\chmod 644 ./*.o
-            \\ar rcs libbyakaron.a ./*.o
-            ,
-            "_",
-        });
-        rearchive.addArg(zig_lib_dir);
-        rearchive.addFileArg(mac_lib.getEmittedBin());
-        rearchive.has_side_effects = true;
+        const macos_step = b.step("macos", "Build macOS app (Byakaron.app via xcodebuild)");
+        macos_step.dependOn(&macos_build.step);
 
-        // Step 2: Embedded IME helper bundle skeleton ("Byakaron Keyboard.app").
-        const ime_skel = b.addSystemCommand(&.{
-            "sh",    "-c",
-            \\set -e
-            \\B="$1"; RES="$2"; DATA="$3"
-            \\rm -rf "$B"
-            \\mkdir -p "$B/Contents/MacOS"
-            \\mkdir -p "$B/Contents/Resources/data"
-            \\cp "$RES/Info-keyboard.plist" "$B/Contents/Info.plist"
-            \\cp "$RES/iconTemplate.pdf"    "$B/Contents/Resources/iconTemplate.pdf"
-            \\cp "$RES/AppIcon.icns"        "$B/Contents/Resources/AppIcon.icns"
-            \\cp "$DATA"/*.json             "$B/Contents/Resources/data/"
-            \\printf 'APPL????' > "$B/Contents/PkgInfo"
-            ,
-            "_",     ime_bundle,
-            res_dir, data_dir,
-        });
-        ime_skel.has_side_effects = true;
+        const open_app = b.addSystemCommand(&.{ "open", app_bundle });
+        open_app.step.dependOn(&macos_build.step);
+        open_app.has_side_effects = true;
 
-        // Compile the IME helper executable into the bundle.
-        const ime_swiftc = b.addSystemCommand(&.{"swiftc"});
-        const ime_sources = [_][]const u8{
-            macSrc(b, "Keyboard/main.swift"),
-            macSrc(b, "Keyboard/AppDelegate.swift"),
-            macSrc(b, "Keyboard/SpellServer.swift"),
-            macSrc(b, "Keyboard/PhoneticInputController.swift"),
-            macSrc(b, "Keyboard/PhoneticDictionary.swift"),
-            macSrc(b, "Core/Transliteration/Transliterator.swift"),
-            macSrc(b, "Core/Settings/ByakaronSettings.swift"),
-        };
-        ime_swiftc.addArgs(&ime_sources);
-        ime_swiftc.addArgs(&.{
-            "-O",
-            "-module-name",
-            "Byakaron",
-            "-import-objc-header",
-            bridge_header,
-            "-I",
-            zig_include,
-            "-L",
-            zig_lib_dir,
-            "-lbyakaron",
-            "-sdk",
-            sdk_path,
-            "-target",
-            sdk_target,
-            "-framework",
-            "Cocoa",
-            "-framework",
-            "InputMethodKit",
-            "-framework",
-            "SwiftUI",
-            "-o",
-            b.fmt("{s}/Contents/MacOS/{s}", .{ ime_bundle, ime_name }),
-        });
-        ime_swiftc.has_side_effects = true;
-        ime_swiftc.step.dependOn(&rearchive.step);
-        ime_swiftc.step.dependOn(&ime_skel.step);
-
-        // Sign the IME bundle (ad-hoc) with entitlements.
-        const ime_sign = b.addSystemCommand(&.{
-            "codesign",       "--force",    "--sign",   "-",
-            "--entitlements", entitlements, ime_bundle,
-        });
-        ime_sign.has_side_effects = true;
-        ime_sign.step.dependOn(&ime_swiftc.step);
-
-        // Step 3: SwiftUI main app bundle skeleton (Byakaron.app).
-        const app_skel = b.addSystemCommand(&.{
-            "sh",    "-c",
-            \\set -e
-            \\A="$1"; RES="$2"; DATA="$3"
-            \\rm -rf "$A"
-            \\mkdir -p "$A/Contents/MacOS"
-            \\mkdir -p "$A/Contents/Resources"
-            \\cp "$RES/Info-app.plist" "$A/Contents/Info.plist"
-            \\printf 'APPL????' > "$A/Contents/PkgInfo"
-            \\cp "$DATA/Dictionary.json" "$A/Contents/Resources/Dictionary.json"
-            \\cp "$RES/AppIcon.icns"      "$A/Contents/Resources/AppIcon.icns"
-            ,
-            "_",     app_bundle,
-            res_dir, data_dir,
-        });
-        app_skel.has_side_effects = true;
-
-        // Compile the main app executable into the bundle.
-        const app_swiftc = b.addSystemCommand(&.{"swiftc"});
-        const gui_sources = [_][]const u8{
-            macSrc(b, "App/ByakaronApp.swift"),
-            macSrc(b, "App/Views/MainView.swift"),
-            macSrc(b, "App/Views/SettingsView.swift"),
-            macSrc(b, "App/Views/GuideView.swift"),
-            macSrc(b, "App/Views/LayoutView.swift"),
-            macSrc(b, "App/Views/BanglaSpellTextView.swift"),
-            macSrc(b, "App/KeyboardInstaller.swift"),
-            macSrc(b, "Core/Suggestion/Prediction.swift"),
-            macSrc(b, "Core/Suggestion/Dictionary.swift"),
-            macSrc(b, "Core/Transliteration/Transliterator.swift"),
-            macSrc(b, "Core/Settings/ByakaronSettings.swift"),
-        };
-        app_swiftc.addArgs(&gui_sources);
-        app_swiftc.addArgs(&.{
-            "-O",
-            "-module-name",
-            "Byakaron_App",
-            "-import-objc-header",
-            bridge_header,
-            "-I",
-            zig_include,
-            "-L",
-            zig_lib_dir,
-            "-lbyakaron",
-            "-sdk",
-            sdk_path,
-            "-target",
-            sdk_target,
-            "-framework",
-            "SwiftUI",
-            "-framework",
-            "AppKit",
-            "-framework",
-            "Carbon",
-            "-o",
-            b.fmt("{s}/Contents/MacOS/Byakaron", .{app_bundle}),
-        });
-        app_swiftc.has_side_effects = true;
-        app_swiftc.step.dependOn(&rearchive.step);
-        app_swiftc.step.dependOn(&app_skel.step);
-
-        // Step 4: Embed the signed IME inside the main app.
-        const embed = b.addSystemCommand(&.{
-            "sh",       "-c",
-            \\set -e
-            \\mkdir -p "$1/Contents/Library/InputMethods"
-            \\rm -rf "$1/Contents/Library/InputMethods/$3.app"
-            \\cp -R "$2" "$1/Contents/Library/InputMethods/$3.app"
-            ,
-            "_",        app_bundle,
-            ime_bundle, ime_name,
-        });
-        embed.has_side_effects = true;
-        embed.step.dependOn(&app_swiftc.step);
-        embed.step.dependOn(&ime_sign.step);
-
-        // Step 5: Sign the outer app last (no --deep, preserves inner signature).
-        const app_sign = b.addSystemCommand(&.{
-            "codesign",       "--force",    "--sign",   "-",
-            "--entitlements", entitlements, app_bundle,
-        });
-        app_sign.has_side_effects = true;
-        app_sign.step.dependOn(&embed.step);
-
-        macos_step.dependOn(&app_sign.step);
+        const run_macos_step = b.step("run-macos", "Build and open Byakaron.app (not the keyboard)");
+        run_macos_step.dependOn(&open_app.step);
     }
 
     // Testing
@@ -282,7 +140,17 @@ pub fn build(b: *std.Build) void {
         const lib_unit_tests = b.addTest(.{
             .root_module = mod,
         });
-        const t_mod = b.createModule(.{ .root_source_file = b.path("src/root.zig"), .target = target, .optimize = optimize });
+        const t_mod = b.createModule(.{
+            .root_source_file = b.path("src/root.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "zx", .module = zx_mod },
+                .{ .name = "tokenization", .module = tokenization_mod },
+                .{ .name = "spell", .module = spell_mod },
+                .{ .name = "autocomplete", .module = autocomplete_mod },
+            },
+        });
         const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
         const exe_unit_tests = b.addTest(.{
             .root_module = t_mod,
@@ -301,10 +169,4 @@ pub fn build(b: *std.Build) void {
 /// Absolute path to a file/dir relative to the build root (dir with build.zig).
 fn rootPath(b: *std.Build, sub: []const u8) []const u8 {
     return b.root.joinString(b.allocator, sub) catch @panic("OOM");
-}
-
-/// Absolute path to a file under the unified macOS source tree
-/// (platforms/macos/...).
-fn macSrc(b: *std.Build, comptime rel: []const u8) []const u8 {
-    return rootPath(b, "platforms/macos/" ++ rel);
 }
