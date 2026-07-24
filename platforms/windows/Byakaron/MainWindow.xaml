@@ -168,6 +168,13 @@
                         Spacing="2"
                         VerticalAlignment="Center">
                         <Button
+                            x:Name="KeyboardButton"
+                            Style="{StaticResource TitleIconButtonStyle}"
+                            Click="KeyboardButton_Click"
+                            ToolTipService.ToolTip="Install Bangla keyboard (Win+Space)">
+                            <FontIcon FontSize="14" Glyph="&#xE765;" />
+                        </Button>
+                        <Button
                             x:Name="FixAllButton"
                             Style="{StaticResource TitleIconButtonStyle}"
                             Click="FixAllButton_Click"

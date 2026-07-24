@@ -147,6 +147,53 @@ public sealed partial class MainWindow : Window
         UpdateCorrectionBar();
     }
 
+    private async void KeyboardButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = "Byakaron keyboard",
+            PrimaryButtonText = "Install keyboard",
+            SecondaryButtonText = "Language settings",
+            CloseButtonText = "Close",
+            DefaultButton = ContentDialogButton.Primary,
+            Content = new TextBlock
+            {
+                Text =
+                    "Installs a system Text Input Processor (TSF) for Bangla.\n\n" +
+                    "Shown as \"Byakaron Phonetic\" (not InScript — InScript is a " +
+                    "different key layout). After install, switch with Win+Space or " +
+                    "the taskbar input indicator, then type Avro phonetic (ami → আমি).\n\n" +
+                    (Keyboard.KeyboardInstaller.IsTipPresentOnDisk()
+                        ? $"Installed at:\n{Keyboard.KeyboardInstaller.InstallDirectory}"
+                        : "Not installed yet."),
+                TextWrapping = TextWrapping.Wrap,
+            },
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary)
+        {
+            var install = await Keyboard.KeyboardInstaller.EnsureInstalledAsync();
+            var done = new ContentDialog
+            {
+                XamlRoot = RootGrid.XamlRoot,
+                Title = install.Success ? "Keyboard ready" : "Install failed",
+                Content = install.Message,
+                CloseButtonText = "OK",
+            };
+            await done.ShowAsync();
+            if (install.Success)
+            {
+                await Keyboard.KeyboardInstaller.OpenLanguageSettingsAsync();
+            }
+        }
+        else if (result == ContentDialogResult.Secondary)
+        {
+            await Keyboard.KeyboardInstaller.OpenLanguageSettingsAsync();
+        }
+    }
+
     private void FixAllButton_Click(object sender, RoutedEventArgs e)
     {
         if (_checker.FixAll() > 0)
