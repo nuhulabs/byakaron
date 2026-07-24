@@ -32,12 +32,12 @@ final class SpellChecker: ObservableObject {
 
     #if DEBUG
     /// Preview/test seam: build a checker with canned state and no engine load,
-    /// so SwiftUI previews render instantly without the bundled dictionary.
+    /// so SwiftUI previews render instantly without opening spell.db.
     static func preview(text: String = "", misspellings: [Misspelling] = []) -> SpellChecker {
         let checker = SpellChecker(skipLoad: ())
         checker.text = text
         checker.misspellings = misspellings
-        checker.engine = SpellEngine(words: [""])
+        // Leave engine nil — isCorrect treats nil as correct; UI still renders.
         return checker
     }
 

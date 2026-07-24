@@ -205,3 +205,4 @@ tmp
 *.db-wal
 *.db-shm
 *.db-journal
+zig-pkg/

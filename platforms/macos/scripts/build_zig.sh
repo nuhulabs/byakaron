@@ -21,17 +21,16 @@ ZIG_LIB_DIR="$BUILD_DIR/zig"
 
 # Xcode run-script phases get a minimal PATH that usually lacks Homebrew and
 # version-manager shims (zig here is an asdf shim). Make sure we can find it.
-export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.asdf/shims:$PATH"
+ZIG_CURSOR="$HOME/Library/Application Support/Cursor/User/globalStorage/ziglang.vscode-zig/zig/aarch64-macos-0.17.0-dev.1422+e863bf3be"
+export PATH="$ZIG_CURSOR:/opt/homebrew/bin:/usr/local/bin:$HOME/.asdf/shims:$PATH"
 if ! command -v zig >/dev/null 2>&1; then
     echo "error: could not find the 'zig' executable on PATH" >&2
     exit 1
 fi
 
-# Optimize mode follows Xcode's CONFIGURATION when present, else ReleaseFast.
+# Always ReleaseFast for the embedded engine: Zig Debug compiles sqlite3.c with
+# UBSan instrumentation, and Xcode's linker does not provide those runtime symbols.
 ZIG_OPTIMIZE="ReleaseFast"
-case "${CONFIGURATION:-}" in
-    *Debug*) ZIG_OPTIMIZE="Debug" ;;
-esac
 
 echo ">>> Building Zig engine (libbyakaron, $ZIG_OPTIMIZE)..."
 ( cd "$ZIG_REPO_ROOT" && zig build -Doptimize="$ZIG_OPTIMIZE" -Dtarget=aarch64-macos )
@@ -45,3 +44,37 @@ rm -rf "$ZIG_LIB_DIR" && mkdir -p "$ZIG_LIB_DIR"
     ar rcs libbyakaron.a ./*.o
 )
 echo ">>> Zig objects staged in: $ZIG_LIB_DIR"
+
+# Stage spell.db into Resources (APFS clone / hardlink when possible) so the
+# Swift SpellEngine can open it from the app/IME bundle.
+SPELL_DB="$ZIG_REPO_ROOT/packages/data/spell.db"
+STAGE_DB="$PROJECT_ROOT/Resources/spell.db"
+if [[ -f "$SPELL_DB" ]]; then
+    if [[ ! -e "$STAGE_DB" ]] || [[ "$SPELL_DB" -nt "$STAGE_DB" ]]; then
+        rm -f "$STAGE_DB"
+        if cp -c "$SPELL_DB" "$STAGE_DB" 2>/dev/null; then
+            :
+        elif ln "$SPELL_DB" "$STAGE_DB" 2>/dev/null; then
+            :
+        else
+            cp "$SPELL_DB" "$STAGE_DB"
+        fi
+        echo ">>> Staged spell.db -> $STAGE_DB"
+    fi
+else
+    echo "warning: spell.db not found at $SPELL_DB" >&2
+fi
+
+# When Xcode invokes this script, also drop spell.db into the product Resources.
+if [[ -n "${TARGET_BUILD_DIR:-}" && -n "${UNLOCALIZED_RESOURCES_FOLDER_PATH:-}" && -f "$SPELL_DB" ]]; then
+    DEST="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/spell.db"
+    mkdir -p "$(dirname "$DEST")"
+    if cp -c "$SPELL_DB" "$DEST" 2>/dev/null; then
+        :
+    elif ln "$SPELL_DB" "$DEST" 2>/dev/null; then
+        :
+    else
+        cp "$SPELL_DB" "$DEST"
+    fi
+    echo ">>> Embedded spell.db -> $DEST"
+fi
