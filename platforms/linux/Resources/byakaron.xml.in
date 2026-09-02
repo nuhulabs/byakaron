@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  IBus component descriptor for Byakaron.
+
+  @BYK_EXEC@ is substituted by scripts/install.sh with the absolute path of the
+  installed byakaron-ibus binary. The installed copy goes to
+  /usr/share/ibus/component/byakaron.xml (system) or
+  ~/.local/share/ibus/component/byakaron.xml (user), which is where ibus-daemon
+  looks for components at startup.
+
+  <language>bn</language> is what puts the engine under Bangla in
+  GNOME Settings -> Keyboard -> Input Sources.
+-->
+<component>
+  <name>org.freedesktop.IBus.Byakaron</name>
+  <description>Byakaron Bangla phonetic input method</description>
+  <exec>@BYK_EXEC@ --ibus</exec>
+  <version>0.1.0</version>
+  <author>Byakaron contributors</author>
+  <license>MIT</license>
+  <homepage>https://github.com/nuhulabs/byakaron</homepage>
+  <textdomain>byakaron</textdomain>
+
+  <engines>
+    <engine>
+      <name>byakaron</name>
+      <language>bn</language>
+      <license>MIT</license>
+      <author>Byakaron contributors</author>
+      <icon>@BYK_ICON@</icon>
+      <layout>us</layout>
+      <longname>Byakaron (Bangla Phonetic)</longname>
+      <description>Type Bangla phonetically using the latin keyboard</description>
+      <rank>99</rank>
+      <symbol>ব</symbol>
+      <setup></setup>
+    </engine>
+  </engines>
+</component>
