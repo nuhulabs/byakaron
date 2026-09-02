@@ -35,12 +35,25 @@ mkdir -p "$PROJECT_ROOT/build"
 sed -e "s|@BYK_EXEC@|$BIN|g" -e "s|@BYK_ICON@|input-keyboard|g" \
     "$PROJECT_ROOT/Resources/byakaron.xml.in" > "$XML"
 
+# Focusing the test's input context makes the daemon adopt its engine as the
+# session's global one, so killing the throwaway engine afterwards would leave
+# the desktop with "No global engine" and no way to type. Remember what was
+# active and put it back no matter how this script exits.
+PREV_ENGINE="$(ibus engine 2>/dev/null || true)"
+case "$PREV_ENGINE" in
+    *"No engine"* | "") PREV_ENGINE="" ;;
+esac
+
 ENGINE_PID=""
 cleanup() {
     if [[ -n "$ENGINE_PID" ]] && kill -0 "$ENGINE_PID" 2>/dev/null; then
         kill "$ENGINE_PID" 2>/dev/null || true
         wait "$ENGINE_PID" 2>/dev/null || true
         echo ">>> Engine stopped"
+    fi
+    if [[ -n "$PREV_ENGINE" ]] && [[ "$(ibus engine 2>/dev/null || true)" != "$PREV_ENGINE" ]]; then
+        ibus engine "$PREV_ENGINE" 2>/dev/null || true
+        echo ">>> Restored input engine: $PREV_ENGINE"
     fi
 }
 trap cleanup EXIT
