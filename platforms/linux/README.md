@@ -9,7 +9,7 @@ Zig engine as the macOS and Windows ports through its C ABI (`src/ffi/byakaron.h
 | --- | --- | --- | --- |
 | Keyboard / IME | Swift + InputMethodKit | C++ + TSF | **C + IBus** |
 | GUI app | SwiftUI | C# WinUI 3 | **C + GTK4 / libadwaita** |
-| Engine linkage | static `libbyakaron.a` | shared `byakaron.dll` | **shared `libbyakaron.so`** |
+| Engine linkage | static `libbyakaron.a` | shared `byakaron.dll` | **static into the engine; `.so` for the app** |
 
 Every port is a thin platform shell; all Bangla logic — transliteration, spell
 check, autocomplete — stays in Zig behind the C ABI.
@@ -102,6 +102,74 @@ bash platforms/linux/scripts/smoke.sh
 
 This builds `libbyakaron.so` and calls it from C. Expect `ami → আমি`,
 `bangla → বাংলা`, and a list of autocomplete candidates.
+
+## Building and running the input method
+
+```bash
+zig build linux          # -> zig-out/bin/byakaron-ibus
+```
+
+The engine binary links the Zig core statically, so it is self-contained apart
+from system IBus and GLib. `-Dshared` still produces `libbyakaron.so`, which is
+what the GTK app and distro packaging will consume.
+
+### Development run
+
+```bash
+bash platforms/linux/scripts/dev_run.sh
+```
+
+Registers the engine with the *running* `ibus-daemon` straight from the build
+tree — nothing is copied into `/usr`, and the registration disappears when the
+process exits. While it runs, `ibus engine byakaron` switches to it and
+`ibus engine xkb:us::eng` switches back.
+
+Permanent installation (so the engine survives a reboot and shows up in
+Settings → Keyboard → Input Sources) is `scripts/install.sh`.
+
+### Integration test
+
+```bash
+bash platforms/linux/scripts/test_ime.sh
+```
+
+Starts a throwaway engine, drives it through a *private* IBus input context, and
+shuts it down. Because the context is private, the desktop's own input source is
+never touched. It asserts the preedit while typing, that Backspace
+re-transliterates from the latin buffer, that Space commits, that Escape
+discards, and that a multi-word sentence commits correctly.
+
+## How the engine works
+
+The **latin text the user typed is the single source of truth**. Every keystroke
+re-transliterates the whole buffer and replaces the preedit wholesale.
+
+That matters because transliteration is contextual: a later keystroke can change
+a glyph already on screen, and one Bangla conjunct can span several latin
+characters. Editing the Bangla directly — deleting one Bangla character on
+Backspace, say — would split conjuncts and desynchronise the two buffers.
+Backspace therefore drops one *latin* character and re-runs the whole word. The
+engine handle is built once per input context, so re-running is cheap.
+
+Key handling:
+
+| Key | Behaviour |
+| --- | --- |
+| `a`–`z`, `A`–`Z` | Appended to the latin buffer; preedit updates |
+| Backspace | Drops one latin character and re-transliterates |
+| Space | Commits the Bangla plus the space, in one commit |
+| Enter | Commits the word, then lets the application see the Enter |
+| Escape | Discards the pending word |
+| Ctrl/Alt/Super + key | Commits the word, then passes the shortcut through |
+| Anything else | Commits the word and is handled by the application |
+
+Space and Enter commit the terminator themselves rather than letting the key
+fall through, because `commit_text` travels over D-Bus and a forwarded key is
+not guaranteed to arrive after it.
+
+Digits and punctuation are deliberately *not* buffered yet. Avro maps them too,
+but swallowing `1` and `.` until the word ends is more surprising than useful
+before the candidate window exists.
 
 ## Notes
 
