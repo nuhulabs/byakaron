@@ -119,6 +119,69 @@ pub fn build(b: *std.Build) !void {
         lib_step.dependOn(install_lexicon);
     }
 
+    // Linux IBus input method — C engine over the FFI, linked against system IBus.
+    if (builtin.os.tag == .linux) {
+        // Its own static copy of the core rather than the artifact above, so
+        // `zig build linux` produces a self-contained binary whether or not
+        // -Dshared was passed (the .so is for the GTK app and packaging).
+        const ime_core = b.addLibrary(.{
+            .linkage = .static,
+            .name = "byakaron_ime_core",
+            .root_module = mod,
+        });
+
+        const ime = b.addExecutable(.{
+            .name = "byakaron-ibus",
+            .root_module = b.createModule(.{
+                .target = target,
+                .optimize = optimize,
+                .link_libc = true,
+            }),
+        });
+        ime.root_module.addCSourceFiles(.{
+            .files = &.{
+                "platforms/linux/Keyboard/main.c",
+                "platforms/linux/Keyboard/engine.c",
+                "platforms/linux/Core/transliterator.c",
+            },
+            .flags = &.{ "-std=gnu11", "-Wall", "-Wextra" },
+        });
+        ime.root_module.addIncludePath(b.path("src/ffi"));
+        ime.root_module.addIncludePath(b.path("platforms/linux/Core"));
+        ime.root_module.addIncludePath(b.path("platforms/linux/Keyboard"));
+        // Resolved through pkg-config; see platforms/linux/scripts/setup_deps.sh.
+        ime.root_module.linkSystemLibrary("ibus-1.0", .{});
+        ime.root_module.linkSystemLibrary("glib-2.0", .{});
+        ime.root_module.linkSystemLibrary("gobject-2.0", .{});
+        ime.root_module.linkLibrary(ime_core);
+
+        const install_ime = b.addInstallArtifact(ime, .{});
+        const linux_step = b.step("linux", "Build the Linux IBus engine (byakaron-ibus)");
+        linux_step.dependOn(&install_ime.step);
+
+        // Integration test: drives the engine through a private IBus input
+        // context, so it needs a daemon with the engine registered (dev_run.sh).
+        const ime_test = b.addExecutable(.{
+            .name = "byakaron-ime-test",
+            .root_module = b.createModule(.{
+                .target = target,
+                .optimize = optimize,
+                .link_libc = true,
+            }),
+        });
+        ime_test.root_module.addCSourceFiles(.{
+            .files = &.{"platforms/linux/tests/ime_test.c"},
+            .flags = &.{ "-std=gnu11", "-Wall", "-Wextra" },
+        });
+        ime_test.root_module.linkSystemLibrary("ibus-1.0", .{});
+        ime_test.root_module.linkSystemLibrary("glib-2.0", .{});
+        ime_test.root_module.linkSystemLibrary("gobject-2.0", .{});
+
+        const install_ime_test = b.addInstallArtifact(ime_test, .{});
+        const linux_test_step = b.step("linux-test", "Build the Linux IME integration test");
+        linux_test_step.dependOn(&install_ime_test.step);
+    }
+
     // Executable
     const exe = b.addExecutable(.{
         .name = "repl",
