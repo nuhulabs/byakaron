@@ -2,11 +2,16 @@
 <!--
   IBus component descriptor for Byakaron.
 
-  @BYK_EXEC@ is substituted by scripts/install.sh with the absolute path of the
-  installed byakaron-ibus binary. The installed copy goes to
-  /usr/share/ibus/component/byakaron.xml (system) or
-  ~/.local/share/ibus/component/byakaron.xml (user), which is where ibus-daemon
-  looks for components at startup.
+  scripts/install.sh substitutes the exec and icon placeholders with the
+  absolute paths of the installed files, then writes the result to
+  /usr/share/ibus/component/. That directory is the only one ibus-daemon scans
+  for components. A per-user copy under ~/.local/share is never read, and
+  IBUS_COMPONENT_PATH is not honoured by ibus 1.5.x either (both verified
+  on 1.5.29).
+
+  Note for editors: an XML comment may not contain a double hyphen, and the
+  placeholder names are written here without their delimiters so the install
+  substitution does not rewrite this comment too.
 
   <language>bn</language> is what puts the engine under Bangla in
   GNOME Settings -> Keyboard -> Input Sources.

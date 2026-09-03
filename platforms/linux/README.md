@@ -171,6 +171,37 @@ Digits and punctuation are deliberately *not* buffered yet. Avro maps them too,
 but swallowing `1` and `.` until the word ends is more surprising than useful
 before the candidate window exists.
 
+## Installing permanently
+
+```bash
+sudo bash platforms/linux/scripts/install.sh
+```
+
+This is a **system** install (`/usr/libexec`, `/usr/share/ibus/component`,
+`/usr/share/icons/...`) and must be, not a preference: `ibus-daemon` builds its
+registry by scanning `/usr/share/ibus/component` only. A copy under
+`~/.local/share/ibus/component` is never read, and `IBUS_COMPONENT_PATH` is not
+honoured by ibus 1.5.x either — both verified directly against the installed
+1.5.29 daemon before writing this. Every other engine on the system, including
+`ibus-avro`, installs the same way.
+
+The script builds as the invoking (non-root) user via `SUDO_USER`, so `zig`
+resolves from that user's `~/.local/bin` and no root-owned build artifacts are
+left in the repo. It refreshes the ibus registry and restores whatever input
+engine was active before, since restarting the daemon otherwise drops it.
+
+After installing:
+
+1. Settings → Keyboard → Input Sources → **+**
+2. Search "Byakaron" (filed under Bangla) → Add
+3. Switch with **Super+Space**
+
+```bash
+sudo bash platforms/linux/scripts/uninstall.sh
+```
+
+removes everything install.sh added.
+
 ## Notes
 
 - `spell.db` is generated, not committed. Build it with
