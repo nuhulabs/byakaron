@@ -52,13 +52,30 @@ on_commit (IBusInputContext *context, IBusText *text, gpointer user_data)
     g_committed = joined;
 }
 
-/* Let queued D-Bus signals be delivered before we read the results. */
+/*
+ * Let queued D-Bus signals be delivered before we read the results.
+ *
+ * Signals arrive asynchronously, so a fixed iteration count is flaky under
+ * load (observed: the last commit of a multi-word sentence occasionally not
+ * having landed yet). Drain the main context until it goes quiet for a short
+ * stretch, bounded by a generous overall cap so a stuck daemon cannot hang
+ * the test forever.
+ */
 static void
 pump (void)
 {
-    for (int i = 0; i < 200; i++) {
-        if (!g_main_context_iteration (NULL, FALSE))
-            g_usleep (1000);
+    const gint64 quiet_period = 30 * 1000;          /* 30ms with no events */
+    const gint64 deadline = g_get_monotonic_time () + 3 * G_TIME_SPAN_SECOND;
+    gint64 quiet_since = g_get_monotonic_time ();
+
+    while (g_get_monotonic_time () < deadline) {
+        if (g_main_context_iteration (NULL, FALSE)) {
+            quiet_since = g_get_monotonic_time ();
+            continue;
+        }
+        if (g_get_monotonic_time () - quiet_since >= quiet_period)
+            break;
+        g_usleep (1000);
     }
 }
 

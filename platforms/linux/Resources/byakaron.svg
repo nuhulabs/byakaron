@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Input-source icon, shown next to "Byakaron (Bangla Phonetic)" in GNOME
+  Settings and the input-source switcher.
+
+  Drawn as a plain <path> rather than <text> so it does not depend on a Bangla
+  font being present in whatever renders it (the icon is also read by the ibus
+  panel, which does not always have full fontconfig available).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#1f6f4a"/>
+  <!-- Stylised ব: the top matra bar plus the bowl and stem. -->
+  <g fill="none" stroke="#ffffff" stroke-width="5"
+     stroke-linecap="round" stroke-linejoin="round">
+    <path d="M16 18 H48"/>
+    <path d="M22 18 V42 a11 11 0 0 0 22 0 a11 11 0 0 0 -11 -11 h-5"/>
+  </g>
+</svg>
