@@ -21,6 +21,16 @@ static gchar *g_committed = NULL;
 static IBusBus *g_bus = NULL;
 static int g_failures = 0;
 
+/*
+ * Latest candidate list seen. The daemon only routes the lookup table to the
+ * client when the client claims IBUS_CAP_LOOKUP_TABLE — otherwise it goes to the
+ * desktop panel and never reaches us. Set in main() alongside the other caps.
+ */
+static gchar **g_candidates = NULL; /* NULL-terminated */
+static guint g_page_size = 0;
+static guint g_cursor_pos = 0;
+static gboolean g_table_visible = FALSE;
+
 static void
 on_update_preedit (IBusInputContext *context,
                    IBusText         *text,
@@ -50,6 +60,62 @@ on_commit (IBusInputContext *context, IBusText *text, gpointer user_data)
                                  text ? ibus_text_get_text (text) : "", NULL);
     g_free (g_committed);
     g_committed = joined;
+}
+
+/*
+ * Copy the candidate list out of the table.
+ *
+ * The table is floating and released once the signal returns, so the strings
+ * have to be taken now rather than kept by reference.
+ */
+static void
+on_update_lookup_table (IBusInputContext *context,
+                        IBusLookupTable  *table,
+                        gboolean          visible,
+                        gpointer          user_data)
+{
+    (void) context; (void) user_data;
+
+    g_strfreev (g_candidates);
+
+    const guint n = table ? ibus_lookup_table_get_number_of_candidates (table) : 0;
+    GPtrArray *words = g_ptr_array_new ();
+    for (guint i = 0; i < n; i++) {
+        IBusText *candidate = ibus_lookup_table_get_candidate (table, i);
+        g_ptr_array_add (words, g_strdup (candidate ? ibus_text_get_text (candidate) : ""));
+    }
+    g_ptr_array_add (words, NULL);
+
+    g_candidates = (gchar **) g_ptr_array_free (words, FALSE);
+    g_page_size = table ? ibus_lookup_table_get_page_size (table) : 0;
+    g_cursor_pos = table ? ibus_lookup_table_get_cursor_pos (table) : 0;
+    g_table_visible = visible;
+}
+
+static void
+on_hide_lookup_table (IBusInputContext *context, gpointer user_data)
+{
+    (void) context; (void) user_data;
+    g_table_visible = FALSE;
+}
+
+/* Candidate at `index`, or NULL if the list is shorter than that. */
+static const gchar *
+candidate_at (guint index)
+{
+    if (g_candidates == NULL)
+        return NULL;
+    for (guint i = 0; i < index; i++) {
+        if (g_candidates[i] == NULL)
+            return NULL;
+    }
+    return g_candidates[index];
+}
+
+static guint
+candidate_count (void)
+{
+    return g_candidates ? (guint) g_strv_length (g_candidates) : 0;
 }
 
 /*
@@ -103,6 +169,10 @@ reset_state (IBusInputContext *ctx)
     pump ();
     g_free (g_preedit);    g_preedit = NULL;
     g_free (g_committed);  g_committed = NULL;
+    g_strfreev (g_candidates); g_candidates = NULL;
+    g_page_size = 0;
+    g_cursor_pos = 0;
+    g_table_visible = FALSE;
 }
 
 static void
@@ -112,6 +182,17 @@ check (const char *what, const char *got, const char *want)
     g_print ("  %-4s %-34s -> %s\n", ok ? "ok" : "FAIL", what, got ? got : "(none)");
     if (!ok) {
         g_print ("       expected: %s\n", want);
+        g_failures++;
+    }
+}
+
+static void
+check_flag (const char *what, gboolean got, gboolean want)
+{
+    const gboolean ok = (!!got == !!want);
+    g_print ("  %-4s %-34s -> %s\n", ok ? "ok" : "FAIL", what, got ? "yes" : "no");
+    if (!ok) {
+        g_print ("       expected: %s\n", want ? "yes" : "no");
         g_failures++;
     }
 }
@@ -140,8 +221,12 @@ main (void)
     g_signal_connect (ctx, "update-preedit-text", G_CALLBACK (on_update_preedit), NULL);
     g_signal_connect (ctx, "hide-preedit-text", G_CALLBACK (on_hide_preedit), NULL);
     g_signal_connect (ctx, "commit-text", G_CALLBACK (on_commit), NULL);
+    g_signal_connect (ctx, "update-lookup-table", G_CALLBACK (on_update_lookup_table), NULL);
+    g_signal_connect (ctx, "hide-lookup-table", G_CALLBACK (on_hide_lookup_table), NULL);
 
-    ibus_input_context_set_capabilities (ctx, IBUS_CAP_PREEDIT_TEXT | IBUS_CAP_FOCUS);
+    ibus_input_context_set_capabilities (ctx, IBUS_CAP_PREEDIT_TEXT |
+                                             IBUS_CAP_LOOKUP_TABLE |
+                                             IBUS_CAP_FOCUS);
     ibus_input_context_focus_in (ctx);
     ibus_input_context_set_engine (ctx, "byakaron");
     pump ();
@@ -189,6 +274,72 @@ main (void)
     reset_state (ctx);
     send_string (ctx, "amar sonar bangla ");
     check ("committed text", g_committed, "আমার সনার বাংলা ");
+
+    /*
+     * Candidates. Only the first candidate is pinned to a literal, because that
+     * one is a real guarantee: the word actually typed has to rank first, or
+     * pressing "1" would change what the user wrote. The rest are checked
+     * against the list the daemon reported, so these assertions test the
+     * selection and paging machinery and do not break when the lexicon grows.
+     */
+    g_print ("candidates appear while typing:\n");
+    reset_state (ctx);
+    send_string (ctx, "ami");
+    check_flag ("lookup table shown", g_table_visible, TRUE);
+    check ("first candidate is the typed word", candidate_at (0), "আমি");
+    check_flag ("more than one page offered", candidate_count () > g_page_size, TRUE);
+
+    g_print ("number key selects a candidate:\n");
+    reset_state (ctx);
+    send_string (ctx, "ami");
+    {
+        gchar *second = g_strdup (candidate_at (1));
+        send_key (ctx, IBUS_KEY_2);
+        check ("\"2\" commits candidate 2", g_committed, second);
+        check ("preedit cleared", g_preedit, "");
+        check_flag ("lookup table hidden", g_table_visible, FALSE);
+        g_free (second);
+    }
+
+    g_print ("page down moves which candidates 1-9 mean:\n");
+    reset_state (ctx);
+    send_string (ctx, "ami");
+    {
+        /* First entry of page two, which "1" must select once we are there. */
+        gchar *next_page_first = g_strdup (candidate_at (g_page_size));
+        send_key (ctx, IBUS_KEY_Page_Down);
+        check_flag ("still shown after Page Down", g_table_visible, TRUE);
+        check_flag ("cursor moved to page two", g_cursor_pos == g_page_size, TRUE);
+        send_key (ctx, IBUS_KEY_1);
+        check ("\"1\" commits page two's first", g_committed, next_page_first);
+        g_free (next_page_first);
+    }
+
+    g_print ("no candidates for a word outside the lexicon:\n");
+    reset_state (ctx);
+    /* Real Bangla, but not a dictionary lemma. */
+    send_string (ctx, "sonar");
+    check ("preedit still transliterates", g_preedit, "সনার");
+    check_flag ("lookup table hidden", g_table_visible, FALSE);
+
+    g_print ("escape drops the candidates with the word:\n");
+    reset_state (ctx);
+    send_string (ctx, "ami");
+    send_key (ctx, IBUS_KEY_Escape);
+    check_flag ("lookup table hidden", g_table_visible, FALSE);
+    check ("preedit cleared", g_preedit, "");
+    check ("nothing committed", g_committed, "");
+
+    g_print ("space commits what was typed, not a candidate:\n");
+    reset_state (ctx);
+    /* "bangl" is a prefix, not a word: its first candidate (বাংলা) differs from
+     * the preedit (বাংল), which is what gives this assertion teeth. */
+    send_string (ctx, "bangl");
+    check_flag ("candidates offered", g_table_visible, TRUE);
+    check ("first candidate differs from preedit",
+           g_strcmp0 (candidate_at (0), g_preedit) != 0 ? "differs" : "same", "differs");
+    send_key (ctx, IBUS_KEY_space);
+    check ("committed the typed word", g_committed, "বাংল ");
 
     ibus_input_context_focus_out (ctx);
     g_object_unref (ctx);

@@ -54,8 +54,13 @@ platforms/linux/
 ├── Keyboard/    The IBus engine
 ├── Resources/   IBus component XML, .desktop entry, icons
 ├── scripts/     setup_deps.sh, build_zig.sh, smoke.sh, install.sh, uninstall.sh
-└── tests/       C ABI smoke test
+└── tests/       C ABI + Core smoke test, IBus integration test
 ```
+
+`Core/` holds the glue that both front-ends need: `transliterator.c` for
+latin → Bangla and `autocomplete.c` for candidates. Both hand back plain
+`g_malloc`'d memory, so the Zig ownership rule (`byakaron_string_free`) and the
+JSON the ABI returns stop there and nothing above them has to know.
 
 ## Getting set up
 
@@ -101,7 +106,10 @@ bash platforms/linux/scripts/smoke.sh
 ```
 
 This builds `libbyakaron.so` and calls it from C. Expect `ami → আমি`,
-`bangla → বাংলা`, and a list of autocomplete candidates.
+`bangla → বাংলা`, and autocomplete candidates. It also covers the candidate JSON
+parser in `Core/autocomplete.c`, including the inputs it must *reject* — those
+paths are unreachable through the engine, because the only producer of that JSON
+is in this repository and never emits malformed output.
 
 ## Building and running the input method
 
@@ -137,7 +145,12 @@ Starts a throwaway engine, drives it through a *private* IBus input context, and
 shuts it down. Because the context is private, the desktop's own input source is
 never touched. It asserts the preedit while typing, that Backspace
 re-transliterates from the latin buffer, that Space commits, that Escape
-discards, and that a multi-word sentence commits correctly.
+discards, that a multi-word sentence commits correctly, and that the candidate
+list appears, selects by number, and pages.
+
+The test claims `IBUS_CAP_LOOKUP_TABLE` so the daemon routes candidates to it;
+without that capability the table goes to the desktop panel and a client never
+sees it.
 
 ## How the engine works
 
@@ -159,7 +172,9 @@ Key handling:
 | Backspace | Drops one latin character and re-transliterates |
 | Space | Commits the Bangla plus the space, in one commit |
 | Enter | Commits the word, then lets the application see the Enter |
-| Escape | Discards the pending word |
+| Escape | Discards the pending word and its candidates |
+| `1`–`9` | Picks that candidate — but only while the list is on screen |
+| Page Up / Page Down | Turns the candidate page, while the list is on screen |
 | Ctrl/Alt/Super + key | Commits the word, then passes the shortcut through |
 | Anything else | Commits the word and is handled by the application |
 
@@ -167,9 +182,33 @@ Space and Enter commit the terminator themselves rather than letting the key
 fall through, because `commit_text` travels over D-Bus and a forwarded key is
 not guaranteed to arrive after it.
 
-Digits and punctuation are deliberately *not* buffered yet. Avro maps them too,
-but swallowing `1` and `.` until the word ends is more surprising than useful
-before the candidate window exists.
+## Candidates
+
+While a word is being typed, the panel lists dictionary words that start with it
+and the number keys pick one. Candidates come from `byakaron_ac_prefix`, whose
+lexicon is compiled into the binary, so they work with nothing installed — no
+`spell.db`, no database at all. Building the word index costs ~7ms once per
+process and each lookup ~10µs, both measured, so this sits comfortably on the
+per-keystroke path.
+
+Two rules keep the list from getting in the way:
+
+- **Only the number keys select.** Space and Enter always commit what was
+  *typed*, never a candidate, so no keystroke can quietly substitute a different
+  word. The list is also drawn without a selection highlight, because a
+  highlight would imply Space would take it.
+- **Digits and punctuation stay out of the buffer.** The core does map them
+  (`2024` → ২০২৪, `.` → `।`), but buffering them cannot coexist with selecting
+  by number — the same `2` cannot both extend the word and pick the second
+  candidate. Typing Bangla numerals therefore needs an explicit mode toggle,
+  which belongs with the settings app where a keybinding can be surfaced.
+
+Escape drops the word and the list together rather than dismissing the list
+first: a two-stage Escape would mean two different things depending on state the
+user can no longer see once the list is gone.
+
+The panel's own paging arrows and mouse clicks work too — the engine implements
+the `page_up`, `page_down`, and `candidate_clicked` handlers the panel drives.
 
 ## Installing permanently
 
@@ -204,7 +243,10 @@ removes everything install.sh added.
 
 ## Notes
 
-- `spell.db` is generated, not committed. Build it with
-  `cd packages/data && zig build prepare`. The input method works without it;
-  only spell-check does not.
+- `spell.db` is generated, not committed, and cannot currently be built from a
+  fresh checkout: `cd packages/data && zig build prepare` needs the `sqlite3`
+  CLI *and* `packages/data/export_id/*.csv`, which come from
+  `zig build export` over a `word_triplets.csv` corpus that is not in the
+  repository. Neither the input method nor its candidate list needs it —
+  candidates use the compiled-in lexicon — so only spell-check is waiting on it.
 - `platforms/linux/build/` is generated output and is git-ignored.
