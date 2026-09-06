@@ -13,9 +13,16 @@ bash "$SCRIPT_DIR/build_zig.sh"
 
 mkdir -p "$BUILD_DIR/bin"
 echo ">>> Compiling smoke test..."
-cc -O2 -Wall -Wextra -o "$BUILD_DIR/bin/smoke" "$PROJECT_ROOT/tests/smoke.c" \
-    -I"$BUILD_DIR/include" \
+# Core/autocomplete.c is compiled in (not just linked against the .so) because
+# the test covers its JSON parser directly. That pulls in glib, which is a
+# dependency of the Core glue rather than of libbyakaron itself.
+cc -O2 -Wall -Wextra -o "$BUILD_DIR/bin/smoke" \
+    "$PROJECT_ROOT/tests/smoke.c" \
+    "$PROJECT_ROOT/Core/autocomplete.c" \
+    -I"$BUILD_DIR/include" -I"$PROJECT_ROOT/Core" \
+    $(pkg-config --cflags glib-2.0) \
     -L"$BUILD_DIR/lib" -lbyakaron \
+    $(pkg-config --libs glib-2.0) \
     -Wl,-rpath,"$BUILD_DIR/lib"
 
 echo ">>> Running..."
