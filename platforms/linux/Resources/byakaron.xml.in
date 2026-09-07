@@ -38,7 +38,12 @@
       <description>Type Bangla phonetically using the latin keyboard</description>
       <rank>99</rank>
       <symbol>ব</symbol>
-      <setup></setup>
+      <!--
+        Wires the panel's "Preferences" button to the GTK app. Substituted with
+        an empty string when the app was not installed, because a setup command
+        that does not exist gives a button that silently does nothing.
+      -->
+      <setup>@BYK_SETUP@</setup>
     </engine>
   </engines>
 </component>

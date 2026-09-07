@@ -143,6 +143,59 @@ pub fn build(b: *std.Build) void {
         const install_ime_test = b.addInstallArtifact(ime_test, .{});
         const linux_test_step = b.step("linux-test", "Build the Linux IME integration test");
         linux_test_step.dependOn(&install_ime_test.step);
+
+        // GTK4 + libadwaita companion app. A separate step from `linux` on
+        // purpose: the engine must stay buildable on a box with only
+        // libibus-dev, and this needs libgtk-4-dev and libadwaita-1-dev too.
+        const app_core = b.addLibrary(.{
+            .linkage = .static,
+            .name = "byakaron_app_core",
+            .root_module = mod,
+        });
+
+        const app = b.addExecutable(.{
+            .name = "byakaron",
+            .root_module = b.createModule(.{
+                .target = target,
+                .optimize = optimize,
+                .link_libc = true,
+            }),
+        });
+        app.root_module.addCSourceFiles(.{
+            .files = &.{
+                "platforms/linux/App/main.c",
+                "platforms/linux/App/window.c",
+                "platforms/linux/App/typing.c",
+                "platforms/linux/App/spelling.c",
+                "platforms/linux/App/layout.c",
+                "platforms/linux/App/setup.c",
+                "platforms/linux/Core/transliterator.c",
+                "platforms/linux/Core/autocomplete.c",
+                "platforms/linux/Core/spell.c",
+            },
+            .flags = &.{ "-std=gnu11", "-Wall", "-Wextra" },
+        });
+        app.root_module.addIncludePath(b.path("src/ffi"));
+        app.root_module.addIncludePath(b.path("platforms/linux/Core"));
+        app.root_module.addIncludePath(b.path("platforms/linux/App"));
+        app.root_module.linkSystemLibrary("gtk4", .{});
+        app.root_module.linkSystemLibrary("libadwaita-1", .{});
+        app.root_module.linkSystemLibrary("glib-2.0", .{});
+        app.root_module.linkSystemLibrary("gobject-2.0", .{});
+        // Its own static copy of the core, like the engine above: two 7 MB
+        // binaries beat one shared .so that needs a SONAME, an ldconfig
+        // trigger and an ABI promise this version cannot make yet.
+        app.root_module.linkLibrary(app_core);
+
+        const install_app = b.addInstallArtifact(app, .{});
+        const linux_app_step = b.step("linux-app", "Build the Linux GTK app (byakaron)");
+        linux_app_step.dependOn(&install_app.step);
+
+        const run_app = b.addRunArtifact(app);
+        run_app.step.dependOn(&install_app.step);
+        run_app.addPassthruArgs();
+        const run_linux_app_step = b.step("run-linux-app", "Build and run the Linux GTK app");
+        run_linux_app_step.dependOn(&run_app.step);
     }
 
     // Executable
