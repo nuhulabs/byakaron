@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name=Byakaron
+GenericName=Bangla Input & Spell Checker
+Comment=Type Bangla phonetically and check spelling
+# scripts/install.sh and package_deb.sh substitute the installed binary path.
+Exec=@BYK_APP_EXEC@
+Icon=byakaron
+Terminal=false
+# One main category only (Utility); Office too would list the app twice in the
+# applications menu. TextTools is an additional category, so it is free.
+Categories=Utility;TextTools;
+Keywords=Bangla;Bengali;বাংলা;spell;spelling;input;phonetic;avro;keyboard;
+StartupNotify=true
+# Must match BYK_APP_ID in App/app.h, or the shell shows a second, iconless
+# entry in the dock for the running window instead of reusing this one.
+StartupWMClass=dev.nuhu.labs.Byakaron

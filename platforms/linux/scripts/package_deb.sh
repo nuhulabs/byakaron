@@ -40,11 +40,24 @@ if [[ ! -x "$SRC_BIN" ]]; then
 fi
 [[ -x "$SRC_BIN" ]] || { echo "error: $SRC_BIN missing" >&2; exit 1; }
 
+# The GTK app, if this box can build it. It is packaged when present rather
+# than required, so the engine can still be shipped from a machine without
+# libgtk-4-dev — and the .deb declares the gtk runtime dependency only then.
+SRC_APP="$REPO_ROOT/zig-out/bin/byakaron"
+if [[ ! -x "$SRC_APP" ]] && pkg-config --exists gtk4 libadwaita-1 2>/dev/null; then
+    echo ">>> Building the GTK app (ReleaseFast)..."
+    ( cd "$REPO_ROOT" && \
+      PATH="$HOME/.local/bin:/usr/local/bin:$PATH" \
+      zig build linux-app -Doptimize=ReleaseFast ) || true
+fi
+
 # --- 2. Assemble the package tree ------------------------------------------
 rm -rf "$STAGE"
 install -d "$STAGE/DEBIAN"
 install -d "$STAGE/usr/libexec"
+install -d "$STAGE/usr/bin"
 install -d "$STAGE/usr/share/ibus/component"
+install -d "$STAGE/usr/share/applications"
 install -d "$STAGE/usr/share/icons/hicolor/scalable/apps"
 install -d "$STAGE/usr/share/byakaron"
 
@@ -56,6 +69,25 @@ strip --strip-unneeded "$STAGE/usr/libexec/byakaron-ibus" 2>/dev/null || true
 install -m 644 "$PROJECT_ROOT/Resources/byakaron.svg" \
     "$STAGE/usr/share/icons/hicolor/scalable/apps/byakaron.svg"
 
+BYK_SETUP=""
+GTK_DEPENDS=""
+if [[ -x "$SRC_APP" ]]; then
+    install -m 755 "$SRC_APP" "$STAGE/usr/bin/byakaron"
+    strip --strip-unneeded "$STAGE/usr/bin/byakaron" 2>/dev/null || true
+
+    sed -e "s|@BYK_APP_EXEC@|/usr/bin/byakaron|g" \
+        "$PROJECT_ROOT/Resources/byakaron-app.desktop.in" \
+        > "$STAGE/usr/share/applications/byakaron.desktop"
+    chmod 644 "$STAGE/usr/share/applications/byakaron.desktop"
+
+    BYK_SETUP="/usr/bin/byakaron"
+    GTK_DEPENDS=", libgtk-4-1, libadwaita-1-0"
+    echo ">>> Packaged the GTK app"
+else
+    echo "note: $SRC_APP missing — the package will have the engine only"
+    echo "      install libgtk-4-dev + libadwaita-1-dev to include the app"
+fi
+
 SPELL_DB="$REPO_ROOT/packages/data/spell.db"
 if [[ -f "$SPELL_DB" ]]; then
     install -m 644 "$SPELL_DB" "$STAGE/usr/share/byakaron/spell.db"
@@ -66,6 +98,7 @@ fi
 
 sed -e "s|@BYK_EXEC@|/usr/libexec/byakaron-ibus|g" \
     -e "s|@BYK_ICON@|/usr/share/icons/hicolor/scalable/apps/byakaron.svg|g" \
+    -e "s|@BYK_SETUP@|$BYK_SETUP|g" \
     "$PROJECT_ROOT/Resources/byakaron.xml.in" \
     > "$STAGE/usr/share/ibus/component/byakaron.xml"
 chmod 644 "$STAGE/usr/share/ibus/component/byakaron.xml"
@@ -79,7 +112,7 @@ Version: $VERSION
 Architecture: $ARCH
 Maintainer: Byakaron contributors <byakaron@example.com>
 Installed-Size: $INSTALLED_KB
-Depends: ibus (>= 1.5), libibus-1.0-5, libglib2.0-0t64 | libglib2.0-0
+Depends: ibus (>= 1.5), libibus-1.0-5, libglib2.0-0t64 | libglib2.0-0$GTK_DEPENDS
 Recommends: ibus-gtk4, ibus-gtk3
 Section: utils
 Priority: optional
@@ -88,6 +121,9 @@ Description: Byakaron Bangla phonetic input method (IBus engine)
  Type Bangla phonetically from a latin keyboard. Byakaron registers as a
  first-class input source in GNOME Settings -> Keyboard -> Input Sources and
  switches with Super+Space, powered by the shared Byakaron Zig engine.
+ .
+ Includes a GTK4 companion app for setup, composing Bangla without switching
+ input source, and checking spelling.
 EOF
 
 # --- 4. Maintainer scripts: refresh the ibus registry ----------------------

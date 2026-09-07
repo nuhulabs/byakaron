@@ -22,8 +22,10 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$PROJECT_ROOT/../.." && pwd)"
 
 LIBDIR="/usr/libexec"
+BINDIR="/usr/bin"
 XMLDIR="/usr/share/ibus/component"
 ICONDIR="/usr/share/icons/hicolor/scalable/apps"
+DESKTOPDIR="/usr/share/applications"
 DATADIR="/usr/share/byakaron"
 
 if [[ $EUID -ne 0 ]]; then
@@ -34,19 +36,34 @@ fi
 # Build as the invoking user: zig lives in their ~/.local and writes a cache
 # into the repo, and doing that as root would leave root-owned artifacts behind.
 BUILD_USER="${SUDO_USER:-root}"
-if [[ "$BUILD_USER" != "root" ]]; then
-    echo ">>> Building byakaron-ibus as $BUILD_USER..."
-    sudo -u "$BUILD_USER" -H bash -lc \
-        "cd '$REPO_ROOT' && PATH=\"\$HOME/.local/bin:/usr/local/bin:\$PATH\" zig build linux -Doptimize=ReleaseFast"
-else
-    echo ">>> Building byakaron-ibus..."
-    ( cd "$REPO_ROOT" && zig build linux -Doptimize=ReleaseFast )
-fi
+
+as_build_user() {
+    if [[ "$BUILD_USER" != "root" ]]; then
+        sudo -u "$BUILD_USER" -H bash -lc \
+            "cd '$REPO_ROOT' && PATH=\"\$HOME/.local/bin:/usr/local/bin:\$PATH\" $1"
+    else
+        ( cd "$REPO_ROOT" && eval "$1" )
+    fi
+}
+
+echo ">>> Building byakaron-ibus..."
+as_build_user "zig build linux -Doptimize=ReleaseFast"
 
 SRC_BIN="$REPO_ROOT/zig-out/bin/byakaron-ibus"
 [[ -x "$SRC_BIN" ]] || { echo "error: $SRC_BIN missing" >&2; exit 1; }
 
-install -d "$LIBDIR" "$XMLDIR" "$ICONDIR" "$DATADIR"
+# The GTK app is optional: the input method is the product, and this keeps a
+# box with only libibus-dev able to install a working keyboard.
+SRC_APP="$REPO_ROOT/zig-out/bin/byakaron"
+if pkg-config --exists gtk4 libadwaita-1 2>/dev/null; then
+    echo ">>> Building the GTK app..."
+    as_build_user "zig build linux-app -Doptimize=ReleaseFast" || true
+else
+    echo "note: gtk4 / libadwaita-1 not found — skipping the GTK app"
+    echo "      install them with: sudo bash platforms/linux/scripts/setup_deps.sh"
+fi
+
+install -d "$LIBDIR" "$BINDIR" "$XMLDIR" "$ICONDIR" "$DESKTOPDIR" "$DATADIR"
 
 # Install the binary before the XML: the XML points at its final path and ibus
 # will try to exec exactly that.
@@ -55,6 +72,21 @@ echo ">>> Installed: $LIBDIR/byakaron-ibus"
 
 install -m 644 "$PROJECT_ROOT/Resources/byakaron.svg" "$ICONDIR/byakaron.svg"
 echo ">>> Installed: $ICONDIR/byakaron.svg"
+
+# The app goes in /usr/bin, not /usr/libexec: it is something the user launches,
+# unlike the engine, which only ibus-daemon ever execs.
+BYK_SETUP=""
+if [[ -x "$SRC_APP" ]]; then
+    install -m 755 "$SRC_APP" "$BINDIR/byakaron"
+    echo ">>> Installed: $BINDIR/byakaron"
+
+    sed -e "s|@BYK_APP_EXEC@|$BINDIR/byakaron|g" \
+        "$PROJECT_ROOT/Resources/byakaron-app.desktop.in" > "$DESKTOPDIR/byakaron.desktop"
+    chmod 644 "$DESKTOPDIR/byakaron.desktop"
+    echo ">>> Installed: $DESKTOPDIR/byakaron.desktop"
+
+    BYK_SETUP="$BINDIR/byakaron"
+fi
 
 SPELL_DB="$REPO_ROOT/packages/data/spell.db"
 if [[ -f "$SPELL_DB" ]]; then
@@ -67,9 +99,17 @@ fi
 
 sed -e "s|@BYK_EXEC@|$LIBDIR/byakaron-ibus|g" \
     -e "s|@BYK_ICON@|$ICONDIR/byakaron.svg|g" \
+    -e "s|@BYK_SETUP@|$BYK_SETUP|g" \
     "$PROJECT_ROOT/Resources/byakaron.xml.in" > "$XMLDIR/byakaron.xml"
 chmod 644 "$XMLDIR/byakaron.xml"
 echo ">>> Installed: $XMLDIR/byakaron.xml"
+
+# Without these the app has no icon and does not show up in the activities
+# search until the desktop rescans on its own schedule.
+if [[ -n "$BYK_SETUP" ]]; then
+    update-desktop-database "$DESKTOPDIR" >/dev/null 2>&1 || true
+fi
+gtk-update-icon-cache -qtf /usr/share/icons/hicolor >/dev/null 2>&1 || true
 
 # ibus caches the registry, so a new component stays invisible until the daemon
 # re-reads it. Restarting drops the active engine, so put it back afterwards.
@@ -114,3 +154,8 @@ echo "To start typing Bangla:"
 echo "  1. Settings -> Keyboard -> Input Sources -> '+'"
 echo "  2. Search 'Byakaron' (filed under Bangla), then Add"
 echo "  3. Switch with Super+Space"
+if [[ -n "$BYK_SETUP" ]]; then
+    echo
+    echo "The 'Byakaron' app is installed too — it walks through the steps above,"
+    echo "types Bangla without switching input source, and checks spelling."
+fi
