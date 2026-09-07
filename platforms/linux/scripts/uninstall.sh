@@ -12,7 +12,9 @@ fi
 
 FILES=(
     "/usr/libexec/byakaron-ibus"
+    "/usr/bin/byakaron"
     "/usr/share/ibus/component/byakaron.xml"
+    "/usr/share/applications/byakaron.desktop"
     "/usr/share/icons/hicolor/scalable/apps/byakaron.svg"
     "/usr/share/byakaron/spell.db"
 )
@@ -37,6 +39,9 @@ if pgrep -x ibus-daemon >/dev/null && \
 fi
 
 pkill -f '[b]yakaron-ibus' 2>/dev/null || true
+# The app holds no session state, but leaving it running against a deleted
+# binary and a deleted spell.db is not worth the confusion.
+pkill -x byakaron 2>/dev/null || true
 
 for f in "${FILES[@]}"; do
     if [[ -e "$f" ]]; then
@@ -45,6 +50,8 @@ for f in "${FILES[@]}"; do
     fi
 done
 rmdir /usr/share/byakaron 2>/dev/null || true
+update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
+gtk-update-icon-cache -qtf /usr/share/icons/hicolor >/dev/null 2>&1 || true
 
 if pgrep -x ibus-daemon >/dev/null; then
     echo ">>> Refreshing the ibus registry..."
