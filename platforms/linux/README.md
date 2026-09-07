@@ -53,7 +53,8 @@ platforms/linux/
 ├── Core/        Shared C glue over byakaron.h, used by App and Keyboard
 ├── Keyboard/    The IBus engine
 ├── Resources/   IBus component XML, .desktop entry, icons
-├── scripts/     setup_deps.sh, build_zig.sh, smoke.sh, install.sh, uninstall.sh
+├── scripts/     setup_deps.sh, build_zig.sh, smoke.sh, prepare_spell_db.sh,
+│                install.sh, uninstall.sh, package_deb.sh
 └── tests/       C ABI + Core smoke test, IBus integration test
 ```
 
@@ -169,6 +170,7 @@ Key handling:
 | Key | Behaviour |
 | --- | --- |
 | `a`–`z`, `A`–`Z` | Appended to the latin buffer; preedit updates |
+| `0`–`9` | Bangla numerals (`1` → `১`, `2024` → `২০২৪`), except `1`–`9` pick a candidate while the list is on screen |
 | Backspace | Drops one latin character and re-transliterates |
 | Space | Commits the Bangla plus the space, in one commit |
 | Enter | Commits the word, then lets the application see the Enter |
@@ -191,17 +193,13 @@ lexicon is compiled into the binary, so they work with nothing installed — no
 process and each lookup ~10µs, both measured, so this sits comfortably on the
 per-keystroke path.
 
-Two rules keep the list from getting in the way:
+The list is kept out of the way like this:
 
-- **Only the number keys select.** Space and Enter always commit what was
-  *typed*, never a candidate, so no keystroke can quietly substitute a different
-  word. The list is also drawn without a selection highlight, because a
-  highlight would imply Space would take it.
-- **Digits and punctuation stay out of the buffer.** The core does map them
-  (`2024` → ২০২৪, `.` → `।`), but buffering them cannot coexist with selecting
-  by number — the same `2` cannot both extend the word and pick the second
-  candidate. Typing Bangla numerals therefore needs an explicit mode toggle,
-  which belongs with the settings app where a keybinding can be surfaced.
+- **Only the number keys select, and only while the list is visible.** Space
+  and Enter always commit what was *typed*, never a candidate. Off-screen,
+  `0`–`9` become Bangla numerals (`1` → `১`). `0` is never a candidate key, so
+  it always types `০`. The list is drawn without a selection highlight, because
+  a highlight would imply Space would take it.
 
 Escape drops the word and the list together rather than dismissing the list
 first: a two-stage Escape would mean two different things depending on state the
@@ -243,10 +241,13 @@ removes everything install.sh added.
 
 ## Notes
 
-- `spell.db` is generated, not committed, and cannot currently be built from a
-  fresh checkout: `cd packages/data && zig build prepare` needs the `sqlite3`
-  CLI *and* `packages/data/export_id/*.csv`, which come from
-  `zig build export` over a `word_triplets.csv` corpus that is not in the
-  repository. Neither the input method nor its candidate list needs it —
-  candidates use the compiled-in lexicon — so only spell-check is waiting on it.
+- `spell.db` is a **local SQLite file**, not a server. It is generated, not
+  committed (`*.db` is gitignored). Build it with:
+  `bash platforms/linux/scripts/prepare_spell_db.sh`
+  That uses the Avro lexicon already in `src/assets/dictionary_macos_sorted.txt`
+  (~159k words). Wikipedia n-grams are empty until someone later runs the full
+  `word_triplets.csv` export; lookups and SymSpell suggestions still work.
+  `install.sh` copies it to `/usr/share/byakaron/spell.db`. Override the path
+  with `BYAKARON_SPELL_DB` for development. The input method types without it;
+  only spell-check needs it. Candidates use the compiled-in lexicon.
 - `platforms/linux/build/` is generated output and is git-ignored.
