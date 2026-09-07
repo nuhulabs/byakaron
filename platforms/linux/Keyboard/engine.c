@@ -23,6 +23,7 @@
 #include <string.h>
 
 #include "autocomplete.h"
+#include "spell.h"
 #include "transliterator.h"
 
 /*
@@ -47,6 +48,7 @@ struct _BykEngine {
 
     BykTransliterator *transliterator;
     BykAutoComplete *autocomplete;
+    BykSpell *spell;
 
     /* Candidates for the current buffer. Owned here (sunk in init) and refilled
      * in place on every keystroke rather than reallocated. */
@@ -198,11 +200,16 @@ byk_engine_commit (BykEngine *self, const gchar *suffix)
         : g_strdup (bangla);
 
     g_string_truncate (self->latin, 0);
-    /* Hide the preedit before committing so the text does not briefly appear
-     * twice in applications that render preedit and commit independently. */
-    ibus_engine_hide_preedit_text (IBUS_ENGINE (self));
     byk_engine_hide_candidates (self);
+    /*
+     * Commit first, then hide the preedit. Order matters for Electron/Monaco
+     * (Cursor's prompt): HidePreeditText is treated as "cancel the composition",
+     * so hiding *before* commit deletes the underlined word and the following
+     * CommitText is ignored. GTK and Chrome survive either order; Cursor does
+     * not. Commit-then-hide is what IBus engines that work in VS Code do.
+     */
     ibus_engine_commit_text (IBUS_ENGINE (self), ibus_text_new_from_string (final));
+    ibus_engine_hide_preedit_text (IBUS_ENGINE (self));
 
     g_free (final);
     g_free (bangla);
@@ -233,11 +240,10 @@ byk_engine_commit_candidate (BykEngine *self, guint index)
     gchar *word = g_strdup (ibus_text_get_text (candidate));
 
     g_string_truncate (self->latin, 0);
-    ibus_engine_hide_preedit_text (IBUS_ENGINE (self));
     byk_engine_hide_candidates (self);
-    /* No trailing space: picking a word is not the same as finishing a sentence,
-     * and Space still commits one when the user wants it. */
+    /* Same commit-then-hide order as byk_engine_commit — see the comment there. */
     ibus_engine_commit_text (IBUS_ENGINE (self), ibus_text_new_from_string (word));
+    ibus_engine_hide_preedit_text (IBUS_ENGINE (self));
 
     g_free (word);
     return TRUE;
@@ -257,20 +263,34 @@ byk_engine_clear (BykEngine *self)
 /* ── key handling ────────────────────────────────────────────────────────── */
 
 /*
- * Characters that feed the transliterator: ASCII letters, and only those.
+ * Characters that feed the transliterator: ASCII letters and digits.
  *
- * The core does map digits and punctuation too (`2024` -> ২০২৪, `.` -> `।`), but
- * buffering them cannot coexist with selecting candidates by number: the same
- * "2" cannot both extend the word and pick the second completion. Number keys
- * win, because a visible list the user is looking at is the more immediate
- * meaning. Bangla numerals therefore need an explicit toggle to reach — a mode
- * with a keybinding, which belongs with the settings app rather than here.
+ * Digits become Bangla numerals (`1` → `১`, `2024` → `২০২৪`). They only enter
+ * the buffer when the candidate list is *not* on screen; while it is, 1–9 still
+ * pick a candidate (see process_key_event). `0` is never a candidate key, so it
+ * always goes into the buffer.
  */
 static inline gboolean
-byk_is_input_key (guint keyval)
+byk_is_letter_key (guint keyval)
 {
     return (keyval >= IBUS_KEY_a && keyval <= IBUS_KEY_z) ||
            (keyval >= IBUS_KEY_A && keyval <= IBUS_KEY_Z);
+}
+
+static inline gboolean
+byk_is_digit_key (guint keyval)
+{
+    return (keyval >= IBUS_KEY_0 && keyval <= IBUS_KEY_9) ||
+           (keyval >= IBUS_KEY_KP_0 && keyval <= IBUS_KEY_KP_9);
+}
+
+/* a–z / 0–9 keyvals are already ASCII; keypad digits are not. */
+static inline gchar
+byk_latin_char (guint keyval)
+{
+    if (keyval >= IBUS_KEY_KP_0 && keyval <= IBUS_KEY_KP_9)
+        return (gchar) ('0' + (keyval - IBUS_KEY_KP_0));
+    return (gchar) keyval;
 }
 
 /*
@@ -392,19 +412,20 @@ byk_engine_process_key_event (IBusEngine *engine,
         break;
     }
 
-    /* Number keys pick from the list while it is on screen. Off screen they are
-     * ordinary digits, so this cannot swallow one from the application. */
+    /* Number keys pick from the list while it is on screen. Off screen they
+     * become Bangla numerals (`1` → `১`), including `0` which is never a
+     * candidate key. */
     const gint candidate = byk_candidate_index (keyval);
     if (candidate >= 0 && byk_engine_commit_candidate (self, (guint) candidate))
         return TRUE;
 
-    if (byk_is_input_key (keyval)) {
-        g_string_append_c (self->latin, (gchar) keyval);
+    if (byk_is_letter_key (keyval) || byk_is_digit_key (keyval)) {
+        g_string_append_c (self->latin, byk_latin_char (keyval));
         byk_engine_refresh (self);
         return TRUE;
     }
 
-    /* Anything else (digits, punctuation, arrows, function keys) terminates the
+    /* Anything else (punctuation, arrows, function keys) terminates the
      * word and is handled by the application. */
     byk_engine_commit (self, NULL);
     return FALSE;
@@ -486,6 +507,13 @@ byk_engine_init (BykEngine *self)
     if (self->autocomplete == NULL)
         g_warning ("byakaron: lexicon unavailable, candidates are disabled");
 
+    /* Spell-check is optional: missing spell.db must not stop typing. Opening
+     * it here proves the install path works; the GTK app will use the same
+     * handle. Candidates still come from the compiled-in lexicon. */
+    self->spell = byk_spell_new (NULL);
+    if (self->spell == NULL)
+        g_message ("byakaron: spell.db unavailable, spell-check is disabled");
+
     /* No visible cursor: candidates are chosen by number, so highlighting one
      * would suggest that Space or Enter would take it, and neither does. The
      * cursor still exists — it is what marks the current page. Pages do not
@@ -504,6 +532,7 @@ byk_engine_destroy (IBusObject *object)
 
     g_clear_pointer (&self->transliterator, byk_transliterator_free);
     g_clear_pointer (&self->autocomplete, byk_autocomplete_free);
+    g_clear_pointer (&self->spell, byk_spell_free);
     g_clear_object (&self->table);
     if (self->latin != NULL) {
         g_string_free (self->latin, TRUE);
