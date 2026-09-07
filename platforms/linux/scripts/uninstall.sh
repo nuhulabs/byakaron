@@ -14,6 +14,7 @@ FILES=(
     "/usr/libexec/byakaron-ibus"
     "/usr/share/ibus/component/byakaron.xml"
     "/usr/share/icons/hicolor/scalable/apps/byakaron.svg"
+    "/usr/share/byakaron/spell.db"
 )
 
 DESKTOP_USER="${SUDO_USER:-root}"
@@ -43,6 +44,7 @@ for f in "${FILES[@]}"; do
         echo ">>> Removed: $f"
     fi
 done
+rmdir /usr/share/byakaron 2>/dev/null || true
 
 if pgrep -x ibus-daemon >/dev/null; then
     echo ">>> Refreshing the ibus registry..."

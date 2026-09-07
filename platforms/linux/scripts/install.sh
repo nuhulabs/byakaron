@@ -24,6 +24,7 @@ REPO_ROOT="$(cd "$PROJECT_ROOT/../.." && pwd)"
 LIBDIR="/usr/libexec"
 XMLDIR="/usr/share/ibus/component"
 ICONDIR="/usr/share/icons/hicolor/scalable/apps"
+DATADIR="/usr/share/byakaron"
 
 if [[ $EUID -ne 0 ]]; then
     echo "error: this needs root — run: sudo bash $0" >&2
@@ -45,7 +46,7 @@ fi
 SRC_BIN="$REPO_ROOT/zig-out/bin/byakaron-ibus"
 [[ -x "$SRC_BIN" ]] || { echo "error: $SRC_BIN missing" >&2; exit 1; }
 
-install -d "$LIBDIR" "$XMLDIR" "$ICONDIR"
+install -d "$LIBDIR" "$XMLDIR" "$ICONDIR" "$DATADIR"
 
 # Install the binary before the XML: the XML points at its final path and ibus
 # will try to exec exactly that.
@@ -54,6 +55,15 @@ echo ">>> Installed: $LIBDIR/byakaron-ibus"
 
 install -m 644 "$PROJECT_ROOT/Resources/byakaron.svg" "$ICONDIR/byakaron.svg"
 echo ">>> Installed: $ICONDIR/byakaron.svg"
+
+SPELL_DB="$REPO_ROOT/packages/data/spell.db"
+if [[ -f "$SPELL_DB" ]]; then
+    install -m 644 "$SPELL_DB" "$DATADIR/spell.db"
+    echo ">>> Installed: $DATADIR/spell.db"
+else
+    echo "note: $SPELL_DB missing — spell-check will be unavailable"
+    echo "      build it with: bash platforms/linux/scripts/prepare_spell_db.sh"
+fi
 
 sed -e "s|@BYK_EXEC@|$LIBDIR/byakaron-ibus|g" \
     -e "s|@BYK_ICON@|$ICONDIR/byakaron.svg|g" \

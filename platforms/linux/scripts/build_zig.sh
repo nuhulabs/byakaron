@@ -46,8 +46,8 @@ cp "$HDR" "$BUILD_DIR/include/"
 echo ">>> Staged: $BUILD_DIR/lib/libbyakaron.so"
 
 # spell.db is generated, not committed. Build it with:
-#     cd packages/data && zig build prepare
-# The engine works without it; only the spell-check features need it.
+#     bash platforms/linux/scripts/prepare_spell_db.sh
+# The engine types without it; only spell-check needs it.
 SPELL_DB="$ZIG_REPO_ROOT/packages/data/spell.db"
 if [[ -f "$SPELL_DB" ]]; then
     cp "$SPELL_DB" "$BUILD_DIR/share/spell.db"
