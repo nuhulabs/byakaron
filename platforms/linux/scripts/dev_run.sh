@@ -23,6 +23,10 @@ if [[ -z "$ZIG" ]]; then
     exit 1
 fi
 
+if [[ -z "${BYAKARON_SPELL_DB:-}" && -f "$REPO_ROOT/packages/data/spell.db" ]]; then
+    export BYAKARON_SPELL_DB="$REPO_ROOT/packages/data/spell.db"
+fi
+
 echo ">>> Building byakaron-ibus..."
 ( cd "$REPO_ROOT" && "$ZIG" build linux -Doptimize="${ZIG_OPTIMIZE:-ReleaseFast}" )
 
