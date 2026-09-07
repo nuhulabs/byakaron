@@ -144,6 +144,7 @@ pub fn build(b: *std.Build) !void {
                 "platforms/linux/Keyboard/engine.c",
                 "platforms/linux/Core/transliterator.c",
                 "platforms/linux/Core/autocomplete.c",
+                "platforms/linux/Core/spell.c",
             },
             .flags = &.{ "-std=gnu11", "-Wall", "-Wextra" },
         });
