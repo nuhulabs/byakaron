@@ -46,6 +46,7 @@ install -d "$STAGE/DEBIAN"
 install -d "$STAGE/usr/libexec"
 install -d "$STAGE/usr/share/ibus/component"
 install -d "$STAGE/usr/share/icons/hicolor/scalable/apps"
+install -d "$STAGE/usr/share/byakaron"
 
 # Ship a stripped binary so the download is small (the built one carries
 # debug_info and is ~14 MB; stripping roughly halves it).
@@ -54,6 +55,14 @@ strip --strip-unneeded "$STAGE/usr/libexec/byakaron-ibus" 2>/dev/null || true
 
 install -m 644 "$PROJECT_ROOT/Resources/byakaron.svg" \
     "$STAGE/usr/share/icons/hicolor/scalable/apps/byakaron.svg"
+
+SPELL_DB="$REPO_ROOT/packages/data/spell.db"
+if [[ -f "$SPELL_DB" ]]; then
+    install -m 644 "$SPELL_DB" "$STAGE/usr/share/byakaron/spell.db"
+else
+    echo "note: $SPELL_DB missing — the package will have no spell-check"
+    echo "      build it with: bash platforms/linux/scripts/prepare_spell_db.sh"
+fi
 
 sed -e "s|@BYK_EXEC@|/usr/libexec/byakaron-ibus|g" \
     -e "s|@BYK_ICON@|/usr/share/icons/hicolor/scalable/apps/byakaron.svg|g" \

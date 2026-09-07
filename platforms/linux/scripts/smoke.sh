@@ -19,11 +19,19 @@ echo ">>> Compiling smoke test..."
 cc -O2 -Wall -Wextra -o "$BUILD_DIR/bin/smoke" \
     "$PROJECT_ROOT/tests/smoke.c" \
     "$PROJECT_ROOT/Core/autocomplete.c" \
+    "$PROJECT_ROOT/Core/spell.c" \
     -I"$BUILD_DIR/include" -I"$PROJECT_ROOT/Core" \
     $(pkg-config --cflags glib-2.0) \
     -L"$BUILD_DIR/lib" -lbyakaron \
     $(pkg-config --libs glib-2.0) \
     -Wl,-rpath,"$BUILD_DIR/lib"
+
+SPELL_DB="${BYAKARON_SPELL_DB:-$PROJECT_ROOT/../../packages/data/spell.db}"
+if [[ ! -f "$SPELL_DB" ]]; then
+    echo "error: $SPELL_DB missing — run: bash platforms/linux/scripts/prepare_spell_db.sh" >&2
+    exit 1
+fi
+export BYAKARON_SPELL_DB="$SPELL_DB"
 
 echo ">>> Running..."
 echo
