@@ -9,7 +9,7 @@ Zig engine as the macOS and Windows ports through its C ABI (`src/ffi/byakaron.h
 | --- | --- | --- | --- |
 | Keyboard / IME | Swift + InputMethodKit | C++ + TSF | **C + IBus** |
 | GUI app | SwiftUI | C# WinUI 3 | **C + GTK4 / libadwaita** |
-| Engine linkage | static `libbyakaron.a` | shared `byakaron.dll` | **static into the engine; `.so` for the app** |
+| Engine linkage | static `libbyakaron.a` | shared `byakaron.dll` | **static into both binaries** |
 
 Every port is a thin platform shell; all Bangla logic — transliteration, spell
 check, autocomplete — stays in Zig behind the C ABI.
@@ -49,7 +49,8 @@ build system and no extra language runtime on the per-keystroke path.
 
 ```
 platforms/linux/
-├── App/         GTK4 + libadwaita settings and spell-check app
+├── App/         GTK4 + libadwaita app (main, window, typing, spelling,
+│                layout, setup)
 ├── Core/        Shared C glue over byakaron.h, used by App and Keyboard
 ├── Keyboard/    The IBus engine
 ├── Resources/   IBus component XML, .desktop entry, icons
@@ -59,9 +60,16 @@ platforms/linux/
 ```
 
 `Core/` holds the glue that both front-ends need: `transliterator.c` for
-latin → Bangla and `autocomplete.c` for candidates. Both hand back plain
-`g_malloc`'d memory, so the Zig ownership rule (`byakaron_string_free`) and the
-JSON the ABI returns stop there and nothing above them has to know.
+latin → Bangla, `autocomplete.c` for candidates, and `spell.c` for spell.db.
+All three hand back plain `g_malloc`'d memory, so the Zig ownership rule
+(`byakaron_string_free`) and the JSON the ABI returns stop there and nothing
+above them has to know.
+
+The two binaries share `Core/` as source and each links its own static copy of
+the Zig core. A single `libbyakaron.so` would save ~7 MB of the download, at the
+cost of a SONAME, an `ldconfig` trigger and an ABI promise this version is not
+in a position to make; `-Dshared` still builds the `.so` for anyone who wants
+to link it.
 
 ## Getting set up
 
@@ -116,11 +124,14 @@ is in this repository and never emits malformed output.
 
 ```bash
 zig build linux          # -> zig-out/bin/byakaron-ibus
+zig build linux-app      # -> zig-out/bin/byakaron       (the GTK app)
+zig build run-linux-app  # build and run the app
 ```
 
 The engine binary links the Zig core statically, so it is self-contained apart
-from system IBus and GLib. `-Dshared` still produces `libbyakaron.so`, which is
-what the GTK app and distro packaging will consume.
+from system IBus and GLib. `linux-app` is a separate step on purpose: the engine
+must stay buildable on a box that has only `libibus-1.0-dev`, while the app also
+needs `libgtk-4-dev` and `libadwaita-1-dev`.
 
 ### Development run
 
@@ -208,6 +219,55 @@ user can no longer see once the list is gone.
 The panel's own paging arrows and mouse clicks work too — the engine implements
 the `page_up`, `page_down`, and `candidate_clicked` handlers the panel drives.
 
+## The app
+
+A separate process (`byakaron`) from the engine, sharing only `Core/` and the
+Zig core underneath. The input method works whether or not it is installed or
+running. Four pages behind an `AdwViewSwitcher`:
+
+| Page | What it is for |
+| --- | --- |
+| **Write** | Compose Bangla here, before the input source is added |
+| **Spelling** | Editor with an issue list, red squiggles, and Fix All |
+| **Layout** | The Avro key map, as a lookup table |
+| **Setup** | Keyboard status, the steps to add it, a typing cheat-sheet |
+
+**Write is a composer, not a two-pane converter.** A converter that
+transliterated the whole text on every keystroke would leave the candidate list
+decorative, because clicking a Bangla completion cannot be mapped back to the
+latin that produced it. Composing a word at a time also makes this an honest
+preview of the keyboard: the same Space-commits-what-you-typed rule, the same
+1–9 selection, the same Bangla numerals when no list is showing.
+
+**Spelling checks per word, not with `byakaron_spell_check`.** The bulk call
+returns a JSON array of tokens with nested suggestion objects; the app already
+has to know each word's position in the buffer to underline it, so it tokenises
+locally and calls `byakaron_spell_is_correct` per word — which is what the macOS
+and Windows apps do too. Only Bengali-block runs are checked, so latin,
+punctuation and emoji are left alone rather than reported as misspelled, and
+Bangla digits are skipped because `২০২৪` is not a misspelling.
+
+Suggestions use plain `byakaron_spell_suggest`, not the `_ctx` variant: context
+ranking reads bigram and trigram tables that the locally built `spell.db` has
+empty, so passing neighbours would cost two queries per word for identical
+output. Worth revisiting when the n-grams exist.
+
+`spell.db` is 364 MB, so it opens on a worker thread. The window paints
+immediately, the Spelling page shows a loading state, and with no database at
+all it says so and stays out of the way — the other three pages need nothing
+installed.
+
+**Setup checks two things, because on Linux they are two steps.** Whether the
+IBus component is registered under `/usr/share/ibus/component` (the install),
+and whether `byakaron` is in the user's `org.gnome.desktop.input-sources`
+(adding it in Settings). That distinction is what separates "run the installer"
+from "click **+** in Settings". The GSettings schema is looked up before use,
+since `g_settings_new` aborts the process on an unknown schema and that schema
+does not exist outside GNOME.
+
+Nothing in the app is configurable yet. The macOS Settings window carries about
+fifteen "Coming soon" toggles that do nothing; none of them are reproduced here.
+
 ## Installing permanently
 
 ```bash
@@ -226,6 +286,15 @@ The script builds as the invoking (non-root) user via `SUDO_USER`, so `zig`
 resolves from that user's `~/.local/bin` and no root-owned build artifacts are
 left in the repo. It refreshes the ibus registry and restores whatever input
 engine was active before, since restarting the daemon otherwise drops it.
+
+The app is installed too when `gtk4` and `libadwaita-1` are present, to
+`/usr/bin/byakaron` with a `.desktop` entry — `/usr/bin`, not `/usr/libexec`,
+because the user launches it, unlike the engine, which only `ibus-daemon` ever
+execs. It is skipped rather than fatal when those libraries are missing, since
+the input method is the product. Installing it also fills in the component
+XML's `<setup>` element, which is what makes the IBus panel's **Preferences**
+button open the app; that element stays empty otherwise, because a setup command
+pointing at a missing binary gives a button that silently does nothing.
 
 After installing:
 
