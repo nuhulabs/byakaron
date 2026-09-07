@@ -341,6 +341,22 @@ main (void)
     send_key (ctx, IBUS_KEY_space);
     check ("committed the typed word", g_committed, "বাংল ");
 
+    g_print ("digits become Bangla numerals:\n");
+    reset_state (ctx);
+    send_string (ctx, "1");
+    check ("type \"1\"", g_preedit, "১");
+    reset_state (ctx);
+    send_string (ctx, "0");
+    check ("type \"0\"", g_preedit, "০");
+    reset_state (ctx);
+    send_string (ctx, "2024");
+    check ("type \"2024\"", g_preedit, "২০২৪");
+    reset_state (ctx);
+    /* `0` is not a candidate selector, so it still types a numeral even while
+     * the list is up (`1`–`9` would pick instead). */
+    send_string (ctx, "ami0");
+    check ("\"ami\" then \"0\"", g_preedit, "আমি০");
+
     ibus_input_context_focus_out (ctx);
     g_object_unref (ctx);
 
