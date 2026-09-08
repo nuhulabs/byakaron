@@ -17,6 +17,8 @@ FILES=(
     "/usr/share/applications/byakaron.desktop"
     "/usr/share/icons/hicolor/scalable/apps/byakaron.svg"
     "/usr/share/byakaron/spell.db"
+    "/usr/share/fcitx5/addon/byakaron.conf"
+    "/usr/share/fcitx5/inputmethod/byakaron.conf"
 )
 
 DESKTOP_USER="${SUDO_USER:-root}"
@@ -49,6 +51,9 @@ for f in "${FILES[@]}"; do
         echo ">>> Removed: $f"
     fi
 done
+# Multiarch addon path varies; remove whichever copy install.sh left.
+rm -f /usr/lib/fcitx5/byakaron.so \
+      /usr/lib/*/fcitx5/byakaron.so 2>/dev/null || true
 rmdir /usr/share/byakaron 2>/dev/null || true
 update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
 gtk-update-icon-cache -qtf /usr/share/icons/hicolor >/dev/null 2>&1 || true

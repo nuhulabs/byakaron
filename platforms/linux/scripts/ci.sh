@@ -127,4 +127,27 @@ echo "=== wayland / display-path probe ==="
 bash "$SCRIPT_DIR/wayland_probe.sh"
 
 echo
+if pkg-config --exists Fcitx5Core; then
+    echo "=== Fcitx5 addon ==="
+    "$ZIG" build linux-fcitx5 -Doptimize=ReleaseFast
+    so="$REPO_ROOT/zig-out/lib/fcitx5/byakaron.so"
+    if ! nm -D "$so" 2>/dev/null | grep -q 'fcitx_addon_factory_instance'; then
+        echo "error: $so does not export fcitx_addon_factory_instance" >&2
+        exit 1
+    fi
+    echo ">>> $so exports fcitx_addon_factory_instance"
+else
+    echo "=== Fcitx5 addon skipped (no Fcitx5Core.pc) ==="
+fi
+
+echo
+echo "=== GtkEntry typing (IBus IM module) ==="
+# Needs a running ibus-daemon, which the IME block above either found or started.
+if pgrep -x ibus-daemon >/dev/null; then
+    bash "$SCRIPT_DIR/wayland_type.sh"
+else
+    echo "note: no ibus-daemon — GtkEntry typing skipped"
+fi
+
+echo
 echo "=== ci.sh finished ==="

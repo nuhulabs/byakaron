@@ -2,6 +2,15 @@ const std = @import("std");
 const builtin = @import("builtin");
 const ziex = @import("ziex");
 
+fn pkgConfigExists(b: *std.Build, name: []const u8) bool {
+    return switch (b.runFallible(&.{ "pkg-config", "--exists", name }, .{
+        .stderr_behavior = .ignore,
+    })) {
+        .success => true,
+        else => false,
+    };
+}
+
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -145,6 +154,7 @@ pub fn build(b: *std.Build) !void {
                 "platforms/linux/Core/transliterator.c",
                 "platforms/linux/Core/autocomplete.c",
                 "platforms/linux/Core/spell.c",
+                "platforms/linux/Core/composer.c",
             },
             .flags = &.{ "-std=gnu11", "-Wall", "-Wextra" },
         });
@@ -235,6 +245,71 @@ pub fn build(b: *std.Build) !void {
         run_app.addPassthruArgs();
         const run_linux_app_step = b.step("run-linux-app", "Build and run the Linux GTK app");
         run_linux_app_step.dependOn(&run_app.step);
+
+        // Optional Fcitx5 frontend. Same composer as IBus; skipped when the
+        // headers are not installed so a GNOME-only box still `zig build linux`.
+        const fcitx_step = b.step("linux-fcitx5", "Build the optional Fcitx5 addon (needs libfcitx5core-dev)");
+        if (pkgConfigExists(b, "Fcitx5Core")) {
+            const fcitx_core = b.addLibrary(.{
+                .linkage = .static,
+                .name = "byakaron_fcitx_core",
+                .root_module = mod,
+            });
+
+            const fcitx = b.addLibrary(.{
+                .linkage = .dynamic,
+                .name = "byakaronim",
+                .root_module = b.createModule(.{
+                    .target = target,
+                    .optimize = optimize,
+                    .link_libc = true,
+                    .link_libcpp = true,
+                }),
+            });
+            fcitx.root_module.addCSourceFiles(.{
+                .files = &.{"platforms/linux/Fcitx5/engine.cpp"},
+                .flags = &.{ "-std=c++17", "-Wall", "-Wextra", "-fPIC" },
+            });
+            fcitx.root_module.addCSourceFiles(.{
+                .files = &.{
+                    "platforms/linux/Core/composer.c",
+                    "platforms/linux/Core/transliterator.c",
+                    "platforms/linux/Core/autocomplete.c",
+                },
+                .flags = &.{ "-std=gnu11", "-Wall", "-Wextra", "-fPIC" },
+            });
+            fcitx.root_module.addIncludePath(b.path("src/ffi"));
+            fcitx.root_module.addIncludePath(b.path("platforms/linux/Core"));
+            fcitx.root_module.addIncludePath(b.path("platforms/linux/Fcitx5"));
+            fcitx.root_module.linkSystemLibrary("Fcitx5Core", .{});
+            fcitx.root_module.linkSystemLibrary("glib-2.0", .{});
+            fcitx.root_module.linkLibrary(fcitx_core);
+
+            // Fcitx loads $libdir/fcitx5/byakaron.so (no lib prefix), from the
+            // Library=byakaron field in the addon conf.
+            const install_fcitx_so = b.addInstallFileWithDir(
+                fcitx.getEmittedBin(),
+                .lib,
+                "fcitx5/byakaron.so",
+            );
+            const install_fcitx_addon = b.addInstallFileWithDir(
+                b.path("platforms/linux/Fcitx5/byakaron-addon.conf"),
+                .{ .custom = "share/fcitx5/addon" },
+                "byakaron.conf",
+            );
+            const install_fcitx_im = b.addInstallFileWithDir(
+                b.path("platforms/linux/Fcitx5/byakaron.conf"),
+                .{ .custom = "share/fcitx5/inputmethod" },
+                "byakaron.conf",
+            );
+            fcitx_step.dependOn(&install_fcitx_so.step);
+            fcitx_step.dependOn(&install_fcitx_addon.step);
+            fcitx_step.dependOn(&install_fcitx_im.step);
+        } else {
+            fcitx_step.dependOn(&b.addFail(
+                "Fcitx5Core not found — install libfcitx5core-dev or set PKG_CONFIG_PATH",
+            ).step);
+        }
     }
 
     // Executable
