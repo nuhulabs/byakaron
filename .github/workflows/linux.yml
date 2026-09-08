@@ -1,0 +1,52 @@
+# Build and smoke-test the Linux IBus engine + GTK app on a stock Ubuntu runner.
+#
+# Zig is pinned to the same 0.17-dev.1422 the branch was developed against —
+# master renamed an enum and will not compile ziex. ziex itself is a *path*
+# dependency (`../../ziex-dev/ziex` in build.zig.zon), so CI clones that pin
+# next to the workspace rather than rewriting the zon file.
+name: linux
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    name: engine + app + tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            pkg-config \
+            libibus-1.0-dev \
+            libglib2.0-dev \
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            ibus \
+            ibus-gtk4 \
+            xvfb \
+            dbus-x11
+
+      - name: Install Zig 0.17.0-dev.1422
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0-dev.1422+e863bf3be
+
+      - name: Clone ziex at the path build.zig.zon expects
+        run: |
+          dest="${GITHUB_WORKSPACE}/../../ziex-dev/ziex"
+          mkdir -p "$(dirname "$dest")"
+          git clone --filter=blob:none https://github.com/ziex-dev/ziex.git "$dest"
+          git -C "$dest" checkout --detach 29f9a85b
+          git -C "$dest" rev-parse HEAD
+
+      - name: Build, smoke, IME test
+        run: bash platforms/linux/scripts/ci.sh

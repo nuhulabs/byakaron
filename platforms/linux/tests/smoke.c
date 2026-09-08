@@ -95,29 +95,40 @@ int main(void)
     }
 
     puts("spell-check (local spell.db):");
-    BykSpell *spell = byk_spell_new(NULL);
-    if (!spell) {
-        fprintf(stderr, "  FAIL byk_spell_new returned NULL (is spell.db built?)\n");
-        failures++;
-    } else {
-        const int known = byk_spell_is_correct(spell, "আমি");
-        printf("  %-4s %-28s -> %d\n", known == 1 ? "ok" : "FAIL",
-               "is_correct আমি", known);
-        if (known != 1) failures++;
+    {
+        gchar *db_path = byk_spell_locate_db();
+        if (db_path == NULL) {
+            /* Typing and candidates do not need the file; CI never ships the
+             * 364 MB database. Skip rather than fail so a fresh checkout still
+             * goes green. */
+            puts("  skip spell.db not present (prepare_spell_db.sh)");
+        } else {
+            g_free(db_path);
+            BykSpell *spell = byk_spell_new(NULL);
+            if (!spell) {
+                fprintf(stderr, "  FAIL byk_spell_new returned NULL\n");
+                failures++;
+            } else {
+                const int known = byk_spell_is_correct(spell, "আমি");
+                printf("  %-4s %-28s -> %d\n", known == 1 ? "ok" : "FAIL",
+                       "is_correct আমি", known);
+                if (known != 1) failures++;
 
-        const int unknown = byk_spell_is_correct(spell, "qqq");
-        printf("  %-4s %-28s -> %d\n", unknown == 0 ? "ok" : "FAIL",
-               "is_correct qqq", unknown);
-        if (unknown != 0) failures++;
+                const int unknown = byk_spell_is_correct(spell, "qqq");
+                printf("  %-4s %-28s -> %d\n", unknown == 0 ? "ok" : "FAIL",
+                       "is_correct qqq", unknown);
+                if (unknown != 0) failures++;
 
-        gchar **sug = byk_spell_suggest(spell, "আমী", 5);
-        const int has_sug = sug && sug[0];
-        printf("  %-4s %-28s -> %s\n", has_sug ? "ok" : "FAIL",
-               "suggest আমী", has_sug ? sug[0] : "(none)");
-        if (!has_sug) failures++;
-        g_strfreev(sug);
+                gchar **sug = byk_spell_suggest(spell, "আমী", 5);
+                const int has_sug = sug && sug[0];
+                printf("  %-4s %-28s -> %s\n", has_sug ? "ok" : "FAIL",
+                       "suggest আমী", has_sug ? sug[0] : "(none)");
+                if (!has_sug) failures++;
+                g_strfreev(sug);
 
-        byk_spell_free(spell);
+                byk_spell_free(spell);
+            }
+        }
     }
 
     /*
