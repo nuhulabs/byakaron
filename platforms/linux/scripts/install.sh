@@ -104,6 +104,29 @@ sed -e "s|@BYK_EXEC@|$LIBDIR/byakaron-ibus|g" \
 chmod 644 "$XMLDIR/byakaron.xml"
 echo ">>> Installed: $XMLDIR/byakaron.xml"
 
+# Fcitx5 is optional: same composer, different framework. Built only when the
+# headers are present so a GNOME-only machine is not blocked on libfcitx5-dev.
+FCITX_SO="$REPO_ROOT/zig-out/lib/fcitx5/byakaron.so"
+if as_build_user "pkg-config --exists Fcitx5Core"; then
+    echo ">>> Building the Fcitx5 addon..."
+    as_build_user "zig build linux-fcitx5 -Doptimize=ReleaseFast" || true
+fi
+if [[ -f "$FCITX_SO" ]]; then
+    FCITX_LIBDIR="$(pkg-config --variable=libdir Fcitx5Core 2>/dev/null || true)"
+    if [[ -z "$FCITX_LIBDIR" ]]; then
+        FCITX_LIBDIR="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo x86_64-linux-gnu)"
+    fi
+    install -d "$FCITX_LIBDIR/fcitx5" \
+        /usr/share/fcitx5/addon /usr/share/fcitx5/inputmethod
+    install -m 755 "$FCITX_SO" "$FCITX_LIBDIR/fcitx5/byakaron.so"
+    install -m 644 "$PROJECT_ROOT/Fcitx5/byakaron-addon.conf" \
+        /usr/share/fcitx5/addon/byakaron.conf
+    install -m 644 "$PROJECT_ROOT/Fcitx5/byakaron.conf" \
+        /usr/share/fcitx5/inputmethod/byakaron.conf
+    echo ">>> Installed: $FCITX_LIBDIR/fcitx5/byakaron.so"
+    echo "    (Fcitx5 users add Byakaron in the Fcitx5 config tool; this does not switch the session IM)"
+fi
+
 # Without these the app has no icon and does not show up in the activities
 # search until the desktop rescans on its own schedule.
 if [[ -n "$BYK_SETUP" ]]; then
