@@ -55,7 +55,7 @@ platforms/linux/
 ├── Keyboard/    The IBus engine
 ├── Resources/   IBus component XML, .desktop entry, icons
 ├── scripts/     setup_deps.sh, build_zig.sh, smoke.sh, prepare_spell_db.sh,
-│                install.sh, uninstall.sh, package_deb.sh
+│                install.sh, uninstall.sh, package_deb.sh, ci.sh, wayland_probe.sh
 └── tests/       C ABI + Core smoke test, IBus integration test
 ```
 
@@ -307,6 +307,62 @@ sudo bash platforms/linux/scripts/uninstall.sh
 ```
 
 removes everything install.sh added.
+
+## Wayland
+
+The engine never opens a display. `Keyboard/` includes neither X11 nor Wayland
+headers; it only implements `IBusEngine`, and the daemon is what delivers those
+events to the focused client. X11 vs Wayland is a *client* question:
+
+| Session | What a GTK4 text field uses (GTK_IM_MODULE unset) |
+| --- | --- |
+| X11 (this development box) | `GtkIMMulticontext` context id `ibus` → `libim-ibus.so` → D-Bus |
+| Wayland | context id `wayland` → `GtkIMContextWayland` → `zwp_text_input_v3` → compositor (Mutter) → IBus |
+
+Both end at the same engine. Setting `GTK_IM_MODULE=ibus` forces the D-Bus
+module on either backend; GNOME on Wayland often leaves it unset and uses
+text-input-v3 instead.
+
+Verified on this X11 session by starting a nested mutter (`mutter --wayland
+--headless --no-x11 --virtual-monitor 1280x720`) and launching a GTK4 probe
+against it: backend `GdkWaylandDisplay`, IM context id `wayland`, widget
+realised. That is the text-input-v3 path. A full "type in Firefox on a Wayland
+login" check still wants a Wayland session.
+
+```bash
+bash platforms/linux/scripts/wayland_probe.sh
+```
+
+## CI
+
+`.github/workflows/linux.yml` runs on every push and pull request:
+
+1. Ubuntu packages (`libibus-1.0-dev`, `libgtk-4-dev`, `libadwaita-1-dev`, `ibus`, `xvfb`)
+2. Zig **0.17.0-dev.1422+e863bf3be** via `mlugg/setup-zig` (not master)
+3. Clone `ziex` at commit `29f9a85b` to `../../ziex-dev/ziex`, which is what
+   `build.zig.zon` already points at locally
+4. `bash platforms/linux/scripts/ci.sh` — `zig build linux linux-app linux-test
+   -Dshared`, smoke test, IME integration test against a throwaway
+   Xvfb+ibus-daemon, display-path probe
+
+`spell.db` is not built on the runner (364 MB). Smoke skips those assertions
+when the file is missing; typing and candidates do not need it.
+
+To run the same steps locally:
+
+```bash
+bash platforms/linux/scripts/ci.sh
+```
+
+## What is not in this port yet
+
+- **Fcitx5.** `Core/` is already the shared glue an addon would use, but a
+  working Fcitx5 frontend is its own project (different panel, different
+  candidate UI, different install path). IBus covers GNOME/Ubuntu first.
+- **Flatpak.** An IBus engine has to live in `/usr/share/ibus/component` so the
+  session daemon can spawn it. A sandboxed Flatpak cannot register there, which
+  is why ibus-avro ships as a `.deb` too. The `.deb` from
+  `scripts/package_deb.sh` is the distribution artefact.
 
 ## Notes
 
