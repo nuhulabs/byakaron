@@ -14,6 +14,7 @@
 
 #include "autocomplete.h"
 #include "byakaron.h"
+#include "composer.h"
 #include "spell.h"
 
 /* Expected outputs are pinned so a regression in the engine is visible here. */
@@ -92,6 +93,70 @@ int main(void)
         g_strfreev(words);
 
         byk_autocomplete_free(ac);
+    }
+
+    puts("composer (shared IME policy):");
+    {
+        BykComposer *c = byk_composer_new();
+        if (!c || !byk_composer_ready(c)) {
+            fprintf(stderr, "  FAIL byk_composer_new\n");
+            failures++;
+        } else {
+            BykOutcome o;
+            guint i;
+            const char ami[] = { 'a', 'm', 'i' };
+            for (i = 0; i < 3; i++) {
+                o = byk_composer_key(c, (guint) ami[i], 0);
+                if (o.action != BYK_ACT_EAT) failures++;
+                g_free(o.commit);
+            }
+            gchar *pre = byk_composer_preedit(c);
+            const int ami_ok = pre && strcmp(pre, "আমি") == 0;
+            printf("  %-4s %-28s -> %s\n", ami_ok ? "ok" : "FAIL",
+                   "type ami", pre ? pre : "(null)");
+            if (!ami_ok) failures++;
+            g_free(pre);
+
+            const int listed = byk_composer_table_visible(c);
+            printf("  %-4s %-28s -> %s\n", listed ? "ok" : "FAIL",
+                   "candidates while typing", listed ? "yes" : "no");
+            if (!listed) failures++;
+
+            o = byk_composer_key(c, 0x0032, 0); /* '2' */
+            const int picked = o.action == BYK_ACT_COMMIT && o.commit &&
+                               strcmp(o.commit, "আমিন") == 0;
+            printf("  %-4s %-28s -> %s\n", picked ? "ok" : "FAIL",
+                   "2 picks candidate 2", o.commit ? o.commit : "(none)");
+            if (!picked) failures++;
+            g_free(o.commit);
+
+            o = byk_composer_key(c, 0x0031, 0); /* '1' with no list */
+            pre = byk_composer_preedit(c);
+            const int digit = o.action == BYK_ACT_EAT && pre &&
+                              strcmp(pre, "১") == 0;
+            printf("  %-4s %-28s -> %s\n", digit ? "ok" : "FAIL",
+                   "1 becomes ১", pre ? pre : "(null)");
+            if (!digit) failures++;
+            g_free(pre);
+            g_free(o.commit);
+
+            o = byk_composer_key(c, 0xff08, 0); /* BackSpace */
+            g_free(o.commit);
+            o = byk_composer_key(c, 0x0061, 0); /* a */
+            g_free(o.commit);
+            o = byk_composer_key(c, 0x006d, 0);
+            g_free(o.commit);
+            o = byk_composer_key(c, 0x0069, 0);
+            g_free(o.commit);
+            o = byk_composer_key(c, 0x0020, 0); /* space */
+            const int spaced = o.action == BYK_ACT_COMMIT && o.commit &&
+                               strcmp(o.commit, "আমি ") == 0;
+            printf("  %-4s %-28s -> %s\n", spaced ? "ok" : "FAIL",
+                   "space commits typed word", o.commit ? o.commit : "(none)");
+            if (!spaced) failures++;
+            g_free(o.commit);
+        }
+        byk_composer_free(c);
     }
 
     puts("spell-check (local spell.db):");
