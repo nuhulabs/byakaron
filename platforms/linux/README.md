@@ -34,8 +34,8 @@ IBus is also the default on GNOME (Ubuntu, Fedora, Debian) and reaches
 applications through the GTK and Qt im-modules, XIM, and Wayland's
 `text-input-v3`.
 
-Fcitx5 is a possible second front-end later; the platform-independent glue in
-`Core/` is kept separate from `Keyboard/` so that stays cheap.
+Fcitx5 is a possible second front-end; `Core/composer.c` is what it wraps.
+IBus remains the GNOME/Ubuntu default.
 
 ## Why C
 
@@ -51,17 +51,22 @@ build system and no extra language runtime on the per-keystroke path.
 platforms/linux/
 ├── App/         GTK4 + libadwaita app (main, window, typing, spelling,
 │                layout, setup)
-├── Core/        Shared C glue over byakaron.h, used by App and Keyboard
-├── Keyboard/    The IBus engine
-├── Resources/   IBus component XML, .desktop entry, icons
+├── Core/        Shared C glue over byakaron.h (composer, transliterator,
+│                autocomplete, spell) — IBus, Fcitx5, and the app all use this
+├── Keyboard/    The IBus engine (thin shell over Core/composer)
+├── Fcitx5/      Optional Fcitx5 addon (same composer; needs libfcitx5core-dev)
+├── Resources/   IBus component XML, .desktop entry, icons, app-only Flatpak manifest
 ├── scripts/     setup_deps.sh, build_zig.sh, smoke.sh, prepare_spell_db.sh,
-│                install.sh, uninstall.sh, package_deb.sh, ci.sh, wayland_probe.sh
-└── tests/       C ABI + Core smoke test, IBus integration test
+│                install.sh, uninstall.sh, package_deb.sh, package_flatpak.sh,
+│                ci.sh, wayland_probe.sh, wayland_type.sh
+└── tests/       C ABI + Core smoke test, IBus integration test, Wayland probes
 ```
 
-`Core/` holds the glue that both front-ends need: `transliterator.c` for
-latin → Bangla, `autocomplete.c` for candidates, and `spell.c` for spell.db.
-All three hand back plain `g_malloc`'d memory, so the Zig ownership rule
+`Core/` holds the glue that every Linux front-end needs: `transliterator.c` for
+latin → Bangla, `autocomplete.c` for candidates, `spell.c` for spell.db, and
+`composer.c` for the key policy (what Space, 1–9, digits, Escape mean). IBus
+and Fcitx5 are thin shells over that composer so they cannot drift. All four
+hand back plain `g_malloc`'d memory, so the Zig ownership rule
 (`byakaron_string_free`) and the JSON the ABI returns stop there and nothing
 above them has to know.
 
@@ -125,13 +130,16 @@ is in this repository and never emits malformed output.
 ```bash
 zig build linux          # -> zig-out/bin/byakaron-ibus
 zig build linux-app      # -> zig-out/bin/byakaron       (the GTK app)
+zig build linux-fcitx5   # -> zig-out/lib/fcitx5/byakaron.so  (optional)
 zig build run-linux-app  # build and run the app
 ```
 
 The engine binary links the Zig core statically, so it is self-contained apart
 from system IBus and GLib. `linux-app` is a separate step on purpose: the engine
 must stay buildable on a box that has only `libibus-1.0-dev`, while the app also
-needs `libgtk-4-dev` and `libadwaita-1-dev`.
+needs `libgtk-4-dev` and `libadwaita-1-dev`. `linux-fcitx5` is a third step for
+the same reason: it needs `libfcitx5core-dev`, which a GNOME box does not have,
+and installing those headers does not switch the session's input method.
 
 ### Development run
 
@@ -326,24 +334,32 @@ text-input-v3 instead.
 Verified on this X11 session by starting a nested mutter (`mutter --wayland
 --headless --no-x11 --virtual-monitor 1280x720`) and launching a GTK4 probe
 against it: backend `GdkWaylandDisplay`, IM context id `wayland`, widget
-realised. That is the text-input-v3 path. A full "type in Firefox on a Wayland
-login" check still wants a Wayland session.
+realised. That is the text-input-v3 path.
+
+Typing into a GtkEntry through the IBus GTK module (`scripts/wayland_type.sh`)
+asserts `ami` + Space → `আমি ` on the session display (X11 here, Xvfb in CI).
+The same binary against nested mutter realises a Wayland entry and loads the
+ibus module, but the virtual seat's synthetic keys are not eaten — that is
+why the script falls back. A full "type in Firefox on a Wayland login" check
+still wants a Wayland session.
 
 ```bash
 bash platforms/linux/scripts/wayland_probe.sh
+bash platforms/linux/scripts/wayland_type.sh
 ```
 
 ## CI
 
 `.github/workflows/linux.yml` runs on every push and pull request:
 
-1. Ubuntu packages (`libibus-1.0-dev`, `libgtk-4-dev`, `libadwaita-1-dev`, `ibus`, `xvfb`)
+1. Ubuntu packages (`libibus-1.0-dev`, `libgtk-4-dev`, `libadwaita-1-dev`, `libfcitx5core-dev`, `ibus`, `xvfb`)
 2. Zig **0.17.0-dev.1422+e863bf3be** via `mlugg/setup-zig` (not master)
 3. Clone `ziex` at commit `29f9a85b` to `../../ziex-dev/ziex`, which is what
    `build.zig.zon` already points at locally
 4. `bash platforms/linux/scripts/ci.sh` — `zig build linux linux-app linux-test
    -Dshared`, smoke test, IME integration test against a throwaway
-   Xvfb+ibus-daemon, display-path probe
+   Xvfb+ibus-daemon, display-path probe, Fcitx5 addon (headers are installed
+   on the runner), GtkEntry typing through the IBus IM module
 
 `spell.db` is not built on the runner (364 MB). Smoke skips those assertions
 when the file is missing; typing and candidates do not need it.
@@ -354,15 +370,41 @@ To run the same steps locally:
 bash platforms/linux/scripts/ci.sh
 ```
 
+## Fcitx5 (optional)
+
+A second IME framework, not a skin over IBus. `platforms/linux/Fcitx5/` is a
+C++ `InputMethodEngineV2` that applies the same `Core/composer.c` outcomes as
+`Keyboard/engine.c`. Build with `zig build linux-fcitx5` when
+`libfcitx5core-dev` is installed (or `PKG_CONFIG_PATH` points at those
+headers). That does **not** switch the session to Fcitx5.
+
+Install copies `byakaron.so` plus the addon/inputmethod `.conf` files if the
+addon was built. Fcitx5 users then add **Byakaron** in the Fcitx5 config tool.
+
+## Flatpak (app only)
+
+An IBus engine has to live in `/usr/share/ibus/component` so the session
+daemon can spawn it. A sandboxed Flatpak cannot register there, which is why
+ibus-avro ships as a `.deb` too. `scripts/package_deb.sh` is the IME artefact.
+
+The companion GTK app *can* live in a sandbox:
+
+```bash
+bash platforms/linux/scripts/package_flatpak.sh
+```
+
+That packs the already-built `byakaron` binary against `org.gnome.Platform`
+(used as both runtime and SDK, so `org.gnome.Sdk` is not required). It does
+not include the engine or the 364 MB `spell.db`. Manifest:
+`Resources/dev.nuhu.labs.Byakaron.json`.
+
 ## What is not in this port yet
 
-- **Fcitx5.** `Core/` is already the shared glue an addon would use, but a
-  working Fcitx5 frontend is its own project (different panel, different
-  candidate UI, different install path). IBus covers GNOME/Ubuntu first.
-- **Flatpak.** An IBus engine has to live in `/usr/share/ibus/component` so the
-  session daemon can spawn it. A sandboxed Flatpak cannot register there, which
-  is why ibus-avro ships as a `.deb` too. The `.deb` from
-  `scripts/package_deb.sh` is the distribution artefact.
+- **GSettings preferences.** The macOS app has live toggles this port has not
+  reproduced; Day 7 in the local plan covers that.
+- **Typing in Firefox on a Wayland *login* session.** Nested mutter covers the
+  compositor + GtkEntry path; switching this X11 box to a Wayland session is
+  a hand test, not a CI step.
 
 ## Notes
 

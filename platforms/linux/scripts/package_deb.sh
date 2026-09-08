@@ -103,6 +103,31 @@ sed -e "s|@BYK_EXEC@|/usr/libexec/byakaron-ibus|g" \
     > "$STAGE/usr/share/ibus/component/byakaron.xml"
 chmod 644 "$STAGE/usr/share/ibus/component/byakaron.xml"
 
+FCITX_SO="$REPO_ROOT/zig-out/lib/fcitx5/byakaron.so"
+if [[ ! -f "$FCITX_SO" ]] && pkg-config --exists Fcitx5Core 2>/dev/null; then
+    echo ">>> Building the Fcitx5 addon (ReleaseFast)..."
+    ( cd "$REPO_ROOT" && \
+      PATH="$HOME/.local/bin:/usr/local/bin:$PATH" \
+      zig build linux-fcitx5 -Doptimize=ReleaseFast ) || true
+fi
+if [[ -f "$FCITX_SO" ]]; then
+    FCITX_LIBDIR="$(pkg-config --variable=libdir Fcitx5Core 2>/dev/null || true)"
+    if [[ -z "$FCITX_LIBDIR" ]]; then
+        FCITX_LIBDIR="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)"
+    fi
+    REL_LIB="${FCITX_LIBDIR#/}"
+    install -d "$STAGE/${REL_LIB}/fcitx5" \
+        "$STAGE/usr/share/fcitx5/addon" \
+        "$STAGE/usr/share/fcitx5/inputmethod"
+    install -m 755 "$FCITX_SO" "$STAGE/${REL_LIB}/fcitx5/byakaron.so"
+    strip --strip-unneeded "$STAGE/${REL_LIB}/fcitx5/byakaron.so" 2>/dev/null || true
+    install -m 644 "$PROJECT_ROOT/Fcitx5/byakaron-addon.conf" \
+        "$STAGE/usr/share/fcitx5/addon/byakaron.conf"
+    install -m 644 "$PROJECT_ROOT/Fcitx5/byakaron.conf" \
+        "$STAGE/usr/share/fcitx5/inputmethod/byakaron.conf"
+    echo ">>> Packaged the Fcitx5 addon"
+fi
+
 INSTALLED_KB="$(du -sk "$STAGE/usr" | cut -f1)"
 
 # --- 3. Control metadata ---------------------------------------------------
@@ -114,6 +139,7 @@ Maintainer: Byakaron contributors <byakaron@example.com>
 Installed-Size: $INSTALLED_KB
 Depends: ibus (>= 1.5), libibus-1.0-5, libglib2.0-0t64 | libglib2.0-0$GTK_DEPENDS
 Recommends: ibus-gtk4, ibus-gtk3
+Suggests: fcitx5
 Section: utils
 Priority: optional
 Homepage: https://github.com/nuhulabs/byakaron

@@ -1,0 +1,346 @@
+#include "composer.h"
+
+#include "autocomplete.h"
+#include "transliterator.h"
+
+/* X11 keysyms — IBus, GDK and Fcitx5 all speak these. */
+#define BYK_KEY_BackSpace    0xff08
+#define BYK_KEY_Return       0xff0d
+#define BYK_KEY_Escape       0xff1b
+#define BYK_KEY_space        0x0020
+#define BYK_KEY_Page_Up      0xff55
+#define BYK_KEY_Page_Down    0xff56
+#define BYK_KEY_KP_Space     0xff80
+#define BYK_KEY_KP_Enter     0xff8d
+#define BYK_KEY_KP_Page_Up   0xff9a
+#define BYK_KEY_KP_Page_Down 0xff9b
+#define BYK_KEY_0            0x0030
+#define BYK_KEY_9            0x0039
+#define BYK_KEY_A            0x0041
+#define BYK_KEY_Z            0x005a
+#define BYK_KEY_a            0x0061
+#define BYK_KEY_z            0x007a
+#define BYK_KEY_KP_0         0xffb0
+#define BYK_KEY_KP_9         0xffb9
+#define BYK_KEY_KP_1         0xffb1
+
+struct _BykComposer {
+    GString *latin;
+    BykTransliterator *transliterator;
+    BykAutoComplete *autocomplete;
+    gchar **candidates; /* NULL-terminated, or NULL when hidden */
+    guint page;
+};
+
+static BykOutcome
+byk_outcome (BykAction action, gchar *commit, gboolean pass_key)
+{
+    BykOutcome o = { .action = action, .commit = commit, .pass_key = pass_key };
+    return o;
+}
+
+static void
+byk_composer_drop_candidates (BykComposer *self)
+{
+    g_clear_pointer (&self->candidates, g_strfreev);
+    self->page = 0;
+}
+
+static void
+byk_composer_refill_candidates (BykComposer *self, const gchar *bangla)
+{
+    byk_composer_drop_candidates (self);
+
+    if (self->autocomplete == NULL || bangla == NULL || *bangla == '\0')
+        return;
+
+    gchar **words = byk_autocomplete_prefix (self->autocomplete, bangla,
+                                             BYK_COMPOSER_CANDIDATE_LIMIT);
+    if (words == NULL)
+        return;
+    if (words[0] == NULL) {
+        g_strfreev (words);
+        return;
+    }
+    self->candidates = words;
+}
+
+static gchar *
+byk_composer_bangla (BykComposer *self)
+{
+    if (self->latin->len == 0)
+        return g_strdup ("");
+
+    gchar *bangla = byk_transliterator_run (self->transliterator, self->latin->str);
+    if (bangla == NULL)
+        bangla = g_strdup (self->latin->str);
+    return bangla;
+}
+
+static BykOutcome
+byk_composer_commit_text (BykComposer *self, const gchar *suffix)
+{
+    gchar *final = NULL;
+
+    if (self->latin->len == 0) {
+        if (suffix != NULL && *suffix != '\0')
+            final = g_strdup (suffix);
+    } else {
+        gchar *bangla = byk_composer_bangla (self);
+        final = (suffix != NULL && *suffix != '\0')
+            ? g_strconcat (bangla, suffix, NULL)
+            : bangla;
+        if (final != bangla)
+            g_free (bangla);
+    }
+
+    g_string_truncate (self->latin, 0);
+    byk_composer_drop_candidates (self);
+    return byk_outcome (BYK_ACT_COMMIT, final, FALSE);
+}
+
+static BykOutcome
+byk_composer_commit_candidate (BykComposer *self, guint index)
+{
+    if (self->candidates == NULL)
+        return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
+
+    const guint pos = self->page * BYK_COMPOSER_PAGE_SIZE + index;
+    if (self->candidates[pos] == NULL)
+        return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
+
+    gchar *word = g_strdup (self->candidates[pos]);
+    g_string_truncate (self->latin, 0);
+    byk_composer_drop_candidates (self);
+    return byk_outcome (BYK_ACT_COMMIT, word, FALSE);
+}
+
+static inline gboolean
+byk_is_letter_key (guint keyval)
+{
+    return (keyval >= BYK_KEY_a && keyval <= BYK_KEY_z) ||
+           (keyval >= BYK_KEY_A && keyval <= BYK_KEY_Z);
+}
+
+static inline gboolean
+byk_is_digit_key (guint keyval)
+{
+    return (keyval >= BYK_KEY_0 && keyval <= BYK_KEY_9) ||
+           (keyval >= BYK_KEY_KP_0 && keyval <= BYK_KEY_KP_9);
+}
+
+static inline gchar
+byk_latin_char (guint keyval)
+{
+    if (keyval >= BYK_KEY_KP_0 && keyval <= BYK_KEY_KP_9)
+        return (gchar) ('0' + (keyval - BYK_KEY_KP_0));
+    return (gchar) keyval;
+}
+
+static inline gint
+byk_candidate_index (guint keyval)
+{
+    if (keyval >= (BYK_KEY_0 + 1) && keyval <= BYK_KEY_9)
+        return (gint) (keyval - (BYK_KEY_0 + 1));
+    if (keyval >= BYK_KEY_KP_1 && keyval <= BYK_KEY_KP_9)
+        return (gint) (keyval - BYK_KEY_KP_1);
+    return -1;
+}
+
+BykComposer *
+byk_composer_new (void)
+{
+    BykComposer *self = g_new0 (BykComposer, 1);
+    self->latin = g_string_sized_new (32);
+    self->transliterator = byk_transliterator_new ();
+    self->autocomplete = byk_autocomplete_new ();
+
+    if (self->transliterator == NULL)
+        g_warning ("byakaron: transliterator unavailable, keys will pass through");
+    if (self->autocomplete == NULL)
+        g_warning ("byakaron: lexicon unavailable, candidates are disabled");
+
+    return self;
+}
+
+void
+byk_composer_free (BykComposer *self)
+{
+    if (self == NULL)
+        return;
+    g_clear_pointer (&self->transliterator, byk_transliterator_free);
+    g_clear_pointer (&self->autocomplete, byk_autocomplete_free);
+    byk_composer_drop_candidates (self);
+    g_string_free (self->latin, TRUE);
+    g_free (self);
+}
+
+gboolean
+byk_composer_ready (BykComposer *self)
+{
+    return self != NULL && self->transliterator != NULL;
+}
+
+const gchar *
+byk_composer_latin (BykComposer *self)
+{
+    g_return_val_if_fail (self != NULL, "");
+    return self->latin->str;
+}
+
+gchar *
+byk_composer_preedit (BykComposer *self)
+{
+    g_return_val_if_fail (self != NULL, g_strdup (""));
+    return byk_composer_bangla (self);
+}
+
+gchar **
+byk_composer_candidates (BykComposer *self)
+{
+    g_return_val_if_fail (self != NULL, NULL);
+    return self->candidates;
+}
+
+gboolean
+byk_composer_table_visible (BykComposer *self)
+{
+    return self != NULL && self->candidates != NULL;
+}
+
+guint
+byk_composer_page (BykComposer *self)
+{
+    return self != NULL ? self->page : 0;
+}
+
+BykOutcome
+byk_composer_select (BykComposer *self, guint index)
+{
+    g_return_val_if_fail (self != NULL, byk_outcome (BYK_ACT_PASS, NULL, FALSE));
+    return byk_composer_commit_candidate (self, index);
+}
+
+BykOutcome
+byk_composer_page_delta (BykComposer *self, gboolean down)
+{
+    g_return_val_if_fail (self != NULL, byk_outcome (BYK_ACT_PASS, NULL, FALSE));
+
+    if (self->candidates == NULL)
+        return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
+
+    const guint count = g_strv_length (self->candidates);
+    const guint pages = (count + BYK_COMPOSER_PAGE_SIZE - 1) / BYK_COMPOSER_PAGE_SIZE;
+    if (pages == 0)
+        return byk_outcome (BYK_ACT_EAT, NULL, FALSE);
+
+    if (down && self->page + 1 < pages)
+        self->page++;
+    else if (!down && self->page > 0)
+        self->page--;
+
+    /* Eat even at the end of the list: Page Down must not scroll the document
+     * underneath a candidate list the user is reading through. */
+    return byk_outcome (BYK_ACT_EAT, NULL, FALSE);
+}
+
+BykOutcome
+byk_composer_flush (BykComposer *self)
+{
+    g_return_val_if_fail (self != NULL, byk_outcome (BYK_ACT_PASS, NULL, FALSE));
+    if (self->latin->len == 0)
+        return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
+    return byk_composer_commit_text (self, NULL);
+}
+
+BykOutcome
+byk_composer_key (BykComposer *self, guint keyval, guint mods)
+{
+    g_return_val_if_fail (self != NULL, byk_outcome (BYK_ACT_PASS, NULL, FALSE));
+
+    if (mods & BYK_MOD_RELEASE)
+        return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
+
+    if (self->transliterator == NULL)
+        return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
+
+    if (mods & BYK_MOD_SHORTCUT) {
+        BykOutcome o = byk_composer_flush (self);
+        o.pass_key = TRUE;
+        if (o.action == BYK_ACT_PASS)
+            return o;
+        o.action = BYK_ACT_COMMIT;
+        return o;
+    }
+
+    const gboolean has_preedit = self->latin->len > 0;
+
+    switch (keyval) {
+    case BYK_KEY_BackSpace:
+        if (!has_preedit)
+            return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
+        g_string_truncate (self->latin, self->latin->len - 1);
+        {
+            gchar *bangla = byk_composer_bangla (self);
+            byk_composer_refill_candidates (self, bangla);
+            g_free (bangla);
+        }
+        return byk_outcome (BYK_ACT_EAT, NULL, FALSE);
+
+    case BYK_KEY_Escape:
+        if (!has_preedit)
+            return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
+        g_string_truncate (self->latin, 0);
+        byk_composer_drop_candidates (self);
+        return byk_outcome (BYK_ACT_EAT, NULL, FALSE);
+
+    case BYK_KEY_space:
+    case BYK_KEY_KP_Space:
+        if (!has_preedit)
+            return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
+        return byk_composer_commit_text (self, " ");
+
+    case BYK_KEY_Return:
+    case BYK_KEY_KP_Enter:
+        if (!has_preedit)
+            return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
+        {
+            BykOutcome o = byk_composer_commit_text (self, NULL);
+            o.pass_key = TRUE;
+            return o;
+        }
+
+    case BYK_KEY_Page_Down:
+    case BYK_KEY_KP_Page_Down:
+        return byk_composer_page_delta (self, TRUE);
+
+    case BYK_KEY_Page_Up:
+    case BYK_KEY_KP_Page_Up:
+        return byk_composer_page_delta (self, FALSE);
+
+    default:
+        break;
+    }
+
+    const gint candidate = byk_candidate_index (keyval);
+    if (candidate >= 0) {
+        BykOutcome picked = byk_composer_commit_candidate (self, (guint) candidate);
+        if (picked.action == BYK_ACT_COMMIT)
+            return picked;
+    }
+
+    if (byk_is_letter_key (keyval) || byk_is_digit_key (keyval)) {
+        g_string_append_c (self->latin, byk_latin_char (keyval));
+        gchar *bangla = byk_composer_bangla (self);
+        byk_composer_refill_candidates (self, bangla);
+        g_free (bangla);
+        return byk_outcome (BYK_ACT_EAT, NULL, FALSE);
+    }
+
+    if (has_preedit) {
+        BykOutcome o = byk_composer_commit_text (self, NULL);
+        o.pass_key = TRUE;
+        return o;
+    }
+    return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
+}
