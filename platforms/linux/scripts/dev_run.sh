@@ -38,6 +38,7 @@ mkdir -p "$BUILD_DIR"
 XML="$BUILD_DIR/byakaron.xml"
 sed -e "s|@BYK_EXEC@|$BIN|g" \
     -e "s|@BYK_ICON@|input-keyboard|g" \
+    -e "s|@BYK_SETUP@||g" \
     "$PROJECT_ROOT/Resources/byakaron.xml.in" > "$XML"
 echo ">>> Component XML: $XML"
 

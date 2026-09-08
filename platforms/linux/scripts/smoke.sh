@@ -27,11 +27,11 @@ cc -O2 -Wall -Wextra -o "$BUILD_DIR/bin/smoke" \
     -Wl,-rpath,"$BUILD_DIR/lib"
 
 SPELL_DB="${BYAKARON_SPELL_DB:-$PROJECT_ROOT/../../packages/data/spell.db}"
-if [[ ! -f "$SPELL_DB" ]]; then
-    echo "error: $SPELL_DB missing — run: bash platforms/linux/scripts/prepare_spell_db.sh" >&2
-    exit 1
+if [[ -f "$SPELL_DB" ]]; then
+    export BYAKARON_SPELL_DB="$SPELL_DB"
+else
+    echo "note: $SPELL_DB missing — spell-check assertions will be skipped"
 fi
-export BYAKARON_SPELL_DB="$SPELL_DB"
 
 echo ">>> Running..."
 echo

@@ -1,0 +1,130 @@
+#!/bin/bash
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# What GitHub Actions runs on ubuntu-latest, and what you can run here to see
+# the same failures before pushing.
+#
+#     bash platforms/linux/scripts/ci.sh
+#
+# Builds the shared library, the IBus engine, the GTK app, the IME test, then
+# runs smoke.sh. The IME integration test needs an ibus-daemon: in CI (no
+# session) this script starts Xvfb + dbus + ibus itself; on a desktop it uses
+# the one already running.
+#
+# Does NOT generate spell.db (364 MB) and does not need it — smoke skips those
+# assertions when the file is absent.
+# ---------------------------------------------------------------------------
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$PROJECT_ROOT/../.." && pwd)"
+
+export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+ZIG="${ZIG_EXE:-$(command -v zig || true)}"
+[[ -n "$ZIG" ]] || { echo "error: no zig on PATH" >&2; exit 1; }
+
+echo ">>> zig $($ZIG version)"
+echo ">>> cwd $REPO_ROOT"
+
+cd "$REPO_ROOT"
+
+echo
+echo "=== zig build linux + linux-app + linux-test + -Dshared ==="
+"$ZIG" build linux linux-app linux-test -Dshared=true -Doptimize=ReleaseFast
+
+echo
+echo "=== smoke (C ABI + Core glue) ==="
+bash "$SCRIPT_DIR/smoke.sh"
+
+OWNED_IBUS=""
+OWNED_XVFB=""
+OWNED_DBUS=""
+
+cleanup_ci_session() {
+    if [[ -n "$OWNED_IBUS" ]]; then
+        kill "$OWNED_IBUS" 2>/dev/null || true
+        wait "$OWNED_IBUS" 2>/dev/null || true
+    fi
+    if [[ -n "$OWNED_XVFB" ]]; then
+        kill "$OWNED_XVFB" 2>/dev/null || true
+        wait "$OWNED_XVFB" 2>/dev/null || true
+    fi
+    if [[ -n "$OWNED_DBUS" ]]; then
+        kill "$OWNED_DBUS" 2>/dev/null || true
+        wait "$OWNED_DBUS" 2>/dev/null || true
+    fi
+}
+
+start_headless_ibus() {
+    echo
+    echo "=== starting headless ibus (Xvfb + dbus) ==="
+
+    if ! command -v Xvfb >/dev/null || ! command -v ibus-daemon >/dev/null; then
+        echo "error: Xvfb and ibus-daemon are required for the IME test in CI" >&2
+        echo "       install: xvfb ibus dbus-x11" >&2
+        exit 1
+    fi
+
+    trap cleanup_ci_session EXIT
+
+    local display_num=99
+    # GitHub runners may already have something on :99; pick a free slot.
+    while [[ -e "/tmp/.X${display_num}-lock" ]]; do
+        display_num=$((display_num + 1))
+    done
+    export DISPLAY=":${display_num}"
+
+    Xvfb "$DISPLAY" -screen 0 1024x768x24 -nolisten tcp >/tmp/byakaron-xvfb.log 2>&1 &
+    OWNED_XVFB=$!
+    sleep 0.4
+    kill -0 "$OWNED_XVFB" 2>/dev/null || {
+        echo "error: Xvfb failed to start" >&2
+        cat /tmp/byakaron-xvfb.log >&2 || true
+        exit 1
+    }
+
+    local dbus_out
+    dbus_out="$(dbus-launch --sh-syntax)"
+    eval "$dbus_out"
+    # dbus-launch prints DBUS_SESSION_BUS_PID.
+    OWNED_DBUS="${DBUS_SESSION_BUS_PID:-}"
+
+    ibus-daemon --single --xim \
+        --panel disable --config disable --cache none &
+    OWNED_IBUS=$!
+
+    local i
+    for i in $(seq 1 40); do
+        if ibus address >/dev/null 2>&1; then
+            echo ">>> ibus ready on DISPLAY=$DISPLAY"
+            return 0
+        fi
+        sleep 0.15
+    done
+    echo "error: ibus-daemon started but never answered 'ibus address'" >&2
+    exit 1
+}
+
+echo
+if pgrep -x ibus-daemon >/dev/null; then
+    echo "=== IME integration test (session ibus-daemon) ==="
+    bash "$SCRIPT_DIR/test_ime.sh"
+elif [[ "${CI:-}" == "true" || "${BYAKARON_CI:-}" == "1" ]]; then
+    start_headless_ibus
+    echo "=== IME integration test (headless ibus-daemon) ==="
+    bash "$SCRIPT_DIR/test_ime.sh"
+else
+    echo "=== IME integration test skipped ==="
+    echo "note: no ibus-daemon, and this is not CI. Start IBus or re-run with"
+    echo "      BYAKARON_CI=1 to spawn a throwaway Xvfb+ibus (needs xvfb, ibus)."
+fi
+
+echo
+echo "=== wayland / display-path probe ==="
+# Best-effort: missing mutter (CI) is a skip, not a failure. A coupled engine
+# (X11 headers in Keyboard/) would fail the script.
+bash "$SCRIPT_DIR/wayland_probe.sh"
+
+echo
+echo "=== ci.sh finished ==="

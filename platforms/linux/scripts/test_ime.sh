@@ -36,7 +36,9 @@ TEST_BIN="$REPO_ROOT/zig-out/bin/byakaron-ime-test"
 XML="$PROJECT_ROOT/build/byakaron.xml"
 
 mkdir -p "$PROJECT_ROOT/build"
-sed -e "s|@BYK_EXEC@|$BIN|g" -e "s|@BYK_ICON@|input-keyboard|g" \
+sed -e "s|@BYK_EXEC@|$BIN|g" \
+    -e "s|@BYK_ICON@|input-keyboard|g" \
+    -e "s|@BYK_SETUP@||g" \
     "$PROJECT_ROOT/Resources/byakaron.xml.in" > "$XML"
 
 # Focusing the test's input context makes the daemon adopt its engine as the
