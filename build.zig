@@ -155,6 +155,7 @@ pub fn build(b: *std.Build) !void {
                 "platforms/linux/Core/autocomplete.c",
                 "platforms/linux/Core/spell.c",
                 "platforms/linux/Core/composer.c",
+                "platforms/linux/Core/prefs.c",
             },
             .flags = &.{ "-std=gnu11", "-Wall", "-Wextra" },
         });
@@ -165,6 +166,7 @@ pub fn build(b: *std.Build) !void {
         ime.root_module.linkSystemLibrary("ibus-1.0", .{});
         ime.root_module.linkSystemLibrary("glib-2.0", .{});
         ime.root_module.linkSystemLibrary("gobject-2.0", .{});
+        ime.root_module.linkSystemLibrary("gio-2.0", .{});
         ime.root_module.linkLibrary(ime_core);
 
         const install_ime = b.addInstallArtifact(ime, .{});
@@ -221,6 +223,8 @@ pub fn build(b: *std.Build) !void {
                 "platforms/linux/Core/transliterator.c",
                 "platforms/linux/Core/autocomplete.c",
                 "platforms/linux/Core/spell.c",
+                "platforms/linux/Core/composer.c",
+                "platforms/linux/Core/prefs.c",
             },
             .flags = &.{ "-std=gnu11", "-Wall", "-Wextra" },
         });
@@ -231,6 +235,7 @@ pub fn build(b: *std.Build) !void {
         app.root_module.linkSystemLibrary("libadwaita-1", .{});
         app.root_module.linkSystemLibrary("glib-2.0", .{});
         app.root_module.linkSystemLibrary("gobject-2.0", .{});
+        app.root_module.linkSystemLibrary("gio-2.0", .{});
         // Its own static copy of the core, like the engine above: two 7 MB
         // binaries beat one shared .so that needs a SONAME, an ldconfig
         // trigger and an ABI promise this version cannot make yet.
@@ -245,6 +250,34 @@ pub fn build(b: *std.Build) !void {
         run_app.addPassthruArgs();
         const run_linux_app_step = b.step("run-linux-app", "Build and run the Linux GTK app");
         run_linux_app_step.dependOn(&run_app.step);
+
+        // GSettings schema: compiled into zig-out/share/glib-2.0/schemas so an
+        // uninstalled engine/app can find it next to the binary (or via
+        // GSETTINGS_SCHEMA_DIR for `zig build run-linux-app`, whose artifact
+        // lives in the cache rather than zig-out/bin).
+        const compile_schemas = b.addSystemCommand(&.{
+            "sh",
+            "-c",
+            \\set -eu
+            \\dest="$1"
+            \\src="$2"
+            \\mkdir -p "$dest"
+            \\cp "$src" "$dest/dev.nuhu.labs.Byakaron.gschema.xml"
+            \\glib-compile-schemas "$dest"
+            ,
+            "byk-compile-schemas",
+        });
+        const schema_dir = compile_schemas.addOutputDirectoryArg("gsettings-schemas");
+        compile_schemas.addFileArg(b.path("platforms/linux/Resources/dev.nuhu.labs.Byakaron.gschema.xml"));
+        const install_schemas = b.addInstallDirectory(.{
+            .source_dir = schema_dir,
+            .install_dir = .{ .custom = "share/glib-2.0/schemas" },
+            .install_subdir = "",
+        });
+        linux_step.dependOn(&install_schemas.step);
+        linux_app_step.dependOn(&install_schemas.step);
+        run_app.step.dependOn(&install_schemas.step);
+        run_app.setEnvironmentVariable("GSETTINGS_SCHEMA_DIR", "zig-out/share/glib-2.0/schemas");
 
         // Optional Fcitx5 frontend. Same composer as IBus; skipped when the
         // headers are not installed so a GNOME-only box still `zig build linux`.
@@ -275,6 +308,7 @@ pub fn build(b: *std.Build) !void {
                     "platforms/linux/Core/composer.c",
                     "platforms/linux/Core/transliterator.c",
                     "platforms/linux/Core/autocomplete.c",
+                    "platforms/linux/Core/prefs.c",
                 },
                 .flags = &.{ "-std=gnu11", "-Wall", "-Wextra", "-fPIC" },
             });
@@ -283,6 +317,7 @@ pub fn build(b: *std.Build) !void {
             fcitx.root_module.addIncludePath(b.path("platforms/linux/Fcitx5"));
             fcitx.root_module.linkSystemLibrary("Fcitx5Core", .{});
             fcitx.root_module.linkSystemLibrary("glib-2.0", .{});
+            fcitx.root_module.linkSystemLibrary("gio-2.0", .{});
             fcitx.root_module.linkLibrary(fcitx_core);
 
             // Fcitx loads $libdir/fcitx5/byakaron.so (no lib prefix), from the

@@ -17,6 +17,7 @@
 #include <stdlib.h>
 
 #include "engine.h"
+#include "prefs.h"
 
 #define BYK_BUS_NAME    "org.freedesktop.IBus.Byakaron"
 #define BYK_ENGINE_NAME "byakaron"
@@ -49,6 +50,8 @@ on_disconnected (IBusBus *unused_bus, gpointer user_data)
 int
 main (int argc, char *argv[])
 {
+    byk_prefs_init_schema_dir ();
+
     GError *error = NULL;
     GOptionContext *context = g_option_context_new ("- Byakaron Bangla input method");
     g_option_context_add_main_entries (context, OPTIONS, NULL);

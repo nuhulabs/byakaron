@@ -52,10 +52,10 @@ platforms/linux/
 ├── App/         GTK4 + libadwaita app (main, window, typing, spelling,
 │                layout, setup)
 ├── Core/        Shared C glue over byakaron.h (composer, transliterator,
-│                autocomplete, spell) — IBus, Fcitx5, and the app all use this
+│                autocomplete, spell, prefs) — IBus, Fcitx5, and the app all use this
 ├── Keyboard/    The IBus engine (thin shell over Core/composer)
 ├── Fcitx5/      Optional Fcitx5 addon (same composer; needs libfcitx5core-dev)
-├── Resources/   IBus component XML, .desktop entry, icons, app-only Flatpak manifest
+├── Resources/   IBus component XML, GSettings schema, .desktop, icons, Flatpak manifest
 ├── scripts/     setup_deps.sh, build_zig.sh, smoke.sh, prepare_spell_db.sh,
 │                install.sh, uninstall.sh, package_deb.sh, package_flatpak.sh,
 │                ci.sh, wayland_probe.sh, wayland_type.sh
@@ -63,12 +63,13 @@ platforms/linux/
 ```
 
 `Core/` holds the glue that every Linux front-end needs: `transliterator.c` for
-latin → Bangla, `autocomplete.c` for candidates, `spell.c` for spell.db, and
-`composer.c` for the key policy (what Space, 1–9, digits, Escape mean). IBus
-and Fcitx5 are thin shells over that composer so they cannot drift. All four
-hand back plain `g_malloc`'d memory, so the Zig ownership rule
-(`byakaron_string_free`) and the JSON the ABI returns stop there and nothing
-above them has to know.
+latin → Bangla, `autocomplete.c` for candidates, `spell.c` for spell.db,
+`composer.c` for the key policy (what Space, 1–9, digits, punctuation, Escape
+mean), and `prefs.c` for the GSettings schema both the engine and the app
+read. IBus, Fcitx5, and the GTK Write page are thin shells over that composer
+so they cannot drift. All four hand back plain `g_malloc`'d memory, so the Zig
+ownership rule (`byakaron_string_free`) and the JSON the ABI returns stop there
+and nothing above them has to know.
 
 The two binaries share `Core/` as source and each links its own static copy of
 the Zig core. A single `libbyakaron.so` would save ~7 MB of the download, at the
@@ -190,6 +191,7 @@ Key handling:
 | --- | --- |
 | `a`–`z`, `A`–`Z` | Appended to the latin buffer; preedit updates |
 | `0`–`9` | Bangla numerals (`1` → `১`, `2024` → `২০২৪`), except `1`–`9` pick a candidate while the list is on screen |
+| `.` `,` `:` `$` `^` backtick and other printable ASCII | Appended; Avro maps `.` → `।`, `:` → `ঃ`, `$` → `৳`, `^` → `ঁ` |
 | Backspace | Drops one latin character and re-transliterates |
 | Space | Commits the Bangla plus the space, in one commit |
 | Enter | Commits the word, then lets the application see the Enter |
@@ -240,12 +242,10 @@ running. Four pages behind an `AdwViewSwitcher`:
 | **Layout** | The Avro key map, as a lookup table |
 | **Setup** | Keyboard status, the steps to add it, a typing cheat-sheet |
 
-**Write is a composer, not a two-pane converter.** A converter that
-transliterated the whole text on every keystroke would leave the candidate list
-decorative, because clicking a Bangla completion cannot be mapped back to the
-latin that produced it. Composing a word at a time also makes this an honest
-preview of the keyboard: the same Space-commits-what-you-typed rule, the same
-1–9 selection, the same Bangla numerals when no list is showing.
+**Write is a composer, not a two-pane converter.** It calls the same
+`Core/composer.c` as IBus and Fcitx5, so Space, 1–9, digits, punctuation, and
+Escape cannot mean something different here than they do in other apps.
+Composing a word at a time also makes this an honest preview of the keyboard.
 
 **Spelling checks per word, not with `byakaron_spell_check`.** The bulk call
 returns a JSON array of tokens with nested suggestion objects; the app already
@@ -273,8 +273,18 @@ from "click **+** in Settings". The GSettings schema is looked up before use,
 since `g_settings_new` aborts the process on an unknown schema and that schema
 does not exist outside GNOME.
 
-Nothing in the app is configurable yet. The macOS Settings window carries about
-fifteen "Coming soon" toggles that do nothing; none of them are reproduced here.
+**Preferences that change behaviour live in GSettings**
+(`dev.nuhu.labs.Byakaron`). Setup exposes two switches that the IBus engine,
+the Fcitx5 addon, and Write all read:
+
+- **Suggest words** — off is phonetic-only: transliteration stays, the
+  dictionary candidate list is hidden, so 1–9 type Bangla numerals.
+- **Horizontal candidate list** — the IME panel; Write always shows a row of
+  chips.
+
+Flipping a switch updates the engine without a restart. There are no
+macOS-style "Coming soon" toggles. Candidates-per-page stays at 9 because
+1–9 are the selection keys.
 
 ## Installing permanently
 
@@ -294,6 +304,8 @@ The script builds as the invoking (non-root) user via `SUDO_USER`, so `zig`
 resolves from that user's `~/.local/bin` and no root-owned build artifacts are
 left in the repo. It refreshes the ibus registry and restores whatever input
 engine was active before, since restarting the daemon otherwise drops it.
+The GSettings schema is compiled into `/usr/share/glib-2.0/schemas` so Setup
+toggles reach the engine.
 
 The app is installed too when `gtk4` and `libadwaita-1` are present, to
 `/usr/bin/byakaron` with a `.desktop` entry — `/usr/bin`, not `/usr/libexec`,
@@ -386,6 +398,13 @@ addon was built. Fcitx5 users then add **Byakaron** in the Fcitx5 config tool.
 An IBus engine has to live in `/usr/share/ibus/component` so the session
 daemon can spawn it. A sandboxed Flatpak cannot register there, which is why
 ibus-avro ships as a `.deb` too. `scripts/package_deb.sh` is the IME artefact.
+It now emits two packages when `spell.db` is present:
+
+- `byakaron_*.deb` — engine, app, GSettings schema. Typing Bangla. Small.
+- `byakaron-data_*.deb` — `spell.db` only (`Architecture: all`). Spell-check.
+
+`byakaron` Recommends `byakaron-data`. A typing-only install does not download
+the dictionary.
 
 The companion GTK app *can* live in a sandbox:
 
@@ -400,11 +419,10 @@ not include the engine or the 364 MB `spell.db`. Manifest:
 
 ## What is not in this port yet
 
-- **GSettings preferences.** The macOS app has live toggles this port has not
-  reproduced; Day 7 in the local plan covers that.
 - **Typing in Firefox on a Wayland *login* session.** Nested mutter covers the
   compositor + GtkEntry path; switching this X11 box to a Wayland session is
   a hand test, not a CI step.
+- **AppStream metainfo** so GNOME Software shows a description.
 
 ## Notes
 
@@ -414,7 +432,9 @@ not include the engine or the 364 MB `spell.db`. Manifest:
   That uses the Avro lexicon already in `src/assets/dictionary_macos_sorted.txt`
   (~159k words). Wikipedia n-grams are empty until someone later runs the full
   `word_triplets.csv` export; lookups and SymSpell suggestions still work.
-  `install.sh` copies it to `/usr/share/byakaron/spell.db`. Override the path
+  `install.sh` copies it to `/usr/share/byakaron/spell.db` when the file is
+  present. The shareable `.deb` keeps it in `byakaron-data` instead, so a
+  typing-only install stays small. Override the path
   with `BYAKARON_SPELL_DB` for development. The input method types without it;
   only spell-check needs it. Candidates use the compiled-in lexicon.
 - `platforms/linux/build/` is generated output and is git-ignored.

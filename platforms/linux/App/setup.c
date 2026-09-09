@@ -1,5 +1,7 @@
 #include "setup.h"
 
+#include "prefs.h"
+
 /* The only directory ibus-daemon scans for components; scripts/install.sh
  * writes here and nowhere else, so its presence is the installed check. */
 #define BYK_COMPONENT_XML "/usr/share/ibus/component/byakaron.xml"
@@ -19,6 +21,8 @@ struct _BykSetupPage {
     AdwActionRow *status_row;
     GtkWidget *status_icon;
     GtkWidget *install_hint; /* only shown when nothing is installed */
+
+    GSettings *prefs; /* NULL when the schema is not installed */
 
     AdwToastOverlay *toasts;
 };
@@ -268,6 +272,7 @@ byk_setup_page_build_typing (void)
         { "Space", "commits the word you typed" },
         { "1\u20139", "picks a candidate while the list is showing" },
         { "0\u20139", "Bangla numerals otherwise (2024 \u2192 ২০২৪)" },
+        { ".", "dari (ami. \u2192 আমি।)" },
         { "Page Up / Page Down", "moves through pages of candidates" },
         { "Backspace", "deletes the last character" },
         { "Escape", "cancels the current word and its candidates" },
@@ -276,6 +281,41 @@ byk_setup_page_build_typing (void)
     for (gsize i = 0; i < G_N_ELEMENTS (TIPS); i++)
         adw_preferences_group_add (ADW_PREFERENCES_GROUP (group),
                                    byk_setup_tip_row (TIPS[i].key, TIPS[i].meaning));
+
+    return group;
+}
+
+static GtkWidget *
+byk_setup_page_build_prefs (BykSetupPage *self)
+{
+    self->prefs = byk_prefs_try_open ();
+    if (self->prefs == NULL)
+        return NULL;
+
+    GtkWidget *group = adw_preferences_group_new ();
+    adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "Preferences");
+    adw_preferences_group_set_description (
+        ADW_PREFERENCES_GROUP (group),
+        "These apply to the input method and to Write as soon as you change them.");
+
+    GtkWidget *suggest = adw_switch_row_new ();
+    adw_preferences_row_set_title (ADW_PREFERENCES_ROW (suggest), "Suggest words");
+    adw_action_row_set_subtitle (
+        ADW_ACTION_ROW (suggest),
+        "Dictionary completions while typing. 1\u20139 pick one. Off still transliterates.");
+    g_settings_bind (self->prefs, BYK_PREFS_PHONETIC_ONLY, suggest, "active",
+                     G_SETTINGS_BIND_DEFAULT | G_SETTINGS_BIND_INVERT_BOOLEAN);
+    adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), suggest);
+
+    GtkWidget *horiz = adw_switch_row_new ();
+    adw_preferences_row_set_title (ADW_PREFERENCES_ROW (horiz),
+                                  "Horizontal candidate list");
+    adw_action_row_set_subtitle (
+        ADW_ACTION_ROW (horiz),
+        "The input method panel. Off for a vertical list.");
+    g_settings_bind (self->prefs, BYK_PREFS_CANDIDATES_HORIZONTAL, horiz, "active",
+                     G_SETTINGS_BIND_DEFAULT);
+    adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), horiz);
 
     return group;
 }
@@ -311,9 +351,17 @@ byk_setup_page_init (BykSetupPage *self)
 }
 
 static void
+byk_setup_page_dispose (GObject *object)
+{
+    BykSetupPage *self = BYK_SETUP_PAGE (object);
+    g_clear_object (&self->prefs);
+    G_OBJECT_CLASS (byk_setup_page_parent_class)->dispose (object);
+}
+
+static void
 byk_setup_page_class_init (BykSetupPageClass *klass)
 {
-    (void) klass;
+    G_OBJECT_CLASS (klass)->dispose = byk_setup_page_dispose;
 }
 
 GtkWidget *
@@ -328,6 +376,12 @@ byk_setup_page_new (void)
                               ADW_PREFERENCES_GROUP (byk_setup_page_build_steps (self)));
     adw_preferences_page_add (ADW_PREFERENCES_PAGE (page),
                               ADW_PREFERENCES_GROUP (byk_setup_page_build_typing ()));
+    {
+        GtkWidget *prefs = byk_setup_page_build_prefs (self);
+        if (prefs != NULL)
+            adw_preferences_page_add (ADW_PREFERENCES_PAGE (page),
+                                      ADW_PREFERENCES_GROUP (prefs));
+    }
     adw_preferences_page_add (ADW_PREFERENCES_PAGE (page),
                               ADW_PREFERENCES_GROUP (byk_setup_page_build_about ()));
 
