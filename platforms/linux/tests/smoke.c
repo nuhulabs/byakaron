@@ -155,6 +155,70 @@ int main(void)
                    "space commits typed word", o.commit ? o.commit : "(none)");
             if (!spaced) failures++;
             g_free(o.commit);
+
+            /* Punctuation is latin, not a commit-and-pass: Avro maps `.` → `।`. */
+            o = byk_composer_key(c, (guint) '.', 0);
+            pre = byk_composer_preedit(c);
+            const int dari = o.action == BYK_ACT_EAT && pre &&
+                             strcmp(pre, "।") == 0;
+            printf("  %-4s %-28s -> %s\n", dari ? "ok" : "FAIL",
+                   ". becomes ।", pre ? pre : "(null)");
+            if (!dari) failures++;
+            g_free(pre);
+            g_free(o.commit);
+
+            o = byk_composer_key(c, 0xff1b, 0); /* Escape */
+            g_free(o.commit);
+            {
+                const char ami_dot[] = { 'a', 'm', 'i', '.' };
+                for (i = 0; i < 4; i++) {
+                    o = byk_composer_key(c, (guint) ami_dot[i], 0);
+                    g_free(o.commit);
+                }
+            }
+            pre = byk_composer_preedit(c);
+            const int ami_dari = pre && strcmp(pre, "আমি।") == 0;
+            printf("  %-4s %-28s -> %s\n", ami_dari ? "ok" : "FAIL",
+                   "ami. is আমি।", pre ? pre : "(null)");
+            if (!ami_dari) failures++;
+            g_free(pre);
+
+            o = byk_composer_key(c, 0x0020, 0);
+            const int dari_commit = o.action == BYK_ACT_COMMIT && o.commit &&
+                                    strcmp(o.commit, "আমি। ") == 0;
+            printf("  %-4s %-28s -> %s\n", dari_commit ? "ok" : "FAIL",
+                   "space commits আমি। ", o.commit ? o.commit : "(none)");
+            if (!dari_commit) failures++;
+            g_free(o.commit);
+
+            byk_composer_set_phonetic_only(c, TRUE);
+            {
+                const char ami2[] = { 'a', 'm', 'i' };
+                for (i = 0; i < 3; i++) {
+                    o = byk_composer_key(c, (guint) ami2[i], 0);
+                    g_free(o.commit);
+                }
+            }
+            pre = byk_composer_preedit(c);
+            const int phonetic_pre = pre && strcmp(pre, "আমি") == 0;
+            const int phonetic_hide = !byk_composer_table_visible(c);
+            printf("  %-4s %-28s -> %s\n", phonetic_pre ? "ok" : "FAIL",
+                   "phonetic-only still types", pre ? pre : "(null)");
+            printf("  %-4s %-28s -> %s\n", phonetic_hide ? "ok" : "FAIL",
+                   "phonetic-only hides list", phonetic_hide ? "hidden" : "shown");
+            if (!phonetic_pre) failures++;
+            if (!phonetic_hide) failures++;
+            g_free(pre);
+
+            o = byk_composer_key(c, 0x0032, 0); /* '2' with no list */
+            pre = byk_composer_preedit(c);
+            const int phonetic_digit = o.action == BYK_ACT_EAT && pre &&
+                                       strcmp(pre, "আমি২") == 0;
+            printf("  %-4s %-28s -> %s\n", phonetic_digit ? "ok" : "FAIL",
+                   "phonetic-only 2 is ২", pre ? pre : "(null)");
+            if (!phonetic_digit) failures++;
+            g_free(pre);
+            g_free(o.commit);
         }
         byk_composer_free(c);
     }

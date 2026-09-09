@@ -13,6 +13,7 @@
 #include <stdlib.h>
 
 #include "app.h"
+#include "prefs.h"
 #include "window.h"
 
 /*
@@ -117,6 +118,8 @@ on_activate (GApplication *app, gpointer user_data)
 int
 main (int argc, char *argv[])
 {
+    byk_prefs_init_schema_dir ();
+
     AdwApplication *app = adw_application_new (BYK_APP_ID, G_APPLICATION_DEFAULT_FLAGS);
 
     g_signal_connect (app, "startup", G_CALLBACK (on_startup), NULL);

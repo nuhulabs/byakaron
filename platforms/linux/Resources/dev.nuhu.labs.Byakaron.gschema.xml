@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="dev.nuhu.labs.Byakaron" path="/dev/nuhu/labs/Byakaron/">
+    <key name="phonetic-only" type="b">
+      <default>false</default>
+      <summary>Hide word suggestions</summary>
+      <description>
+        When true, only the phonetic transliteration is shown. The dictionary
+        candidate list is hidden, so 1–9 type Bangla numerals instead of
+        picking a completion. Transliteration itself is unchanged.
+      </description>
+    </key>
+    <key name="candidates-horizontal" type="b">
+      <default>true</default>
+      <summary>Horizontal candidate list</summary>
+      <description>
+        When true, the input method panel lays candidates out in a row
+        (matching the macOS default). When false, in a column.
+      </description>
+    </key>
+  </schema>
+</schemalist>

@@ -90,6 +90,19 @@ flatpak build "$APPDIR" install -d /app/share/icons/hicolor/128x128/apps
 flatpak build "$APPDIR" install -D -m 644 "$ICON_PNG" \
     "/app/share/icons/hicolor/128x128/apps/${APP_ID}.png"
 
+echo ">>> installing GSettings schema..."
+SCHEMA_STAGE="$BUILD_DIR/schemas"
+mkdir -p "$SCHEMA_STAGE"
+cp "$PROJECT_ROOT/Resources/dev.nuhu.labs.Byakaron.gschema.xml" "$SCHEMA_STAGE/"
+glib-compile-schemas "$SCHEMA_STAGE"
+flatpak build "$APPDIR" install -d /app/share/glib-2.0/schemas
+flatpak build "$APPDIR" install -D -m 644 \
+    "$SCHEMA_STAGE/dev.nuhu.labs.Byakaron.gschema.xml" \
+    /app/share/glib-2.0/schemas/dev.nuhu.labs.Byakaron.gschema.xml
+flatpak build "$APPDIR" install -D -m 644 \
+    "$SCHEMA_STAGE/gschemas.compiled" \
+    /app/share/glib-2.0/schemas/gschemas.compiled
+
 echo ">>> build-finish..."
 flatpak build-finish "$APPDIR" \
     --command=byakaron \

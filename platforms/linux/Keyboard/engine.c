@@ -8,6 +8,7 @@
 #include "engine.h"
 
 #include "composer.h"
+#include "prefs.h"
 #include "spell.h"
 
 #define BYK_PAGE_SIZE BYK_COMPOSER_PAGE_SIZE
@@ -17,6 +18,7 @@ struct _BykEngine {
     BykComposer *composer;
     BykSpell *spell; /* opened so a missing install is visible in the journal */
     IBusLookupTable *table;
+    GSettings *prefs; /* NULL when the schema is not installed */
     gboolean table_visible;
 };
 
@@ -105,6 +107,33 @@ byk_engine_apply (BykEngine *self, BykOutcome outcome)
 
     g_free (outcome.commit);
     return FALSE;
+}
+
+static void
+byk_engine_reload_prefs (BykEngine *self)
+{
+    const gboolean phonetic =
+        byk_prefs_boolean (self->prefs, BYK_PREFS_PHONETIC_ONLY, FALSE);
+    byk_composer_set_phonetic_only (self->composer, phonetic);
+
+    const gboolean horiz =
+        byk_prefs_boolean (self->prefs, BYK_PREFS_CANDIDATES_HORIZONTAL, TRUE);
+    ibus_lookup_table_set_orientation (self->table,
+                                       horiz ? IBUS_ORIENTATION_HORIZONTAL
+                                             : IBUS_ORIENTATION_VERTICAL);
+
+    /* Flipping "Suggest words" while a word is pending must hide or refill
+     * the list immediately, not on the next key. */
+    if (byk_composer_latin (self->composer)[0] != '\0')
+        byk_engine_sync_preedit (self);
+}
+
+static void
+byk_engine_on_prefs (GSettings *settings, gchar *key, gpointer user_data)
+{
+    (void) settings;
+    (void) key;
+    byk_engine_reload_prefs (BYK_ENGINE (user_data));
 }
 
 static guint
@@ -197,6 +226,12 @@ byk_engine_init (BykEngine *self)
     self->table = ibus_lookup_table_new (BYK_PAGE_SIZE, 0, FALSE, FALSE);
     g_object_ref_sink (self->table);
     self->table_visible = FALSE;
+
+    self->prefs = byk_prefs_try_open ();
+    if (self->prefs != NULL)
+        g_signal_connect (self->prefs, "changed",
+                          G_CALLBACK (byk_engine_on_prefs), self);
+    byk_engine_reload_prefs (self);
 }
 
 static void
@@ -207,6 +242,7 @@ byk_engine_destroy (IBusObject *object)
     g_clear_pointer (&self->composer, byk_composer_free);
     g_clear_pointer (&self->spell, byk_spell_free);
     g_clear_object (&self->table);
+    g_clear_object (&self->prefs);
 
     IBUS_OBJECT_CLASS (byk_engine_parent_class)->destroy (object);
 }

@@ -63,7 +63,9 @@ else
     echo "      install them with: sudo bash platforms/linux/scripts/setup_deps.sh"
 fi
 
-install -d "$LIBDIR" "$BINDIR" "$XMLDIR" "$ICONDIR" "$DESKTOPDIR" "$DATADIR"
+SCHEMADIR="/usr/share/glib-2.0/schemas"
+
+install -d "$LIBDIR" "$BINDIR" "$XMLDIR" "$ICONDIR" "$DESKTOPDIR" "$DATADIR" "$SCHEMADIR"
 
 # Install the binary before the XML: the XML points at its final path and ibus
 # will try to exec exactly that.
@@ -72,6 +74,11 @@ echo ">>> Installed: $LIBDIR/byakaron-ibus"
 
 install -m 644 "$PROJECT_ROOT/Resources/byakaron.svg" "$ICONDIR/byakaron.svg"
 echo ">>> Installed: $ICONDIR/byakaron.svg"
+
+install -m 644 "$PROJECT_ROOT/Resources/dev.nuhu.labs.Byakaron.gschema.xml" \
+    "$SCHEMADIR/dev.nuhu.labs.Byakaron.gschema.xml"
+glib-compile-schemas "$SCHEMADIR"
+echo ">>> Installed: $SCHEMADIR/dev.nuhu.labs.Byakaron.gschema.xml"
 
 # The app goes in /usr/bin, not /usr/libexec: it is something the user launches,
 # unlike the engine, which only ibus-daemon ever execs.
