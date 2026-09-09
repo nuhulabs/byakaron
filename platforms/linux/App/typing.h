@@ -6,8 +6,8 @@
  * would transliterate the whole text on every keystroke and leave the
  * candidate list decorative, since clicking a Bangla completion cannot be
  * mapped back to the latin that produced it. Composing one word at a time is
- * also what the IBus engine does, so this page doubles as an honest preview of
- * the keyboard.
+ * also what the IBus engine does, and this page calls the same Core/composer.c
+ * so Write cannot drift from the keyboard.
  */
 #ifndef BYAKARON_LINUX_APP_TYPING_H
 #define BYAKARON_LINUX_APP_TYPING_H
@@ -19,8 +19,7 @@ G_BEGIN_DECLS
 #define BYK_TYPE_TYPING_PAGE (byk_typing_page_get_type ())
 G_DECLARE_FINAL_TYPE (BykTypingPage, byk_typing_page, BYK, TYPING_PAGE, AdwBin)
 
-/* `engines` is borrowed and must outlive the page. */
-GtkWidget *byk_typing_page_new (BykEngines *engines);
+GtkWidget *byk_typing_page_new (void);
 
 G_END_DECLS
 

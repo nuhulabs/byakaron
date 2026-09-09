@@ -47,6 +47,11 @@ if ! pgrep -x ibus-daemon >/dev/null; then
     exit 1
 fi
 
+SCHEMA_DIR="$REPO_ROOT/zig-out/share/glib-2.0/schemas"
+if [[ -f "$SCHEMA_DIR/gschemas.compiled" ]]; then
+    export GSETTINGS_SCHEMA_DIR="$SCHEMA_DIR"
+fi
+
 echo ">>> Registering with ibus-daemon (Ctrl-C to unregister and exit)"
 echo
 exec "$BIN" --xml "$XML"

@@ -2,11 +2,15 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Build a shareable .deb of the Byakaron IBus engine.
+# Build shareable .deb packages of Byakaron.
 #
 #     bash platforms/linux/scripts/package_deb.sh
 #
-# Produces:  platforms/linux/build/byakaron_<version>_<arch>.deb
+# Produces:
+#     platforms/linux/build/byakaron_<version>_<arch>.deb
+#         engine + app + GSettings schema (no spell.db)
+#     platforms/linux/build/byakaron-data_<version>_all.deb
+#         spell.db only (364 MB), when packages/data/spell.db exists
 #
 # The recipient does NOT need Zig, ziex, the source, or any -dev package.
 # The engine binary links the Zig core statically; the only runtime
@@ -14,8 +18,10 @@ set -euo pipefail
 # They install with:
 #
 #     sudo apt install ./byakaron_<version>_<arch>.deb
+#     sudo apt install ./byakaron-data_<version>_all.deb   # optional, spell-check
 #
-# and apt resolves the runtime dependencies automatically.
+# and apt resolves the runtime dependencies automatically. Typing Bangla does
+# not need byakaron-data; only the GTK Spelling page does.
 # ---------------------------------------------------------------------------
 
 VERSION="${VERSION:-0.1.0}"
@@ -59,7 +65,7 @@ install -d "$STAGE/usr/bin"
 install -d "$STAGE/usr/share/ibus/component"
 install -d "$STAGE/usr/share/applications"
 install -d "$STAGE/usr/share/icons/hicolor/scalable/apps"
-install -d "$STAGE/usr/share/byakaron"
+install -d "$STAGE/usr/share/glib-2.0/schemas"
 
 # Ship a stripped binary so the download is small (the built one carries
 # debug_info and is ~14 MB; stripping roughly halves it).
@@ -68,6 +74,9 @@ strip --strip-unneeded "$STAGE/usr/libexec/byakaron-ibus" 2>/dev/null || true
 
 install -m 644 "$PROJECT_ROOT/Resources/byakaron.svg" \
     "$STAGE/usr/share/icons/hicolor/scalable/apps/byakaron.svg"
+
+install -m 644 "$PROJECT_ROOT/Resources/dev.nuhu.labs.Byakaron.gschema.xml" \
+    "$STAGE/usr/share/glib-2.0/schemas/dev.nuhu.labs.Byakaron.gschema.xml"
 
 BYK_SETUP=""
 GTK_DEPENDS=""
@@ -89,10 +98,8 @@ else
 fi
 
 SPELL_DB="$REPO_ROOT/packages/data/spell.db"
-if [[ -f "$SPELL_DB" ]]; then
-    install -m 644 "$SPELL_DB" "$STAGE/usr/share/byakaron/spell.db"
-else
-    echo "note: $SPELL_DB missing — the package will have no spell-check"
+if [[ ! -f "$SPELL_DB" ]]; then
+    echo "note: $SPELL_DB missing — byakaron-data.deb will not be built"
     echo "      build it with: bash platforms/linux/scripts/prepare_spell_db.sh"
 fi
 
@@ -138,7 +145,7 @@ Architecture: $ARCH
 Maintainer: Byakaron contributors <byakaron@example.com>
 Installed-Size: $INSTALLED_KB
 Depends: ibus (>= 1.5), libibus-1.0-5, libglib2.0-0t64 | libglib2.0-0$GTK_DEPENDS
-Recommends: ibus-gtk4, ibus-gtk3
+Recommends: ibus-gtk4, ibus-gtk3, byakaron-data
 Suggests: fcitx5
 Section: utils
 Priority: optional
@@ -149,7 +156,8 @@ Description: Byakaron Bangla phonetic input method (IBus engine)
  switches with Super+Space, powered by the shared Byakaron Zig engine.
  .
  Includes a GTK4 companion app for setup, composing Bangla without switching
- input source, and checking spelling.
+ input source, and checking spelling. The spell-check dictionary is the
+ separate byakaron-data package so a typing-only install stays small.
 EOF
 
 # --- 4. Maintainer scripts: refresh the ibus registry ----------------------
@@ -177,6 +185,7 @@ refresh_ibus() {
 }
 
 if [ "$1" = "configure" ]; then
+    glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || true
     refresh_ibus
     echo ""
     echo "Byakaron installed. To start typing Bangla:"
@@ -195,6 +204,7 @@ cat > "$STAGE/DEBIAN/postrm" <<'EOF'
 set -e
 
 if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || true
     for uid_dir in /run/user/*; do
         [ -S "$uid_dir/bus" ] || continue
         uid="$(basename "$uid_dir")"
@@ -220,8 +230,48 @@ dpkg-deb --root-owner-group --build "$STAGE" "$OUT"
 echo
 echo "=== Built: $OUT ==="
 echo "    size: $(du -h "$OUT" | cut -f1)"
+
+# --- 6. Optional data package (spell.db only) ------------------------------
+# Kept off the engine .deb so a typing-only install is not a ~60 MB download
+# of dictionary. Architecture: all — the file is the same on every CPU.
+if [[ -f "$SPELL_DB" ]]; then
+    DATA_PKG="${PKG}-data"
+    DATA_STAGE="$BUILD_DIR/${DATA_PKG}_${VERSION}_all"
+    DATA_OUT="$PROJECT_ROOT/build/${DATA_PKG}_${VERSION}_all.deb"
+
+    rm -rf "$DATA_STAGE"
+    install -d "$DATA_STAGE/DEBIAN"
+    install -d "$DATA_STAGE/usr/share/byakaron"
+    install -m 644 "$SPELL_DB" "$DATA_STAGE/usr/share/byakaron/spell.db"
+
+    DATA_KB="$(du -sk "$DATA_STAGE/usr" | cut -f1)"
+    cat > "$DATA_STAGE/DEBIAN/control" <<EOF
+Package: $DATA_PKG
+Version: $VERSION
+Architecture: all
+Maintainer: Byakaron contributors <byakaron@example.com>
+Installed-Size: $DATA_KB
+Depends: byakaron (>= $VERSION)
+Section: utils
+Priority: optional
+Homepage: https://github.com/nuhulabs/byakaron
+Description: Spell-check dictionary for Byakaron
+ The spell.db used by the Byakaron GTK app's Spelling page. The input method
+ types Bangla without this package; only spell-check needs it.
+EOF
+
+    rm -f "$DATA_OUT"
+    dpkg-deb --root-owner-group --build "$DATA_STAGE" "$DATA_OUT"
+
+    echo "=== Built: $DATA_OUT ==="
+    echo "    size: $(du -h "$DATA_OUT" | cut -f1)"
+fi
+
 echo
-echo "Share that one file. The recipient installs with:"
+echo "Share those files. The recipient installs with:"
 echo "    sudo apt install ./$(basename "$OUT")"
-echo "and removes it with:"
-echo "    sudo apt remove $PKG"
+if [[ -f "$SPELL_DB" ]]; then
+    echo "    sudo apt install ./$(basename "$DATA_OUT")"
+fi
+echo "and removes them with:"
+echo "    sudo apt remove $PKG $PKG-data"

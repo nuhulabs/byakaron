@@ -2,10 +2,12 @@
  * Display-agnostic word composer: latin buffer, Avro transliteration, candidate
  * list, and the key policy both IME front-ends share.
  *
- * IBus and Fcitx5 disagree about panels and how text is committed. They agree
- * on what a keystroke *means* — Space commits what was typed, 1–9 pick a
- * candidate while the list is showing, digits otherwise become Bangla numerals.
- * That policy lives here so the two shells cannot drift.
+ * IBus, Fcitx5 and the GTK Write page disagree about panels and how text is
+ * committed. They agree on what a keystroke *means* — Space commits what was
+ * typed, 1–9 pick a candidate while the list is showing, digits otherwise
+ * become Bangla numerals, and printable punctuation stays in the latin buffer
+ * so Avro can map it (`.` → `।`, `:` → `ঃ`, `$` → `৳`). That policy lives
+ * here so the shells cannot drift.
  *
  * Keyvals are X11 keysyms (IBus, GDK and Fcitx5 all use them). Modifier bits
  * are ours, not IBUS_* / FcitxKeyState, so this file includes no IME header.
@@ -64,6 +66,14 @@ gchar *byk_composer_preedit (BykComposer *self);
 gchar **byk_composer_candidates (BykComposer *self);
 gboolean byk_composer_table_visible (BykComposer *self);
 guint byk_composer_page (BykComposer *self);
+
+/*
+ * When TRUE, the dictionary candidate list is hidden; transliteration is
+ * unchanged. 1–9 then type Bangla numerals even after a word like "ami".
+ * Live: the GTK prefs toggle this while a word is being composed.
+ */
+void byk_composer_set_phonetic_only (BykComposer *self, gboolean phonetic_only);
+gboolean byk_composer_phonetic_only (BykComposer *self);
 
 BykOutcome byk_composer_key (BykComposer *self, guint keyval, guint mods);
 
