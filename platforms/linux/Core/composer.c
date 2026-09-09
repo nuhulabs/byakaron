@@ -16,10 +16,6 @@
 #define BYK_KEY_KP_Page_Down 0xff9b
 #define BYK_KEY_0            0x0030
 #define BYK_KEY_9            0x0039
-#define BYK_KEY_A            0x0041
-#define BYK_KEY_Z            0x005a
-#define BYK_KEY_a            0x0061
-#define BYK_KEY_z            0x007a
 #define BYK_KEY_KP_0         0xffb0
 #define BYK_KEY_KP_9         0xffb9
 #define BYK_KEY_KP_1         0xffb1
@@ -30,6 +26,7 @@ struct _BykComposer {
     BykAutoComplete *autocomplete;
     gchar **candidates; /* NULL-terminated, or NULL when hidden */
     guint page;
+    gboolean phonetic_only;
 };
 
 static BykOutcome
@@ -50,6 +47,9 @@ static void
 byk_composer_refill_candidates (BykComposer *self, const gchar *bangla)
 {
     byk_composer_drop_candidates (self);
+
+    if (self->phonetic_only)
+        return;
 
     if (self->autocomplete == NULL || bangla == NULL || *bangla == '\0')
         return;
@@ -115,18 +115,21 @@ byk_composer_commit_candidate (BykComposer *self, guint index)
     return byk_outcome (BYK_ACT_COMMIT, word, FALSE);
 }
 
+/*
+ * Printable ASCII except space, plus keypad digits. Space commits; 1–9 pick a
+ * candidate *before* this runs, so they are not stolen from the list.
+ *
+ * Probe of the Zig Avro engine (2026-09-09): `.` → `।`, `:` → `ঃ`, `$` → `৳`,
+ * `^` → `ঁ`, `` ` `` is a kar, `,` `?` `!` stay ASCII. Buffering all of
+ * 0x21–0x7e is what makes `ami.` preedit as আমি। instead of committing আমি
+ * and typing a raw '.'.
+ */
 static inline gboolean
-byk_is_letter_key (guint keyval)
+byk_is_bufferable_key (guint keyval)
 {
-    return (keyval >= BYK_KEY_a && keyval <= BYK_KEY_z) ||
-           (keyval >= BYK_KEY_A && keyval <= BYK_KEY_Z);
-}
-
-static inline gboolean
-byk_is_digit_key (guint keyval)
-{
-    return (keyval >= BYK_KEY_0 && keyval <= BYK_KEY_9) ||
-           (keyval >= BYK_KEY_KP_0 && keyval <= BYK_KEY_KP_9);
+    if (keyval >= BYK_KEY_KP_0 && keyval <= BYK_KEY_KP_9)
+        return TRUE;
+    return keyval >= 0x21 && keyval <= 0x7e;
 }
 
 static inline gchar
@@ -212,6 +215,33 @@ guint
 byk_composer_page (BykComposer *self)
 {
     return self != NULL ? self->page : 0;
+}
+
+void
+byk_composer_set_phonetic_only (BykComposer *self, gboolean phonetic_only)
+{
+    g_return_if_fail (self != NULL);
+
+    phonetic_only = !!phonetic_only;
+    if (self->phonetic_only == phonetic_only)
+        return;
+
+    self->phonetic_only = phonetic_only;
+
+    if (self->latin->len == 0) {
+        byk_composer_drop_candidates (self);
+        return;
+    }
+
+    gchar *bangla = byk_composer_bangla (self);
+    byk_composer_refill_candidates (self, bangla);
+    g_free (bangla);
+}
+
+gboolean
+byk_composer_phonetic_only (BykComposer *self)
+{
+    return self != NULL && self->phonetic_only;
 }
 
 BykOutcome
@@ -329,7 +359,7 @@ byk_composer_key (BykComposer *self, guint keyval, guint mods)
             return picked;
     }
 
-    if (byk_is_letter_key (keyval) || byk_is_digit_key (keyval)) {
+    if (byk_is_bufferable_key (keyval)) {
         g_string_append_c (self->latin, byk_latin_char (keyval));
         gchar *bangla = byk_composer_bangla (self);
         byk_composer_refill_candidates (self, bangla);

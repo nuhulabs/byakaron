@@ -1,13 +1,13 @@
 #include "typing.h"
 
-/* Candidates per row, matching the input method's page size so the 1-9 hint
- * here means the same thing it does while typing in another application. */
-#define BYK_CANDIDATE_LIMIT 9
+#include "composer.h"
+#include "prefs.h"
 
 struct _BykTypingPage {
     AdwBin parent_instance;
 
-    BykEngines *engines;
+    BykComposer *composer;
+    GSettings *prefs; /* NULL when the schema is not installed */
 
     GtkWidget *entry;      /* latin for the word being composed */
     GtkWidget *preedit;    /* its Bangla, updated on every keystroke */
@@ -16,13 +16,11 @@ struct _BykTypingPage {
     GtkWidget *counter;
 
     AdwToastOverlay *toasts;
-
-    /* Completions currently on screen, so a number key can pick one without
-     * walking the button box. NULL-terminated, owned. */
-    gchar **shown;
 };
 
 G_DEFINE_FINAL_TYPE (BykTypingPage, byk_typing_page, ADW_TYPE_BIN)
+
+static void byk_typing_page_sync (BykTypingPage *self);
 
 /* ── committing ──────────────────────────────────────────────────────────── */
 
@@ -41,34 +39,20 @@ byk_typing_page_append (BykTypingPage *self, const gchar *text)
     gtk_text_view_scroll_to_iter (GTK_TEXT_VIEW (self->output), &end, 0.0, FALSE, 0.0, 0.0);
 }
 
-/* Commit `word` (already Bangla) plus an optional separator, and start fresh. */
-static void
-byk_typing_page_commit (BykTypingPage *self, const gchar *word, const gchar *suffix)
-{
-    if (word == NULL || *word == '\0') {
-        /* Nothing composed: a bare Space or Enter is still a real keystroke. */
-        if (suffix != NULL)
-            byk_typing_page_append (self, suffix);
-        return;
-    }
-
-    gchar *text = suffix != NULL ? g_strconcat (word, suffix, NULL) : g_strdup (word);
-    byk_typing_page_append (self, text);
-    g_free (text);
-
-    gtk_editable_set_text (GTK_EDITABLE (self->entry), "");
-}
-
 /* ── candidates ──────────────────────────────────────────────────────────── */
 
 static void
 on_candidate_clicked (GtkButton *button, gpointer user_data)
 {
     BykTypingPage *self = BYK_TYPING_PAGE (user_data);
+    const guint index = GPOINTER_TO_UINT (g_object_get_data (G_OBJECT (button), "index"));
+    BykOutcome outcome = byk_composer_select (self->composer, index);
 
-    /* No trailing space: picking a word is not finishing a sentence — the same
-     * call the IBus engine makes. */
-    byk_typing_page_commit (self, gtk_button_get_label (button), NULL);
+    if (outcome.action == BYK_ACT_COMMIT &&
+        outcome.commit != NULL && outcome.commit[0] != '\0')
+        byk_typing_page_append (self, outcome.commit);
+    g_free (outcome.commit);
+    byk_typing_page_sync (self);
 }
 
 static void
@@ -78,67 +62,47 @@ byk_typing_page_clear_candidates (BykTypingPage *self)
     while ((child = gtk_widget_get_first_child (self->candidates)) != NULL)
         gtk_box_remove (GTK_BOX (self->candidates), child);
 
-    g_clear_pointer (&self->shown, g_strfreev);
     gtk_widget_set_visible (self->candidates, FALSE);
 }
 
 static void
-byk_typing_page_show_candidates (BykTypingPage *self, const gchar *bangla)
+byk_typing_page_show_candidates (BykTypingPage *self)
 {
     byk_typing_page_clear_candidates (self);
 
-    if (self->engines->autocomplete == NULL || bangla == NULL || *bangla == '\0')
+    gchar **words = byk_composer_candidates (self->composer);
+    if (words == NULL || words[0] == NULL)
         return;
 
-    gchar **words = byk_autocomplete_prefix (self->engines->autocomplete,
-                                             bangla,
-                                             BYK_CANDIDATE_LIMIT);
-    if (words == NULL)
-        return;
-    if (words[0] == NULL) {
-        g_strfreev (words);
-        return;
-    }
+    const guint start = byk_composer_page (self->composer) * BYK_COMPOSER_PAGE_SIZE;
+    for (guint i = 0; i < BYK_COMPOSER_PAGE_SIZE; i++) {
+        if (words[start + i] == NULL)
+            break;
 
-    for (guint i = 0; words[i] != NULL; i++) {
-        GtkWidget *button = gtk_button_new_with_label (words[i]);
-
-        /* The digit is the point of the label: it is the key that picks this
-         * word both here and in the input method. */
-        gchar *tooltip = g_strdup_printf ("Press %u to insert %s", i + 1, words[i]);
+        GtkWidget *button = gtk_button_new_with_label (words[start + i]);
+        gchar *tooltip = g_strdup_printf ("Press %u to insert %s",
+                                          i + 1, words[start + i]);
         gtk_widget_set_tooltip_text (button, tooltip);
         g_free (tooltip);
 
         gtk_widget_add_css_class (button, "byk-candidate");
+        g_object_set_data (G_OBJECT (button), "index", GUINT_TO_POINTER (i));
         g_signal_connect (button, "clicked", G_CALLBACK (on_candidate_clicked), self);
         gtk_box_append (GTK_BOX (self->candidates), button);
     }
 
-    self->shown = words;
     gtk_widget_set_visible (self->candidates, TRUE);
 }
 
-/* ── live transliteration ────────────────────────────────────────────────── */
-
-/* The Bangla for what is in the entry right now, or NULL. Caller frees. */
-static gchar *
-byk_typing_page_bangla (BykTypingPage *self)
-{
-    const gchar *latin = gtk_editable_get_text (GTK_EDITABLE (self->entry));
-    if (latin == NULL || *latin == '\0')
-        return NULL;
-
-    return byk_transliterator_run (self->engines->transliterator, latin);
-}
+/* ── live transliteration (composer is the source of truth) ──────────────── */
 
 static void
-on_entry_changed (GtkEditable *editable, gpointer user_data)
+byk_typing_page_sync (BykTypingPage *self)
 {
-    BykTypingPage *self = BYK_TYPING_PAGE (user_data);
-    (void) editable;
+    const gchar *latin = byk_composer_latin (self->composer);
+    gtk_editable_set_text (GTK_EDITABLE (self->entry), latin != NULL ? latin : "");
 
-    gchar *bangla = byk_typing_page_bangla (self);
-
+    gchar *bangla = byk_composer_preedit (self->composer);
     if (bangla == NULL || *bangla == '\0') {
         /* Keep the row's height so the layout does not jump on every word. */
         gtk_label_set_text (GTK_LABEL (self->preedit), "\u200b");
@@ -147,23 +111,37 @@ on_entry_changed (GtkEditable *editable, gpointer user_data)
         gtk_label_set_text (GTK_LABEL (self->preedit), bangla);
         gtk_widget_add_css_class (self->preedit, "byk-preedit-filled");
     }
-
-    byk_typing_page_show_candidates (self, bangla);
     g_free (bangla);
+
+    byk_typing_page_show_candidates (self);
 }
 
-/* ── key handling (mirrors Keyboard/engine.c) ────────────────────────────── */
-
-/* 0-based candidate index for a number key, or -1. `0` is never a selector,
- * exactly as in the input method, so it stays available as ০. */
-static gint
-byk_candidate_index (guint keyval)
+static void
+byk_typing_page_apply_prefs (BykTypingPage *self)
 {
-    if (keyval >= GDK_KEY_1 && keyval <= GDK_KEY_9)
-        return (gint) (keyval - GDK_KEY_1);
-    if (keyval >= GDK_KEY_KP_1 && keyval <= GDK_KEY_KP_9)
-        return (gint) (keyval - GDK_KEY_KP_1);
-    return -1;
+    byk_composer_set_phonetic_only (
+        self->composer,
+        byk_prefs_boolean (self->prefs, BYK_PREFS_PHONETIC_ONLY, FALSE));
+    byk_typing_page_sync (self);
+}
+
+static void
+on_prefs_changed (GSettings *settings, gchar *key, gpointer user_data)
+{
+    (void) settings;
+    (void) key;
+    byk_typing_page_apply_prefs (BYK_TYPING_PAGE (user_data));
+}
+
+/* ── key handling (the same Core/composer.c IBus and Fcitx5 use) ─────────── */
+
+static guint
+byk_gdk_mods (GdkModifierType state)
+{
+    guint mods = 0;
+    if (state & (GDK_CONTROL_MASK | GDK_ALT_MASK | GDK_SUPER_MASK | GDK_META_MASK))
+        mods |= BYK_MOD_SHORTCUT;
+    return mods;
 }
 
 static gboolean
@@ -177,41 +155,48 @@ on_entry_key_pressed (GtkEventControllerKey *controller,
     (void) controller;
     (void) keycode;
 
-    if ((state & (GDK_CONTROL_MASK | GDK_ALT_MASK)) != 0)
+    if (keyval == GDK_KEY_ISO_Enter)
+        keyval = GDK_KEY_Return;
+
+    BykOutcome outcome = byk_composer_key (self->composer, keyval, byk_gdk_mods (state));
+
+    switch (outcome.action) {
+    case BYK_ACT_PASS:
+        g_free (outcome.commit);
+        /* Empty buffer: Space and Enter are still real keystrokes in the pad. */
+        if (keyval == GDK_KEY_space || keyval == GDK_KEY_KP_Space) {
+            byk_typing_page_append (self, " ");
+            return TRUE;
+        }
+        if (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter) {
+            byk_typing_page_append (self, "\n");
+            return TRUE;
+        }
         return FALSE;
 
-    /* Number keys pick from the list while it is on screen; off screen they are
-     * ordinary digits and transliterate to Bangla numerals through the entry. */
-    const gint index = byk_candidate_index (keyval);
-    if (index >= 0 && self->shown != NULL &&
-        (guint) index < g_strv_length (self->shown)) {
-        byk_typing_page_commit (self, self->shown[index], NULL);
+    case BYK_ACT_EAT:
+        byk_typing_page_sync (self);
+        g_free (outcome.commit);
         return TRUE;
+
+    case BYK_ACT_COMMIT:
+        if (outcome.commit != NULL && outcome.commit[0] != '\0')
+            byk_typing_page_append (self, outcome.commit);
+        /* Enter commits then is a newline here (the IME would pass it to the
+         * application; this page *is* the application). */
+        if (outcome.pass_key &&
+            (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter))
+            byk_typing_page_append (self, "\n");
+        byk_typing_page_sync (self);
+        g_free (outcome.commit);
+        return outcome.pass_key &&
+               keyval != GDK_KEY_Return && keyval != GDK_KEY_KP_Enter
+                   ? FALSE
+                   : TRUE;
     }
 
-    switch (keyval) {
-    case GDK_KEY_space:
-    case GDK_KEY_KP_Space: {
-        gchar *bangla = byk_typing_page_bangla (self);
-        byk_typing_page_commit (self, bangla, " ");
-        g_free (bangla);
-        return TRUE;
-    }
-    case GDK_KEY_Return:
-    case GDK_KEY_KP_Enter:
-    case GDK_KEY_ISO_Enter: {
-        gchar *bangla = byk_typing_page_bangla (self);
-        byk_typing_page_commit (self, bangla, "\n");
-        g_free (bangla);
-        return TRUE;
-    }
-    case GDK_KEY_Escape:
-        /* Drops the word and the list together, like the engine's Escape. */
-        gtk_editable_set_text (GTK_EDITABLE (self->entry), "");
-        return TRUE;
-    default:
-        return FALSE;
-    }
+    g_free (outcome.commit);
+    return FALSE;
 }
 
 /* ── output actions ──────────────────────────────────────────────────────── */
@@ -247,7 +232,11 @@ on_clear_clicked (GtkButton *button, gpointer user_data)
     (void) button;
 
     gtk_text_buffer_set_text (gtk_text_view_get_buffer (GTK_TEXT_VIEW (self->output)), "", -1);
-    gtk_editable_set_text (GTK_EDITABLE (self->entry), "");
+    {
+        BykOutcome outcome = byk_composer_key (self->composer, GDK_KEY_Escape, 0);
+        g_free (outcome.commit);
+    }
+    byk_typing_page_sync (self);
     gtk_widget_grab_focus (self->entry);
 }
 
@@ -295,11 +284,10 @@ byk_typing_page_build_composer (BykTypingPage *self)
                                     "Type \u201cami\u201d, then press Space");
     gtk_entry_set_has_frame (GTK_ENTRY (self->entry), FALSE);
     gtk_widget_add_css_class (self->entry, "byk-latin");
-    g_signal_connect (self->entry, "changed", G_CALLBACK (on_entry_changed), self);
 
     GtkEventController *keys = gtk_event_controller_key_new ();
-    /* Capture phase: GtkEntry would otherwise insert the space or the digit
-     * before we get to interpret it. */
+    /* Capture phase: GtkEntry would otherwise insert the space, digit, or
+     * punctuation before the composer sees it. */
     gtk_event_controller_set_propagation_phase (keys, GTK_PHASE_CAPTURE);
     g_signal_connect (keys, "key-pressed", G_CALLBACK (on_entry_key_pressed), self);
     gtk_widget_add_controller (self->entry, keys);
@@ -389,7 +377,8 @@ byk_typing_page_dispose (GObject *object)
 {
     BykTypingPage *self = BYK_TYPING_PAGE (object);
 
-    g_clear_pointer (&self->shown, g_strfreev);
+    g_clear_pointer (&self->composer, byk_composer_free);
+    g_clear_object (&self->prefs);
 
     G_OBJECT_CLASS (byk_typing_page_parent_class)->dispose (object);
 }
@@ -401,12 +390,15 @@ byk_typing_page_class_init (BykTypingPageClass *klass)
 }
 
 GtkWidget *
-byk_typing_page_new (BykEngines *engines)
+byk_typing_page_new (void)
 {
-    g_return_val_if_fail (engines != NULL, NULL);
-
     BykTypingPage *self = g_object_new (BYK_TYPE_TYPING_PAGE, NULL);
-    self->engines = engines;
+
+    self->composer = byk_composer_new ();
+    self->prefs = byk_prefs_try_open ();
+    if (self->prefs != NULL)
+        g_signal_connect (self->prefs, "changed::" BYK_PREFS_PHONETIC_ONLY,
+                          G_CALLBACK (on_prefs_changed), self);
 
     GtkWidget *hint = gtk_label_new (
         "Composes with the same engine as the keyboard, so you can try Bangla "
@@ -439,6 +431,8 @@ byk_typing_page_new (BykEngines *engines)
     self->toasts = ADW_TOAST_OVERLAY (adw_toast_overlay_new ());
     adw_toast_overlay_set_child (self->toasts, scroller);
     adw_bin_set_child (ADW_BIN (self), GTK_WIDGET (self->toasts));
+
+    byk_typing_page_apply_prefs (self);
 
     return GTK_WIDGET (self);
 }

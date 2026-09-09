@@ -23,6 +23,9 @@
 #include <fcitx/userinterface.h>
 
 #include <glib.h>
+#include <gio/gio.h>
+
+#include "prefs.h"
 
 #include <memory>
 #include <string>
@@ -69,6 +72,18 @@ private:
     guint index_;
 };
 
+static GSettings *
+byk_fcitx_prefs (void)
+{
+    static GSettings *prefs = nullptr;
+    static gboolean tried = FALSE;
+    if (!tried) {
+        tried = TRUE;
+        prefs = byk_prefs_try_open ();
+    }
+    return prefs;
+}
+
 } // namespace
 
 ByakaronState::ByakaronState ()
@@ -113,7 +128,10 @@ ByakaronEngine::syncPanel (fcitx::InputContext *ic, ByakaronState *state)
     list->setPageSize (BYK_COMPOSER_PAGE_SIZE);
     /* Number keys are handled in the composer so Fcitx must not steal 1–9. */
     list->setSelectionKey ({});
-    list->setLayoutHint (fcitx::CandidateLayoutHint::Vertical);
+    const gboolean horiz =
+        byk_prefs_boolean (byk_fcitx_prefs (), BYK_PREFS_CANDIDATES_HORIZONTAL, TRUE);
+    list->setLayoutHint (horiz ? fcitx::CandidateLayoutHint::Horizontal
+                               : fcitx::CandidateLayoutHint::Vertical);
 
     gchar **words = byk_composer_candidates (state->composer);
     if (words != nullptr) {
@@ -182,6 +200,9 @@ ByakaronEngine::keyEvent (const fcitx::InputMethodEntry &entry,
     FCITX_UNUSED (entry);
     auto *ic = keyEvent.inputContext ();
     auto *state = ic->propertyFor (&factory_);
+    byk_composer_set_phonetic_only (
+        state->composer,
+        byk_prefs_boolean (byk_fcitx_prefs (), BYK_PREFS_PHONETIC_ONLY, FALSE));
     const guint keyval = static_cast<guint> (keyEvent.key ().sym ());
     apply (ic, state,
            byk_composer_key (state->composer, keyval, byk_fcitx_mods (keyEvent)),

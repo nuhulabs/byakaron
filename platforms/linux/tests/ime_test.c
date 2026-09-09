@@ -357,6 +357,16 @@ main (void)
     send_string (ctx, "ami0");
     check ("\"ami\" then \"0\"", g_preedit, "আমি০");
 
+    g_print ("punctuation stays in the latin buffer:\n");
+    reset_state (ctx);
+    send_string (ctx, ".");
+    check ("type \".\"", g_preedit, "।");
+    reset_state (ctx);
+    send_string (ctx, "ami.");
+    check ("type \"ami.\"", g_preedit, "আমি।");
+    send_key (ctx, IBUS_KEY_space);
+    check ("space commits dari", g_committed, "আমি। ");
+
     ibus_input_context_focus_out (ctx);
     g_object_unref (ctx);
 

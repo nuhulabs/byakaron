@@ -127,7 +127,7 @@ byk_window_init (BykWindow *self)
     self->setup_page = byk_setup_page_new ();
 
     adw_view_stack_add_titled_with_icon (ADW_VIEW_STACK (self->stack),
-                                         byk_typing_page_new (&self->engines),
+                                         byk_typing_page_new (),
                                          "write", "Write", "input-keyboard-symbolic");
     adw_view_stack_add_titled_with_icon (ADW_VIEW_STACK (self->stack),
                                          self->spell_page,

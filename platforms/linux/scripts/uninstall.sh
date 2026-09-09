@@ -17,6 +17,7 @@ FILES=(
     "/usr/share/applications/byakaron.desktop"
     "/usr/share/icons/hicolor/scalable/apps/byakaron.svg"
     "/usr/share/byakaron/spell.db"
+    "/usr/share/glib-2.0/schemas/dev.nuhu.labs.Byakaron.gschema.xml"
     "/usr/share/fcitx5/addon/byakaron.conf"
     "/usr/share/fcitx5/inputmethod/byakaron.conf"
 )
@@ -55,6 +56,7 @@ done
 rm -f /usr/lib/fcitx5/byakaron.so \
       /usr/lib/*/fcitx5/byakaron.so 2>/dev/null || true
 rmdir /usr/share/byakaron 2>/dev/null || true
+glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || true
 update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
 gtk-update-icon-cache -qtf /usr/share/icons/hicolor >/dev/null 2>&1 || true
 
