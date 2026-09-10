@@ -64,6 +64,7 @@ install -d "$STAGE/usr/libexec"
 install -d "$STAGE/usr/bin"
 install -d "$STAGE/usr/share/ibus/component"
 install -d "$STAGE/usr/share/applications"
+install -d "$STAGE/usr/share/metainfo"
 install -d "$STAGE/usr/share/icons/hicolor/scalable/apps"
 install -d "$STAGE/usr/share/glib-2.0/schemas"
 
@@ -86,8 +87,9 @@ if [[ -x "$SRC_APP" ]]; then
 
     sed -e "s|@BYK_APP_EXEC@|/usr/bin/byakaron|g" \
         "$PROJECT_ROOT/Resources/byakaron-app.desktop.in" \
-        > "$STAGE/usr/share/applications/byakaron.desktop"
-    chmod 644 "$STAGE/usr/share/applications/byakaron.desktop"
+        > "$STAGE/usr/share/applications/dev.nuhu.labs.Byakaron.desktop"
+    chmod 644 "$STAGE/usr/share/applications/dev.nuhu.labs.Byakaron.desktop"
+    install -m 644 "$PROJECT_ROOT/Resources/dev.nuhu.labs.Byakaron.metainfo.xml" "$STAGE/usr/share/metainfo/dev.nuhu.labs.Byakaron.metainfo.xml"
 
     BYK_SETUP="/usr/bin/byakaron"
     GTK_DEPENDS=", libgtk-4-1, libadwaita-1-0"

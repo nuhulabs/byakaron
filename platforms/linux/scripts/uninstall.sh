@@ -15,6 +15,8 @@ FILES=(
     "/usr/bin/byakaron"
     "/usr/share/ibus/component/byakaron.xml"
     "/usr/share/applications/byakaron.desktop"
+    "/usr/share/applications/dev.nuhu.labs.Byakaron.desktop"
+    "/usr/share/metainfo/dev.nuhu.labs.Byakaron.metainfo.xml"
     "/usr/share/icons/hicolor/scalable/apps/byakaron.svg"
     "/usr/share/byakaron/spell.db"
     "/usr/share/glib-2.0/schemas/dev.nuhu.labs.Byakaron.gschema.xml"

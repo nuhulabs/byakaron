@@ -81,6 +81,8 @@ StartupWMClass=${APP_ID}
 EOF
 flatpak build "$APPDIR" install -D -m 644 "$DESKTOP" \
     "/app/share/applications/${APP_ID}.desktop"
+flatpak build "$APPDIR" install -d /app/share/metainfo
+flatpak build "$APPDIR" install -D -m 644 "$PROJECT_ROOT/Resources/${APP_ID}.metainfo.xml" "/app/share/metainfo/${APP_ID}.metainfo.xml"
 
 # Flatpak's export validator often rejects this SVG (gdk-pixbuf in the
 # export environment has no SVG loader). A PNG is what GNOME Software shows.
