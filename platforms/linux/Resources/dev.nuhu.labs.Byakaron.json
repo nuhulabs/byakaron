@@ -20,6 +20,7 @@
             "build-commands": [
                 "install -D -m 755 byakaron /app/bin/byakaron",
                 "install -D -m 644 dev.nuhu.labs.Byakaron.desktop /app/share/applications/dev.nuhu.labs.Byakaron.desktop",
+                "install -D -m 644 dev.nuhu.labs.Byakaron.metainfo.xml /app/share/metainfo/dev.nuhu.labs.Byakaron.metainfo.xml",
                 "install -D -m 644 byakaron.png /app/share/icons/hicolor/128x128/apps/dev.nuhu.labs.Byakaron.png"
             ],
             "sources": [
@@ -30,6 +31,10 @@
                 {
                     "type": "file",
                     "path": "dev.nuhu.labs.Byakaron.desktop"
+                },
+                {
+                    "type": "file",
+                    "path": "dev.nuhu.labs.Byakaron.metainfo.xml"
                 },
                 {
                     "type": "file",

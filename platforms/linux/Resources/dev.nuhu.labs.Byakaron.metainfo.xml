@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.nuhu.labs.Byakaron</id>
+  <name>Byakaron</name>
+  <summary>Type Bangla phonetically and check spelling</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="dev.nuhu.labs">
+    <name>Nuhu Labs</name>
+  </developer>
+  <description>
+    <p>Byakaron is a Bangla phonetic input method and companion writing app. Type with a Latin keyboard and compose Bangla with Avro phonetic rules.</p>
+    <p>The app provides a place to practise composing, a Bangla spell checker, an Avro key-map reference, and a guide for adding the system input source in GNOME.</p>
+  </description>
+  <launchable type="desktop-id">dev.nuhu.labs.Byakaron.desktop</launchable>
+  <provides><binary>byakaron</binary></provides>
+  <categories><category>Utility</category><category>TextTools</category></categories>
+  <keywords><keyword>Bangla</keyword><keyword>Bengali</keyword><keyword>বাংলা</keyword><keyword>phonetic</keyword><keyword>Avro</keyword><keyword>spell</keyword><keyword>keyboard</keyword></keywords>
+  <icon type="stock">byakaron</icon>
+  <url type="homepage">https://github.com/nuhulabs/byakaron</url>
+  <releases><release version="0.1.0" date="2026-09-10"/></releases>
+  <content_rating type="oars-1.1"/>
+</component>

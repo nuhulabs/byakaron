@@ -26,6 +26,7 @@ BINDIR="/usr/bin"
 XMLDIR="/usr/share/ibus/component"
 ICONDIR="/usr/share/icons/hicolor/scalable/apps"
 DESKTOPDIR="/usr/share/applications"
+METAINFO_DIR="/usr/share/metainfo"
 DATADIR="/usr/share/byakaron"
 
 if [[ $EUID -ne 0 ]]; then
@@ -65,7 +66,7 @@ fi
 
 SCHEMADIR="/usr/share/glib-2.0/schemas"
 
-install -d "$LIBDIR" "$BINDIR" "$XMLDIR" "$ICONDIR" "$DESKTOPDIR" "$DATADIR" "$SCHEMADIR"
+install -d "$LIBDIR" "$BINDIR" "$XMLDIR" "$ICONDIR" "$DESKTOPDIR" "$METAINFO_DIR" "$DATADIR" "$SCHEMADIR"
 
 # Install the binary before the XML: the XML points at its final path and ibus
 # will try to exec exactly that.
@@ -88,9 +89,11 @@ if [[ -x "$SRC_APP" ]]; then
     echo ">>> Installed: $BINDIR/byakaron"
 
     sed -e "s|@BYK_APP_EXEC@|$BINDIR/byakaron|g" \
-        "$PROJECT_ROOT/Resources/byakaron-app.desktop.in" > "$DESKTOPDIR/byakaron.desktop"
-    chmod 644 "$DESKTOPDIR/byakaron.desktop"
-    echo ">>> Installed: $DESKTOPDIR/byakaron.desktop"
+        "$PROJECT_ROOT/Resources/byakaron-app.desktop.in" > "$DESKTOPDIR/dev.nuhu.labs.Byakaron.desktop"
+    chmod 644 "$DESKTOPDIR/dev.nuhu.labs.Byakaron.desktop"
+    install -m 644 "$PROJECT_ROOT/Resources/dev.nuhu.labs.Byakaron.metainfo.xml" "$METAINFO_DIR/dev.nuhu.labs.Byakaron.metainfo.xml"
+    echo ">>> Installed: $DESKTOPDIR/dev.nuhu.labs.Byakaron.desktop"
+    echo ">>> Installed: $METAINFO_DIR/dev.nuhu.labs.Byakaron.metainfo.xml"
 
     BYK_SETUP="$BINDIR/byakaron"
 fi

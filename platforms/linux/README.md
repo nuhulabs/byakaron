@@ -415,14 +415,20 @@ bash platforms/linux/scripts/package_flatpak.sh
 That packs the already-built `byakaron` binary against `org.gnome.Platform`
 (used as both runtime and SDK, so `org.gnome.Sdk` is not required). It does
 not include the engine or the 364 MB `spell.db`. Manifest:
-`Resources/dev.nuhu.labs.Byakaron.json`.
+`Resources/dev.nuhu.labs.Byakaron.json`. The same AppStream metadata used by
+the Debian package lives in `Resources/dev.nuhu.labs.Byakaron.metainfo.xml`.
+
+## Desktop hand-test checklist
+
+After installing the engine and adding **Byakaron** as an input source, switch to it with Super+Space and verify `ami` + Space commits `আমি ` in GTK4, Firefox, Chrome, one Qt application, and Cursor or another Electron app. In Cursor/Electron, specifically confirm a pending word is committed before its preedit is hidden. If using Fcitx5, also add Byakaron in the Fcitx5 configuration tool and confirm the same flow.
+
+For the Wayland check, log out and choose **GNOME on Wayland** at the display manager (nested Mutter is not equivalent); then repeat the Firefox test. This host currently uses X11, so that final session-level test remains manual.
 
 ## What is not in this port yet
 
 - **Typing in Firefox on a Wayland *login* session.** Nested mutter covers the
   compositor + GtkEntry path; switching this X11 box to a Wayland session is
   a hand test, not a CI step.
-- **AppStream metainfo** so GNOME Software shows a description.
 
 ## Notes
 
