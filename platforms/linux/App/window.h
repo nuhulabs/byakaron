@@ -1,5 +1,5 @@
 /*
- * The application window: one AdwViewStack over the four pages, and the owner
+ * The application window: one GtkStack over the four pages, and the owner
  * of the engine handles they all borrow.
  */
 #ifndef BYAKARON_LINUX_APP_WINDOW_H
@@ -10,9 +10,9 @@
 G_BEGIN_DECLS
 
 #define BYK_TYPE_WINDOW (byk_window_get_type ())
-G_DECLARE_FINAL_TYPE (BykWindow, byk_window, BYK, WINDOW, AdwApplicationWindow)
+G_DECLARE_FINAL_TYPE (BykWindow, byk_window, BYK, WINDOW, GtkApplicationWindow)
 
-GtkWidget *byk_window_new (AdwApplication *app);
+GtkWidget *byk_window_new (GtkApplication *app);
 
 G_END_DECLS
 

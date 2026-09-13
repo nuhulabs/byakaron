@@ -1,13 +1,3 @@
-/*
- * "Setup" page — keyboard status, how to add it, and a typing cheat-sheet.
- *
- * Mirrors the macOS GettingStartedTab, with the two checks the Linux install
- * actually has: whether the IBus component is registered on the system, and
- * whether the user has added Byakaron to their input sources. Those are
- * separate steps here (the macOS installer does both at once), and telling
- * them apart is the difference between "run the installer" and "click + in
- * Settings".
- */
 #ifndef BYAKARON_LINUX_APP_SETUP_H
 #define BYAKARON_LINUX_APP_SETUP_H
 
@@ -16,7 +6,7 @@
 G_BEGIN_DECLS
 
 #define BYK_TYPE_SETUP_PAGE (byk_setup_page_get_type ())
-G_DECLARE_FINAL_TYPE (BykSetupPage, byk_setup_page, BYK, SETUP_PAGE, AdwBin)
+G_DECLARE_FINAL_TYPE (BykSetupPage, byk_setup_page, BYK, SETUP_PAGE, GtkBox)
 
 GtkWidget *byk_setup_page_new (void);
 

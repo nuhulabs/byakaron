@@ -1,6 +1,7 @@
 #include "setup.h"
 
 #include "prefs.h"
+#include "uiutil.h"
 
 /* The only directory ibus-daemon scans for components; scripts/install.sh
  * writes here and nowhere else, so its presence is the installed check. */
@@ -16,18 +17,18 @@ typedef enum {
 } BykKeyboardState;
 
 struct _BykSetupPage {
-    AdwBin parent_instance;
+    GtkBox parent_instance;
 
-    AdwActionRow *status_row;
+    GtkWidget *status_title;
+    GtkWidget *status_subtitle;
     GtkWidget *status_icon;
     GtkWidget *install_hint; /* only shown when nothing is installed */
+    GtkWidget *toast;
 
     GSettings *prefs; /* NULL when the schema is not installed */
-
-    AdwToastOverlay *toasts;
 };
 
-G_DEFINE_FINAL_TYPE (BykSetupPage, byk_setup_page, ADW_TYPE_BIN)
+G_DEFINE_TYPE (BykSetupPage, byk_setup_page, GTK_TYPE_BOX)
 
 /* ── detection ───────────────────────────────────────────────────────────── */
 
@@ -101,13 +102,14 @@ on_open_settings_clicked (GtkButton *button, gpointer user_data)
     /* GNOME's keyboard panel is where input sources live. There is no portal
      * or D-Bus interface for "open this settings panel", so this is a plain
      * spawn — and a missing binary is a normal outcome on other desktops. */
-    if (g_find_program_in_path ("gnome-control-center") == NULL) {
-        adw_toast_overlay_add_toast (
-            self->toasts,
-            adw_toast_new ("GNOME Settings not found — open your desktop's "
-                           "keyboard settings and add Byakaron there"));
+    gchar *found = g_find_program_in_path ("gnome-control-center");
+    if (found == NULL) {
+        byk_toast_show (GTK_LABEL (self->toast),
+                        "GNOME Settings not found — open your desktop's "
+                        "keyboard settings and add Byakaron there");
         return;
     }
+    g_free (found);
 
     GError *error = NULL;
     const gchar *argv[] = { "gnome-control-center", "keyboard", NULL };
@@ -117,7 +119,7 @@ on_open_settings_clicked (GtkButton *button, gpointer user_data)
                             G_SPAWN_STDERR_TO_DEV_NULL,
                         NULL, NULL, NULL, &error)) {
         gchar *message = g_strdup_printf ("Could not open Settings: %s", error->message);
-        adw_toast_overlay_add_toast (self->toasts, adw_toast_new (message));
+        byk_toast_show (GTK_LABEL (self->toast), message);
         g_free (message);
         g_clear_error (&error);
     }
@@ -129,12 +131,51 @@ on_copy_install_clicked (GtkButton *button, gpointer user_data)
     BykSetupPage *self = BYK_SETUP_PAGE (user_data);
     (void) button;
 
-    gdk_clipboard_set_text (gtk_widget_get_clipboard (GTK_WIDGET (self)),
-                            "sudo bash platforms/linux/scripts/install.sh");
-    adw_toast_overlay_add_toast (self->toasts, adw_toast_new ("Install command copied"));
+    byk_clipboard_set (GTK_WIDGET (self),
+                       "sudo bash platforms/linux/scripts/install.sh");
+    byk_toast_show (GTK_LABEL (self->toast), "Install command copied");
 }
 
 /* ── rows ────────────────────────────────────────────────────────────────── */
+
+static GtkWidget *
+byk_setup_row (GtkWidget *prefix, const gchar *title, const gchar *subtitle, GtkWidget *suffix)
+{
+    GtkWidget *labels = gtk_box_new (GTK_ORIENTATION_VERTICAL, 2);
+    GtkWidget *title_w = gtk_label_new (title);
+    gtk_label_set_xalign (GTK_LABEL (title_w), 0.0);
+    gtk_label_set_line_wrap (GTK_LABEL (title_w), TRUE);
+    byk_box_add (labels, title_w);
+
+    GtkWidget *sub_w = NULL;
+    if (subtitle != NULL) {
+        sub_w = gtk_label_new (subtitle);
+        byk_css_add (sub_w, "dim-label");
+        gtk_label_set_xalign (GTK_LABEL (sub_w), 0.0);
+        gtk_label_set_line_wrap (GTK_LABEL (sub_w), TRUE);
+        byk_box_add (labels, sub_w);
+    }
+
+    GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 12);
+    gtk_widget_set_margin_top (row, 8);
+    gtk_widget_set_margin_bottom (row, 8);
+    gtk_widget_set_margin_start (row, 12);
+    gtk_widget_set_margin_end (row, 12);
+    if (prefix != NULL) {
+        gtk_widget_set_valign (prefix, GTK_ALIGN_CENTER);
+        byk_box_add (row, prefix);
+    }
+    gtk_widget_set_hexpand (labels, TRUE);
+    byk_box_add_expand (row, labels);
+    if (suffix != NULL) {
+        gtk_widget_set_valign (suffix, GTK_ALIGN_CENTER);
+        byk_box_add (row, suffix);
+    }
+
+    g_object_set_data (G_OBJECT (row), "byk-title", title_w);
+    g_object_set_data (G_OBJECT (row), "byk-subtitle", sub_w);
+    return row;
+}
 
 static GtkWidget *
 byk_setup_step_row (guint number, const gchar *text, const gchar *note)
@@ -143,47 +184,68 @@ byk_setup_step_row (guint number, const gchar *text, const gchar *note)
     GtkWidget *badge = gtk_label_new (label);
     g_free (label);
 
-    gtk_widget_add_css_class (badge, "byk-step");
+    byk_css_add (badge, "byk-step");
     gtk_widget_set_valign (badge, GTK_ALIGN_CENTER);
+    gtk_widget_set_halign (badge, GTK_ALIGN_CENTER);
+    gtk_widget_set_size_request (badge, 24, 24);
 
-    AdwActionRow *row = ADW_ACTION_ROW (adw_action_row_new ());
-    adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), text);
-    adw_preferences_row_set_use_markup (ADW_PREFERENCES_ROW (row), FALSE);
-    adw_action_row_add_prefix (row, badge);
-    if (note != NULL)
-        adw_action_row_set_subtitle (row, note);
-
-    return GTK_WIDGET (row);
+    return byk_setup_row (badge, text, note, NULL);
 }
 
 static GtkWidget *
 byk_setup_tip_row (const gchar *key, const gchar *meaning)
 {
-    AdwActionRow *row = ADW_ACTION_ROW (adw_action_row_new ());
     GtkWidget *value = gtk_label_new (meaning);
-
-    adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), key);
-    adw_preferences_row_set_use_markup (ADW_PREFERENCES_ROW (row), FALSE);
-    gtk_widget_add_css_class (value, "dim-label");
-    gtk_label_set_wrap (GTK_LABEL (value), TRUE);
+    byk_css_add (value, "dim-label");
+    gtk_label_set_line_wrap (GTK_LABEL (value), TRUE);
     gtk_label_set_max_width_chars (GTK_LABEL (value), 40);
     gtk_label_set_xalign (GTK_LABEL (value), 1.0);
-    adw_action_row_add_suffix (row, value);
-
-    return GTK_WIDGET (row);
+    return byk_setup_row (NULL, key, NULL, value);
 }
 
 static GtkWidget *
 byk_setup_link_row (const gchar *title, const gchar *uri)
 {
-    AdwActionRow *row = ADW_ACTION_ROW (adw_action_row_new ());
     GtkWidget *link = gtk_link_button_new_with_label (uri, "Open");
+    return byk_setup_row (NULL, title, NULL, link);
+}
 
-    adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), title);
-    adw_action_row_add_suffix (row, link);
-    adw_action_row_set_activatable_widget (row, link);
+static GtkWidget *
+byk_setup_switch_row (const gchar *title, const gchar *subtitle, GtkWidget **out_switch)
+{
+    GtkWidget *sw = gtk_switch_new ();
+    *out_switch = sw;
+    return byk_setup_row (NULL, title, subtitle, sw);
+}
 
-    return GTK_WIDGET (row);
+static GtkWidget *
+byk_framed_list (const gchar *title, const gchar *description, GtkWidget **out_box)
+{
+    GtkWidget *outer = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
+    gtk_widget_set_margin_start (outer, 18);
+    gtk_widget_set_margin_end (outer, 18);
+    gtk_widget_set_margin_top (outer, 12);
+
+    if (title != NULL) {
+        GtkWidget *label = gtk_label_new (title);
+        byk_css_add (label, "heading");
+        gtk_widget_set_halign (label, GTK_ALIGN_START);
+        byk_box_add (outer, label);
+    }
+    if (description != NULL) {
+        GtkWidget *label = gtk_label_new (description);
+        byk_css_add (label, "dim-label");
+        gtk_label_set_line_wrap (GTK_LABEL (label), TRUE);
+        gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+        byk_box_add (outer, label);
+    }
+
+    GtkWidget *list = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+    GtkWidget *frame = gtk_frame_new (NULL);
+    gtk_container_add (GTK_CONTAINER (frame), list);
+    byk_box_add (outer, frame);
+    *out_box = list;
+    return outer;
 }
 
 /* ── construction ────────────────────────────────────────────────────────── */
@@ -191,34 +253,31 @@ byk_setup_link_row (const gchar *title, const gchar *uri)
 static GtkWidget *
 byk_setup_page_build_status (BykSetupPage *self)
 {
-    GtkWidget *group = adw_preferences_group_new ();
+    GtkWidget *list = NULL;
+    GtkWidget *group = byk_framed_list (NULL, NULL, &list);
 
-    self->status_icon = gtk_image_new ();
+    self->status_icon = gtk_image_new_from_icon_name ("dialog-information-symbolic",
+                                                      GTK_ICON_SIZE_BUTTON);
     gtk_image_set_pixel_size (GTK_IMAGE (self->status_icon), 24);
 
     GtkWidget *recheck = gtk_button_new_with_label ("Re-check");
-    gtk_widget_set_valign (recheck, GTK_ALIGN_CENTER);
     g_signal_connect (recheck, "clicked", G_CALLBACK (on_recheck_clicked), self);
 
-    self->status_row = ADW_ACTION_ROW (adw_action_row_new ());
-    adw_action_row_add_prefix (self->status_row, self->status_icon);
-    adw_action_row_add_suffix (self->status_row, recheck);
+    GtkWidget *status = byk_setup_row (self->status_icon, "", "", recheck);
+    self->status_title = g_object_get_data (G_OBJECT (status), "byk-title");
+    self->status_subtitle = g_object_get_data (G_OBJECT (status), "byk-subtitle");
+    byk_box_add (list, status);
 
-    adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), GTK_WIDGET (self->status_row));
-
-    /* Only meaningful before the engine is installed, so it is hidden the rest
-     * of the time rather than sitting there as permanent noise. */
     GtkWidget *copy = gtk_button_new_with_label ("Copy install command");
-    gtk_widget_set_valign (copy, GTK_ALIGN_CENTER);
     g_signal_connect (copy, "clicked", G_CALLBACK (on_copy_install_clicked), self);
 
-    self->install_hint = adw_action_row_new ();
-    adw_preferences_row_set_title (ADW_PREFERENCES_ROW (self->install_hint),
-                                   "Install the input method");
-    adw_action_row_set_subtitle (ADW_ACTION_ROW (self->install_hint),
-                                 "Run the install script from a checkout, or install the .deb");
-    adw_action_row_add_suffix (ADW_ACTION_ROW (self->install_hint), copy);
-    adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), self->install_hint);
+    self->install_hint = byk_setup_row (
+        NULL,
+        "Install the input method",
+        "Run the install script from a checkout, or install the .deb",
+        copy);
+    byk_hide_until_shown (self->install_hint);
+    byk_box_add (list, self->install_hint);
 
     return group;
 }
@@ -226,28 +285,27 @@ byk_setup_page_build_status (BykSetupPage *self)
 static GtkWidget *
 byk_setup_page_build_steps (BykSetupPage *self)
 {
-    GtkWidget *group = adw_preferences_group_new ();
-    adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "Set Up");
+    GtkWidget *list = NULL;
+    GtkWidget *group = byk_framed_list ("Set Up", NULL, &list);
 
-    adw_preferences_group_add (
-        ADW_PREFERENCES_GROUP (group),
-        byk_setup_step_row (1, "Open Settings \u2192 Keyboard \u2192 Input Sources",
-                            "Byakaron installs as a system input source"));
-    adw_preferences_group_add (
-        ADW_PREFERENCES_GROUP (group),
-        byk_setup_step_row (2, "Click  +  \u2192 choose Bangla \u2192 select Byakaron \u2192 Add",
-                            NULL));
-    adw_preferences_group_add (
-        ADW_PREFERENCES_GROUP (group),
-        byk_setup_step_row (3, "Switch to it with Super+Space", NULL));
+    byk_box_add (list, byk_setup_step_row (
+        1, "Open Settings \u2192 Keyboard \u2192 Input Sources",
+        "Byakaron installs as a system input source"));
+    byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
+    byk_box_add (list, byk_setup_step_row (
+        2, "Click  +  \u2192 choose Bangla \u2192 select Byakaron \u2192 Add",
+        NULL));
+    byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
+    byk_box_add (list, byk_setup_step_row (
+        3, "Switch to it with Super+Space", NULL));
 
     GtkWidget *open = gtk_button_new_with_label ("Open Input Sources");
     gtk_widget_set_halign (open, GTK_ALIGN_CENTER);
     gtk_widget_set_margin_top (open, 12);
-    gtk_widget_add_css_class (open, "suggested-action");
-    gtk_widget_add_css_class (open, "pill");
+    gtk_widget_set_margin_bottom (open, 8);
+    byk_css_add (open, "suggested-action");
     g_signal_connect (open, "clicked", G_CALLBACK (on_open_settings_clicked), self);
-    adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), open);
+    byk_box_add (list, open);
 
     return group;
 }
@@ -255,8 +313,8 @@ byk_setup_page_build_steps (BykSetupPage *self)
 static GtkWidget *
 byk_setup_page_build_typing (void)
 {
-    GtkWidget *group = adw_preferences_group_new ();
-    adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "How to Type");
+    GtkWidget *list = NULL;
+    GtkWidget *group = byk_framed_list ("How to Type", NULL, &list);
 
     /*
      * Deliberately not a copy of the macOS cheat-sheet. This engine commits
@@ -278,9 +336,11 @@ byk_setup_page_build_typing (void)
         { "Escape", "cancels the current word and its candidates" },
     };
 
-    for (gsize i = 0; i < G_N_ELEMENTS (TIPS); i++)
-        adw_preferences_group_add (ADW_PREFERENCES_GROUP (group),
-                                   byk_setup_tip_row (TIPS[i].key, TIPS[i].meaning));
+    for (gsize i = 0; i < G_N_ELEMENTS (TIPS); i++) {
+        if (i > 0)
+            byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
+        byk_box_add (list, byk_setup_tip_row (TIPS[i].key, TIPS[i].meaning));
+    }
 
     return group;
 }
@@ -292,30 +352,30 @@ byk_setup_page_build_prefs (BykSetupPage *self)
     if (self->prefs == NULL)
         return NULL;
 
-    GtkWidget *group = adw_preferences_group_new ();
-    adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "Preferences");
-    adw_preferences_group_set_description (
-        ADW_PREFERENCES_GROUP (group),
-        "These apply to the input method and to Write as soon as you change them.");
+    GtkWidget *list = NULL;
+    GtkWidget *group = byk_framed_list (
+        "Preferences",
+        "These apply to the input method and to Write as soon as you change them.",
+        &list);
 
-    GtkWidget *suggest = adw_switch_row_new ();
-    adw_preferences_row_set_title (ADW_PREFERENCES_ROW (suggest), "Suggest words");
-    adw_action_row_set_subtitle (
-        ADW_ACTION_ROW (suggest),
-        "Dictionary completions while typing. 1\u20139 pick one. Off still transliterates.");
-    g_settings_bind (self->prefs, BYK_PREFS_PHONETIC_ONLY, suggest, "active",
+    GtkWidget *suggest_sw = NULL;
+    GtkWidget *suggest = byk_setup_switch_row (
+        "Suggest words",
+        "Dictionary completions while typing. 1\u20139 pick one. Off still transliterates.",
+        &suggest_sw);
+    g_settings_bind (self->prefs, BYK_PREFS_PHONETIC_ONLY, suggest_sw, "active",
                      G_SETTINGS_BIND_DEFAULT | G_SETTINGS_BIND_INVERT_BOOLEAN);
-    adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), suggest);
+    byk_box_add (list, suggest);
+    byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
 
-    GtkWidget *horiz = adw_switch_row_new ();
-    adw_preferences_row_set_title (ADW_PREFERENCES_ROW (horiz),
-                                  "Horizontal candidate list");
-    adw_action_row_set_subtitle (
-        ADW_ACTION_ROW (horiz),
-        "The input method panel. Off for a vertical list.");
-    g_settings_bind (self->prefs, BYK_PREFS_CANDIDATES_HORIZONTAL, horiz, "active",
+    GtkWidget *horiz_sw = NULL;
+    GtkWidget *horiz = byk_setup_switch_row (
+        "Horizontal candidate list",
+        "The input method panel. Off for a vertical list.",
+        &horiz_sw);
+    g_settings_bind (self->prefs, BYK_PREFS_CANDIDATES_HORIZONTAL, horiz_sw, "active",
                      G_SETTINGS_BIND_DEFAULT);
-    adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), horiz);
+    byk_box_add (list, horiz);
 
     return group;
 }
@@ -323,23 +383,16 @@ byk_setup_page_build_prefs (BykSetupPage *self)
 static GtkWidget *
 byk_setup_page_build_about (void)
 {
-    GtkWidget *group = adw_preferences_group_new ();
-    adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), "About");
+    GtkWidget *list = NULL;
+    GtkWidget *group = byk_framed_list ("About", "Developed by Nurul Huda (Apon)", &list);
 
-    AdwActionRow *version = ADW_ACTION_ROW (adw_action_row_new ());
-    GtkWidget *value = gtk_label_new (BYK_APP_VERSION);
-    adw_preferences_row_set_title (ADW_PREFERENCES_ROW (version), "Version");
-    gtk_widget_add_css_class (value, "dim-label");
-    adw_action_row_add_suffix (version, value);
-    adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), GTK_WIDGET (version));
-
-    adw_preferences_group_add (ADW_PREFERENCES_GROUP (group),
-                               byk_setup_link_row ("Source code", BYK_URL_GITHUB));
-    adw_preferences_group_add (ADW_PREFERENCES_GROUP (group),
-                               byk_setup_link_row ("Website", BYK_URL_WEBSITE));
-
-    adw_preferences_group_set_description (ADW_PREFERENCES_GROUP (group),
-                                           "Developed by Nurul Huda (Apon)");
+    GtkWidget *version = gtk_label_new (BYK_APP_VERSION);
+    byk_css_add (version, "dim-label");
+    byk_box_add (list, byk_setup_row (NULL, "Version", NULL, version));
+    byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
+    byk_box_add (list, byk_setup_link_row ("Source code", BYK_URL_GITHUB));
+    byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
+    byk_box_add (list, byk_setup_link_row ("Website", BYK_URL_WEBSITE));
 
     return group;
 }
@@ -347,7 +400,7 @@ byk_setup_page_build_about (void)
 static void
 byk_setup_page_init (BykSetupPage *self)
 {
-    (void) self;
+    gtk_orientable_set_orientation (GTK_ORIENTABLE (self), GTK_ORIENTATION_VERTICAL);
 }
 
 static void
@@ -369,25 +422,28 @@ byk_setup_page_new (void)
 {
     BykSetupPage *self = g_object_new (BYK_TYPE_SETUP_PAGE, NULL);
 
-    GtkWidget *page = adw_preferences_page_new ();
-    adw_preferences_page_add (ADW_PREFERENCES_PAGE (page),
-                              ADW_PREFERENCES_GROUP (byk_setup_page_build_status (self)));
-    adw_preferences_page_add (ADW_PREFERENCES_PAGE (page),
-                              ADW_PREFERENCES_GROUP (byk_setup_page_build_steps (self)));
-    adw_preferences_page_add (ADW_PREFERENCES_PAGE (page),
-                              ADW_PREFERENCES_GROUP (byk_setup_page_build_typing ()));
+    GtkWidget *column = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
+    gtk_widget_set_halign (column, GTK_ALIGN_CENTER);
+    gtk_widget_set_size_request (column, 360, -1);
+    gtk_widget_set_margin_bottom (column, 24);
+    byk_box_add (column, byk_setup_page_build_status (self));
+    byk_box_add (column, byk_setup_page_build_steps (self));
+    byk_box_add (column, byk_setup_page_build_typing ());
     {
         GtkWidget *prefs = byk_setup_page_build_prefs (self);
         if (prefs != NULL)
-            adw_preferences_page_add (ADW_PREFERENCES_PAGE (page),
-                                      ADW_PREFERENCES_GROUP (prefs));
+            byk_box_add (column, prefs);
     }
-    adw_preferences_page_add (ADW_PREFERENCES_PAGE (page),
-                              ADW_PREFERENCES_GROUP (byk_setup_page_build_about ()));
+    byk_box_add (column, byk_setup_page_build_about ());
 
-    self->toasts = ADW_TOAST_OVERLAY (adw_toast_overlay_new ());
-    adw_toast_overlay_set_child (self->toasts, page);
-    adw_bin_set_child (ADW_BIN (self), GTK_WIDGET (self->toasts));
+    self->toast = gtk_label_new ("");
+    byk_css_add (self->toast, "byk-toast");
+    byk_css_add (self->toast, "dim-label");
+    byk_hide_until_shown (self->toast);
+    byk_box_add (column, self->toast);
+
+    GtkWidget *scroller = byk_scroller (column, GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    byk_box_add_expand (GTK_WIDGET (self), scroller);
 
     byk_setup_page_refresh (self);
     return GTK_WIDGET (self);
@@ -424,14 +480,14 @@ byk_setup_page_refresh (BykSetupPage *self)
         break;
     }
 
-    gtk_image_set_from_icon_name (GTK_IMAGE (self->status_icon), icon);
-    adw_preferences_row_set_title (ADW_PREFERENCES_ROW (self->status_row), title);
-    adw_action_row_set_subtitle (self->status_row, subtitle);
+    gtk_image_set_from_icon_name (GTK_IMAGE (self->status_icon), icon, GTK_ICON_SIZE_BUTTON);
+    gtk_label_set_text (GTK_LABEL (self->status_title), title);
+    gtk_label_set_text (GTK_LABEL (self->status_subtitle), subtitle);
 
-    gtk_widget_remove_css_class (self->status_icon, "error");
-    gtk_widget_remove_css_class (self->status_icon, "warning");
-    gtk_widget_remove_css_class (self->status_icon, "success");
-    gtk_widget_add_css_class (self->status_icon, css);
+    byk_css_remove (self->status_icon, "error");
+    byk_css_remove (self->status_icon, "warning");
+    byk_css_remove (self->status_icon, "success");
+    byk_css_add (self->status_icon, css);
 
     gtk_widget_set_visible (self->install_hint,
                             byk_keyboard_state () == BYK_KEYBOARD_MISSING);

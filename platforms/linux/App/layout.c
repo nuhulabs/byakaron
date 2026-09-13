@@ -1,5 +1,7 @@
 #include "layout.h"
 
+#include "uiutil.h"
+
 typedef struct {
     const gchar *bangla;
     const gchar *keys;
@@ -59,17 +61,17 @@ byk_layout_cell (const BykLayoutEntry *entry)
     GtkWidget *bangla = gtk_label_new (entry->bangla);
     gtk_label_set_xalign (GTK_LABEL (bangla), 0.0);
     gtk_widget_set_size_request (bangla, 64, -1);
-    gtk_widget_add_css_class (bangla, "byk-layout-glyph");
+    byk_css_add (bangla, "byk-layout-glyph");
 
     GtkWidget *keys = gtk_label_new (entry->keys);
     gtk_label_set_xalign (GTK_LABEL (keys), 0.0);
-    gtk_widget_add_css_class (keys, "monospace");
-    gtk_widget_add_css_class (keys, "dim-label");
+    byk_css_add (keys, "monospace");
+    byk_css_add (keys, "dim-label");
     gtk_widget_set_hexpand (keys, TRUE);
 
     GtkWidget *box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
-    gtk_box_append (GTK_BOX (box), bangla);
-    gtk_box_append (GTK_BOX (box), keys);
+    byk_box_add (box, bangla);
+    byk_box_add_expand (box, keys);
     gtk_widget_set_margin_top (box, 4);
     gtk_widget_set_margin_bottom (box, 4);
 
@@ -79,8 +81,7 @@ byk_layout_cell (const BykLayoutEntry *entry)
 static GtkWidget *
 byk_layout_group (const BykLayoutSection *section)
 {
-    GtkWidget *group = adw_preferences_group_new ();
-    adw_preferences_group_set_title (ADW_PREFERENCES_GROUP (group), section->title);
+    GtkWidget *box = byk_section (section->title, NULL);
 
     /* A flow box rather than a fixed grid: the macOS version uses an adaptive
      * grid, and the same number of columns cannot suit both a 40-entry
@@ -93,27 +94,27 @@ byk_layout_group (const BykLayoutSection *section)
     gtk_flow_box_set_column_spacing (GTK_FLOW_BOX (flow), 18);
 
     for (gsize i = 0; i < section->count; i++)
-        gtk_flow_box_append (GTK_FLOW_BOX (flow), byk_layout_cell (&section->entries[i]));
+        gtk_container_add (GTK_CONTAINER (flow), byk_layout_cell (&section->entries[i]));
 
-    adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), flow);
-    return group;
+    byk_box_add (box, flow);
+    return box;
 }
 
 GtkWidget *
 byk_layout_page_new (void)
 {
-    GtkWidget *page = adw_preferences_page_new ();
+    GtkWidget *column = gtk_box_new (GTK_ORIENTATION_VERTICAL, 12);
+    gtk_widget_set_margin_top (column, 12);
+    gtk_widget_set_margin_bottom (column, 18);
 
-    GtkWidget *intro = adw_preferences_group_new ();
-    adw_preferences_group_set_description (
-        ADW_PREFERENCES_GROUP (intro),
+    GtkWidget *intro = byk_section (
+        NULL,
         "Byakaron types Avro Phonetic. Capital letters are their own keys, not "
         "shifted versions of the lowercase ones — T is ট, not ত.");
-    adw_preferences_page_add (ADW_PREFERENCES_PAGE (page), ADW_PREFERENCES_GROUP (intro));
+    byk_box_add (column, intro);
 
     for (gsize i = 0; i < G_N_ELEMENTS (SECTIONS); i++)
-        adw_preferences_page_add (ADW_PREFERENCES_PAGE (page),
-                                  ADW_PREFERENCES_GROUP (byk_layout_group (&SECTIONS[i])));
+        byk_box_add (column, byk_layout_group (&SECTIONS[i]));
 
-    return page;
+    return byk_scroller (column, GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
 }
