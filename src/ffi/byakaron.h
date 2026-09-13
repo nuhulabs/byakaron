@@ -91,6 +91,93 @@ char *byakaron_spell_suggest_ctx(
 );
 
 /*
+ * Populates out_ptrs with up to max_out ranked suggestion C-strings.
+ * Caller must free each returned string with byakaron_string_free.
+ * Returns the count of suggestions written.
+ */
+size_t byakaron_spell_suggest_list(
+    ByakaronSpell *spell,
+    const char *word,
+    int limit,
+    char **out_ptrs,
+    size_t max_out
+);
+
+/*
+ * Context-aware list variant of suggest: ranks with trigram/bigram context
+ *   prev2 prev1 [word] next
+ * Pass "" for unused neighbors. Fills out_ptrs (free each with
+ * byakaron_string_free). Returns count written.
+ */
+size_t byakaron_spell_suggest_ctx_list(
+    ByakaronSpell *spell,
+    const char *word,
+    const char *prev2,
+    const char *prev1,
+    const char *next,
+    int limit,
+    char **out_ptrs,
+    size_t max_out
+);
+
+/*
+ * Prefix completions from spell.db dictionary. JSON string array.
+ */
+char *byakaron_spell_prefix(ByakaronSpell *spell, const char *prefix, int limit);
+
+size_t byakaron_spell_prefix_list(
+    ByakaronSpell *spell,
+    const char *prefix,
+    int limit,
+    char **out_ptrs,
+    size_t max_out
+);
+
+/*
+ * Next-word predictions from spell.db bigrams. JSON string array.
+ */
+char *byakaron_spell_next_word(ByakaronSpell *spell, const char *previous_word, int limit);
+
+size_t byakaron_spell_next_word_list(
+    ByakaronSpell *spell,
+    const char *previous_word,
+    int limit,
+    char **out_ptrs,
+    size_t max_out
+);
+
+/*
+ * Trigram next-word predictions from spell.db trigrams. JSON string array.
+ */
+char *byakaron_spell_trigram_next_word(
+    ByakaronSpell *spell,
+    const char *w1,
+    const char *w2,
+    int limit
+);
+
+size_t byakaron_spell_trigram_next_word_list(
+    ByakaronSpell *spell,
+    const char *w1,
+    const char *w2,
+    int limit,
+    char **out_ptrs,
+    size_t max_out
+);
+
+/*
+ * Tokenize Bangla text into nukta-normalized words. JSON string array.
+ * No handle needed.
+ */
+char *byakaron_tokenize_words(const char *text);
+
+size_t byakaron_tokenize_list(
+    const char *text,
+    char **out_ptrs,
+    size_t max_out
+);
+
+/*
  * 1 if the word is in the lexicon, 0 if unknown, -1 on error.
  */
 int byakaron_spell_is_correct(ByakaronSpell *spell, const char *word);
@@ -116,6 +203,18 @@ char *byakaron_ac_prefix(ByakaronAutoComplete *ac, const char *prefix, int limit
  * 1 if word is in the lexicon, 0 otherwise, -1 on error.
  */
 int byakaron_ac_contains(ByakaronAutoComplete *ac, const char *word);
+
+/*
+ * List variant of byakaron_ac_prefix. Fills out_ptrs (free each with
+ * byakaron_string_free). Returns count written.
+ */
+size_t byakaron_ac_prefix_list(
+    ByakaronAutoComplete *ac,
+    const char *prefix,
+    int limit,
+    char **out_ptrs,
+    size_t max_out
+);
 
 #ifdef __cplusplus
 }

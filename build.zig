@@ -10,10 +10,29 @@ pub fn build(b: *std.Build) void {
     const ziex_dep = b.dependency("ziex", .{
         .target = target,
         .optimize = optimize,
-        .@"exclude-core-lang" = true,
         .@"feature-sqlite" = true,
     });
     const zx_mod = ziex_dep.module("zx");
+
+    // zig-jni dependency for Android JNI bindings
+    const jni_dep = b.dependency("jni", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const cjni = b.addTranslateC(.{
+        .root_source_file = b.path("src/ffi/jni_wrapper.h"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    cjni.addIncludePath(b.path("src/ffi/include"));
+    cjni.addIncludePath(jni_dep.path("src/include"));
+    const jni_mod = b.addModule("JNI", .{
+        .root_source_file = jni_dep.path("src/main/zig/lib.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    jni_mod.addImport("cjni", cjni.createModule());
     {
         const app_opts = b.addOptions();
         app_opts.addOption(?[]const u8, "app_base_path", null);
@@ -63,12 +82,15 @@ pub fn build(b: *std.Build) void {
             .{ .name = "tokenization", .module = tokenization_mod },
             .{ .name = "spell", .module = spell_mod },
             .{ .name = "autocomplete", .module = autocomplete_mod },
+            .{ .name = "jni", .module = jni_mod },
         },
     });
 
     // Static lib (macOS Xcode links extracted objects). Shared lib (Windows C#
-    // P/Invoke loads byakaron.dll). `-Dshared` selects dynamic linkage.
-    const shared = b.option(bool, "shared", "Build shared library (DLL/dylib/so) for FFI") orelse false;
+    // P/Invoke loads byakaron.dll, Android loads libbyakaron.so).
+    // `-Dshared` selects dynamic linkage; defaults to true on Android.
+    const is_android = target.result.os.tag == .linux and target.result.abi.isAndroid();
+    const shared = b.option(bool, "shared", "Build shared library (DLL/dylib/so) for FFI") orelse is_android;
     {
         const lib = b.addLibrary(.{
             .linkage = if (shared) .dynamic else .static,
@@ -80,27 +102,30 @@ pub fn build(b: *std.Build) void {
         b.installArtifact(lib);
     }
 
-    // Executable
-    const exe = b.addExecutable(.{
-        .name = "repl",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "zx", .module = zx_mod },
-                .{ .name = "tokenization", .module = tokenization_mod },
-                .{ .name = "spell", .module = spell_mod },
-                .{ .name = "autocomplete", .module = autocomplete_mod },
-            },
-        }),
-    });
-    b.installArtifact(exe);
-    const run_cmd = b.addRunArtifact(exe);
-    run_cmd.step.dependOn(b.getInstallStep());
-    run_cmd.addPassthruArgs();
-    const run_step = b.step("run", "Run the app");
-    run_step.dependOn(&run_cmd.step);
+    // Executable (only built for non-Android targets)
+    if (!is_android) {
+        const exe = b.addExecutable(.{
+            .name = "repl",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/main.zig"),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{
+                    .{ .name = "zx", .module = zx_mod },
+                    .{ .name = "tokenization", .module = tokenization_mod },
+                    .{ .name = "spell", .module = spell_mod },
+                    .{ .name = "autocomplete", .module = autocomplete_mod },
+                    .{ .name = "jni", .module = jni_mod },
+                },
+            }),
+        });
+        b.installArtifact(exe);
+        const run_cmd = b.addRunArtifact(exe);
+        run_cmd.step.dependOn(b.getInstallStep());
+        run_cmd.addPassthruArgs();
+        const run_step = b.step("run", "Run the app");
+        run_step.dependOn(&run_cmd.step);
+    }
 
     // Build / run macOS app via the Xcode project (platforms/macos/scripts/build.sh).
     // The old hand-rolled swiftc graph depended on removed resources (Info-app.plist,
@@ -138,13 +163,6 @@ pub fn build(b: *std.Build) void {
         run_macos_step.dependOn(&open_app.step);
     }
 
-    // Web spell UI (platforms/webz) — `zig build run-web` → `zig build dev` there.
-    {
-        const web_dev = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "dev" });
-        web_dev.setCwd(b.path("platforms/webz"));
-        const run_web_step = b.step("run-web", "Run platforms/webz (`zig build dev`)");
-        run_web_step.dependOn(&web_dev.step);
-    }
 
     // Windows WinUI app — build shared FFI + stage native assets, then `dotnet build`.
     if (builtin.os.tag == .windows) {
@@ -175,6 +193,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "tokenization", .module = tokenization_mod },
                 .{ .name = "spell", .module = spell_mod },
                 .{ .name = "autocomplete", .module = autocomplete_mod },
+                .{ .name = "jni", .module = jni_mod },
             },
         });
         const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);

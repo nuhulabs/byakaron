@@ -7,6 +7,10 @@
         .ziex = .{
             .path = "../../ziex-dev/ziex",
         },
+        .jni = .{
+            .url = "git+https://github.com/SuperIceCN/Zig-JNI#27570fdfb5706e7d9cb0206ddd1600e66411ad87",
+            .hash = "jni-0.0.1-qf3mHEoJBADgTJirCPl6I65kKz6-PBwsV7PgN_EX6AQy",
+        },
     },
     .paths = .{
         "build.zig",

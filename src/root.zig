@@ -16,10 +16,11 @@ pub const AutoCompleteMem = @import("AutoComplete/Mem.zig");
 pub const AutoCompleteSqlite = @import("AutoComplete/Sqlite.zig");
 pub const TransliterationMode = @import("transliteration/transliteration.zig").Mode;
 
-// Pull in the C-ABI FFI exports (byakaron_transliterate / byakaron_string_free)
+// Pull in the C-ABI FFI and JNI exports
 // so they are included when this module is built as a static/shared library.
 comptime {
     _ = @import("ffi/ffi.zig");
+    _ = @import("ffi/jni.zig");
 }
 
 test {
