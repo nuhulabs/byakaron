@@ -24,6 +24,10 @@
             .url = "git+https://github.com/ianprime0509/zig-xml.git#4beab29d68ab308af4bd12a4fc4187c24fdad0d6",
             .hash = "xml-0.2.2-ZTbP35N4AgAN3HBgWmBp_LAQ0MIPKW17GAGMwx4DHGYK",
         },
+        .jni = .{
+            .url = "git+https://github.com/SuperIceCN/Zig-JNI#27570fdfb5706e7d9cb0206ddd1600e66411ad87",
+            .hash = "jni-0.0.1-qf3mHEoJBADgTJirCPl6I65kKz6-PBwsV7PgN_EX6AQy",
+        },
     },
     .paths = .{
         "build.zig",

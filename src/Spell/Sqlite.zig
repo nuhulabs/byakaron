@@ -77,6 +77,7 @@ const vtable = Spell.VTable{
     .lookup_deletes = lookupDeletes,
     .prefix_suggest = prefixSuggestDb,
     .next_word_suggest = nextWordSuggestDb,
+    .trigram_next_word_suggest = trigramNextWordSuggestDb,
     .lookup_bigrams = lookupBigrams,
     .lookup_bigrams_right = lookupBigramsRight,
     .lookup_trigrams = lookupTrigrams,
@@ -123,6 +124,20 @@ fn nextWordSuggestDb(ctx: *anyopaque, allocator: std.mem.Allocator, previous_wor
         \\ORDER BY b.frequency DESC
         \\LIMIT ?2
     , .{ previous_word, limit });
+}
+
+fn trigramNextWordSuggestDb(ctx: *anyopaque, allocator: std.mem.Allocator, w1: []const u8, w2: []const u8, limit: i64) ![]const Spell.LexiconEntry {
+    const self = asSelf(ctx);
+    return try self.db.rows(allocator, Spell.LexiconEntry,
+        \\SELECT d3.word AS word, t.frequency AS frequency
+        \\FROM dictionary d1
+        \\JOIN dictionary d2 ON d2.word = ?2
+        \\JOIN trigrams t ON t.w1_id = d1.id AND t.w2_id = d2.id
+        \\JOIN dictionary d3 ON d3.id = t.w3_id
+        \\WHERE d1.word = ?1
+        \\ORDER BY t.frequency DESC
+        \\LIMIT ?3
+    , .{ w1, w2, limit });
 }
 
 fn lookupBigrams(ctx: *anyopaque, allocator: std.mem.Allocator, left: []const u8, rights: []const []const u8) ![]const Spell.LexiconEntry {

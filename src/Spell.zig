@@ -62,6 +62,14 @@ pub const VTable = struct {
         limit: i64,
     ) anyerror![]const LexiconEntry,
 
+    trigram_next_word_suggest: *const fn (
+        ctx: *anyopaque,
+        allocator: std.mem.Allocator,
+        w1: []const u8,
+        w2: []const u8,
+        limit: i64,
+    ) anyerror![]const LexiconEntry,
+
     /// Bigram frequencies for fixed `left` × each of `rights` (hits only).
     /// `LexiconEntry.word` is the right word; `.frequency` is the bigram count.
     lookup_bigrams: *const fn (
@@ -290,6 +298,12 @@ pub fn prefixSuggest(self: *Spell, allocator: std.mem.Allocator, prefix: []const
 pub fn nextWordSuggest(self: *Spell, allocator: std.mem.Allocator, previous_word: []const u8, limit: i64) ![]const Suggestion {
     if (previous_word.len == 0) return &.{};
     const rows = try self.vtable.next_word_suggest(self.ctx, allocator, previous_word, limit);
+    return try lexiconToSuggestions(allocator, rows);
+}
+
+pub fn trigramNextWordSuggest(self: *Spell, allocator: std.mem.Allocator, w1: []const u8, w2: []const u8, limit: i64) ![]const Suggestion {
+    if (w1.len == 0 or w2.len == 0) return &.{};
+    const rows = try self.vtable.trigram_next_word_suggest(self.ctx, allocator, w1, w2, limit);
     return try lexiconToSuggestions(allocator, rows);
 }
 
