@@ -21,6 +21,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$PROJECT_ROOT/../.." && pwd)"
 
+# shellcheck source=compat.sh
+source "$SCRIPT_DIR/compat.sh"
+COMPAT_TARGET="$(byk_compat_target_flag)"
+
 LIBDIR="/usr/libexec"
 BINDIR="/usr/bin"
 XMLDIR="/usr/share/ibus/component"
@@ -47,8 +51,8 @@ as_build_user() {
     fi
 }
 
-echo ">>> Building byakaron-ibus..."
-as_build_user "zig build linux -Doptimize=ReleaseFast"
+echo ">>> Building byakaron-ibus${COMPAT_TARGET:+ ($COMPAT_TARGET)}..."
+as_build_user "zig build linux -Doptimize=ReleaseFast ${COMPAT_TARGET}"
 
 SRC_BIN="$REPO_ROOT/zig-out/bin/byakaron-ibus"
 [[ -x "$SRC_BIN" ]] || { echo "error: $SRC_BIN missing" >&2; exit 1; }
@@ -56,12 +60,12 @@ SRC_BIN="$REPO_ROOT/zig-out/bin/byakaron-ibus"
 # The GTK app is optional: the input method is the product, and this keeps a
 # box with only libibus-dev able to install a working keyboard.
 SRC_APP="$REPO_ROOT/zig-out/bin/byakaron"
-if pkg-config --exists gtk4 libadwaita-1 2>/dev/null; then
-    echo ">>> Building the GTK app..."
-    as_build_user "zig build linux-app -Doptimize=ReleaseFast" || true
+if pkg-config --exists gtk+-3.0 2>/dev/null; then
+    echo ">>> Building the GTK3 app..."
+    as_build_user "zig build linux-app -Doptimize=ReleaseFast ${COMPAT_TARGET}" || true
 else
-    echo "note: gtk4 / libadwaita-1 not found — skipping the GTK app"
-    echo "      install them with: sudo bash platforms/linux/scripts/setup_deps.sh"
+    echo "note: gtk+-3.0 not found — skipping the GTK app"
+    echo "      install it with: sudo bash platforms/linux/scripts/setup_deps.sh"
 fi
 
 SCHEMADIR="/usr/share/glib-2.0/schemas"
@@ -185,8 +189,9 @@ fi
 echo
 echo "To start typing Bangla:"
 echo "  1. Settings -> Keyboard -> Input Sources -> '+'"
-echo "  2. Search 'Byakaron' (filed under Bangla), then Add"
+echo "  2. Choose Bangla, then Byakaron (Bangla Phonetic) -> Add"
 echo "  3. Switch with Super+Space"
+echo "  (the first dialog is a language list — searching Byakaron there finds nothing)"
 if [[ -n "$BYK_SETUP" ]]; then
     echo
     echo "The 'Byakaron' app is installed too — it walks through the steps above,"

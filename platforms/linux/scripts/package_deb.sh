@@ -8,27 +8,48 @@ set -euo pipefail
 #
 # Produces:
 #     platforms/linux/build/byakaron_<version>_<arch>.deb
-#         engine + app + GSettings schema (no spell.db)
+#         engine + GTK app + GSettings schema (no spell.db)
 #     platforms/linux/build/byakaron-data_<version>_all.deb
 #         spell.db only (364 MB), when packages/data/spell.db exists
 #
 # The recipient does NOT need Zig, ziex, the source, or any -dev package.
-# The engine binary links the Zig core statically; the only runtime
-# dependencies are ibus + glib, which every GNOME/Ubuntu desktop already has.
+# The engine binary links the Zig core statically and is built for glibc 2.31
+# (Ubuntu 20.04), so the keyboard runs on 20.04, 22.04, and 24.04.
+#
+# The GTK3 settings app is in this same package (Activities → Byakaron).
+# GTK3 3.24 is on Ubuntu 20.04, 22.04, and 24.04, so Write / Spelling /
+# Layout / Setup run on all three.
+#
 # They install with:
 #
 #     sudo apt install ./byakaron_<version>_<arch>.deb
 #     sudo apt install ./byakaron-data_<version>_all.deb   # optional, spell-check
 #
-# and apt resolves the runtime dependencies automatically. Typing Bangla does
-# not need byakaron-data; only the GTK Spelling page does.
+# Installing the .deb only registers the engine. They still have to add it:
+# Settings → Keyboard → Input Sources → + → Bangla → Byakaron → Add,
+# then Super+Space to switch. Or open the Byakaron app → Setup.
 # ---------------------------------------------------------------------------
 
-VERSION="${VERSION:-0.1.0}"
+VERSION="${VERSION:-0.1.2}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$PROJECT_ROOT/../.." && pwd)"
+
+# shellcheck source=compat.sh
+source "$SCRIPT_DIR/compat.sh"
+COMPAT_TARGET="$(byk_compat_target_flag)"
+if [[ -z "$COMPAT_TARGET" ]]; then
+    echo "error: no glibc 2.31 Zig target for $(uname -m)" >&2
+    exit 1
+fi
+
+if [[ $EUID -eq 0 ]]; then
+    echo "error: do not run this as root — zig-out would become root-owned," >&2
+    echo "       and the next non-root build would fail. Run:" >&2
+    echo "         bash platforms/linux/scripts/package_deb.sh" >&2
+    exit 1
+fi
 
 ARCH="$(dpkg --print-architecture)"
 PKG="byakaron"
@@ -36,25 +57,25 @@ BUILD_DIR="$PROJECT_ROOT/build/deb"
 STAGE="$BUILD_DIR/${PKG}_${VERSION}_${ARCH}"
 OUT="$PROJECT_ROOT/build/${PKG}_${VERSION}_${ARCH}.deb"
 
-# --- 1. Build the engine (ReleaseFast), unless a binary already exists ------
-SRC_BIN="$REPO_ROOT/zig-out/bin/byakaron-ibus"
-if [[ ! -x "$SRC_BIN" ]]; then
-    echo ">>> Building byakaron-ibus (ReleaseFast)..."
-    ( cd "$REPO_ROOT" && \
-      PATH="$HOME/.local/bin:/usr/local/bin:$PATH" \
-      zig build linux -Doptimize=ReleaseFast )
-fi
-[[ -x "$SRC_BIN" ]] || { echo "error: $SRC_BIN missing" >&2; exit 1; }
+export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
 
-# The GTK app, if this box can build it. It is packaged when present rather
-# than required, so the engine can still be shipped from a machine without
-# libgtk-4-dev — and the .deb declares the gtk runtime dependency only then.
+# Always rebuild the engine against glibc 2.31 (Ubuntu 20.04). Skipping when
+# zig-out/bin already exists is how a 24.04-only binary got shipped before.
+echo ">>> Building byakaron-ibus (ReleaseFast, $COMPAT_TARGET)..."
+( cd "$REPO_ROOT" && zig build linux -Doptimize=ReleaseFast $COMPAT_TARGET )
+SRC_BIN="$REPO_ROOT/zig-out/bin/byakaron-ibus"
+[[ -x "$SRC_BIN" ]] || { echo "error: $SRC_BIN missing" >&2; exit 1; }
+byk_assert_glibc_20_04 "$SRC_BIN"
+
+# The GTK3 app ships in the same package as the keyboard, targeted at glibc
+# 2.31 so the UI runs on 20.04 / 22.04 / 24.04 like the engine.
 SRC_APP="$REPO_ROOT/zig-out/bin/byakaron"
-if [[ ! -x "$SRC_APP" ]] && pkg-config --exists gtk4 libadwaita-1 2>/dev/null; then
-    echo ">>> Building the GTK app (ReleaseFast)..."
-    ( cd "$REPO_ROOT" && \
-      PATH="$HOME/.local/bin:/usr/local/bin:$PATH" \
-      zig build linux-app -Doptimize=ReleaseFast ) || true
+if pkg-config --exists gtk+-3.0 2>/dev/null; then
+    echo ">>> Building the GTK3 app (ReleaseFast, $COMPAT_TARGET)..."
+    ( cd "$REPO_ROOT" && zig build linux-app -Doptimize=ReleaseFast $COMPAT_TARGET ) || true
+    if [[ -x "$SRC_APP" ]]; then
+        byk_assert_glibc_20_04 "$SRC_APP"
+    fi
 fi
 
 # --- 2. Assemble the package tree ------------------------------------------
@@ -80,7 +101,6 @@ install -m 644 "$PROJECT_ROOT/Resources/dev.nuhu.labs.Byakaron.gschema.xml" \
     "$STAGE/usr/share/glib-2.0/schemas/dev.nuhu.labs.Byakaron.gschema.xml"
 
 BYK_SETUP=""
-GTK_DEPENDS=""
 if [[ -x "$SRC_APP" ]]; then
     install -m 755 "$SRC_APP" "$STAGE/usr/bin/byakaron"
     strip --strip-unneeded "$STAGE/usr/bin/byakaron" 2>/dev/null || true
@@ -89,14 +109,14 @@ if [[ -x "$SRC_APP" ]]; then
         "$PROJECT_ROOT/Resources/byakaron-app.desktop.in" \
         > "$STAGE/usr/share/applications/dev.nuhu.labs.Byakaron.desktop"
     chmod 644 "$STAGE/usr/share/applications/dev.nuhu.labs.Byakaron.desktop"
-    install -m 644 "$PROJECT_ROOT/Resources/dev.nuhu.labs.Byakaron.metainfo.xml" "$STAGE/usr/share/metainfo/dev.nuhu.labs.Byakaron.metainfo.xml"
+    install -m 644 "$PROJECT_ROOT/Resources/dev.nuhu.labs.Byakaron.metainfo.xml" \
+        "$STAGE/usr/share/metainfo/dev.nuhu.labs.Byakaron.metainfo.xml"
 
     BYK_SETUP="/usr/bin/byakaron"
-    GTK_DEPENDS=", libgtk-4-1, libadwaita-1-0"
-    echo ">>> Packaged the GTK app"
+    echo ">>> Packaged the GTK app (Write / Spelling / Layout / Setup)"
 else
     echo "note: $SRC_APP missing — the package will have the engine only"
-    echo "      install libgtk-4-dev + libadwaita-1-dev to include the app"
+    echo "      install libgtk-3-dev to include the app"
 fi
 
 SPELL_DB="$REPO_ROOT/packages/data/spell.db"
@@ -112,14 +132,17 @@ sed -e "s|@BYK_EXEC@|/usr/libexec/byakaron-ibus|g" \
     > "$STAGE/usr/share/ibus/component/byakaron.xml"
 chmod 644 "$STAGE/usr/share/ibus/component/byakaron.xml"
 
+# Only package Fcitx5 if we rebuilt it this run. A leftover zig-out .so from
+# an older day would otherwise ship a stale addon next to a current engine.
 FCITX_SO="$REPO_ROOT/zig-out/lib/fcitx5/byakaron.so"
-if [[ ! -f "$FCITX_SO" ]] && pkg-config --exists Fcitx5Core 2>/dev/null; then
+FCITX_BUILT=0
+if pkg-config --exists Fcitx5Core 2>/dev/null; then
     echo ">>> Building the Fcitx5 addon (ReleaseFast)..."
-    ( cd "$REPO_ROOT" && \
-      PATH="$HOME/.local/bin:/usr/local/bin:$PATH" \
-      zig build linux-fcitx5 -Doptimize=ReleaseFast ) || true
+    if ( cd "$REPO_ROOT" && zig build linux-fcitx5 -Doptimize=ReleaseFast ); then
+        FCITX_BUILT=1
+    fi
 fi
-if [[ -f "$FCITX_SO" ]]; then
+if [[ "$FCITX_BUILT" -eq 1 && -f "$FCITX_SO" ]]; then
     FCITX_LIBDIR="$(pkg-config --variable=libdir Fcitx5Core 2>/dev/null || true)"
     if [[ -z "$FCITX_LIBDIR" ]]; then
         FCITX_LIBDIR="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)"
@@ -139,6 +162,29 @@ fi
 
 INSTALLED_KB="$(du -sk "$STAGE/usr" | cut -f1)"
 
+if grep -R -n --include='*.xml' --include='*.desktop' '@BYK_' "$STAGE/usr" >/dev/null; then
+    echo "error: unsubstituted @BYK_ placeholder in the staged package:" >&2
+    grep -R -n --include='*.xml' --include='*.desktop' '@BYK_' "$STAGE/usr" >&2
+    exit 1
+fi
+if [[ ! -f "$STAGE/usr/share/ibus/component/byakaron.xml" ]]; then
+    echo "error: staged package is missing the IBus component XML" >&2
+    exit 1
+fi
+[[ -f "$STAGE/usr/share/glib-2.0/schemas/dev.nuhu.labs.Byakaron.gschema.xml" ]] || {
+    echo "error: staged package is missing the GSettings schema" >&2
+    exit 1
+}
+if [[ -x "$SRC_APP" ]]; then
+    for required in \
+        "$STAGE/usr/bin/byakaron" \
+        "$STAGE/usr/share/applications/dev.nuhu.labs.Byakaron.desktop" \
+        "$STAGE/usr/share/metainfo/dev.nuhu.labs.Byakaron.metainfo.xml"
+    do
+        [[ -f "$required" ]] || { echo "error: missing $required" >&2; exit 1; }
+    done
+fi
+
 # --- 3. Control metadata ---------------------------------------------------
 cat > "$STAGE/DEBIAN/control" <<EOF
 Package: $PKG
@@ -146,20 +192,23 @@ Version: $VERSION
 Architecture: $ARCH
 Maintainer: Byakaron contributors <byakaron@example.com>
 Installed-Size: $INSTALLED_KB
-Depends: ibus (>= 1.5), libibus-1.0-5, libglib2.0-0t64 | libglib2.0-0$GTK_DEPENDS
-Recommends: ibus-gtk4, ibus-gtk3, byakaron-data
-Suggests: fcitx5
+Depends: libc6 (>= 2.31), ibus (>= 1.5), libibus-1.0-5, libglib2.0-0t64 | libglib2.0-0, libgtk-3-0t64 | libgtk-3-0
+Recommends: ibus-gtk3 | ibus-gtk, ibus-gtk4
+Suggests: byakaron-data, fcitx5
+Replaces: byakaron-app
+Conflicts: byakaron-app
+Provides: byakaron-app
 Section: utils
 Priority: optional
 Homepage: https://github.com/nuhulabs/byakaron
-Description: Byakaron Bangla phonetic input method (IBus engine)
- Type Bangla phonetically from a latin keyboard. Byakaron registers as a
+Description: Bangla phonetic input method (IBus engine)
+ Type Bangla phonetically from a latin keyboard. Registers as a
  first-class input source in GNOME Settings -> Keyboard -> Input Sources and
  switches with Super+Space, powered by the shared Byakaron Zig engine.
  .
- Includes a GTK4 companion app for setup, composing Bangla without switching
- input source, and checking spelling. The spell-check dictionary is the
- separate byakaron-data package so a typing-only install stays small.
+ Includes a GTK3 companion app (Write, Spelling, Layout, Setup) that runs
+ on Ubuntu 20.04, 22.04, and 24.04. Spell-check is the separate
+ byakaron-data package.
 EOF
 
 # --- 4. Maintainer scripts: refresh the ibus registry ----------------------
@@ -170,31 +219,41 @@ cat > "$STAGE/DEBIAN/postinst" <<'EOF'
 #!/bin/bash
 set -e
 
+# apt runs this as root. The ibus daemon and its cache belong to each
+# logged-in desktop session, so refresh those buses as the session user.
+# runuser is in util-linux (essential); sudo is not a package dependency.
+as_session_user() {
+    local uid_dir="$1"
+    shift
+    local uid user
+    uid="$(basename "$uid_dir")"
+    user="$(getent passwd "$uid" | cut -d: -f1)"
+    [ -n "$user" ] || return 0
+    runuser -u "$user" -- env \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$uid_dir/bus" \
+        "$@" >/dev/null 2>&1 || true
+}
+
 refresh_ibus() {
-    # Enumerate logged-in users with a running session bus and refresh each.
     for uid_dir in /run/user/*; do
         [ -S "$uid_dir/bus" ] || continue
-        uid="$(basename "$uid_dir")"
-        user="$(getent passwd "$uid" | cut -d: -f1)"
-        [ -n "$user" ] || continue
-        sudo -u "$user" \
-            DBUS_SESSION_BUS_ADDRESS="unix:path=$uid_dir/bus" \
-            ibus write-cache >/dev/null 2>&1 || true
-        sudo -u "$user" \
-            DBUS_SESSION_BUS_ADDRESS="unix:path=$uid_dir/bus" \
-            ibus restart >/dev/null 2>&1 || true
+        as_session_user "$uid_dir" ibus write-cache
+        as_session_user "$uid_dir" ibus restart
     done
 }
 
 if [ "$1" = "configure" ]; then
     glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || true
+    update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
+    gtk-update-icon-cache -qtf /usr/share/icons/hicolor >/dev/null 2>&1 || true
     refresh_ibus
     echo ""
-    echo "Byakaron installed. To start typing Bangla:"
+    echo "Byakaron installed. The package only registers the engine — add it:"
     echo "  1. Settings -> Keyboard -> Input Sources -> '+'"
-    echo "  2. Search 'Byakaron' (filed under Bangla), then Add"
+    echo "  2. Choose Bangla, then Byakaron (Bangla Phonetic) -> Add"
     echo "  3. Switch with Super+Space"
-    echo "  (If it does not appear yet, log out and back in.)"
+    echo "  Or open the Byakaron app -> Setup, which walks through this."
+    echo "  If Byakaron is missing from the Bangla list, log out and back in."
 fi
 
 exit 0
@@ -205,19 +264,26 @@ cat > "$STAGE/DEBIAN/postrm" <<'EOF'
 #!/bin/bash
 set -e
 
+as_session_user() {
+    local uid_dir="$1"
+    shift
+    local uid user
+    uid="$(basename "$uid_dir")"
+    user="$(getent passwd "$uid" | cut -d: -f1)"
+    [ -n "$user" ] || return 0
+    runuser -u "$user" -- env \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$uid_dir/bus" \
+        "$@" >/dev/null 2>&1 || true
+}
+
 if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
     glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || true
+    update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
+    gtk-update-icon-cache -qtf /usr/share/icons/hicolor >/dev/null 2>&1 || true
     for uid_dir in /run/user/*; do
         [ -S "$uid_dir/bus" ] || continue
-        uid="$(basename "$uid_dir")"
-        user="$(getent passwd "$uid" | cut -d: -f1)"
-        [ -n "$user" ] || continue
-        sudo -u "$user" \
-            DBUS_SESSION_BUS_ADDRESS="unix:path=$uid_dir/bus" \
-            ibus write-cache >/dev/null 2>&1 || true
-        sudo -u "$user" \
-            DBUS_SESSION_BUS_ADDRESS="unix:path=$uid_dir/bus" \
-            ibus restart >/dev/null 2>&1 || true
+        as_session_user "$uid_dir" ibus write-cache
+        as_session_user "$uid_dir" ibus restart
     done
 fi
 
@@ -270,10 +336,22 @@ EOF
 fi
 
 echo
-echo "Share those files. The recipient installs with:"
+echo "Share the keyboard+app .deb. Both work on Ubuntu 20.04, 22.04, and"
+echo "24.04 (amd64). Do not use 'dpkg -i' — apt is what installs ibus and GTK."
+echo
 echo "    sudo apt install ./$(basename "$OUT")"
 if [[ -f "$SPELL_DB" ]]; then
     echo "    sudo apt install ./$(basename "$DATA_OUT")"
+    echo "    # data package is optional (spell-check dictionary only)"
 fi
-echo "and removes them with:"
+echo
+echo "Then they MUST add it (installing the package is not enough):"
+echo "    Settings -> Keyboard -> Input Sources -> +"
+echo "    Choose Bangla, then Byakaron (Bangla Phonetic) -> Add"
+echo "    Super+Space to switch"
+echo "    Or open the Byakaron app from Activities -> Setup"
+echo
+echo "If they previously installed an older byakaron .deb:"
+echo "    sudo apt remove byakaron byakaron-app byakaron-data"
+echo "then install the new file. Remove with:"
 echo "    sudo apt remove $PKG $PKG-data"

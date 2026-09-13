@@ -2,9 +2,10 @@
 
 #include "composer.h"
 #include "prefs.h"
+#include "uiutil.h"
 
 struct _BykTypingPage {
-    AdwBin parent_instance;
+    GtkBox parent_instance;
 
     BykComposer *composer;
     GSettings *prefs; /* NULL when the schema is not installed */
@@ -14,11 +15,10 @@ struct _BykTypingPage {
     GtkWidget *candidates; /* GtkBox of buttons, one per completion */
     GtkWidget *output;     /* GtkTextView holding what has been committed */
     GtkWidget *counter;
-
-    AdwToastOverlay *toasts;
+    GtkWidget *toast;
 };
 
-G_DEFINE_FINAL_TYPE (BykTypingPage, byk_typing_page, ADW_TYPE_BIN)
+G_DEFINE_TYPE (BykTypingPage, byk_typing_page, GTK_TYPE_BOX)
 
 static void byk_typing_page_sync (BykTypingPage *self);
 
@@ -58,11 +58,8 @@ on_candidate_clicked (GtkButton *button, gpointer user_data)
 static void
 byk_typing_page_clear_candidates (BykTypingPage *self)
 {
-    GtkWidget *child;
-    while ((child = gtk_widget_get_first_child (self->candidates)) != NULL)
-        gtk_box_remove (GTK_BOX (self->candidates), child);
-
-    gtk_widget_set_visible (self->candidates, FALSE);
+    byk_container_clear (self->candidates);
+    gtk_widget_hide (self->candidates);
 }
 
 static void
@@ -85,13 +82,13 @@ byk_typing_page_show_candidates (BykTypingPage *self)
         gtk_widget_set_tooltip_text (button, tooltip);
         g_free (tooltip);
 
-        gtk_widget_add_css_class (button, "byk-candidate");
+        byk_css_add (button, "byk-candidate");
         g_object_set_data (G_OBJECT (button), "index", GUINT_TO_POINTER (i));
         g_signal_connect (button, "clicked", G_CALLBACK (on_candidate_clicked), self);
-        gtk_box_append (GTK_BOX (self->candidates), button);
+        byk_box_add (self->candidates, button);
     }
 
-    gtk_widget_set_visible (self->candidates, TRUE);
+    gtk_widget_show_all (self->candidates);
 }
 
 /* ── live transliteration (composer is the source of truth) ──────────────── */
@@ -100,16 +97,16 @@ static void
 byk_typing_page_sync (BykTypingPage *self)
 {
     const gchar *latin = byk_composer_latin (self->composer);
-    gtk_editable_set_text (GTK_EDITABLE (self->entry), latin != NULL ? latin : "");
+    gtk_entry_set_text (GTK_ENTRY (self->entry), latin != NULL ? latin : "");
 
     gchar *bangla = byk_composer_preedit (self->composer);
     if (bangla == NULL || *bangla == '\0') {
         /* Keep the row's height so the layout does not jump on every word. */
         gtk_label_set_text (GTK_LABEL (self->preedit), "\u200b");
-        gtk_widget_remove_css_class (self->preedit, "byk-preedit-filled");
+        byk_css_remove (self->preedit, "byk-preedit-filled");
     } else {
         gtk_label_set_text (GTK_LABEL (self->preedit), bangla);
-        gtk_widget_add_css_class (self->preedit, "byk-preedit-filled");
+        byk_css_add (self->preedit, "byk-preedit-filled");
     }
     g_free (bangla);
 
@@ -139,26 +136,22 @@ static guint
 byk_gdk_mods (GdkModifierType state)
 {
     guint mods = 0;
-    if (state & (GDK_CONTROL_MASK | GDK_ALT_MASK | GDK_SUPER_MASK | GDK_META_MASK))
+    if (state & (GDK_CONTROL_MASK | GDK_MOD1_MASK | GDK_SUPER_MASK | GDK_META_MASK))
         mods |= BYK_MOD_SHORTCUT;
     return mods;
 }
 
 static gboolean
-on_entry_key_pressed (GtkEventControllerKey *controller,
-                      guint keyval,
-                      guint keycode,
-                      GdkModifierType state,
-                      gpointer user_data)
+on_entry_key_press (GtkWidget *widget, GdkEventKey *event, gpointer user_data)
 {
     BykTypingPage *self = BYK_TYPING_PAGE (user_data);
-    (void) controller;
-    (void) keycode;
+    guint keyval = event->keyval;
+    (void) widget;
 
     if (keyval == GDK_KEY_ISO_Enter)
         keyval = GDK_KEY_Return;
 
-    BykOutcome outcome = byk_composer_key (self->composer, keyval, byk_gdk_mods (state));
+    BykOutcome outcome = byk_composer_key (self->composer, keyval, byk_gdk_mods (event->state));
 
     switch (outcome.action) {
     case BYK_ACT_PASS:
@@ -219,8 +212,8 @@ on_copy_clicked (GtkButton *button, gpointer user_data)
 
     gchar *text = byk_typing_page_text (self);
     if (*text != '\0') {
-        gdk_clipboard_set_text (gtk_widget_get_clipboard (GTK_WIDGET (self)), text);
-        adw_toast_overlay_add_toast (self->toasts, adw_toast_new ("Copied to clipboard"));
+        byk_clipboard_set (GTK_WIDGET (self), text);
+        byk_toast_show (GTK_LABEL (self->toast), "Copied to clipboard");
     }
     g_free (text);
 }
@@ -255,18 +248,16 @@ on_output_changed (GtkTextBuffer *buffer, gpointer user_data)
 
 /* ── construction ────────────────────────────────────────────────────────── */
 
-/* A titled, framed area — the same shape as a libadwaita boxed list, used for
- * both the composer and the output so they read as one form. */
 static GtkWidget *
 byk_titled_group (const gchar *title, GtkWidget *content)
 {
     GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
     GtkWidget *label = gtk_label_new (title);
 
-    gtk_widget_add_css_class (label, "heading");
+    byk_css_add (label, "heading");
     gtk_widget_set_halign (label, GTK_ALIGN_START);
-    gtk_box_append (GTK_BOX (box), label);
-    gtk_box_append (GTK_BOX (box), content);
+    byk_box_add (box, label);
+    byk_box_add_expand (box, content);
 
     return box;
 }
@@ -277,41 +268,33 @@ byk_typing_page_build_composer (BykTypingPage *self)
     GtkWidget *frame = gtk_frame_new (NULL);
     GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
 
-    gtk_widget_add_css_class (frame, "view");
+    byk_css_add (frame, "view");
 
     self->entry = gtk_entry_new ();
     gtk_entry_set_placeholder_text (GTK_ENTRY (self->entry),
                                     "Type \u201cami\u201d, then press Space");
     gtk_entry_set_has_frame (GTK_ENTRY (self->entry), FALSE);
-    gtk_widget_add_css_class (self->entry, "byk-latin");
-
-    GtkEventController *keys = gtk_event_controller_key_new ();
-    /* Capture phase: GtkEntry would otherwise insert the space, digit, or
-     * punctuation before the composer sees it. */
-    gtk_event_controller_set_propagation_phase (keys, GTK_PHASE_CAPTURE);
-    g_signal_connect (keys, "key-pressed", G_CALLBACK (on_entry_key_pressed), self);
-    gtk_widget_add_controller (self->entry, keys);
+    byk_css_add (self->entry, "byk-latin");
+    g_signal_connect (self->entry, "key-press-event",
+                      G_CALLBACK (on_entry_key_press), self);
 
     self->preedit = gtk_label_new ("\u200b");
-    gtk_widget_add_css_class (self->preedit, "byk-preedit");
+    byk_css_add (self->preedit, "byk-preedit");
     gtk_label_set_xalign (GTK_LABEL (self->preedit), 0.0);
     gtk_label_set_ellipsize (GTK_LABEL (self->preedit), PANGO_ELLIPSIZE_END);
     gtk_label_set_selectable (GTK_LABEL (self->preedit), TRUE);
 
     self->candidates = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
-    gtk_widget_add_css_class (self->candidates, "byk-candidates");
-    gtk_widget_set_visible (self->candidates, FALSE);
+    byk_css_add (self->candidates, "byk-candidates");
+    byk_hide_until_shown (self->candidates);
 
-    GtkWidget *scroller = gtk_scrolled_window_new ();
-    gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
-                                    GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER);
-    gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), self->candidates);
+    GtkWidget *scroller = byk_scroller (self->candidates, GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER);
 
-    gtk_box_append (GTK_BOX (box), self->entry);
-    gtk_box_append (GTK_BOX (box), gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
-    gtk_box_append (GTK_BOX (box), self->preedit);
-    gtk_box_append (GTK_BOX (box), scroller);
-    gtk_frame_set_child (GTK_FRAME (frame), box);
+    byk_box_add (box, self->entry);
+    byk_box_add (box, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
+    byk_box_add (box, self->preedit);
+    byk_box_add (box, scroller);
+    gtk_container_add (GTK_CONTAINER (frame), box);
 
     return frame;
 }
@@ -325,17 +308,15 @@ byk_typing_page_build_output (BykTypingPage *self)
     gtk_text_view_set_bottom_margin (GTK_TEXT_VIEW (self->output), 8);
     gtk_text_view_set_left_margin (GTK_TEXT_VIEW (self->output), 8);
     gtk_text_view_set_right_margin (GTK_TEXT_VIEW (self->output), 8);
-    gtk_widget_add_css_class (self->output, "byk-bangla");
+    byk_css_add (self->output, "byk-bangla");
 
     g_signal_connect (gtk_text_view_get_buffer (GTK_TEXT_VIEW (self->output)),
                       "changed", G_CALLBACK (on_output_changed), self);
 
-    GtkWidget *scroller = gtk_scrolled_window_new ();
-    gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
-                                    GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-    gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), self->output);
+    GtkWidget *scroller = byk_scroller (self->output, GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_widget_set_vexpand (scroller, TRUE);
-    gtk_widget_add_css_class (scroller, "card");
+    gtk_widget_set_size_request (scroller, -1, 180);
+    byk_css_add (scroller, "card");
 
     return scroller;
 }
@@ -346,22 +327,22 @@ byk_typing_page_build_actions (BykTypingPage *self)
     GtkWidget *bar = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
 
     self->counter = gtk_label_new ("0 characters");
-    gtk_widget_add_css_class (self->counter, "dim-label");
-    gtk_widget_add_css_class (self->counter, "caption");
+    byk_css_add (self->counter, "dim-label");
+    byk_css_add (self->counter, "caption");
     gtk_widget_set_hexpand (self->counter, TRUE);
     gtk_widget_set_halign (self->counter, GTK_ALIGN_START);
 
-    GtkWidget *copy = gtk_button_new_from_icon_name ("edit-copy-symbolic");
+    GtkWidget *copy = byk_icon_button ("edit-copy-symbolic");
     gtk_widget_set_tooltip_text (copy, "Copy the text to the clipboard");
     g_signal_connect (copy, "clicked", G_CALLBACK (on_copy_clicked), self);
 
-    GtkWidget *clear = gtk_button_new_from_icon_name ("edit-clear-all-symbolic");
+    GtkWidget *clear = byk_icon_button ("edit-clear-all-symbolic");
     gtk_widget_set_tooltip_text (clear, "Clear the text");
     g_signal_connect (clear, "clicked", G_CALLBACK (on_clear_clicked), self);
 
-    gtk_box_append (GTK_BOX (bar), self->counter);
-    gtk_box_append (GTK_BOX (bar), copy);
-    gtk_box_append (GTK_BOX (bar), clear);
+    byk_box_add_expand (bar, self->counter);
+    byk_box_add (bar, copy);
+    byk_box_add (bar, clear);
 
     return bar;
 }
@@ -369,7 +350,7 @@ byk_typing_page_build_actions (BykTypingPage *self)
 static void
 byk_typing_page_init (BykTypingPage *self)
 {
-    (void) self;
+    gtk_orientable_set_orientation (GTK_ORIENTABLE (self), GTK_ORIENTATION_VERTICAL);
 }
 
 static void
@@ -403,34 +384,30 @@ byk_typing_page_new (void)
     GtkWidget *hint = gtk_label_new (
         "Composes with the same engine as the keyboard, so you can try Bangla "
         "here before adding the input source.");
-    gtk_widget_add_css_class (hint, "dim-label");
-    gtk_label_set_wrap (GTK_LABEL (hint), TRUE);
+    byk_css_add (hint, "dim-label");
+    gtk_label_set_line_wrap (GTK_LABEL (hint), TRUE);
     gtk_label_set_xalign (GTK_LABEL (hint), 0.0);
 
     GtkWidget *column = gtk_box_new (GTK_ORIENTATION_VERTICAL, 18);
-    gtk_box_append (GTK_BOX (column), hint);
-    gtk_box_append (GTK_BOX (column),
-                    byk_titled_group ("Compose", byk_typing_page_build_composer (self)));
-    gtk_box_append (GTK_BOX (column),
-                    byk_titled_group ("Text", byk_typing_page_build_output (self)));
-    gtk_box_append (GTK_BOX (column), byk_typing_page_build_actions (self));
+    gtk_widget_set_halign (column, GTK_ALIGN_CENTER);
+    gtk_widget_set_size_request (column, 320, -1);
+    gtk_widget_set_margin_top (column, 18);
+    gtk_widget_set_margin_bottom (column, 18);
+    gtk_widget_set_margin_start (column, 18);
+    gtk_widget_set_margin_end (column, 18);
+    byk_box_add (column, hint);
+    byk_box_add (column, byk_titled_group ("Compose", byk_typing_page_build_composer (self)));
+    byk_box_add_expand (column, byk_titled_group ("Text", byk_typing_page_build_output (self)));
+    byk_box_add (column, byk_typing_page_build_actions (self));
 
-    GtkWidget *clamp = adw_clamp_new ();
-    adw_clamp_set_maximum_size (ADW_CLAMP (clamp), 640);
-    adw_clamp_set_child (ADW_CLAMP (clamp), column);
-    gtk_widget_set_margin_top (clamp, 18);
-    gtk_widget_set_margin_bottom (clamp, 18);
-    gtk_widget_set_margin_start (clamp, 18);
-    gtk_widget_set_margin_end (clamp, 18);
+    self->toast = gtk_label_new ("");
+    byk_css_add (self->toast, "byk-toast");
+    byk_css_add (self->toast, "dim-label");
+    byk_hide_until_shown (self->toast);
+    byk_box_add (column, self->toast);
 
-    GtkWidget *scroller = gtk_scrolled_window_new ();
-    gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
-                                    GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-    gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), clamp);
-
-    self->toasts = ADW_TOAST_OVERLAY (adw_toast_overlay_new ());
-    adw_toast_overlay_set_child (self->toasts, scroller);
-    adw_bin_set_child (ADW_BIN (self), GTK_WIDGET (self->toasts));
+    GtkWidget *scroller = byk_scroller (column, GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    byk_box_add_expand (GTK_WIDGET (self), scroller);
 
     byk_typing_page_apply_prefs (self);
 

@@ -6,7 +6,7 @@
 #include "typing.h"
 
 struct _BykWindow {
-    AdwApplicationWindow parent_instance;
+    GtkApplicationWindow parent_instance;
 
     BykEngines engines;
 
@@ -15,7 +15,7 @@ struct _BykWindow {
     GtkWidget *setup_page;
 };
 
-G_DEFINE_FINAL_TYPE (BykWindow, byk_window, ADW_TYPE_APPLICATION_WINDOW)
+G_DEFINE_TYPE (BykWindow, byk_window, GTK_TYPE_APPLICATION_WINDOW)
 
 /* ── opening spell.db ────────────────────────────────────────────────────── */
 
@@ -86,7 +86,7 @@ on_visible_page_changed (GObject *object, GParamSpec *pspec, gpointer user_data)
     (void) pspec;
 
     if (self->setup_page != NULL &&
-        adw_view_stack_get_visible_child (ADW_VIEW_STACK (self->stack)) == self->setup_page)
+        gtk_stack_get_visible_child (GTK_STACK (self->stack)) == self->setup_page)
         byk_setup_page_refresh (BYK_SETUP_PAGE (self->setup_page));
 }
 
@@ -101,12 +101,25 @@ byk_window_build_menu_button (void)
     g_menu_append (menu, "_Quit", "app.quit");
 
     GtkWidget *button = gtk_menu_button_new ();
-    gtk_menu_button_set_icon_name (GTK_MENU_BUTTON (button), "open-menu-symbolic");
+    gtk_button_set_image (GTK_BUTTON (button),
+                          gtk_image_new_from_icon_name ("open-menu-symbolic",
+                                                        GTK_ICON_SIZE_BUTTON));
     gtk_menu_button_set_menu_model (GTK_MENU_BUTTON (button), G_MENU_MODEL (menu));
     gtk_widget_set_tooltip_text (button, "Main Menu");
     g_object_unref (menu);
 
     return button;
+}
+
+static void
+byk_stack_add (GtkStack *stack,
+               GtkWidget *child,
+               const gchar *name,
+               const gchar *title,
+               const gchar *icon)
+{
+    gtk_stack_add_titled (stack, child, name, title);
+    gtk_container_child_set (GTK_CONTAINER (stack), child, "icon-name", icon, NULL);
 }
 
 static void
@@ -122,62 +135,43 @@ byk_window_init (BykWindow *self)
     if (self->engines.transliterator == NULL)
         g_warning ("byakaron: could not create the transliteration engine");
 
-    self->stack = adw_view_stack_new ();
+    self->stack = gtk_stack_new ();
+    gtk_stack_set_transition_type (GTK_STACK (self->stack),
+                                   GTK_STACK_TRANSITION_TYPE_SLIDE_LEFT_RIGHT);
     self->spell_page = byk_spell_page_new (&self->engines);
     self->setup_page = byk_setup_page_new ();
 
-    adw_view_stack_add_titled_with_icon (ADW_VIEW_STACK (self->stack),
-                                         byk_typing_page_new (),
-                                         "write", "Write", "input-keyboard-symbolic");
-    adw_view_stack_add_titled_with_icon (ADW_VIEW_STACK (self->stack),
-                                         self->spell_page,
-                                         "spelling", "Spelling",
-                                         "tools-check-spelling-symbolic");
-    adw_view_stack_add_titled_with_icon (ADW_VIEW_STACK (self->stack),
-                                         byk_layout_page_new (),
-                                         "layout", "Layout", "view-grid-symbolic");
-    adw_view_stack_add_titled_with_icon (ADW_VIEW_STACK (self->stack),
-                                         self->setup_page,
-                                         "setup", "Setup", "emblem-system-symbolic");
+    byk_stack_add (GTK_STACK (self->stack), byk_typing_page_new (),
+                   "write", "Write", "input-keyboard-symbolic");
+    byk_stack_add (GTK_STACK (self->stack), self->spell_page,
+                   "spelling", "Spelling", "tools-check-spelling-symbolic");
+    byk_stack_add (GTK_STACK (self->stack), byk_layout_page_new (),
+                   "layout", "Layout", "view-grid-symbolic");
+    byk_stack_add (GTK_STACK (self->stack), self->setup_page,
+                   "setup", "Setup", "emblem-system-symbolic");
 
     g_signal_connect (self->stack, "notify::visible-child",
                       G_CALLBACK (on_visible_page_changed), self);
 
-    GtkWidget *switcher = adw_view_switcher_new ();
-    adw_view_switcher_set_stack (ADW_VIEW_SWITCHER (switcher), ADW_VIEW_STACK (self->stack));
-    adw_view_switcher_set_policy (ADW_VIEW_SWITCHER (switcher), ADW_VIEW_SWITCHER_POLICY_WIDE);
+    GtkWidget *switcher = gtk_stack_switcher_new ();
+    gtk_stack_switcher_set_stack (GTK_STACK_SWITCHER (switcher), GTK_STACK (self->stack));
 
-    AdwHeaderBar *header = ADW_HEADER_BAR (adw_header_bar_new ());
-    adw_header_bar_set_title_widget (header, switcher);
-    adw_header_bar_pack_end (header, byk_window_build_menu_button ());
+    GtkWidget *header = gtk_header_bar_new ();
+    gtk_header_bar_set_show_close_button (GTK_HEADER_BAR (header), TRUE);
+    gtk_header_bar_set_custom_title (GTK_HEADER_BAR (header), switcher);
+    gtk_header_bar_pack_end (GTK_HEADER_BAR (header), byk_window_build_menu_button ());
 
-    /* The switcher moves to a bottom bar when the window is too narrow for it
-     * to sit in the header. */
-    GtkWidget *switcher_bar = adw_view_switcher_bar_new ();
-    adw_view_switcher_bar_set_stack (ADW_VIEW_SWITCHER_BAR (switcher_bar),
-                                     ADW_VIEW_STACK (self->stack));
+    GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+    gtk_box_pack_start (GTK_BOX (box), self->stack, TRUE, TRUE, 0);
 
-    AdwToolbarView *toolbar = ADW_TOOLBAR_VIEW (adw_toolbar_view_new ());
-    adw_toolbar_view_add_top_bar (toolbar, GTK_WIDGET (header));
-    adw_toolbar_view_set_content (toolbar, self->stack);
-    adw_toolbar_view_add_bottom_bar (toolbar, switcher_bar);
-
-    AdwBreakpoint *breakpoint = adw_breakpoint_new (
-        adw_breakpoint_condition_parse ("max-width: 550sp"));
-    adw_breakpoint_add_setters (breakpoint,
-                                G_OBJECT (switcher_bar), "reveal", TRUE,
-                                G_OBJECT (header), "title-widget", NULL,
-                                NULL);
-    adw_application_window_add_breakpoint (ADW_APPLICATION_WINDOW (self), breakpoint);
-
-    adw_application_window_set_content (ADW_APPLICATION_WINDOW (self), GTK_WIDGET (toolbar));
+    gtk_window_set_titlebar (GTK_WINDOW (self), header);
+    gtk_container_add (GTK_CONTAINER (self), box);
 
     gtk_window_set_title (GTK_WINDOW (self), "Byakaron");
     gtk_window_set_default_size (GTK_WINDOW (self), 900, 680);
-    /* libadwaita needs a declared minimum before it will honour a breakpoint,
-     * and it has to be below the 550sp the breakpoint triggers at or the
-     * narrow layout could never be reached. */
     gtk_widget_set_size_request (GTK_WIDGET (self), 360, 400);
+
+    gtk_widget_show_all (GTK_WIDGET (self));
 
     byk_window_load_spell (self);
 }
@@ -207,7 +201,7 @@ byk_window_class_init (BykWindowClass *klass)
 }
 
 GtkWidget *
-byk_window_new (AdwApplication *app)
+byk_window_new (GtkApplication *app)
 {
     return g_object_new (BYK_TYPE_WINDOW, "application", app, NULL);
 }
