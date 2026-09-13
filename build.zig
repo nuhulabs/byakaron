@@ -11,6 +11,48 @@ fn pkgConfigExists(b: *std.Build, name: []const u8) bool {
     };
 }
 
+fn pkgConfigVariable(b: *std.Build, pkg: []const u8, variable: []const u8) ?[]const u8 {
+    return switch (b.runFallible(&.{ "pkg-config", "--variable", variable, pkg }, .{
+        .stderr_behavior = .ignore,
+    })) {
+        .success => |stdout| std.mem.trim(u8, stdout, " \n\r\t"),
+        else => null,
+    };
+}
+
+// Zig treats -Dtarget=x86_64-linux-gnu.2.31 as a cross compile, so pkg-config
+// include flags still apply but the default Debian libdir is not searched.
+// Always add it for the Linux C binaries; native builds already have it on
+// the gcc path and a duplicate -L is harmless.
+fn addHostLibdir(b: *std.Build, mod: *std.Build.Module) void {
+    const libdir = pkgConfigVariable(b, "glib-2.0", "libdir") orelse
+        "/usr/lib/x86_64-linux-gnu";
+    if (libdir.len > 0) {
+        mod.addLibraryPath(.{ .cwd_relative = libdir });
+    }
+}
+
+// Ubuntu 20.04 is GLib 2.64. Compiling on 24.04 without this can inline newer
+// GLib APIs and produce a binary that will not load there.
+const engine_cflags: []const []const u8 = &.{
+    "-std=gnu11",
+    "-Wall",
+    "-Wextra",
+    "-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_64",
+    "-DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_64",
+};
+
+// gtk+-3.0.pc pulls gdk-pixbuf's -I/usr/include/x86_64-linux-gnu, whose
+// time64 typedefs do not exist in Zig's glibc 2.31 headers.
+const app_cflags: []const []const u8 = &.{
+    "-std=gnu11",
+    "-Wall",
+    "-Wextra",
+    "-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_64",
+    "-DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_64",
+    "-D__time64_t=long",
+};
+
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -157,17 +199,23 @@ pub fn build(b: *std.Build) !void {
                 "platforms/linux/Core/composer.c",
                 "platforms/linux/Core/prefs.c",
             },
-            .flags = &.{ "-std=gnu11", "-Wall", "-Wextra" },
+            .flags = engine_cflags,
         });
         ime.root_module.addIncludePath(b.path("src/ffi"));
         ime.root_module.addIncludePath(b.path("platforms/linux/Core"));
         ime.root_module.addIncludePath(b.path("platforms/linux/Keyboard"));
+        addHostLibdir(b, ime.root_module);
         // Resolved through pkg-config; see platforms/linux/scripts/setup_deps.sh.
         ime.root_module.linkSystemLibrary("ibus-1.0", .{});
         ime.root_module.linkSystemLibrary("glib-2.0", .{});
         ime.root_module.linkSystemLibrary("gobject-2.0", .{});
         ime.root_module.linkSystemLibrary("gio-2.0", .{});
         ime.root_module.linkLibrary(ime_core);
+        // Host libibus/libglib were built against this machine's glibc. Their
+        // own undefined symbols (stat@GLIBC_2.33, etc.) must not be required
+        // of our 2.31 libc stubs — at runtime each Ubuntu release loads its
+        // own libibus, which matches its own libc.
+        ime.linker_allow_shlib_undefined = true;
 
         const install_ime = b.addInstallArtifact(ime, .{});
         const linux_step = b.step("linux", "Build the Linux IBus engine (byakaron-ibus)");
@@ -185,19 +233,22 @@ pub fn build(b: *std.Build) !void {
         });
         ime_test.root_module.addCSourceFiles(.{
             .files = &.{"platforms/linux/tests/ime_test.c"},
-            .flags = &.{ "-std=gnu11", "-Wall", "-Wextra" },
+            .flags = engine_cflags,
         });
+        addHostLibdir(b, ime_test.root_module);
         ime_test.root_module.linkSystemLibrary("ibus-1.0", .{});
         ime_test.root_module.linkSystemLibrary("glib-2.0", .{});
         ime_test.root_module.linkSystemLibrary("gobject-2.0", .{});
+        ime_test.linker_allow_shlib_undefined = true;
 
         const install_ime_test = b.addInstallArtifact(ime_test, .{});
         const linux_test_step = b.step("linux-test", "Build the Linux IME integration test");
         linux_test_step.dependOn(&install_ime_test.step);
 
-        // GTK4 + libadwaita companion app. A separate step from `linux` on
-        // purpose: the engine must stay buildable on a box with only
-        // libibus-dev, and this needs libgtk-4-dev and libadwaita-1-dev too.
+        // GTK3 companion app. A separate step from `linux` on purpose: the
+        // engine must stay buildable on a box with only libibus-dev, and this
+        // needs libgtk-3-dev. GTK3 3.24 is on Ubuntu 20.04, 22.04, and 24.04;
+        // GTK4 / libadwaita 1.4 are not.
         const app_core = b.addLibrary(.{
             .linkage = .static,
             .name = "byakaron_app_core",
@@ -220,22 +271,27 @@ pub fn build(b: *std.Build) !void {
                 "platforms/linux/App/spelling.c",
                 "platforms/linux/App/layout.c",
                 "platforms/linux/App/setup.c",
+                "platforms/linux/App/uiutil.c",
                 "platforms/linux/Core/transliterator.c",
                 "platforms/linux/Core/autocomplete.c",
                 "platforms/linux/Core/spell.c",
                 "platforms/linux/Core/composer.c",
                 "platforms/linux/Core/prefs.c",
             },
-            .flags = &.{ "-std=gnu11", "-Wall", "-Wextra" },
+            .flags = app_cflags,
         });
         app.root_module.addIncludePath(b.path("src/ffi"));
         app.root_module.addIncludePath(b.path("platforms/linux/Core"));
         app.root_module.addIncludePath(b.path("platforms/linux/App"));
-        app.root_module.linkSystemLibrary("gtk4", .{});
-        app.root_module.linkSystemLibrary("libadwaita-1", .{});
+        addHostLibdir(b, app.root_module);
+        app.root_module.linkSystemLibrary("gtk+-3.0", .{});
         app.root_module.linkSystemLibrary("glib-2.0", .{});
         app.root_module.linkSystemLibrary("gobject-2.0", .{});
         app.root_module.linkSystemLibrary("gio-2.0", .{});
+        // Host libgtk was built against this machine's glibc. Same reason as
+        // the engine: a 2.31-targeted binary must not require the host
+        // library's newer undefined symbols.
+        app.linker_allow_shlib_undefined = true;
         // Its own static copy of the core, like the engine above: two 7 MB
         // binaries beat one shared .so that needs a SONAME, an ldconfig
         // trigger and an ABI promise this version cannot make yet.
@@ -315,6 +371,7 @@ pub fn build(b: *std.Build) !void {
             fcitx.root_module.addIncludePath(b.path("src/ffi"));
             fcitx.root_module.addIncludePath(b.path("platforms/linux/Core"));
             fcitx.root_module.addIncludePath(b.path("platforms/linux/Fcitx5"));
+            addHostLibdir(b, fcitx.root_module);
             fcitx.root_module.linkSystemLibrary("Fcitx5Core", .{});
             fcitx.root_module.linkSystemLibrary("glib-2.0", .{});
             fcitx.root_module.linkSystemLibrary("gio-2.0", .{});
