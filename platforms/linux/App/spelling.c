@@ -1,5 +1,7 @@
 #include "spelling.h"
 
+#include "uiutil.h"
+
 /* Coalesce keystrokes into one pass, the same 250ms the macOS app debounces. */
 #define BYK_CHECK_DEBOUNCE_MS 250
 #define BYK_SUGGEST_LIMIT     8
@@ -13,7 +15,7 @@ typedef struct {
 } BykIssue;
 
 struct _BykSpellPage {
-    AdwBin parent_instance;
+    GtkBox parent_instance;
 
     BykEngines *engines;
 
@@ -28,6 +30,7 @@ struct _BykSpellPage {
     GtkWidget *empty_icon;
     GtkWidget *empty_label;
     GtkWidget *split;
+    GtkWidget *sidebar;
 
     GtkWidget *correction;   /* GtkRevealer around the bar */
     GtkWidget *correction_word;
@@ -38,8 +41,7 @@ struct _BykSpellPage {
     GtkWidget *status_issues;
 
     GtkWidget *fix_all;
-
-    AdwToastOverlay *toasts;
+    GtkWidget *toast;
 
     GArray *found;          /* BykIssue, cleared each pass */
     GHashTable *ignored;    /* word -> itself; accepted for this session only */
@@ -51,7 +53,7 @@ struct _BykSpellPage {
     gboolean syncing;
 };
 
-G_DEFINE_FINAL_TYPE (BykSpellPage, byk_spell_page, ADW_TYPE_BIN)
+G_DEFINE_TYPE (BykSpellPage, byk_spell_page, GTK_TYPE_BOX)
 
 static void byk_spell_page_check (BykSpellPage *self);
 static void byk_spell_page_select (BykSpellPage *self, gint index);
@@ -134,14 +136,14 @@ byk_spell_page_update_status (BykSpellPage *self, gint words)
 
     if (issues == 0) {
         gtk_label_set_text (GTK_LABEL (self->status_issues), "No issues");
-        gtk_widget_remove_css_class (self->status_issues, "warning");
-        gtk_widget_add_css_class (self->status_issues, "success");
+        byk_css_remove (self->status_issues, "warning");
+        byk_css_add (self->status_issues, "success");
     } else {
         label = g_strdup_printf (issues == 1 ? "%u issue" : "%u issues", issues);
         gtk_label_set_text (GTK_LABEL (self->status_issues), label);
         g_free (label);
-        gtk_widget_remove_css_class (self->status_issues, "success");
-        gtk_widget_add_css_class (self->status_issues, "warning");
+        byk_css_remove (self->status_issues, "success");
+        byk_css_add (self->status_issues, "warning");
     }
 
     gtk_widget_set_sensitive (self->fix_all, issues > 0);
@@ -150,9 +152,7 @@ byk_spell_page_update_status (BykSpellPage *self, gint words)
 static void
 byk_spell_page_fill_list (BykSpellPage *self)
 {
-    GtkWidget *row;
-    while ((row = gtk_widget_get_first_child (self->issues_list)) != NULL)
-        gtk_list_box_remove (GTK_LIST_BOX (self->issues_list), row);
+    byk_container_clear (self->issues_list);
 
     for (guint i = 0; i < self->found->len; i++) {
         const BykIssue *issue = &g_array_index (self->found, BykIssue, i);
@@ -167,16 +167,19 @@ byk_spell_page_fill_list (BykSpellPage *self)
         gtk_widget_set_margin_bottom (box, 8);
         gtk_widget_set_margin_start (box, 12);
         gtk_widget_set_margin_end (box, 12);
-        gtk_box_append (GTK_BOX (box), label);
+        byk_box_add_expand (box, label);
 
         GtkWidget *listrow = gtk_list_box_row_new ();
-        gtk_list_box_row_set_child (GTK_LIST_BOX_ROW (listrow), box);
+        gtk_container_add (GTK_CONTAINER (listrow), box);
         g_object_set_data (G_OBJECT (listrow), "byk-index", GINT_TO_POINTER ((gint) i));
-        gtk_list_box_append (GTK_LIST_BOX (self->issues_list), listrow);
+        gtk_list_box_insert (GTK_LIST_BOX (self->issues_list), listrow, -1);
     }
 
     const gboolean any = self->found->len > 0;
-    gtk_widget_set_visible (self->issues_list, any);
+    if (any)
+        gtk_widget_show_all (self->issues_list);
+    else
+        gtk_widget_hide (self->issues_list);
     gtk_widget_set_visible (self->issues_empty, !any);
 
     if (any) {
@@ -193,7 +196,8 @@ byk_spell_page_fill_list (BykSpellPage *self)
         const gboolean empty = gtk_text_buffer_get_char_count (self->buffer) == 0;
         gtk_image_set_from_icon_name (GTK_IMAGE (self->empty_icon),
                                       empty ? "document-edit-symbolic"
-                                            : "emblem-ok-symbolic");
+                                            : "emblem-ok-symbolic",
+                                      GTK_ICON_SIZE_DND);
         gtk_label_set_text (GTK_LABEL (self->empty_label),
                             empty ? "Nothing to check yet" : "No misspellings");
     }
@@ -297,9 +301,7 @@ static void on_ignore_clicked (GtkButton *button, gpointer user_data);
 static void
 byk_spell_page_build_correction (BykSpellPage *self, const BykIssue *issue)
 {
-    GtkWidget *child;
-    while ((child = gtk_widget_get_first_child (self->correction_options)) != NULL)
-        gtk_box_remove (GTK_BOX (self->correction_options), child);
+    byk_container_clear (self->correction_options);
 
     gtk_label_set_text (GTK_LABEL (self->correction_word), issue->word);
 
@@ -307,18 +309,19 @@ byk_spell_page_build_correction (BykSpellPage *self, const BykIssue *issue)
 
     if (words == NULL || words[0] == NULL) {
         GtkWidget *none = gtk_label_new ("No suggestions");
-        gtk_widget_add_css_class (none, "dim-label");
-        gtk_box_append (GTK_BOX (self->correction_options), none);
+        byk_css_add (none, "dim-label");
+        byk_box_add (self->correction_options, none);
     } else {
         for (guint i = 0; words[i] != NULL; i++) {
             GtkWidget *button = gtk_button_new_with_label (words[i]);
-            gtk_widget_add_css_class (button, "byk-candidate");
+            byk_css_add (button, "byk-candidate");
             g_signal_connect (button, "clicked",
                               G_CALLBACK (on_suggestion_clicked), self);
-            gtk_box_append (GTK_BOX (self->correction_options), button);
+            byk_box_add (self->correction_options, button);
         }
     }
     g_strfreev (words);
+    gtk_widget_show_all (self->correction_options);
 }
 
 /* Select issue `index` (-1 for none): highlight it in the text and open the bar. */
@@ -457,7 +460,7 @@ on_fix_all_clicked (GtkButton *button, gpointer user_data)
     gchar *message = fixed == 0
         ? g_strdup ("Nothing to fix — no suggestions")
         : g_strdup_printf (fixed == 1 ? "Fixed 1 word" : "Fixed %u words", fixed);
-    adw_toast_overlay_add_toast (self->toasts, adw_toast_new (message));
+    byk_toast_show (GTK_LABEL (self->toast), message);
     g_free (message);
 }
 
@@ -472,8 +475,8 @@ on_copy_clicked (GtkButton *button, gpointer user_data)
     gchar *text = gtk_text_buffer_get_text (self->buffer, &start, &end, FALSE);
 
     if (*text != '\0') {
-        gdk_clipboard_set_text (gtk_widget_get_clipboard (GTK_WIDGET (self)), text);
-        adw_toast_overlay_add_toast (self->toasts, adw_toast_new ("Copied to clipboard"));
+        byk_clipboard_set (GTK_WIDGET (self), text);
+        byk_toast_show (GTK_LABEL (self->toast), "Copied to clipboard");
     }
     g_free (text);
 }
@@ -486,6 +489,13 @@ on_clear_clicked (GtkButton *button, gpointer user_data)
 
     gtk_text_buffer_set_text (self->buffer, "", -1);
     byk_spell_page_check_now (self);
+}
+
+static void
+on_sidebar_toggled (GtkToggleButton *toggle, gpointer user_data)
+{
+    BykSpellPage *self = BYK_SPELL_PAGE (user_data);
+    gtk_widget_set_visible (self->sidebar, gtk_toggle_button_get_active (toggle));
 }
 
 /* ── signals ─────────────────────────────────────────────────────────────── */
@@ -548,7 +558,7 @@ static GtkWidget *
 byk_spell_page_build_sidebar (BykSpellPage *self)
 {
     self->issues_title = gtk_label_new ("Issues");
-    gtk_widget_add_css_class (self->issues_title, "heading");
+    byk_css_add (self->issues_title, "heading");
     gtk_label_set_xalign (GTK_LABEL (self->issues_title), 0.0);
     gtk_widget_set_margin_top (self->issues_title, 12);
     gtk_widget_set_margin_bottom (self->issues_title, 6);
@@ -557,18 +567,17 @@ byk_spell_page_build_sidebar (BykSpellPage *self)
 
     self->issues_list = gtk_list_box_new ();
     gtk_list_box_set_selection_mode (GTK_LIST_BOX (self->issues_list), GTK_SELECTION_SINGLE);
-    gtk_widget_add_css_class (self->issues_list, "navigation-sidebar");
+    byk_css_add (self->issues_list, "navigation-sidebar");
+    byk_hide_until_shown (self->issues_list);
     g_signal_connect (self->issues_list, "row-selected", G_CALLBACK (on_row_selected), self);
 
-    /* Hand-built rather than an AdwStatusPage: a status page sets its title at
-     * title-1 size, which in a 250px sidebar wraps to three shouting lines. */
-    self->empty_icon = gtk_image_new_from_icon_name ("document-edit-symbolic");
+    self->empty_icon = gtk_image_new_from_icon_name ("document-edit-symbolic", GTK_ICON_SIZE_DND);
     gtk_image_set_pixel_size (GTK_IMAGE (self->empty_icon), 32);
-    gtk_widget_add_css_class (self->empty_icon, "dim-label");
+    byk_css_add (self->empty_icon, "dim-label");
 
     self->empty_label = gtk_label_new ("Nothing to check yet");
-    gtk_widget_add_css_class (self->empty_label, "dim-label");
-    gtk_label_set_wrap (GTK_LABEL (self->empty_label), TRUE);
+    byk_css_add (self->empty_label, "dim-label");
+    gtk_label_set_line_wrap (GTK_LABEL (self->empty_label), TRUE);
     gtk_label_set_justify (GTK_LABEL (self->empty_label), GTK_JUSTIFY_CENTER);
 
     self->issues_empty = gtk_box_new (GTK_ORIENTATION_VERTICAL, 12);
@@ -576,23 +585,19 @@ byk_spell_page_build_sidebar (BykSpellPage *self)
     gtk_widget_set_vexpand (self->issues_empty, TRUE);
     gtk_widget_set_margin_start (self->issues_empty, 18);
     gtk_widget_set_margin_end (self->issues_empty, 18);
-    gtk_box_append (GTK_BOX (self->issues_empty), self->empty_icon);
-    gtk_box_append (GTK_BOX (self->issues_empty), self->empty_label);
+    byk_box_add (self->issues_empty, self->empty_icon);
+    byk_box_add (self->issues_empty, self->empty_label);
 
     GtkWidget *stack = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
-    gtk_box_append (GTK_BOX (stack), self->issues_list);
-    gtk_box_append (GTK_BOX (stack), self->issues_empty);
-    gtk_widget_set_visible (self->issues_list, FALSE);
+    byk_box_add (stack, self->issues_list);
+    byk_box_add_expand (stack, self->issues_empty);
 
-    GtkWidget *scroller = gtk_scrolled_window_new ();
-    gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
-                                    GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-    gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), stack);
+    GtkWidget *scroller = byk_scroller (stack, GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_widget_set_vexpand (scroller, TRUE);
 
     GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
-    gtk_box_append (GTK_BOX (box), self->issues_title);
-    gtk_box_append (GTK_BOX (box), scroller);
+    byk_box_add (box, self->issues_title);
+    byk_box_add_expand (box, scroller);
 
     return box;
 }
@@ -607,12 +612,12 @@ byk_spell_page_build_toolbar (BykSpellPage *self)
     gtk_widget_set_margin_end (bar, 12);
 
     GtkWidget *toggle = gtk_toggle_button_new ();
-    gtk_button_set_icon_name (GTK_BUTTON (toggle), "view-list-symbolic");
+    gtk_button_set_image (GTK_BUTTON (toggle),
+                          gtk_image_new_from_icon_name ("view-list-symbolic",
+                                                        GTK_ICON_SIZE_BUTTON));
     gtk_widget_set_tooltip_text (toggle, "Show the issue list");
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (toggle), TRUE);
-    g_object_bind_property (G_OBJECT (toggle), "active",
-                            G_OBJECT (self->split), "show-sidebar",
-                            G_BINDING_BIDIRECTIONAL | G_BINDING_SYNC_CREATE);
+    g_signal_connect (toggle, "toggled", G_CALLBACK (on_sidebar_toggled), self);
 
     GtkWidget *spacer = gtk_label_new (NULL);
     gtk_widget_set_hexpand (spacer, TRUE);
@@ -622,19 +627,19 @@ byk_spell_page_build_toolbar (BykSpellPage *self)
     gtk_widget_set_sensitive (self->fix_all, FALSE);
     g_signal_connect (self->fix_all, "clicked", G_CALLBACK (on_fix_all_clicked), self);
 
-    GtkWidget *copy = gtk_button_new_from_icon_name ("edit-copy-symbolic");
+    GtkWidget *copy = byk_icon_button ("edit-copy-symbolic");
     gtk_widget_set_tooltip_text (copy, "Copy the full text to the clipboard");
     g_signal_connect (copy, "clicked", G_CALLBACK (on_copy_clicked), self);
 
-    GtkWidget *clear = gtk_button_new_from_icon_name ("edit-clear-all-symbolic");
+    GtkWidget *clear = byk_icon_button ("edit-clear-all-symbolic");
     gtk_widget_set_tooltip_text (clear, "Clear the editor");
     g_signal_connect (clear, "clicked", G_CALLBACK (on_clear_clicked), self);
 
-    gtk_box_append (GTK_BOX (bar), toggle);
-    gtk_box_append (GTK_BOX (bar), spacer);
-    gtk_box_append (GTK_BOX (bar), self->fix_all);
-    gtk_box_append (GTK_BOX (bar), copy);
-    gtk_box_append (GTK_BOX (bar), clear);
+    byk_box_add (bar, toggle);
+    byk_box_add_expand (bar, spacer);
+    byk_box_add (bar, self->fix_all);
+    byk_box_add (bar, copy);
+    byk_box_add (bar, clear);
 
     return bar;
 }
@@ -649,17 +654,15 @@ byk_spell_page_build_correction_bar (BykSpellPage *self)
     gtk_widget_set_margin_end (bar, 12);
 
     self->correction_word = gtk_label_new (NULL);
-    gtk_widget_add_css_class (self->correction_word, "heading");
+    byk_css_add (self->correction_word, "heading");
 
     GtkWidget *arrow = gtk_label_new ("Replace with");
-    gtk_widget_add_css_class (arrow, "dim-label");
+    byk_css_add (arrow, "dim-label");
 
     self->correction_options = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
 
-    GtkWidget *scroller = gtk_scrolled_window_new ();
-    gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
-                                    GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER);
-    gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), self->correction_options);
+    GtkWidget *scroller = byk_scroller (self->correction_options,
+                                        GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER);
     gtk_widget_set_hexpand (scroller, TRUE);
 
     /* Outside the scroller: with eight suggestions the strip overflows, and
@@ -668,15 +671,16 @@ byk_spell_page_build_correction_bar (BykSpellPage *self)
     gtk_widget_set_tooltip_text (ignore, "Accept this word for now");
     g_signal_connect (ignore, "clicked", G_CALLBACK (on_ignore_clicked), self);
 
-    gtk_box_append (GTK_BOX (bar), self->correction_word);
-    gtk_box_append (GTK_BOX (bar), arrow);
-    gtk_box_append (GTK_BOX (bar), scroller);
-    gtk_box_append (GTK_BOX (bar), ignore);
+    byk_box_add (bar, self->correction_word);
+    byk_box_add (bar, arrow);
+    byk_box_add_expand (bar, scroller);
+    byk_box_add (bar, ignore);
 
     self->correction = gtk_revealer_new ();
     gtk_revealer_set_transition_type (GTK_REVEALER (self->correction),
                                       GTK_REVEALER_TRANSITION_TYPE_SLIDE_UP);
-    gtk_revealer_set_child (GTK_REVEALER (self->correction), bar);
+    gtk_container_add (GTK_CONTAINER (self->correction), bar);
+    gtk_revealer_set_reveal_child (GTK_REVEALER (self->correction), FALSE);
 
     return self->correction;
 }
@@ -694,20 +698,20 @@ byk_spell_page_build_status_bar (BykSpellPage *self)
     self->status_chars = gtk_label_new ("0 characters");
     self->status_issues = gtk_label_new ("No issues");
 
-    gtk_widget_add_css_class (self->status_words, "caption");
-    gtk_widget_add_css_class (self->status_words, "dim-label");
-    gtk_widget_add_css_class (self->status_chars, "caption");
-    gtk_widget_add_css_class (self->status_chars, "dim-label");
-    gtk_widget_add_css_class (self->status_issues, "caption");
-    gtk_widget_add_css_class (self->status_issues, "success");
+    byk_css_add (self->status_words, "caption");
+    byk_css_add (self->status_words, "dim-label");
+    byk_css_add (self->status_chars, "caption");
+    byk_css_add (self->status_chars, "dim-label");
+    byk_css_add (self->status_issues, "caption");
+    byk_css_add (self->status_issues, "success");
 
     GtkWidget *spacer = gtk_label_new (NULL);
     gtk_widget_set_hexpand (spacer, TRUE);
 
-    gtk_box_append (GTK_BOX (bar), self->status_words);
-    gtk_box_append (GTK_BOX (bar), self->status_chars);
-    gtk_box_append (GTK_BOX (bar), spacer);
-    gtk_box_append (GTK_BOX (bar), self->status_issues);
+    byk_box_add (bar, self->status_words);
+    byk_box_add (bar, self->status_chars);
+    byk_box_add_expand (bar, spacer);
+    byk_box_add (bar, self->status_issues);
 
     return bar;
 }
@@ -723,7 +727,7 @@ byk_spell_page_build_editor (BykSpellPage *self)
     gtk_text_view_set_bottom_margin (GTK_TEXT_VIEW (self->editor), 12);
     gtk_text_view_set_left_margin (GTK_TEXT_VIEW (self->editor), 12);
     gtk_text_view_set_right_margin (GTK_TEXT_VIEW (self->editor), 12);
-    gtk_widget_add_css_class (self->editor, "byk-bangla");
+    byk_css_add (self->editor, "byk-bangla");
 
     /* PANGO_UNDERLINE_ERROR is the platform's own squiggle, so a misspelling
      * looks the same here as in any other GTK text view. */
@@ -735,10 +739,7 @@ byk_spell_page_build_editor (BykSpellPage *self)
     g_signal_connect (self->buffer, "notify::cursor-position",
                       G_CALLBACK (on_cursor_moved), self);
 
-    GtkWidget *scroller = gtk_scrolled_window_new ();
-    gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroller),
-                                    GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-    gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scroller), self->editor);
+    GtkWidget *scroller = byk_scroller (self->editor, GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_widget_set_vexpand (scroller, TRUE);
 
     return scroller;
@@ -747,19 +748,25 @@ byk_spell_page_build_editor (BykSpellPage *self)
 static GtkWidget *
 byk_spell_page_build_ready (BykSpellPage *self)
 {
-    self->split = adw_overlay_split_view_new ();
-    adw_overlay_split_view_set_max_sidebar_width (ADW_OVERLAY_SPLIT_VIEW (self->split), 260);
-    adw_overlay_split_view_set_sidebar_width_fraction (ADW_OVERLAY_SPLIT_VIEW (self->split), 0.28);
+    self->sidebar = byk_spell_page_build_sidebar (self);
+    gtk_widget_set_size_request (self->sidebar, 220, -1);
 
-    AdwToolbarView *view = ADW_TOOLBAR_VIEW (adw_toolbar_view_new ());
-    adw_toolbar_view_add_top_bar (view, byk_spell_page_build_toolbar (self));
-    adw_toolbar_view_set_content (view, byk_spell_page_build_editor (self));
-    adw_toolbar_view_add_bottom_bar (view, byk_spell_page_build_correction_bar (self));
-    adw_toolbar_view_add_bottom_bar (view, byk_spell_page_build_status_bar (self));
+    GtkWidget *content = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+    byk_box_add (content, byk_spell_page_build_toolbar (self));
+    byk_box_add_expand (content, byk_spell_page_build_editor (self));
+    byk_box_add (content, byk_spell_page_build_correction_bar (self));
+    byk_box_add (content, byk_spell_page_build_status_bar (self));
 
-    adw_overlay_split_view_set_sidebar (ADW_OVERLAY_SPLIT_VIEW (self->split),
-                                        byk_spell_page_build_sidebar (self));
-    adw_overlay_split_view_set_content (ADW_OVERLAY_SPLIT_VIEW (self->split), GTK_WIDGET (view));
+    self->toast = gtk_label_new ("");
+    byk_css_add (self->toast, "byk-toast");
+    byk_css_add (self->toast, "dim-label");
+    byk_hide_until_shown (self->toast);
+    byk_box_add (content, self->toast);
+
+    self->split = gtk_paned_new (GTK_ORIENTATION_HORIZONTAL);
+    gtk_paned_pack1 (GTK_PANED (self->split), self->sidebar, FALSE, FALSE);
+    gtk_paned_pack2 (GTK_PANED (self->split), content, TRUE, FALSE);
+    gtk_paned_set_position (GTK_PANED (self->split), 240);
 
     return self->split;
 }
@@ -772,35 +779,29 @@ byk_spell_page_build_loading (void)
     gtk_widget_set_size_request (spinner, 32, 32);
     gtk_widget_set_halign (spinner, GTK_ALIGN_CENTER);
 
-    GtkWidget *page = adw_status_page_new ();
-    adw_status_page_set_title (ADW_STATUS_PAGE (page), "Loading dictionary\u2026");
-    adw_status_page_set_description (ADW_STATUS_PAGE (page),
-                                     "Opening spell.db. This happens once per launch.");
-    adw_status_page_set_child (ADW_STATUS_PAGE (page), spinner);
-
+    GtkWidget *page = byk_status_page (NULL,
+                                       "Loading dictionary\u2026",
+                                       "Opening spell.db. This happens once per launch.");
+    byk_box_add (page, spinner);
     return page;
 }
 
 static GtkWidget *
 byk_spell_page_build_missing (void)
 {
-    GtkWidget *page = adw_status_page_new ();
-
-    adw_status_page_set_icon_name (ADW_STATUS_PAGE (page), "dialog-warning-symbolic");
-    adw_status_page_set_title (ADW_STATUS_PAGE (page), "Dictionary unavailable");
-    adw_status_page_set_description (
-        ADW_STATUS_PAGE (page),
+    return byk_status_page (
+        "dialog-warning-symbolic",
+        "Dictionary unavailable",
         "spell.db is not installed, so spelling cannot be checked. Typing Bangla "
         "still works — the keyboard and its candidate list do not need it.\n\n"
-        "Build it with <tt>platforms/linux/scripts/prepare_spell_db.sh</tt>, or "
+        "Build it with platforms/linux/scripts/prepare_spell_db.sh, or "
         "install the .deb, which ships it.");
-
-    return page;
 }
 
 static void
 byk_spell_page_init (BykSpellPage *self)
 {
+    gtk_orientable_set_orientation (GTK_ORIENTABLE (self), GTK_ORIENTATION_VERTICAL);
     self->found = g_array_new (FALSE, FALSE, sizeof (BykIssue));
     g_array_set_clear_func (self->found, byk_issue_clear);
     self->ignored = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
@@ -839,9 +840,7 @@ byk_spell_page_new (BykEngines *engines)
     gtk_stack_add_named (GTK_STACK (self->stack), byk_spell_page_build_ready (self), "ready");
     gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "loading");
 
-    self->toasts = ADW_TOAST_OVERLAY (adw_toast_overlay_new ());
-    adw_toast_overlay_set_child (self->toasts, self->stack);
-    adw_bin_set_child (ADW_BIN (self), GTK_WIDGET (self->toasts));
+    byk_box_add_expand (GTK_WIDGET (self), self->stack);
 
     return GTK_WIDGET (self);
 }

@@ -30,8 +30,14 @@ echo ">>> cwd $REPO_ROOT"
 cd "$REPO_ROOT"
 
 echo
-echo "=== zig build linux + linux-app + linux-test + -Dshared ==="
-"$ZIG" build linux linux-app linux-test -Dshared=true -Doptimize=ReleaseFast
+echo "=== zig build linux + linux-test (glibc 2.31) + linux-app + -Dshared ==="
+# shellcheck source=compat.sh
+source "$SCRIPT_DIR/compat.sh"
+COMPAT_TARGET="$(byk_compat_target_flag)"
+"$ZIG" build linux linux-test -Dshared=true -Doptimize=ReleaseFast $COMPAT_TARGET
+"$ZIG" build linux-app -Doptimize=ReleaseFast $COMPAT_TARGET
+byk_assert_glibc_20_04 "$REPO_ROOT/zig-out/bin/byakaron-ibus"
+byk_assert_glibc_20_04 "$REPO_ROOT/zig-out/bin/byakaron"
 
 echo
 echo "=== smoke (C ABI + Core glue) ==="
@@ -148,6 +154,15 @@ if pgrep -x ibus-daemon >/dev/null; then
 else
     echo "note: no ibus-daemon — GtkEntry typing skipped"
 fi
+
+echo
+echo "=== AppStream metainfo ==="
+if ! command -v appstreamcli >/dev/null; then
+    echo "error: appstreamcli is required (apt install appstream)" >&2
+    exit 1
+fi
+appstreamcli validate --no-net \
+    "$PROJECT_ROOT/Resources/dev.nuhu.labs.Byakaron.metainfo.xml"
 
 echo
 echo "=== ci.sh finished ==="

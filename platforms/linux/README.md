@@ -8,7 +8,7 @@ Zig engine as the macOS and Windows ports through its C ABI (`src/ffi/byakaron.h
 | Layer | macOS | Windows | Linux |
 | --- | --- | --- | --- |
 | Keyboard / IME | Swift + InputMethodKit | C++ + TSF | **C + IBus** |
-| GUI app | SwiftUI | C# WinUI 3 | **C + GTK4 / libadwaita** |
+| GUI app | SwiftUI | C# WinUI 3 | **C + GTK3** |
 | Engine linkage | static `libbyakaron.a` | shared `byakaron.dll` | **static into both binaries** |
 
 Every port is a thin platform shell; all Bangla logic — transliteration, spell
@@ -49,8 +49,7 @@ build system and no extra language runtime on the per-keystroke path.
 
 ```
 platforms/linux/
-├── App/         GTK4 + libadwaita app (main, window, typing, spelling,
-│                layout, setup)
+├── App/         GTK3 app (main, window, typing, spelling, layout, setup)
 ├── Core/        Shared C glue over byakaron.h (composer, transliterator,
 │                autocomplete, spell, prefs) — IBus, Fcitx5, and the app all use this
 ├── Keyboard/    The IBus engine (thin shell over Core/composer)
@@ -138,7 +137,7 @@ zig build run-linux-app  # build and run the app
 The engine binary links the Zig core statically, so it is self-contained apart
 from system IBus and GLib. `linux-app` is a separate step on purpose: the engine
 must stay buildable on a box that has only `libibus-1.0-dev`, while the app also
-needs `libgtk-4-dev` and `libadwaita-1-dev`. `linux-fcitx5` is a third step for
+needs `libgtk-3-dev`. GTK3 3.24 is on Ubuntu 20.04, 22.04, and 24.04. `linux-fcitx5` is a third step for
 the same reason: it needs `libfcitx5core-dev`, which a GNOME box does not have,
 and installing those headers does not switch the session's input method.
 
@@ -307,7 +306,7 @@ engine was active before, since restarting the daemon otherwise drops it.
 The GSettings schema is compiled into `/usr/share/glib-2.0/schemas` so Setup
 toggles reach the engine.
 
-The app is installed too when `gtk4` and `libadwaita-1` are present, to
+The app is installed too when `gtk+-3.0` is present, to
 `/usr/bin/byakaron` with a `.desktop` entry — `/usr/bin`, not `/usr/libexec`,
 because the user launches it, unlike the engine, which only `ibus-daemon` ever
 execs. It is skipped rather than fatal when those libraries are missing, since
@@ -319,7 +318,8 @@ pointing at a missing binary gives a button that silently does nothing.
 After installing:
 
 1. Settings → Keyboard → Input Sources → **+**
-2. Search "Byakaron" (filed under Bangla) → Add
+2. Choose **Bangla**, then **Byakaron (Bangla Phonetic)** → Add
+   (the first dialog is a language list — searching "Byakaron" there finds nothing)
 3. Switch with **Super+Space**
 
 ```bash
@@ -364,7 +364,7 @@ bash platforms/linux/scripts/wayland_type.sh
 
 `.github/workflows/linux.yml` runs on every push and pull request:
 
-1. Ubuntu packages (`libibus-1.0-dev`, `libgtk-4-dev`, `libadwaita-1-dev`, `libfcitx5core-dev`, `ibus`, `xvfb`)
+1. Ubuntu packages (`libibus-1.0-dev`, `libgtk-3-dev`, `libgtk-4-dev` for IME tests, `libfcitx5core-dev`, `ibus`, `xvfb`)
 2. Zig **0.17.0-dev.1422+e863bf3be** via `mlugg/setup-zig` (not master)
 3. Clone `ziex` at commit `29f9a85b` to `../../ziex-dev/ziex`, which is what
    `build.zig.zon` already points at locally
@@ -400,11 +400,39 @@ daemon can spawn it. A sandboxed Flatpak cannot register there, which is why
 ibus-avro ships as a `.deb` too. `scripts/package_deb.sh` is the IME artefact.
 It now emits two packages when `spell.db` is present:
 
-- `byakaron_*.deb` — engine, app, GSettings schema. Typing Bangla. Small.
+- `byakaron_*.deb` — engine, GTK app, GSettings schema. Typing Bangla. Small.
 - `byakaron-data_*.deb` — `spell.db` only (`Architecture: all`). Spell-check.
 
-`byakaron` Recommends `byakaron-data`. A typing-only install does not download
-the dictionary.
+`byakaron` Suggests `byakaron-data` so a typing-only `apt install ./byakaron_*.deb`
+does not look for a dictionary that is not in Ubuntu's archive. Spell-check
+needs the data package next to it: `sudo apt install ./byakaron-data_*.deb`.
+
+The settings app is GTK3, so Write / Spelling / Layout / Setup run on
+**Ubuntu 20.04, 22.04, and 24.04** — the same releases as the keyboard.
+
+### Installing the `.deb` on another Ubuntu PC
+
+The keyboard is built for **glibc 2.31**, so it works on **Ubuntu 20.04, 22.04,
+and 24.04** (64-bit Intel/AMD). It will not run on ARM unless you rebuild there.
+
+1. Send `platforms/linux/build/byakaron_0.1.2_amd64.deb` — keyboard **and** the
+   GTK app. Optionally also send `byakaron-data_0.1.2_all.deb` (spell-check).
+2. On their machine, in the folder with the file(s):
+
+   ```bash
+   sudo apt install ./byakaron_0.1.2_amd64.deb
+   # optional:
+   sudo apt install ./byakaron-data_0.1.2_all.deb
+   ```
+
+   Use `apt`, not `dpkg -i`. If an older Byakaron `.deb` is already installed,
+   remove it first: `sudo apt remove byakaron byakaron-app byakaron-data`.
+3. **Adding the input source is a separate step.** Open Settings → Keyboard →
+   Input Sources → **+** → pick **Bangla** → **Byakaron (Bangla Phonetic)** →
+   Add. Or launch the **Byakaron** app and use the Setup page.
+4. Switch with **Super+Space** and type `ami` then Space — you should get `আমি `.
+5. If Byakaron is missing from the Bangla list, log out and back in, then
+   try step 3 again.
 
 The companion GTK app *can* live in a sandbox:
 
