@@ -84,6 +84,26 @@ pub fn build(b: *std.Build) !void {
         .@"feature-sqlite" = true,
     });
     const zx_mod = ziex_dep.module("zx");
+
+    // zig-jni dependency for Android JNI bindings
+    const jni_dep = b.dependency("jni", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const cjni = b.addTranslateC(.{
+        .root_source_file = b.path("src/ffi/jni_wrapper.h"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    cjni.addIncludePath(b.path("src/ffi/include"));
+    cjni.addIncludePath(jni_dep.path("src/include"));
+    const jni_mod = b.addModule("JNI", .{
+        .root_source_file = jni_dep.path("src/main/zig/lib.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    jni_mod.addImport("cjni", cjni.createModule());
     {
         const app_opts = b.addOptions();
         app_opts.addOption(?[]const u8, "app_base_path", null);
@@ -165,14 +185,17 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "spell", .module = spell_mod },
             .{ .name = "autocomplete", .module = autocomplete_mod },
             .{ .name = "autocomplete_mem", .module = autocomplete_mem_mod },
+            .{ .name = "jni", .module = jni_mod },
         },
     });
 
     // Static lib (macOS Xcode links extracted objects). Shared lib (Windows C#
-    // P/Invoke loads byakaron.dll). `-Dshared` selects dynamic linkage.
+    // P/Invoke loads byakaron.dll, Android loads libbyakaron.so).
+    // `-Dshared` selects dynamic linkage; defaults to true on Android.
     // `zig build lib` installs only this (+ the lexicon): what the native platform
     // scripts need, without the web app the default install also builds.
-    const shared = b.option(bool, "shared", "Build shared library (DLL/dylib/so) for FFI") orelse false;
+    const is_android = target.result.os.tag == .linux and target.result.abi.isAndroid();
+    const shared = b.option(bool, "shared", "Build shared library (DLL/dylib/so) for FFI") orelse is_android;
     {
         const lib = b.addLibrary(.{
             .linkage = if (shared) .dynamic else .static,
@@ -434,28 +457,31 @@ pub fn build(b: *std.Build) !void {
         }
     }
 
-    // Executable
-    const exe = b.addExecutable(.{
-        .name = "repl",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "zx", .module = zx_mod },
-                .{ .name = "tokenization", .module = tokenization_mod },
-                .{ .name = "spell", .module = spell_mod },
-                .{ .name = "autocomplete", .module = autocomplete_mod },
-                .{ .name = "autocomplete_mem", .module = autocomplete_mem_mod },
-            },
-        }),
-    });
-    b.installArtifact(exe);
-    const run_cmd = b.addRunArtifact(exe);
-    run_cmd.step.dependOn(b.getInstallStep());
-    run_cmd.addPassthruArgs();
-    const run_step = b.step("run", "Run the app");
-    run_step.dependOn(&run_cmd.step);
+    // Executable (only built for non-Android targets)
+    if (!is_android) {
+        const exe = b.addExecutable(.{
+            .name = "repl",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/main.zig"),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{
+                    .{ .name = "zx", .module = zx_mod },
+                    .{ .name = "tokenization", .module = tokenization_mod },
+                    .{ .name = "spell", .module = spell_mod },
+                    .{ .name = "autocomplete", .module = autocomplete_mod },
+                    .{ .name = "autocomplete_mem", .module = autocomplete_mem_mod },
+                    .{ .name = "jni", .module = jni_mod },
+                },
+            }),
+        });
+        b.installArtifact(exe);
+        const run_cmd = b.addRunArtifact(exe);
+        run_cmd.step.dependOn(b.getInstallStep());
+        run_cmd.addPassthruArgs();
+        const run_step = b.step("run", "Run the app");
+        run_step.dependOn(&run_cmd.step);
+    }
 
     // Build / run macOS app via the Xcode project (apps/macos/scripts/build.sh).
     // The old hand-rolled swiftc graph depended on removed resources (Info-app.plist,
@@ -496,7 +522,8 @@ pub fn build(b: *std.Build) !void {
     // Web app (apps/web): a ziex app in this build graph, so it shares the cache.
     //   zig build run-web    dev server (hot reload)
     //   zig build serve-web  production-mode server
-    {
+    // Skipped on Android, where only libbyakaron.so is built.
+    if (!is_android) {
         const web_exe = b.addExecutable(.{
             .name = "web",
             .root_module = b.createModule(.{
@@ -585,6 +612,7 @@ pub fn build(b: *std.Build) !void {
                 .{ .name = "spell", .module = spell_mod },
                 .{ .name = "autocomplete", .module = autocomplete_mod },
                 .{ .name = "autocomplete_mem", .module = autocomplete_mem_mod },
+                .{ .name = "jni", .module = jni_mod },
             },
         });
         const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
