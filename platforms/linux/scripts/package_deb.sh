@@ -30,7 +30,7 @@ set -euo pipefail
 # then Super+Space to switch. Or open the Byakaron app → Setup.
 # ---------------------------------------------------------------------------
 
-VERSION="${VERSION:-0.1.2}"
+VERSION="${VERSION:-0.1.3}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -137,9 +137,10 @@ chmod 644 "$STAGE/usr/share/ibus/component/byakaron.xml"
 FCITX_SO="$REPO_ROOT/zig-out/lib/fcitx5/byakaron.so"
 FCITX_BUILT=0
 if pkg-config --exists Fcitx5Core 2>/dev/null; then
-    echo ">>> Building the Fcitx5 addon (ReleaseFast)..."
-    if ( cd "$REPO_ROOT" && zig build linux-fcitx5 -Doptimize=ReleaseFast ); then
+    echo ">>> Building the Fcitx5 addon (ReleaseFast, $COMPAT_TARGET)..."
+    if ( cd "$REPO_ROOT" && zig build linux-fcitx5 -Doptimize=ReleaseFast $COMPAT_TARGET ); then
         FCITX_BUILT=1
+        byk_assert_glibc_20_04 "$FCITX_SO"
     fi
 fi
 if [[ "$FCITX_BUILT" -eq 1 && -f "$FCITX_SO" ]]; then

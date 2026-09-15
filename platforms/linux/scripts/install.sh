@@ -56,6 +56,7 @@ as_build_user "zig build linux -Doptimize=ReleaseFast ${COMPAT_TARGET}"
 
 SRC_BIN="$REPO_ROOT/zig-out/bin/byakaron-ibus"
 [[ -x "$SRC_BIN" ]] || { echo "error: $SRC_BIN missing" >&2; exit 1; }
+byk_assert_glibc_20_04 "$SRC_BIN"
 
 # The GTK app is optional: the input method is the product, and this keeps a
 # box with only libibus-dev able to install a working keyboard.
@@ -63,6 +64,9 @@ SRC_APP="$REPO_ROOT/zig-out/bin/byakaron"
 if pkg-config --exists gtk+-3.0 2>/dev/null; then
     echo ">>> Building the GTK3 app..."
     as_build_user "zig build linux-app -Doptimize=ReleaseFast ${COMPAT_TARGET}" || true
+    if [[ -x "$SRC_APP" ]]; then
+        byk_assert_glibc_20_04 "$SRC_APP"
+    fi
 else
     echo "note: gtk+-3.0 not found — skipping the GTK app"
     echo "      install it with: sudo bash platforms/linux/scripts/setup_deps.sh"
@@ -120,12 +124,18 @@ echo ">>> Installed: $XMLDIR/byakaron.xml"
 
 # Fcitx5 is optional: same composer, different framework. Built only when the
 # headers are present so a GNOME-only machine is not blocked on libfcitx5-dev.
+# Only install if we rebuilt it this run — a leftover zig-out .so from an
+# older day would otherwise overwrite a current engine with a stale addon.
 FCITX_SO="$REPO_ROOT/zig-out/lib/fcitx5/byakaron.so"
+FCITX_BUILT=0
 if as_build_user "pkg-config --exists Fcitx5Core"; then
-    echo ">>> Building the Fcitx5 addon..."
-    as_build_user "zig build linux-fcitx5 -Doptimize=ReleaseFast" || true
+    echo ">>> Building the Fcitx5 addon${COMPAT_TARGET:+ ($COMPAT_TARGET)}..."
+    if as_build_user "zig build linux-fcitx5 -Doptimize=ReleaseFast ${COMPAT_TARGET}"; then
+        FCITX_BUILT=1
+        byk_assert_glibc_20_04 "$FCITX_SO"
+    fi
 fi
-if [[ -f "$FCITX_SO" ]]; then
+if [[ "$FCITX_BUILT" -eq 1 && -f "$FCITX_SO" ]]; then
     FCITX_LIBDIR="$(pkg-config --variable=libdir Fcitx5Core 2>/dev/null || true)"
     if [[ -z "$FCITX_LIBDIR" ]]; then
         FCITX_LIBDIR="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo x86_64-linux-gnu)"

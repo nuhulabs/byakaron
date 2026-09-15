@@ -40,6 +40,22 @@ byk_assert_glibc_20_04 "$REPO_ROOT/zig-out/bin/byakaron-ibus"
 byk_assert_glibc_20_04 "$REPO_ROOT/zig-out/bin/byakaron"
 
 echo
+echo "=== GTK3 app --help / --version (no display needed) ==="
+help_out="$("$REPO_ROOT/zig-out/bin/byakaron" --help 2>&1)"
+printf '%s\n' "$help_out" | grep -q -- '--version' || {
+    echo "error: byakaron --help does not mention --version" >&2
+    printf '%s\n' "$help_out" >&2
+    exit 1
+}
+ver_out="$("$REPO_ROOT/zig-out/bin/byakaron" --version)"
+expected="byakaron $(sed -n 's/^#define BYK_APP_VERSION "\(.*\)"/\1/p' "$PROJECT_ROOT/App/app.h")"
+printf '%s\n' "$ver_out" | grep -qx "$expected" || {
+    echo "error: expected '$expected', got: $ver_out" >&2
+    exit 1
+}
+echo ">>> $ver_out"
+
+echo
 echo "=== smoke (C ABI + Core glue) ==="
 bash "$SCRIPT_DIR/smoke.sh"
 
@@ -134,13 +150,14 @@ bash "$SCRIPT_DIR/wayland_probe.sh"
 
 echo
 if pkg-config --exists Fcitx5Core; then
-    echo "=== Fcitx5 addon ==="
-    "$ZIG" build linux-fcitx5 -Doptimize=ReleaseFast
+    echo "=== Fcitx5 addon (glibc 2.31) ==="
+    "$ZIG" build linux-fcitx5 -Doptimize=ReleaseFast $COMPAT_TARGET
     so="$REPO_ROOT/zig-out/lib/fcitx5/byakaron.so"
     if ! nm -D "$so" 2>/dev/null | grep -q 'fcitx_addon_factory_instance'; then
         echo "error: $so does not export fcitx_addon_factory_instance" >&2
         exit 1
     fi
+    byk_assert_glibc_20_04 "$so"
     echo ">>> $so exports fcitx_addon_factory_instance"
 else
     echo "=== Fcitx5 addon skipped (no Fcitx5Core.pc) ==="
