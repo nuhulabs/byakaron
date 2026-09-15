@@ -75,6 +75,11 @@ guint byk_composer_page (BykComposer *self);
 void byk_composer_set_phonetic_only (BykComposer *self, gboolean phonetic_only);
 gboolean byk_composer_phonetic_only (BykComposer *self);
 
+/*
+ * Modifier-only keys (Shift, Caps, AltGr, …) PASS and must not commit. Avro
+ * o-kar is capital O, so Shift during `bhalO` / `achO` has to stay in the
+ * same word; otherwise the next letter starts a new one (ভালও, আছও).
+ */
 BykOutcome byk_composer_key (BykComposer *self, guint keyval, guint mods);
 
 /* Panel click: `index` is within the visible page, same as a number key. */

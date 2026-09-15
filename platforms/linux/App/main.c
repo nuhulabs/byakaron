@@ -51,6 +51,24 @@ static const char BYK_CSS[] =
 
 static const char *const AUTHORS[] = { "Nurul Huda (Apon)", NULL };
 
+static const GOptionEntry extra_options[] = {
+    { "version", 'V', 0, G_OPTION_ARG_NONE, NULL, "Print the version and exit", NULL },
+    { NULL }
+};
+
+/* Return 0 to exit successfully (after --version); -1 to continue startup. */
+static gint
+on_handle_local_options (GApplication *app, GVariantDict *options, gpointer user_data)
+{
+    (void) app;
+    (void) user_data;
+    if (g_variant_dict_contains (options, "version")) {
+        g_print ("byakaron %s\n", BYK_APP_VERSION);
+        return 0;
+    }
+    return -1;
+}
+
 static void
 on_about_activate (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
@@ -135,6 +153,9 @@ main (int argc, char *argv[])
 
     GtkApplication *app = gtk_application_new (BYK_APP_ID, G_APPLICATION_FLAGS_NONE);
 
+    g_application_add_main_option_entries (G_APPLICATION (app), extra_options);
+    g_signal_connect (app, "handle-local-options",
+                      G_CALLBACK (on_handle_local_options), NULL);
     g_signal_connect (app, "startup", G_CALLBACK (on_startup), NULL);
     g_signal_connect (app, "activate", G_CALLBACK (on_activate), NULL);
 

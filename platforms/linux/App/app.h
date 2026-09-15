@@ -18,7 +18,7 @@
 G_BEGIN_DECLS
 
 #define BYK_APP_ID      "dev.nuhu.labs.Byakaron"
-#define BYK_APP_VERSION "0.1.2"
+#define BYK_APP_VERSION "0.1.3"
 
 #define BYK_URL_GITHUB  "https://github.com/nuhulabs/byakaron"
 #define BYK_URL_WEBSITE "https://nuhulabs.github.io"

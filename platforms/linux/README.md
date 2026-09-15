@@ -232,7 +232,7 @@ the `page_up`, `page_down`, and `candidate_clicked` handlers the panel drives.
 
 A separate process (`byakaron`) from the engine, sharing only `Core/` and the
 Zig core underneath. The input method works whether or not it is installed or
-running. Four pages behind an `AdwViewSwitcher`:
+running. Four pages behind a `GtkStackSwitcher`:
 
 | Page | What it is for |
 | --- | --- |
@@ -369,9 +369,10 @@ bash platforms/linux/scripts/wayland_type.sh
 3. Clone `ziex` at commit `29f9a85b` to `../../ziex-dev/ziex`, which is what
    `build.zig.zon` already points at locally
 4. `bash platforms/linux/scripts/ci.sh` — `zig build linux linux-app linux-test
-   -Dshared`, smoke test, IME integration test against a throwaway
-   Xvfb+ibus-daemon, display-path probe, Fcitx5 addon (headers are installed
-   on the runner), GtkEntry typing through the IBus IM module
+   -Dshared` targeted at glibc 2.31, `byakaron --help` / `--version`, smoke test,
+   IME integration test against a throwaway Xvfb+ibus-daemon, display-path probe,
+   Fcitx5 addon (headers are installed on the runner; same glibc 2.31 ceiling),
+   GtkEntry typing through the IBus IM module
 
 `spell.db` is not built on the runner (364 MB). Smoke skips those assertions
 when the file is missing; typing and candidates do not need it.
@@ -391,7 +392,9 @@ C++ `InputMethodEngineV2` that applies the same `Core/composer.c` outcomes as
 headers). That does **not** switch the session to Fcitx5.
 
 Install copies `byakaron.so` plus the addon/inputmethod `.conf` files if the
-addon was built. Fcitx5 users then add **Byakaron** in the Fcitx5 config tool.
+addon was **rebuilt in that same run** (a leftover `zig-out` copy is not
+shipped). The addon is built for glibc 2.31 like the engine. Fcitx5 users then
+add **Byakaron** in the Fcitx5 config tool.
 
 ## Flatpak (app only)
 
@@ -415,14 +418,14 @@ The settings app is GTK3, so Write / Spelling / Layout / Setup run on
 The keyboard is built for **glibc 2.31**, so it works on **Ubuntu 20.04, 22.04,
 and 24.04** (64-bit Intel/AMD). It will not run on ARM unless you rebuild there.
 
-1. Send `platforms/linux/build/byakaron_0.1.2_amd64.deb` — keyboard **and** the
-   GTK app. Optionally also send `byakaron-data_0.1.2_all.deb` (spell-check).
+1. Send `platforms/linux/build/byakaron_0.1.3_amd64.deb` — keyboard **and** the
+   GTK app. Optionally also send `byakaron-data_0.1.3_all.deb` (spell-check).
 2. On their machine, in the folder with the file(s):
 
    ```bash
-   sudo apt install ./byakaron_0.1.2_amd64.deb
+   sudo apt install ./byakaron_0.1.3_amd64.deb
    # optional:
-   sudo apt install ./byakaron-data_0.1.2_all.deb
+   sudo apt install ./byakaron-data_0.1.3_all.deb
    ```
 
    Use `apt`, not `dpkg -i`. If an older Byakaron `.deb` is already installed,

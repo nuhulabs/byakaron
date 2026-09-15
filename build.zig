@@ -52,6 +52,24 @@ const app_cflags: []const []const u8 = &.{
     "-D__time64_t=long",
 };
 
+const fcitx_cflags: []const []const u8 = &.{
+    "-std=gnu11",
+    "-Wall",
+    "-Wextra",
+    "-fPIC",
+    "-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_64",
+    "-DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_64",
+};
+
+const fcitx_cxxflags: []const []const u8 = &.{
+    "-std=c++17",
+    "-Wall",
+    "-Wextra",
+    "-fPIC",
+    "-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_64",
+    "-DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_64",
+};
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -318,7 +336,7 @@ pub fn build(b: *std.Build) void {
             });
             fcitx.root_module.addCSourceFiles(.{
                 .files = &.{"platforms/linux/Fcitx5/engine.cpp"},
-                .flags = &.{ "-std=c++17", "-Wall", "-Wextra", "-fPIC" },
+                .flags = fcitx_cxxflags,
             });
             fcitx.root_module.addCSourceFiles(.{
                 .files = &.{
@@ -327,7 +345,7 @@ pub fn build(b: *std.Build) void {
                     "platforms/linux/Core/autocomplete.c",
                     "platforms/linux/Core/prefs.c",
                 },
-                .flags = &.{ "-std=gnu11", "-Wall", "-Wextra", "-fPIC" },
+                .flags = fcitx_cflags,
             });
             fcitx.root_module.addIncludePath(b.path("src/ffi"));
             fcitx.root_module.addIncludePath(b.path("platforms/linux/Core"));
@@ -337,6 +355,10 @@ pub fn build(b: *std.Build) void {
             fcitx.root_module.linkSystemLibrary("glib-2.0", .{});
             fcitx.root_module.linkSystemLibrary("gio-2.0", .{});
             fcitx.root_module.linkLibrary(fcitx_core);
+            // Host libFcitx5Core was built against this machine's glibc. Same
+            // reason as the engine: a 2.31-targeted addon must not require the
+            // host library's newer undefined symbols.
+            fcitx.linker_allow_shlib_undefined = true;
 
             // Fcitx loads $libdir/fcitx5/byakaron.so (no lib prefix), from the
             // Library=byakaron field in the addon conf.
