@@ -43,14 +43,23 @@ if ! flatpak info "runtime/${RUNTIME}/$(uname -m)/${BRANCH}" >/dev/null 2>&1; th
     exit 1
 fi
 
-SRC_APP="$REPO_ROOT/zig-out/bin/byakaron"
-if [[ ! -x "$SRC_APP" ]]; then
-    echo ">>> Building the GTK app (ReleaseFast)..."
-    ( cd "$REPO_ROOT" && \
-      PATH="$HOME/.local/bin:/usr/local/bin:$PATH" \
-      zig build linux-app -Doptimize=ReleaseFast )
+# Always rebuild against glibc 2.31. Skipping when zig-out/bin already exists
+# is how a 24.04-only binary got shipped before.
+# shellcheck source=compat.sh
+source "$SCRIPT_DIR/compat.sh"
+COMPAT_TARGET="$(byk_compat_target_flag)"
+if [[ -z "$COMPAT_TARGET" ]]; then
+    echo "error: no glibc 2.31 Zig target for $(uname -m)" >&2
+    exit 1
 fi
+
+echo ">>> Building the GTK3 app (ReleaseFast, $COMPAT_TARGET)..."
+( cd "$REPO_ROOT" && \
+  PATH="$HOME/.local/bin:/usr/local/bin:$PATH" \
+  zig build linux-app -Doptimize=ReleaseFast $COMPAT_TARGET )
+SRC_APP="$REPO_ROOT/zig-out/bin/byakaron"
 [[ -x "$SRC_APP" ]] || { echo "error: $SRC_APP missing" >&2; exit 1; }
+byk_assert_glibc_20_04 "$SRC_APP"
 
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR" "$PROJECT_ROOT/build"

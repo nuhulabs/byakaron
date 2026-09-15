@@ -26,6 +26,9 @@ static const struct {
     { "bangla",            "বাংলা" },
     { "amar sonar bangla", "আমার সনার বাংলা" },
     { "kemon acho",        "কেমন আছ" },
+    { "bhalO",             "ভালো" },
+    { "achO",              "আছো" },
+    { "kO",                "কো" },
 };
 static const int CASE_COUNT = (int)(sizeof CASES / sizeof CASES[0]);
 
@@ -219,6 +222,53 @@ int main(void)
             if (!phonetic_digit) failures++;
             g_free(pre);
             g_free(o.commit);
+
+            /* Shift must not commit: Avro o-kar is Shift+o (`bhalO` → ভালো).
+             * IBus delivers Shift_L as its own key event before the letter. */
+            o = byk_composer_key(c, 0xff1b, 0); /* Escape */
+            g_free(o.commit);
+            byk_composer_set_phonetic_only(c, FALSE);
+            {
+                const char bhal[] = { 'b', 'h', 'a', 'l' };
+                for (i = 0; i < 4; i++) {
+                    o = byk_composer_key(c, (guint) bhal[i], 0);
+                    g_free(o.commit);
+                }
+            }
+            o = byk_composer_key(c, 0xffe1, 0); /* Shift_L */
+            const int shift_pass = o.action == BYK_ACT_PASS;
+            printf("  %-4s %-28s -> %s\n", shift_pass ? "ok" : "FAIL",
+                   "Shift does not commit", shift_pass ? "pass" : "commit");
+            if (!shift_pass) failures++;
+            g_free(o.commit);
+            o = byk_composer_key(c, (guint) 'O', 0);
+            g_free(o.commit);
+            pre = byk_composer_preedit(c);
+            const int bhalo_ok = pre && strcmp(pre, "ভালো") == 0;
+            printf("  %-4s %-28s -> %s\n", bhalo_ok ? "ok" : "FAIL",
+                   "bhal + Shift + O is ভালো", pre ? pre : "(null)");
+            if (!bhalo_ok) failures++;
+            g_free(pre);
+
+            o = byk_composer_key(c, 0xff1b, 0);
+            g_free(o.commit);
+            {
+                const char ach[] = { 'a', 'c', 'h' };
+                for (i = 0; i < 3; i++) {
+                    o = byk_composer_key(c, (guint) ach[i], 0);
+                    g_free(o.commit);
+                }
+            }
+            o = byk_composer_key(c, 0xffe5, 0); /* Caps_Lock */
+            g_free(o.commit);
+            o = byk_composer_key(c, (guint) 'O', 0);
+            g_free(o.commit);
+            pre = byk_composer_preedit(c);
+            const int acho_ok = pre && strcmp(pre, "আছো") == 0;
+            printf("  %-4s %-28s -> %s\n", acho_ok ? "ok" : "FAIL",
+                   "ach + Caps + O is আছো", pre ? pre : "(null)");
+            if (!acho_ok) failures++;
+            g_free(pre);
         }
         byk_composer_free(c);
     }
