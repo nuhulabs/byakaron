@@ -19,6 +19,13 @@
 #define BYK_KEY_KP_0         0xffb0
 #define BYK_KEY_KP_9         0xffb9
 #define BYK_KEY_KP_1         0xffb1
+#define BYK_KEY_Scroll_Lock  0xff14
+#define BYK_KEY_Mode_switch  0xff7e
+#define BYK_KEY_Num_Lock     0xff7f
+#define BYK_KEY_Shift_L      0xffe1
+#define BYK_KEY_Hyper_R      0xffee
+#define BYK_KEY_ISO_Level3_Shift 0xfe03
+#define BYK_KEY_ISO_Level5_Shift 0xfe11
 
 struct _BykComposer {
     GString *latin;
@@ -138,6 +145,36 @@ byk_latin_char (guint keyval)
     if (keyval >= BYK_KEY_KP_0 && keyval <= BYK_KEY_KP_9)
         return (gchar) ('0' + (keyval - BYK_KEY_KP_0));
     return (gchar) keyval;
+}
+
+/*
+ * Shift / Caps / AltGr / NumLock produce no character. IBus and Fcitx5 still
+ * send them as key events. The fallback below commits on any unknown key, so
+ * treating Shift as "unknown" would commit `bhal` and then type `O` as a new
+ * word: ভালও instead of ভালো. macOS never sees a bare Shift that way.
+ */
+static inline gboolean
+byk_is_modifier_key (guint keyval)
+{
+    if (keyval >= BYK_KEY_Shift_L && keyval <= BYK_KEY_Hyper_R)
+        return TRUE;
+    switch (keyval) {
+    case 0xfe01: /* ISO_Lock */
+    case 0xfe02: /* ISO_Level2_Latch */
+    case BYK_KEY_ISO_Level3_Shift:
+    case 0xfe04: /* ISO_Level3_Latch */
+    case 0xfe05: /* ISO_Level3_Lock */
+    case 0xfe08: /* ISO_Group_Shift */
+    case BYK_KEY_ISO_Level5_Shift:
+    case 0xfe12: /* ISO_Level5_Latch */
+    case 0xfe13: /* ISO_Level5_Lock */
+    case BYK_KEY_Mode_switch:
+    case BYK_KEY_Num_Lock:
+    case BYK_KEY_Scroll_Lock:
+        return TRUE;
+    default:
+        return FALSE;
+    }
 }
 
 static inline gint
@@ -292,6 +329,9 @@ byk_composer_key (BykComposer *self, guint keyval, guint mods)
         return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
 
     if (self->transliterator == NULL)
+        return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
+
+    if (byk_is_modifier_key (keyval))
         return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
 
     if (mods & BYK_MOD_SHORTCUT) {
