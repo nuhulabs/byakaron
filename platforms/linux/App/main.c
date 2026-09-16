@@ -5,10 +5,10 @@
  * not, so this app stays on GTK3 rather than shipping a UI that only the
  * newest release can open.
  *
- * Three jobs, in the order a new user meets them: get the keyboard added to
- * their input sources (Setup), let them try Bangla before it is (Write), and
- * check spelling in text they already have (Spelling), with the Avro key map
- * as a reference (Layout).
+ * Three jobs: check spelling in text they already have (Spelling), look up
+ * the Avro key map (Layout), and get the keyboard added to their input
+ * sources (Setup). Navigation is the header-bar menu; the window opens on
+ * Spelling.
  *
  * It is a separate process from byakaron-ibus and shares nothing with it at
  * runtime but the Core/ glue and the Zig engine underneath — the input method
@@ -34,11 +34,6 @@ static const char BYK_CSS[] =
     ".error { color: #c01c28; }\n"
     ".card { border: 1px solid alpha(@theme_fg_color, 0.15); border-radius: 8px; }\n"
     ".byk-bangla { font-size: 1.25rem; }\n"
-    ".byk-latin { font-family: monospace; font-size: 1.1rem; padding: 10px 12px; }\n"
-    ".byk-preedit { font-size: 1.6rem; padding: 8px 12px; }\n"
-    ".byk-preedit-filled { color: @theme_selected_bg_color; }\n"
-    ".byk-candidates { padding: 0 12px 10px 12px; }\n"
-    ".byk-candidate { font-size: 1.1rem; }\n"
     ".byk-layout-glyph { font-size: 1.15rem; }\n"
     ".byk-toast { padding: 8px 12px; }\n"
     ".byk-step {\n"

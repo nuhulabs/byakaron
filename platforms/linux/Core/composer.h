@@ -2,7 +2,7 @@
  * Display-agnostic word composer: latin buffer, Avro transliteration, candidate
  * list, and the key policy both IME front-ends share.
  *
- * IBus, Fcitx5 and the GTK Write page disagree about panels and how text is
+ * IBus and Fcitx5 disagree about panels and how text is
  * committed. They agree on what a keystroke *means* — Space commits what was
  * typed, 1–9 pick a candidate while the list is showing, digits otherwise
  * become Bangla numerals, and printable punctuation stays in the latin buffer

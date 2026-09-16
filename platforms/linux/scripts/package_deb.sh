@@ -17,7 +17,7 @@ set -euo pipefail
 # (Ubuntu 20.04), so the keyboard runs on 20.04, 22.04, and 24.04.
 #
 # The GTK3 settings app is in this same package (Activities → Byakaron).
-# GTK3 3.24 is on Ubuntu 20.04, 22.04, and 24.04, so Write / Spelling /
+# GTK3 3.24 is on Ubuntu 20.04, 22.04, and 24.04, so Spelling /
 # Layout / Setup run on all three.
 #
 # They install with:
@@ -30,7 +30,7 @@ set -euo pipefail
 # then Super+Space to switch. Or open the Byakaron app → Setup.
 # ---------------------------------------------------------------------------
 
-VERSION="${VERSION:-0.1.3}"
+VERSION="${VERSION:-0.1.4}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -113,7 +113,7 @@ if [[ -x "$SRC_APP" ]]; then
         "$STAGE/usr/share/metainfo/dev.nuhu.labs.Byakaron.metainfo.xml"
 
     BYK_SETUP="/usr/bin/byakaron"
-    echo ">>> Packaged the GTK app (Write / Spelling / Layout / Setup)"
+    echo ">>> Packaged the GTK app (Spelling / Layout / Setup)"
 else
     echo "note: $SRC_APP missing — the package will have the engine only"
     echo "      install libgtk-3-dev to include the app"
