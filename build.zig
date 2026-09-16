@@ -246,7 +246,6 @@ pub fn build(b: *std.Build) void {
             .files = &.{
                 "platforms/linux/App/main.c",
                 "platforms/linux/App/window.c",
-                "platforms/linux/App/typing.c",
                 "platforms/linux/App/spelling.c",
                 "platforms/linux/App/layout.c",
                 "platforms/linux/App/setup.c",

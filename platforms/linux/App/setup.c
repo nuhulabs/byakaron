@@ -355,7 +355,7 @@ byk_setup_page_build_prefs (BykSetupPage *self)
     GtkWidget *list = NULL;
     GtkWidget *group = byk_framed_list (
         "Preferences",
-        "These apply to the input method and to Write as soon as you change them.",
+        "These apply to the input method as soon as you change them.",
         &list);
 
     GtkWidget *suggest_sw = NULL;

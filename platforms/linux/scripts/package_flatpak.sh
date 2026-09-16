@@ -5,7 +5,7 @@ set -euo pipefail
 # Bundle the GTK companion app as a Flatpak. The IBus engine is NOT in here:
 # ibus-daemon only scans /usr/share/ibus/component, which a sandbox cannot
 # register. The .deb remains the IME artefact; this is the app for people who
-# want Write / Spelling / Layout / Setup from Flathub-style packaging.
+# want Spelling / Layout / Setup from Flathub-style packaging.
 #
 #     bash platforms/linux/scripts/package_flatpak.sh
 #
