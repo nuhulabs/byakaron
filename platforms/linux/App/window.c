@@ -3,7 +3,6 @@
 #include "layout.h"
 #include "setup.h"
 #include "spelling.h"
-#include "typing.h"
 
 struct _BykWindow {
     GtkApplicationWindow parent_instance;
@@ -92,13 +91,43 @@ on_visible_page_changed (GObject *object, GParamSpec *pspec, gpointer user_data)
 
 /* ── construction ────────────────────────────────────────────────────────── */
 
-static GtkWidget *
-byk_window_build_menu_button (void)
+static void
+on_page_activate (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
-    GMenu *menu = g_menu_new ();
+    BykWindow *self = BYK_WINDOW (user_data);
+    const gchar *name;
 
-    g_menu_append (menu, "_About Byakaron", "app.about");
-    g_menu_append (menu, "_Quit", "app.quit");
+    if (parameter == NULL)
+        return;
+
+    name = g_variant_get_string (parameter, NULL);
+    gtk_stack_set_visible_child_name (GTK_STACK (self->stack), name);
+    g_simple_action_set_state (action, parameter);
+}
+
+static GtkWidget *
+byk_window_build_menu_button (BykWindow *self)
+{
+    GSimpleAction *page = g_simple_action_new_stateful (
+        "page", G_VARIANT_TYPE_STRING, g_variant_new_string ("spelling"));
+    g_signal_connect (page, "activate", G_CALLBACK (on_page_activate), self);
+    g_action_map_add_action (G_ACTION_MAP (self), G_ACTION (page));
+    g_object_unref (page);
+
+    GMenu *pages = g_menu_new ();
+    g_menu_append (pages, "_Spelling", "win.page::spelling");
+    g_menu_append (pages, "_Layout", "win.page::layout");
+    g_menu_append (pages, "_Setup", "win.page::setup");
+
+    GMenu *app_items = g_menu_new ();
+    g_menu_append (app_items, "_About Byakaron", "app.about");
+    g_menu_append (app_items, "_Quit", "app.quit");
+
+    GMenu *menu = g_menu_new ();
+    g_menu_append_section (menu, NULL, G_MENU_MODEL (pages));
+    g_menu_append_section (menu, NULL, G_MENU_MODEL (app_items));
+    g_object_unref (pages);
+    g_object_unref (app_items);
 
     GtkWidget *button = gtk_menu_button_new ();
     gtk_button_set_image (GTK_BUTTON (button),
@@ -112,28 +141,14 @@ byk_window_build_menu_button (void)
 }
 
 static void
-byk_stack_add (GtkStack *stack,
-               GtkWidget *child,
-               const gchar *name,
-               const gchar *title,
-               const gchar *icon)
-{
-    gtk_stack_add_titled (stack, child, name, title);
-    gtk_container_child_set (GTK_CONTAINER (stack), child, "icon-name", icon, NULL);
-}
-
-static void
 byk_window_init (BykWindow *self)
 {
-    /* Both are cheap enough for the main thread: the transliterator builds its
-     * matching trie once, and the lexicon costs ~7ms and is shared process-wide
-     * after the first call. Only spell.db is worth a thread. */
-    self->engines.transliterator = byk_transliterator_new ();
-    self->engines.autocomplete = byk_autocomplete_new ();
+    /* Spelling is the only page that needs an engine handle, and spell.db is
+     * the only one worth a thread. Write is gone, so the transliterator and
+     * lexicon stay unused. */
+    self->engines.transliterator = NULL;
+    self->engines.autocomplete = NULL;
     self->engines.spell = NULL;
-
-    if (self->engines.transliterator == NULL)
-        g_warning ("byakaron: could not create the transliteration engine");
 
     self->stack = gtk_stack_new ();
     gtk_stack_set_transition_type (GTK_STACK (self->stack),
@@ -141,25 +156,21 @@ byk_window_init (BykWindow *self)
     self->spell_page = byk_spell_page_new (&self->engines);
     self->setup_page = byk_setup_page_new ();
 
-    byk_stack_add (GTK_STACK (self->stack), byk_typing_page_new (),
-                   "write", "Write", "input-keyboard-symbolic");
-    byk_stack_add (GTK_STACK (self->stack), self->spell_page,
-                   "spelling", "Spelling", "tools-check-spelling-symbolic");
-    byk_stack_add (GTK_STACK (self->stack), byk_layout_page_new (),
-                   "layout", "Layout", "view-grid-symbolic");
-    byk_stack_add (GTK_STACK (self->stack), self->setup_page,
-                   "setup", "Setup", "emblem-system-symbolic");
+    gtk_stack_add_titled (GTK_STACK (self->stack), self->spell_page,
+                          "spelling", "Spelling");
+    gtk_stack_add_titled (GTK_STACK (self->stack), byk_layout_page_new (),
+                          "layout", "Layout");
+    gtk_stack_add_titled (GTK_STACK (self->stack), self->setup_page,
+                          "setup", "Setup");
+    gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "spelling");
 
     g_signal_connect (self->stack, "notify::visible-child",
                       G_CALLBACK (on_visible_page_changed), self);
 
-    GtkWidget *switcher = gtk_stack_switcher_new ();
-    gtk_stack_switcher_set_stack (GTK_STACK_SWITCHER (switcher), GTK_STACK (self->stack));
-
     GtkWidget *header = gtk_header_bar_new ();
     gtk_header_bar_set_show_close_button (GTK_HEADER_BAR (header), TRUE);
-    gtk_header_bar_set_custom_title (GTK_HEADER_BAR (header), switcher);
-    gtk_header_bar_pack_end (GTK_HEADER_BAR (header), byk_window_build_menu_button ());
+    gtk_header_bar_pack_end (GTK_HEADER_BAR (header),
+                             byk_window_build_menu_button (self));
 
     GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
     gtk_box_pack_start (GTK_BOX (box), self->stack, TRUE, TRUE, 0);

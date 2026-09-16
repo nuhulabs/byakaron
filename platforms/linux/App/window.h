@@ -1,6 +1,7 @@
 /*
- * The application window: one GtkStack over the four pages, and the owner
- * of the engine handles they all borrow.
+ * The application window: a GtkStack over Spelling, Layout, and Setup, with
+ * those pages in the header-bar menu. Owner of the engine handles the pages
+ * borrow.
  */
 #ifndef BYAKARON_LINUX_APP_WINDOW_H
 #define BYAKARON_LINUX_APP_WINDOW_H
