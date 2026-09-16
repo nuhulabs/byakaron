@@ -1,10 +1,8 @@
 /*
  * Vocabulary shared by every page of the Byakaron GTK app.
  *
- * The three engine handles are created once by the window and borrowed by the
- * pages, because they are expensive in different ways: the transliterator
- * builds a matching trie, the autocomplete lexicon costs ~7ms and ~11MB, and
- * spell.db is a 364MB file. Nothing here owns them.
+ * The spell engine handle is created once by the window and borrowed by the
+ * Spelling page, because spell.db is a 364MB file. Nothing here owns it.
  */
 #ifndef BYAKARON_LINUX_APP_H
 #define BYAKARON_LINUX_APP_H
@@ -18,7 +16,7 @@
 G_BEGIN_DECLS
 
 #define BYK_APP_ID      "dev.nuhu.labs.Byakaron"
-#define BYK_APP_VERSION "0.1.3"
+#define BYK_APP_VERSION "0.1.4"
 
 #define BYK_URL_GITHUB  "https://github.com/nuhulabs/byakaron"
 #define BYK_URL_WEBSITE "https://nuhulabs.github.io"

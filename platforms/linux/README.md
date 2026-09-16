@@ -49,7 +49,7 @@ build system and no extra language runtime on the per-keystroke path.
 
 ```
 platforms/linux/
-├── App/         GTK3 app (main, window, typing, spelling, layout, setup)
+├── App/         GTK3 app (main, window, spelling, layout, setup)
 ├── Core/        Shared C glue over byakaron.h (composer, transliterator,
 │                autocomplete, spell, prefs) — IBus, Fcitx5, and the app all use this
 ├── Keyboard/    The IBus engine (thin shell over Core/composer)
@@ -65,7 +65,7 @@ platforms/linux/
 latin → Bangla, `autocomplete.c` for candidates, `spell.c` for spell.db,
 `composer.c` for the key policy (what Space, 1–9, digits, punctuation, Escape
 mean), and `prefs.c` for the GSettings schema both the engine and the app
-read. IBus, Fcitx5, and the GTK Write page are thin shells over that composer
+read. IBus and Fcitx5 are thin shells over that composer
 so they cannot drift. All four hand back plain `g_malloc`'d memory, so the Zig
 ownership rule (`byakaron_string_free`) and the JSON the ABI returns stop there
 and nothing above them has to know.
@@ -232,19 +232,14 @@ the `page_up`, `page_down`, and `candidate_clicked` handlers the panel drives.
 
 A separate process (`byakaron`) from the engine, sharing only `Core/` and the
 Zig core underneath. The input method works whether or not it is installed or
-running. Four pages behind a `GtkStackSwitcher`:
+running. Three pages, reached from the header-bar menu; the window opens on
+**Spelling**:
 
 | Page | What it is for |
 | --- | --- |
-| **Write** | Compose Bangla here, before the input source is added |
 | **Spelling** | Editor with an issue list, red squiggles, and Fix All |
 | **Layout** | The Avro key map, as a lookup table |
 | **Setup** | Keyboard status, the steps to add it, a typing cheat-sheet |
-
-**Write is a composer, not a two-pane converter.** It calls the same
-`Core/composer.c` as IBus and Fcitx5, so Space, 1–9, digits, punctuation, and
-Escape cannot mean something different here than they do in other apps.
-Composing a word at a time also makes this an honest preview of the keyboard.
 
 **Spelling checks per word, not with `byakaron_spell_check`.** The bulk call
 returns a JSON array of tokens with nested suggestion objects; the app already
@@ -261,7 +256,7 @@ output. Worth revisiting when the n-grams exist.
 
 `spell.db` is 364 MB, so it opens on a worker thread. The window paints
 immediately, the Spelling page shows a loading state, and with no database at
-all it says so and stays out of the way — the other three pages need nothing
+all it says so and stays out of the way — Layout and Setup need nothing
 installed.
 
 **Setup checks two things, because on Linux they are two steps.** Whether the
@@ -273,13 +268,12 @@ since `g_settings_new` aborts the process on an unknown schema and that schema
 does not exist outside GNOME.
 
 **Preferences that change behaviour live in GSettings**
-(`dev.nuhu.labs.Byakaron`). Setup exposes two switches that the IBus engine,
-the Fcitx5 addon, and Write all read:
+(`dev.nuhu.labs.Byakaron`). Setup exposes two switches that the IBus engine
+and the Fcitx5 addon read:
 
 - **Suggest words** — off is phonetic-only: transliteration stays, the
   dictionary candidate list is hidden, so 1–9 type Bangla numerals.
-- **Horizontal candidate list** — the IME panel; Write always shows a row of
-  chips.
+- **Horizontal candidate list** — the IME panel.
 
 Flipping a switch updates the engine without a restart. There are no
 macOS-style "Coming soon" toggles. Candidates-per-page stays at 9 because
@@ -410,7 +404,7 @@ It now emits two packages when `spell.db` is present:
 does not look for a dictionary that is not in Ubuntu's archive. Spell-check
 needs the data package next to it: `sudo apt install ./byakaron-data_*.deb`.
 
-The settings app is GTK3, so Write / Spelling / Layout / Setup run on
+The settings app is GTK3, so Spelling / Layout / Setup run on
 **Ubuntu 20.04, 22.04, and 24.04** — the same releases as the keyboard.
 
 ### Installing the `.deb` on another Ubuntu PC
@@ -418,14 +412,14 @@ The settings app is GTK3, so Write / Spelling / Layout / Setup run on
 The keyboard is built for **glibc 2.31**, so it works on **Ubuntu 20.04, 22.04,
 and 24.04** (64-bit Intel/AMD). It will not run on ARM unless you rebuild there.
 
-1. Send `platforms/linux/build/byakaron_0.1.3_amd64.deb` — keyboard **and** the
-   GTK app. Optionally also send `byakaron-data_0.1.3_all.deb` (spell-check).
+1. Send `platforms/linux/build/byakaron_0.1.4_amd64.deb` — keyboard **and** the
+   GTK app. Optionally also send `byakaron-data_0.1.4_all.deb` (spell-check).
 2. On their machine, in the folder with the file(s):
 
    ```bash
-   sudo apt install ./byakaron_0.1.3_amd64.deb
+   sudo apt install ./byakaron_0.1.4_amd64.deb
    # optional:
-   sudo apt install ./byakaron-data_0.1.3_all.deb
+   sudo apt install ./byakaron-data_0.1.4_all.deb
    ```
 
    Use `apt`, not `dpkg -i`. If an older Byakaron `.deb` is already installed,
