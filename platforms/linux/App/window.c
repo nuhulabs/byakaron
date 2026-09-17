@@ -10,6 +10,7 @@ struct _BykWindow {
     BykEngines engines;
 
     GtkWidget *stack;
+    GtkWidget *header;
     GtkWidget *spell_page;
     GtkWidget *setup_page;
 };
@@ -81,8 +82,32 @@ static void
 on_visible_page_changed (GObject *object, GParamSpec *pspec, gpointer user_data)
 {
     BykWindow *self = BYK_WINDOW (user_data);
+    const gchar *name;
+    GtkWidget *child;
+    gchar *title = NULL;
+    GAction *action;
     (void) object;
     (void) pspec;
+
+    name = gtk_stack_get_visible_child_name (GTK_STACK (self->stack));
+    if (name == NULL)
+        name = "spelling";
+
+    child = gtk_stack_get_child_by_name (GTK_STACK (self->stack), name);
+    if (child != NULL)
+        gtk_container_child_get (GTK_CONTAINER (self->stack), child,
+                                 "title", &title, NULL);
+    if (self->header != NULL)
+        gtk_header_bar_set_title (GTK_HEADER_BAR (self->header),
+                                  (title != NULL && title[0] != '\0')
+                                      ? title
+                                      : "Spelling");
+    g_free (title);
+
+    action = g_action_map_lookup_action (G_ACTION_MAP (self), "page");
+    if (action != NULL)
+        g_simple_action_set_state (G_SIMPLE_ACTION (action),
+                                   g_variant_new_string (name));
 
     if (self->setup_page != NULL &&
         gtk_stack_get_visible_child (GTK_STACK (self->stack)) == self->setup_page)
@@ -95,14 +120,12 @@ static void
 on_page_activate (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
     BykWindow *self = BYK_WINDOW (user_data);
-    const gchar *name;
+    (void) action;
 
     if (parameter == NULL)
         return;
 
-    name = g_variant_get_string (parameter, NULL);
-    gtk_stack_set_visible_child_name (GTK_STACK (self->stack), name);
-    g_simple_action_set_state (action, parameter);
+    byk_window_show_page (self, g_variant_get_string (parameter, NULL));
 }
 
 static GtkWidget *
@@ -162,20 +185,23 @@ byk_window_init (BykWindow *self)
                           "layout", "Layout");
     gtk_stack_add_titled (GTK_STACK (self->stack), self->setup_page,
                           "setup", "Setup");
-    gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "spelling");
 
     g_signal_connect (self->stack, "notify::visible-child",
                       G_CALLBACK (on_visible_page_changed), self);
 
-    GtkWidget *header = gtk_header_bar_new ();
-    gtk_header_bar_set_show_close_button (GTK_HEADER_BAR (header), TRUE);
-    gtk_header_bar_pack_end (GTK_HEADER_BAR (header),
+    self->header = gtk_header_bar_new ();
+    gtk_header_bar_set_show_close_button (GTK_HEADER_BAR (self->header), TRUE);
+    gtk_header_bar_set_title (GTK_HEADER_BAR (self->header), "Spelling");
+    gtk_header_bar_set_subtitle (GTK_HEADER_BAR (self->header), "Byakaron");
+    gtk_header_bar_pack_end (GTK_HEADER_BAR (self->header),
                              byk_window_build_menu_button (self));
+
+    byk_window_show_page (self, "spelling");
 
     GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
     gtk_box_pack_start (GTK_BOX (box), self->stack, TRUE, TRUE, 0);
 
-    gtk_window_set_titlebar (GTK_WINDOW (self), header);
+    gtk_window_set_titlebar (GTK_WINDOW (self), self->header);
     gtk_container_add (GTK_CONTAINER (self), box);
 
     gtk_window_set_title (GTK_WINDOW (self), "Byakaron");
@@ -195,6 +221,7 @@ byk_window_dispose (GObject *object)
     /* Tells a spell.db load still in flight that its page is gone. */
     self->spell_page = NULL;
     self->setup_page = NULL;
+    self->header = NULL;
 
     /* Pages only borrow these, and they are all gone by the time dispose has
      * chained up, so freeing after that is the safe order. */
@@ -209,6 +236,18 @@ static void
 byk_window_class_init (BykWindowClass *klass)
 {
     G_OBJECT_CLASS (klass)->dispose = byk_window_dispose;
+}
+
+void
+byk_window_show_page (BykWindow *self, const gchar *name)
+{
+    g_return_if_fail (BYK_IS_WINDOW (self));
+
+    if (name == NULL || *name == '\0' ||
+        gtk_stack_get_child_by_name (GTK_STACK (self->stack), name) == NULL)
+        name = "spelling";
+
+    gtk_stack_set_visible_child_name (GTK_STACK (self->stack), name);
 }
 
 GtkWidget *

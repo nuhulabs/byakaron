@@ -233,7 +233,8 @@ the `page_up`, `page_down`, and `candidate_clicked` handlers the panel drives.
 A separate process (`byakaron`) from the engine, sharing only `Core/` and the
 Zig core underneath. The input method works whether or not it is installed or
 running. Three pages, reached from the header-bar menu; the window opens on
-**Spelling**:
+**Spelling** and the header title names the current page. `byakaron --page=setup`
+opens Setup (that is what the IBus panel **Preferences** button runs).
 
 | Page | What it is for |
 | --- | --- |
@@ -306,7 +307,7 @@ because the user launches it, unlike the engine, which only `ibus-daemon` ever
 execs. It is skipped rather than fatal when those libraries are missing, since
 the input method is the product. Installing it also fills in the component
 XML's `<setup>` element, which is what makes the IBus panel's **Preferences**
-button open the app; that element stays empty otherwise, because a setup command
+button open `byakaron --page=setup`; that element stays empty otherwise, because a setup command
 pointing at a missing binary gives a button that silently does nothing.
 
 After installing:
@@ -412,14 +413,14 @@ The settings app is GTK3, so Spelling / Layout / Setup run on
 The keyboard is built for **glibc 2.31**, so it works on **Ubuntu 20.04, 22.04,
 and 24.04** (64-bit Intel/AMD). It will not run on ARM unless you rebuild there.
 
-1. Send `platforms/linux/build/byakaron_0.1.4_amd64.deb` — keyboard **and** the
-   GTK app. Optionally also send `byakaron-data_0.1.4_all.deb` (spell-check).
+1. Send `platforms/linux/build/byakaron_0.1.5_amd64.deb` — keyboard **and** the
+   GTK app. Optionally also send `byakaron-data_0.1.5_all.deb` (spell-check).
 2. On their machine, in the folder with the file(s):
 
    ```bash
-   sudo apt install ./byakaron_0.1.4_amd64.deb
+   sudo apt install ./byakaron_0.1.5_amd64.deb
    # optional:
-   sudo apt install ./byakaron-data_0.1.4_all.deb
+   sudo apt install ./byakaron-data_0.1.5_all.deb
    ```
 
    Use `apt`, not `dpkg -i`. If an older Byakaron `.deb` is already installed,
