@@ -8,7 +8,7 @@
  * Three jobs: check spelling in text they already have (Spelling), look up
  * the Avro key map (Layout), and get the keyboard added to their input
  * sources (Setup). Navigation is the header-bar menu; the window opens on
- * Spelling.
+ * Spelling. `byakaron --page=setup` (IBus Preferences) opens Setup instead.
  *
  * It is a separate process from byakaron-ibus and shares nothing with it at
  * runtime but the Core/ glue and the Zig engine underneath — the input method
@@ -48,6 +48,8 @@ static const char *const AUTHORS[] = { "Nurul Huda (Apon)", NULL };
 
 static const GOptionEntry extra_options[] = {
     { "version", 'V', 0, G_OPTION_ARG_NONE, NULL, "Print the version and exit", NULL },
+    { "page", 'p', 0, G_OPTION_ARG_STRING, NULL,
+      "Open this page: spelling, layout, or setup", "PAGE" },
     { NULL }
 };
 
@@ -129,16 +131,37 @@ on_startup (GApplication *app, gpointer user_data)
 /* Single-instance: a second launch (from the IBus panel's preferences button,
  * say) raises the window that is already open instead of opening another. */
 static void
+byk_app_present (GtkApplication *app, const gchar *page)
+{
+    GtkWindow *window = gtk_application_get_active_window (app);
+
+    if (window == NULL)
+        window = GTK_WINDOW (byk_window_new (app));
+    if (page != NULL && page[0] != '\0')
+        byk_window_show_page (BYK_WINDOW (window), page);
+
+    gtk_window_present (window);
+}
+
+static void
 on_activate (GApplication *app, gpointer user_data)
 {
     (void) user_data;
+    byk_app_present (GTK_APPLICATION (app), NULL);
+}
 
-    GtkWindow *window = gtk_application_get_active_window (GTK_APPLICATION (app));
+/* First launch and `byakaron --page=setup` (IBus Preferences) both land here
+ * because G_APPLICATION_HANDLES_COMMAND_LINE is set. */
+static gint
+on_command_line (GApplication *app, GApplicationCommandLine *cmdline, gpointer user_data)
+{
+    GVariantDict *options = g_application_command_line_get_options_dict (cmdline);
+    const gchar *page = NULL;
+    (void) user_data;
 
-    if (window == NULL)
-        window = GTK_WINDOW (byk_window_new (GTK_APPLICATION (app)));
-
-    gtk_window_present (window);
+    g_variant_dict_lookup (options, "page", "&s", &page);
+    byk_app_present (GTK_APPLICATION (app), page);
+    return 0;
 }
 
 int
@@ -146,13 +169,15 @@ main (int argc, char *argv[])
 {
     byk_prefs_init_schema_dir ();
 
-    GtkApplication *app = gtk_application_new (BYK_APP_ID, G_APPLICATION_FLAGS_NONE);
+    GtkApplication *app = gtk_application_new (BYK_APP_ID,
+                                               G_APPLICATION_HANDLES_COMMAND_LINE);
 
     g_application_add_main_option_entries (G_APPLICATION (app), extra_options);
     g_signal_connect (app, "handle-local-options",
                       G_CALLBACK (on_handle_local_options), NULL);
     g_signal_connect (app, "startup", G_CALLBACK (on_startup), NULL);
     g_signal_connect (app, "activate", G_CALLBACK (on_activate), NULL);
+    g_signal_connect (app, "command-line", G_CALLBACK (on_command_line), NULL);
 
     const int status = g_application_run (G_APPLICATION (app), argc, argv);
     g_object_unref (app);

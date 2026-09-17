@@ -18,6 +18,6 @@
   <keywords><keyword>Bangla</keyword><keyword>Bengali</keyword><keyword>বাংলা</keyword><keyword>phonetic</keyword><keyword>Avro</keyword><keyword>spell</keyword><keyword>keyboard</keyword></keywords>
   <icon type="stock">byakaron</icon>
   <url type="homepage">https://github.com/nuhulabs/byakaron</url>
-  <releases><release version="0.1.4" date="2026-09-16"/></releases>
+  <releases><release version="0.1.5" date="2026-09-17"/></releases>
   <content_rating type="oars-1.1"/>
 </component>

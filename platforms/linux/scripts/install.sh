@@ -103,7 +103,7 @@ if [[ -x "$SRC_APP" ]]; then
     echo ">>> Installed: $DESKTOPDIR/dev.nuhu.labs.Byakaron.desktop"
     echo ">>> Installed: $METAINFO_DIR/dev.nuhu.labs.Byakaron.metainfo.xml"
 
-    BYK_SETUP="$BINDIR/byakaron"
+    BYK_SETUP="$BINDIR/byakaron --page=setup"
 fi
 
 SPELL_DB="$REPO_ROOT/packages/data/spell.db"

@@ -47,6 +47,11 @@ printf '%s\n' "$help_out" | grep -q -- '--version' || {
     printf '%s\n' "$help_out" >&2
     exit 1
 }
+printf '%s\n' "$help_out" | grep -q -- '--page' || {
+    echo "error: byakaron --help does not mention --page" >&2
+    printf '%s\n' "$help_out" >&2
+    exit 1
+}
 ver_out="$("$REPO_ROOT/zig-out/bin/byakaron" --version)"
 expected="byakaron $(sed -n 's/^#define BYK_APP_VERSION "\(.*\)"/\1/p' "$PROJECT_ROOT/App/app.h")"
 printf '%s\n' "$ver_out" | grep -qx "$expected" || {
