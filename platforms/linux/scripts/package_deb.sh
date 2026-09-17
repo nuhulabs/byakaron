@@ -30,7 +30,7 @@ set -euo pipefail
 # then Super+Space to switch. Or open the Byakaron app → Setup.
 # ---------------------------------------------------------------------------
 
-VERSION="${VERSION:-0.1.4}"
+VERSION="${VERSION:-0.1.5}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -112,7 +112,7 @@ if [[ -x "$SRC_APP" ]]; then
     install -m 644 "$PROJECT_ROOT/Resources/dev.nuhu.labs.Byakaron.metainfo.xml" \
         "$STAGE/usr/share/metainfo/dev.nuhu.labs.Byakaron.metainfo.xml"
 
-    BYK_SETUP="/usr/bin/byakaron"
+    BYK_SETUP="/usr/bin/byakaron --page=setup"
     echo ">>> Packaged the GTK app (Spelling / Layout / Setup)"
 else
     echo "note: $SRC_APP missing — the package will have the engine only"
