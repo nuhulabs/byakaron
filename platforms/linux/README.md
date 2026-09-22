@@ -417,9 +417,10 @@ One command installs the keyboard, the GTK app, and spell-check:
 curl -fsSL https://nuhulabs.com/byakaron/install.sh | sudo bash
 ```
 
-That downloads the `.deb` for this CPU (amd64 or arm64) from GitHub Releases
-and runs `apt`. Then **add the input source** (installing the package is not
-enough): Settings → Keyboard → Input Sources → **+** → **Bangla** →
+That downloads the `.deb` for this CPU (amd64 or arm64) from the public
+[nuhulabs/Byakaron-Assets](https://github.com/nuhulabs/Byakaron-Assets/releases)
+releases and runs `apt`. Then **add the input source** (installing the package
+is not enough): Settings → Keyboard → Input Sources → **+** → **Bangla** →
 **Byakaron (Bangla Phonetic)** → Add. Switch with Super+Space.
 
 To build and share a `.deb` yourself instead:
