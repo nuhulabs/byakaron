@@ -1,0 +1,66 @@
+# Build the shareable Linux .deb (engine + app + spell.db) and attach it to a
+# GitHub Release so `curl -fsSL https://nuhulabs.com/byakaron/install.sh | sudo bash`
+# can download it.
+#
+# Runs when a release is published, or by hand (workflow_dispatch).
+name: linux-deb
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  package:
+    name: .deb (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: amd64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: System packages
+        run: sudo bash platforms/linux/scripts/setup_deps.sh
+
+      - name: Install Zig 0.17.0-dev.1422
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0-dev.1422+e863bf3be
+
+      - name: Clone ziex at the path build.zig.zon expects
+        run: |
+          dest="${GITHUB_WORKSPACE}/../../ziex-dev/ziex"
+          mkdir -p "$(dirname "$dest")"
+          git clone --filter=blob:none https://github.com/ziex-dev/ziex.git "$dest"
+          git -C "$dest" checkout --detach 29f9a85b
+
+      - name: Package .deb
+        run: bash platforms/linux/scripts/package_deb.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: byakaron-${{ matrix.arch }}
+          path: platforms/linux/build/byakaron_*_${{ matrix.arch }}.deb
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=(platforms/linux/build/byakaron_*_${{ matrix.arch }}.deb)
+          [[ ${#files[@]} -gt 0 ]]
+          gh release upload "${{ github.event.release.tag_name }}" "${files[@]}" --clobber
