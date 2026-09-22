@@ -3,12 +3,13 @@
 #
 #   curl -fsSL https://nuhulabs.com/byakaron/install.sh | sudo bash
 #
-# Downloads the matching .deb from GitHub Releases and installs it with apt
-# (keyboard, GTK app, spell-check). Adding the input source in Settings is
-# still a separate click — the package cannot do that for the user.
+# Downloads the matching .deb from the public Byakaron-Assets GitHub Releases
+# (nuhulabs/byakaron is private, so anonymous curl cannot use that repo) and
+# installs it with apt (keyboard, GTK app, spell-check). Adding the input
+# source in Settings is still a separate click — the package cannot do that.
 set -euo pipefail
 
-REPO="${BYAKARON_REPO:-nuhulabs/byakaron}"
+REPO="${BYAKARON_REPO:-nuhulabs/Byakaron-Assets}"
 VERSION_FALLBACK="0.1.5"
 
 die() { echo "error: $*" >&2; exit 1; }
@@ -62,7 +63,7 @@ echo ">>> Byakaron for Linux ($ARCH)"
 echo ">>> downloading"
 curl -fL --progress-bar -o "$deb" "$deb_url" \
     || die "could not download $deb_url
-       publish a GitHub release with byakaron_*_${ARCH}.deb, or set BYAKARON_DEB_URL"
+       publish byakaron_*_${ARCH}.deb on nuhulabs/Byakaron-Assets (public), or set BYAKARON_DEB_URL"
 
 echo ">>> installing (keyboard + app + spell-check)"
 export DEBIAN_FRONTEND=noninteractive
