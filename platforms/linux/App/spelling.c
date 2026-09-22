@@ -26,6 +26,7 @@ struct _BykSpellPage {
 
     GtkWidget *issues_list;
     GtkWidget *issues_title;
+    GtkWidget *issues_hint;
     GtkWidget *issues_empty; /* shown instead of the list when there is nothing */
     GtkWidget *empty_icon;
     GtkWidget *empty_label;
@@ -57,6 +58,7 @@ G_DEFINE_TYPE (BykSpellPage, byk_spell_page, GTK_TYPE_BOX)
 
 static void byk_spell_page_check (BykSpellPage *self);
 static void byk_spell_page_select (BykSpellPage *self, gint index);
+static void on_suggestion_clicked (GtkButton *button, gpointer user_data);
 
 /* ── tokenising ──────────────────────────────────────────────────────────── */
 
@@ -149,6 +151,121 @@ byk_spell_page_update_status (BykSpellPage *self, gint words)
     gtk_widget_set_sensitive (self->fix_all, issues > 0);
 }
 
+/* The list starts with no_show_all so the first window show_all leaves it
+ * hidden. gtk_widget_show_all on *this* widget is also skipped while that
+ * flag is set, which is why only the "Issues (N)" heading used to appear. */
+static void
+byk_spell_page_set_list_visible (BykSpellPage *self, gboolean visible)
+{
+    if (visible) {
+        gtk_widget_set_no_show_all (self->issues_list, FALSE);
+        gtk_widget_show_all (self->issues_list);
+        gtk_widget_hide (self->issues_empty);
+    } else {
+        gtk_widget_set_no_show_all (self->issues_list, TRUE);
+        gtk_widget_hide (self->issues_list);
+        gtk_widget_show (self->issues_empty);
+    }
+}
+
+static void
+byk_spell_page_fill_suggestions_box (BykSpellPage *self, GtkWidget *box, const BykIssue *issue)
+{
+    byk_container_clear (box);
+    if (issue == NULL)
+        return;
+
+    GtkWidget *hint = gtk_label_new ("Replace with");
+    byk_css_add (hint, "dim-label");
+    byk_css_add (hint, "caption");
+    gtk_label_set_xalign (GTK_LABEL (hint), 0.0);
+    byk_box_add (box, hint);
+
+    gchar **words = byk_spell_page_suggest (self, issue);
+    if (words == NULL || words[0] == NULL) {
+        GtkWidget *none = gtk_label_new ("No suggestions");
+        byk_css_add (none, "dim-label");
+        gtk_label_set_xalign (GTK_LABEL (none), 0.0);
+        byk_box_add (box, none);
+    } else {
+        for (guint i = 0; words[i] != NULL; i++) {
+            GtkWidget *button = gtk_button_new_with_label (words[i]);
+            gtk_widget_set_halign (button, GTK_ALIGN_FILL);
+            byk_css_add (button, "byk-candidate");
+            g_signal_connect (button, "clicked",
+                              G_CALLBACK (on_suggestion_clicked), self);
+            byk_box_add (box, button);
+        }
+    }
+    g_strfreev (words);
+}
+
+static void
+byk_spell_page_show_row_suggestions (BykSpellPage *self, gint index)
+{
+    for (gint i = 0;; i++) {
+        GtkListBoxRow *row = gtk_list_box_get_row_at_index (GTK_LIST_BOX (self->issues_list), i);
+        if (row == NULL)
+            break;
+
+        GtkWidget *box = g_object_get_data (G_OBJECT (row), "byk-suggestions");
+        if (box == NULL)
+            continue;
+
+        if (i == index) {
+            const BykIssue *issue = byk_spell_page_issue (self, index);
+            byk_spell_page_fill_suggestions_box (self, box, issue);
+            gtk_widget_set_no_show_all (box, FALSE);
+            gtk_widget_show_all (box);
+        } else {
+            byk_container_clear (box);
+            gtk_widget_set_no_show_all (box, TRUE);
+            gtk_widget_hide (box);
+        }
+    }
+}
+
+static GtkWidget *
+byk_spell_page_make_issue_row (const BykIssue *issue, gint index)
+{
+    GtkWidget *icon = gtk_image_new_from_icon_name ("dialog-warning-symbolic",
+                                                    GTK_ICON_SIZE_BUTTON);
+    byk_css_add (icon, "warning");
+
+    GtkWidget *label = gtk_label_new (issue->word);
+    gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_MIDDLE);
+    gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+    gtk_widget_set_hexpand (label, TRUE);
+    gtk_widget_set_tooltip_text (label, issue->word);
+    byk_css_add (label, "byk-bangla");
+    byk_css_add (label, "byk-issue-word");
+
+    GtkWidget *header = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_set_margin_top (header, 8);
+    gtk_widget_set_margin_bottom (header, 8);
+    gtk_widget_set_margin_start (header, 12);
+    gtk_widget_set_margin_end (header, 12);
+    byk_box_add (header, icon);
+    byk_box_add_expand (header, label);
+
+    GtkWidget *suggestions = gtk_box_new (GTK_ORIENTATION_VERTICAL, 4);
+    gtk_widget_set_margin_start (suggestions, 12);
+    gtk_widget_set_margin_end (suggestions, 12);
+    gtk_widget_set_margin_bottom (suggestions, 8);
+    byk_hide_until_shown (suggestions);
+
+    GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+    byk_box_add (box, header);
+    byk_box_add (box, suggestions);
+
+    GtkWidget *listrow = gtk_list_box_row_new ();
+    gtk_container_add (GTK_CONTAINER (listrow), box);
+    gtk_widget_set_tooltip_text (listrow, "Show suggestions");
+    g_object_set_data (G_OBJECT (listrow), "byk-index", GINT_TO_POINTER (index));
+    g_object_set_data (G_OBJECT (listrow), "byk-suggestions", suggestions);
+    return listrow;
+}
+
 static void
 byk_spell_page_fill_list (BykSpellPage *self)
 {
@@ -156,38 +273,24 @@ byk_spell_page_fill_list (BykSpellPage *self)
 
     for (guint i = 0; i < self->found->len; i++) {
         const BykIssue *issue = &g_array_index (self->found, BykIssue, i);
-
-        GtkWidget *label = gtk_label_new (issue->word);
-        gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_MIDDLE);
-        gtk_label_set_xalign (GTK_LABEL (label), 0.0);
-        gtk_widget_set_hexpand (label, TRUE);
-
-        GtkWidget *box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
-        gtk_widget_set_margin_top (box, 8);
-        gtk_widget_set_margin_bottom (box, 8);
-        gtk_widget_set_margin_start (box, 12);
-        gtk_widget_set_margin_end (box, 12);
-        byk_box_add_expand (box, label);
-
-        GtkWidget *listrow = gtk_list_box_row_new ();
-        gtk_container_add (GTK_CONTAINER (listrow), box);
-        g_object_set_data (G_OBJECT (listrow), "byk-index", GINT_TO_POINTER ((gint) i));
-        gtk_list_box_insert (GTK_LIST_BOX (self->issues_list), listrow, -1);
+        gtk_list_box_insert (GTK_LIST_BOX (self->issues_list),
+                             byk_spell_page_make_issue_row (issue, (gint) i), -1);
     }
 
     const gboolean any = self->found->len > 0;
-    if (any)
-        gtk_widget_show_all (self->issues_list);
-    else
-        gtk_widget_hide (self->issues_list);
-    gtk_widget_set_visible (self->issues_empty, !any);
+    byk_spell_page_set_list_visible (self, any);
 
     if (any) {
         gchar *title = g_strdup_printf ("Issues (%u)", self->found->len);
         gtk_label_set_text (GTK_LABEL (self->issues_title), title);
         g_free (title);
+        gtk_label_set_text (GTK_LABEL (self->issues_hint), "Click a word for suggestions");
+        gtk_widget_set_no_show_all (self->issues_hint, FALSE);
+        gtk_widget_show (self->issues_hint);
     } else {
         gtk_label_set_text (GTK_LABEL (self->issues_title), "Issues");
+        gtk_widget_set_no_show_all (self->issues_hint, TRUE);
+        gtk_widget_hide (self->issues_hint);
     }
 
     /* Empty text and clean text are different kinds of nothing, and saying so
@@ -295,7 +398,6 @@ byk_spell_page_check_now (BykSpellPage *self)
 
 /* ── correction bar ──────────────────────────────────────────────────────── */
 
-static void on_suggestion_clicked (GtkButton *button, gpointer user_data);
 static void on_ignore_clicked (GtkButton *button, gpointer user_data);
 
 static void
@@ -331,6 +433,7 @@ byk_spell_page_select (BykSpellPage *self, gint index)
     const BykIssue *issue = byk_spell_page_issue (self, index);
 
     self->selected = issue != NULL ? index : -1;
+    byk_spell_page_show_row_suggestions (self, self->selected);
 
     if (issue == NULL) {
         gtk_revealer_set_reveal_child (GTK_REVEALER (self->correction), FALSE);
@@ -561,9 +664,18 @@ byk_spell_page_build_sidebar (BykSpellPage *self)
     byk_css_add (self->issues_title, "heading");
     gtk_label_set_xalign (GTK_LABEL (self->issues_title), 0.0);
     gtk_widget_set_margin_top (self->issues_title, 12);
-    gtk_widget_set_margin_bottom (self->issues_title, 6);
+    gtk_widget_set_margin_bottom (self->issues_title, 2);
     gtk_widget_set_margin_start (self->issues_title, 12);
     gtk_widget_set_margin_end (self->issues_title, 12);
+
+    self->issues_hint = gtk_label_new ("Click a word for suggestions");
+    byk_css_add (self->issues_hint, "dim-label");
+    byk_css_add (self->issues_hint, "caption");
+    gtk_label_set_xalign (GTK_LABEL (self->issues_hint), 0.0);
+    gtk_widget_set_margin_bottom (self->issues_hint, 6);
+    gtk_widget_set_margin_start (self->issues_hint, 12);
+    gtk_widget_set_margin_end (self->issues_hint, 12);
+    byk_hide_until_shown (self->issues_hint);
 
     self->issues_list = gtk_list_box_new ();
     gtk_list_box_set_selection_mode (GTK_LIST_BOX (self->issues_list), GTK_SELECTION_SINGLE);
@@ -589,7 +701,7 @@ byk_spell_page_build_sidebar (BykSpellPage *self)
     byk_box_add (self->issues_empty, self->empty_label);
 
     GtkWidget *stack = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
-    byk_box_add (stack, self->issues_list);
+    byk_box_add_expand (stack, self->issues_list);
     byk_box_add_expand (stack, self->issues_empty);
 
     GtkWidget *scroller = byk_scroller (stack, GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
@@ -597,6 +709,7 @@ byk_spell_page_build_sidebar (BykSpellPage *self)
 
     GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
     byk_box_add (box, self->issues_title);
+    byk_box_add (box, self->issues_hint);
     byk_box_add_expand (box, scroller);
 
     return box;

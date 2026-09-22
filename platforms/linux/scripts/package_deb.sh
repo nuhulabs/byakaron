@@ -2,17 +2,16 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Build shareable .deb packages of Byakaron.
+# Build one shareable .deb of Byakaron.
 #
 #     bash platforms/linux/scripts/package_deb.sh
 #
 # Produces:
 #     platforms/linux/build/byakaron_<version>_<arch>.deb
-#         engine + GTK app + GSettings schema (no spell.db)
-#     platforms/linux/build/byakaron-data_<version>_all.deb
-#         spell.db only (364 MB), when packages/data/spell.db exists
+#         IBus engine + GTK app + GSettings schema + spell.db
 #
-# The recipient does NOT need Zig, ziex, the source, or any -dev package.
+# One file is a complete install: typing Bangla *and* spell-check. The
+# recipient does NOT need Zig, ziex, the source, or any -dev package.
 # The engine binary links the Zig core statically and is built for glibc 2.31
 # (Ubuntu 20.04), so the keyboard runs on 20.04, 22.04, and 24.04.
 #
@@ -23,7 +22,6 @@ set -euo pipefail
 # They install with:
 #
 #     sudo apt install ./byakaron_<version>_<arch>.deb
-#     sudo apt install ./byakaron-data_<version>_all.deb   # optional, spell-check
 #
 # Installing the .deb only registers the engine. They still have to add it:
 # Settings → Keyboard → Input Sources → + → Bangla → Byakaron → Add,
@@ -121,9 +119,17 @@ fi
 
 SPELL_DB="$REPO_ROOT/packages/data/spell.db"
 if [[ ! -f "$SPELL_DB" ]]; then
-    echo "note: $SPELL_DB missing — byakaron-data.deb will not be built"
-    echo "      build it with: bash platforms/linux/scripts/prepare_spell_db.sh"
+    echo ">>> spell.db missing — building it so the .deb is a complete install..."
+    bash "$SCRIPT_DIR/prepare_spell_db.sh"
 fi
+[[ -f "$SPELL_DB" ]] || {
+    echo "error: $SPELL_DB was not produced" >&2
+    echo "       run: bash platforms/linux/scripts/prepare_spell_db.sh" >&2
+    exit 1
+}
+install -d "$STAGE/usr/share/byakaron"
+install -m 644 "$SPELL_DB" "$STAGE/usr/share/byakaron/spell.db"
+echo ">>> Packaged spell.db ($(du -h "$SPELL_DB" | cut -f1))"
 
 sed -e "s|@BYK_EXEC@|/usr/libexec/byakaron-ibus|g" \
     -e "s|@BYK_ICON@|/usr/share/icons/hicolor/scalable/apps/byakaron.svg|g" \
@@ -185,6 +191,10 @@ if [[ -x "$SRC_APP" ]]; then
         [[ -f "$required" ]] || { echo "error: missing $required" >&2; exit 1; }
     done
 fi
+[[ -f "$STAGE/usr/share/byakaron/spell.db" ]] || {
+    echo "error: staged package is missing spell.db" >&2
+    exit 1
+}
 
 # --- 3. Control metadata ---------------------------------------------------
 cat > "$STAGE/DEBIAN/control" <<EOF
@@ -195,10 +205,10 @@ Maintainer: Byakaron contributors <byakaron@example.com>
 Installed-Size: $INSTALLED_KB
 Depends: libc6 (>= 2.31), ibus (>= 1.5), libibus-1.0-5, libglib2.0-0t64 | libglib2.0-0, libgtk-3-0t64 | libgtk-3-0
 Recommends: ibus-gtk3 | ibus-gtk, ibus-gtk4
-Suggests: byakaron-data, fcitx5
-Replaces: byakaron-app
-Conflicts: byakaron-app
-Provides: byakaron-app
+Suggests: fcitx5
+Replaces: byakaron-app, byakaron-data
+Conflicts: byakaron-app, byakaron-data
+Provides: byakaron-app, byakaron-data
 Section: utils
 Priority: optional
 Homepage: https://github.com/nuhulabs/byakaron
@@ -207,9 +217,8 @@ Description: Bangla phonetic input method (IBus engine)
  first-class input source in GNOME Settings -> Keyboard -> Input Sources and
  switches with Super+Space, powered by the shared Byakaron Zig engine.
  .
- Includes a GTK3 companion app (Write, Spelling, Layout, Setup) that runs
- on Ubuntu 20.04, 22.04, and 24.04. Spell-check is the separate
- byakaron-data package.
+ Includes a GTK3 companion app (Spelling, Layout, Setup) that runs on
+ Ubuntu 20.04, 22.04, and 24.04, and the spell-check dictionary.
 EOF
 
 # --- 4. Maintainer scripts: refresh the ibus registry ----------------------
@@ -296,55 +305,17 @@ chmod 755 "$STAGE/DEBIAN/postrm"
 rm -f "$OUT"
 dpkg-deb --root-owner-group --build "$STAGE" "$OUT"
 
+rm -f "$PROJECT_ROOT/build/${PKG}-data_${VERSION}_all.deb"
+
 echo
 echo "=== Built: $OUT ==="
 echo "    size: $(du -h "$OUT" | cut -f1)"
-
-# --- 6. Optional data package (spell.db only) ------------------------------
-# Kept off the engine .deb so a typing-only install is not a ~60 MB download
-# of dictionary. Architecture: all — the file is the same on every CPU.
-if [[ -f "$SPELL_DB" ]]; then
-    DATA_PKG="${PKG}-data"
-    DATA_STAGE="$BUILD_DIR/${DATA_PKG}_${VERSION}_all"
-    DATA_OUT="$PROJECT_ROOT/build/${DATA_PKG}_${VERSION}_all.deb"
-
-    rm -rf "$DATA_STAGE"
-    install -d "$DATA_STAGE/DEBIAN"
-    install -d "$DATA_STAGE/usr/share/byakaron"
-    install -m 644 "$SPELL_DB" "$DATA_STAGE/usr/share/byakaron/spell.db"
-
-    DATA_KB="$(du -sk "$DATA_STAGE/usr" | cut -f1)"
-    cat > "$DATA_STAGE/DEBIAN/control" <<EOF
-Package: $DATA_PKG
-Version: $VERSION
-Architecture: all
-Maintainer: Byakaron contributors <byakaron@example.com>
-Installed-Size: $DATA_KB
-Depends: byakaron (>= $VERSION)
-Section: utils
-Priority: optional
-Homepage: https://github.com/nuhulabs/byakaron
-Description: Spell-check dictionary for Byakaron
- The spell.db used by the Byakaron GTK app's Spelling page. The input method
- types Bangla without this package; only spell-check needs it.
-EOF
-
-    rm -f "$DATA_OUT"
-    dpkg-deb --root-owner-group --build "$DATA_STAGE" "$DATA_OUT"
-
-    echo "=== Built: $DATA_OUT ==="
-    echo "    size: $(du -h "$DATA_OUT" | cut -f1)"
-fi
-
 echo
-echo "Share the keyboard+app .deb. Both work on Ubuntu 20.04, 22.04, and"
-echo "24.04 (amd64). Do not use 'dpkg -i' — apt is what installs ibus and GTK."
+echo "Share this one file. It is a complete install (keyboard, app, spell-check)"
+echo "on Ubuntu 20.04, 22.04, and 24.04. Do not use 'dpkg -i' — apt is what"
+echo "installs ibus and GTK."
 echo
 echo "    sudo apt install ./$(basename "$OUT")"
-if [[ -f "$SPELL_DB" ]]; then
-    echo "    sudo apt install ./$(basename "$DATA_OUT")"
-    echo "    # data package is optional (spell-check dictionary only)"
-fi
 echo
 echo "Then they MUST add it (installing the package is not enough):"
 echo "    Settings -> Keyboard -> Input Sources -> +"
@@ -352,7 +323,7 @@ echo "    Choose Bangla, then Byakaron (Bangla Phonetic) -> Add"
 echo "    Super+Space to switch"
 echo "    Or open the Byakaron app from Activities -> Setup"
 echo
-echo "If they previously installed an older byakaron .deb:"
+echo "If they previously installed an older byakaron / byakaron-data .deb:"
 echo "    sudo apt remove byakaron byakaron-app byakaron-data"
 echo "then install the new file. Remove with:"
-echo "    sudo apt remove $PKG $PKG-data"
+echo "    sudo apt remove $PKG"

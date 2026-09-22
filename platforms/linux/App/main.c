@@ -36,6 +36,8 @@ static const char BYK_CSS[] =
     ".byk-bangla { font-size: 1.25rem; }\n"
     ".byk-layout-glyph { font-size: 1.15rem; }\n"
     ".byk-toast { padding: 8px 12px; }\n"
+    ".byk-issue-word { font-weight: 600; }\n"
+    ".byk-candidate { padding: 4px 8px; }\n"
     ".byk-step {\n"
     "  min-width: 24px; min-height: 24px;\n"
     "  border-radius: 999px;\n"

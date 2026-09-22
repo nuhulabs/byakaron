@@ -51,6 +51,17 @@ as_build_user() {
     fi
 }
 
+# Earlier `sudo zig` (or an unprivileged sandbox) can leave .zig-cache owned by
+# root/nobody. The build below runs as $BUILD_USER, and Zig then dies with
+# manifest_create AccessDenied. We still have root here, so give the cache back.
+if [[ "$BUILD_USER" != "root" ]]; then
+    USER_HOME="$(getent passwd "$BUILD_USER" | cut -d: -f6)"
+    for d in "$REPO_ROOT/.zig-cache" "$REPO_ROOT/zig-out" "${USER_HOME:+$USER_HOME/.cache/zig}"; do
+        [[ -e "$d" ]] || continue
+        chown -R "$BUILD_USER:" "$d"
+    done
+fi
+
 echo ">>> Building byakaron-ibus${COMPAT_TARGET:+ ($COMPAT_TARGET)}..."
 as_build_user "zig build linux -Doptimize=ReleaseFast ${COMPAT_TARGET}"
 
@@ -60,12 +71,17 @@ byk_assert_glibc_20_04 "$SRC_BIN"
 
 # The GTK app is optional: the input method is the product, and this keeps a
 # box with only libibus-dev able to install a working keyboard.
+# Do not ship a leftover zig-out binary when this run did not rebuild it —
+# that is how an older app keeps showing after install.sh.
 SRC_APP="$REPO_ROOT/zig-out/bin/byakaron"
+APP_BUILT=0
 if pkg-config --exists gtk+-3.0 2>/dev/null; then
     echo ">>> Building the GTK3 app..."
-    as_build_user "zig build linux-app -Doptimize=ReleaseFast ${COMPAT_TARGET}" || true
-    if [[ -x "$SRC_APP" ]]; then
+    if as_build_user "zig build linux-app -Doptimize=ReleaseFast ${COMPAT_TARGET}"; then
+        APP_BUILT=1
         byk_assert_glibc_20_04 "$SRC_APP"
+    else
+        echo "warning: linux-app build failed — leaving /usr/bin/byakaron unchanged" >&2
     fi
 else
     echo "note: gtk+-3.0 not found — skipping the GTK app"
@@ -92,7 +108,7 @@ echo ">>> Installed: $SCHEMADIR/dev.nuhu.labs.Byakaron.gschema.xml"
 # The app goes in /usr/bin, not /usr/libexec: it is something the user launches,
 # unlike the engine, which only ibus-daemon ever execs.
 BYK_SETUP=""
-if [[ -x "$SRC_APP" ]]; then
+if [[ "$APP_BUILT" -eq 1 && -x "$SRC_APP" ]]; then
     install -m 755 "$SRC_APP" "$BINDIR/byakaron"
     echo ">>> Installed: $BINDIR/byakaron"
 
