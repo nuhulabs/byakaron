@@ -90,7 +90,9 @@ This branch is pinned to **`0.17.0-dev.1422+e863bf3be`**. Newer builds do not
 work — Zig master renamed the `Optimize` enum, which breaks the `ziex`
 dependency. Note that `.tool-versions` says `zig master`; that is stale.
 
-ziglang.org prunes old dev builds, so fetch it from a community mirror:
+ziglang.org prunes old dev builds, so fetch it from a community mirror.
+On **ARM64** (Raspberry Pi / Ubuntu `aarch64`), use the aarch64 tarball instead
+— see [ARM.md](ARM.md).
 
 ```bash
 V=0.17.0-dev.1422+e863bf3be
@@ -396,41 +398,45 @@ add **Byakaron** in the Fcitx5 config tool.
 An IBus engine has to live in `/usr/share/ibus/component` so the session
 daemon can spawn it. A sandboxed Flatpak cannot register there, which is why
 ibus-avro ships as a `.deb` too. `scripts/package_deb.sh` is the IME artefact.
-It now emits two packages when `spell.db` is present:
+It emits one package:
 
-- `byakaron_*.deb` — engine, GTK app, GSettings schema. Typing Bangla. Small.
-- `byakaron-data_*.deb` — `spell.db` only (`Architecture: all`). Spell-check.
+- `byakaron_*.deb` — engine, GTK app, GSettings schema, and `spell.db`.
+  Typing Bangla and spell-check.
 
-`byakaron` Suggests `byakaron-data` so a typing-only `apt install ./byakaron_*.deb`
-does not look for a dictionary that is not in Ubuntu's archive. Spell-check
-needs the data package next to it: `sudo apt install ./byakaron-data_*.deb`.
+One `apt install` of that file is a complete install. Upgrading from the older
+split (`byakaron` + `byakaron-data`) replaces `byakaron-data` automatically.
 
 The settings app is GTK3, so Spelling / Layout / Setup run on
 **Ubuntu 20.04, 22.04, and 24.04** — the same releases as the keyboard.
 
-### Installing the `.deb` on another Ubuntu PC
+### Installing on Ubuntu
+
+One command installs the keyboard, the GTK app, and spell-check:
+
+```bash
+curl -fsSL https://nuhulabs.com/byakaron/install.sh | sudo bash
+```
+
+That downloads the `.deb` for this CPU (amd64 or arm64) from GitHub Releases
+and runs `apt`. Then **add the input source** (installing the package is not
+enough): Settings → Keyboard → Input Sources → **+** → **Bangla** →
+**Byakaron (Bangla Phonetic)** → Add. Switch with Super+Space.
+
+To build and share a `.deb` yourself instead:
 
 The keyboard is built for **glibc 2.31**, so it works on **Ubuntu 20.04, 22.04,
-and 24.04** (64-bit Intel/AMD). It will not run on ARM unless you rebuild there.
+and 24.04**. On ARM, see [ARM.md](ARM.md).
 
-1. Send `platforms/linux/build/byakaron_0.1.5_amd64.deb` — keyboard **and** the
-   GTK app. Optionally also send `byakaron-data_0.1.5_all.deb` (spell-check).
-2. On their machine, in the folder with the file(s):
+```bash
+bash platforms/linux/scripts/package_deb.sh
+sudo apt install ./platforms/linux/build/byakaron_0.1.5_amd64.deb
+```
 
-   ```bash
-   sudo apt install ./byakaron_0.1.5_amd64.deb
-   # optional:
-   sudo apt install ./byakaron-data_0.1.5_all.deb
-   ```
-
-   Use `apt`, not `dpkg -i`. If an older Byakaron `.deb` is already installed,
-   remove it first: `sudo apt remove byakaron byakaron-app byakaron-data`.
-3. **Adding the input source is a separate step.** Open Settings → Keyboard →
-   Input Sources → **+** → pick **Bangla** → **Byakaron (Bangla Phonetic)** →
-   Add. Or launch the **Byakaron** app and use the Setup page.
-4. Switch with **Super+Space** and type `ami` then Space — you should get `আমি `.
-5. If Byakaron is missing from the Bangla list, log out and back in, then
-   try step 3 again.
+Use `apt`, not `dpkg -i`. If an older Byakaron `.deb` is already installed
+(`byakaron`, `byakaron-app`, or `byakaron-data`), remove it first:
+`sudo apt remove byakaron byakaron-app byakaron-data`. Then add the input
+source (step above) and switch with Super+Space. If Byakaron is missing from
+the Bangla list, log out and back in.
 
 The companion GTK app *can* live in a sandbox:
 
@@ -465,8 +471,8 @@ For the Wayland check, log out and choose **GNOME on Wayland** at the display ma
   (~159k words). Wikipedia n-grams are empty until someone later runs the full
   `word_triplets.csv` export; lookups and SymSpell suggestions still work.
   `install.sh` copies it to `/usr/share/byakaron/spell.db` when the file is
-  present. The shareable `.deb` keeps it in `byakaron-data` instead, so a
-  typing-only install stays small. Override the path
+  present. The shareable `.deb` ships it in the same package as the keyboard
+  and app, so one file is a complete install. Override the path
   with `BYAKARON_SPELL_DB` for development. The input method types without it;
   only spell-check needs it. Candidates use the compiled-in lexicon.
 - `platforms/linux/build/` is generated output and is git-ignored.
