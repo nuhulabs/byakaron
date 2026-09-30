@@ -275,6 +275,24 @@ main (void)
     send_string (ctx, "amar sonar bangla ");
     check ("committed text", g_committed, "আমার সনার বাংলা ");
 
+    /* PREEDIT_COMMIT: the daemon commits the pending word, the engine only
+     * forgets it. Both committing would read আমিআমি. */
+    g_print ("reset / focus-out commit the pending word once:\n");
+    reset_state (ctx);
+    send_string (ctx, "ami");
+    ibus_input_context_reset (ctx);
+    pump ();
+    check ("reset commits once", g_committed, "আমি");
+    check ("preedit cleared", g_preedit, "");
+
+    reset_state (ctx);
+    send_string (ctx, "bangla");
+    ibus_input_context_focus_out (ctx);
+    pump ();
+    check ("focus-out commits once", g_committed, "বাংলা");
+    ibus_input_context_focus_in (ctx);
+    pump ();
+
     /*
      * Candidates. Only the first candidate is pinned to a literal, because that
      * one is a real guarantee: the word actually typed has to rank first, or

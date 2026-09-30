@@ -71,7 +71,15 @@ byk_engine_sync_preedit (BykEngine *self)
     ibus_text_append_attribute (text, IBUS_ATTR_TYPE_UNDERLINE,
                                 IBUS_ATTR_UNDERLINE_SINGLE, 0, -1);
     const guint cursor = (guint) g_utf8_strlen (bangla, -1);
-    ibus_engine_update_preedit_text (IBUS_ENGINE (self), text, cursor, TRUE);
+    /*
+     * PREEDIT_COMMIT: on a click, focus-out, reset or source switch, IBus
+     * itself commits this text — the GTK module on button-press, before the
+     * text view moves its cursor. Committing from the engine instead arrives
+     * over D-Bus *after* the move, so typing "ami bangla" and clicking at the
+     * start of the line produced বাংলাআমি.
+     */
+    ibus_engine_update_preedit_text_with_mode (IBUS_ENGINE (self), text, cursor, TRUE,
+                                               IBUS_ENGINE_PREEDIT_COMMIT);
     byk_engine_sync_candidates (self);
     g_free (bangla);
 }
@@ -186,27 +194,37 @@ byk_engine_candidate_clicked (IBusEngine *engine,
                       byk_composer_select (BYK_ENGINE (engine)->composer, index));
 }
 
+/*
+ * Focus-out / reset / disable: the pending word has already been committed by
+ * IBus (PREEDIT_COMMIT, see byk_engine_sync_preedit), so only forget it here.
+ * Committing it again would type the word twice.
+ */
+static void
+byk_engine_discard (BykEngine *self)
+{
+    BykOutcome outcome = byk_composer_flush (self->composer);
+    g_free (outcome.commit);
+    byk_engine_hide_candidates (self);
+}
+
 static void
 byk_engine_focus_out (IBusEngine *engine)
 {
-    byk_engine_apply (BYK_ENGINE (engine),
-                      byk_composer_flush (BYK_ENGINE (engine)->composer));
+    byk_engine_discard (BYK_ENGINE (engine));
     IBUS_ENGINE_CLASS (byk_engine_parent_class)->focus_out (engine);
 }
 
 static void
 byk_engine_reset (IBusEngine *engine)
 {
-    byk_engine_apply (BYK_ENGINE (engine),
-                      byk_composer_flush (BYK_ENGINE (engine)->composer));
+    byk_engine_discard (BYK_ENGINE (engine));
     IBUS_ENGINE_CLASS (byk_engine_parent_class)->reset (engine);
 }
 
 static void
 byk_engine_disable (IBusEngine *engine)
 {
-    byk_engine_apply (BYK_ENGINE (engine),
-                      byk_composer_flush (BYK_ENGINE (engine)->composer));
+    byk_engine_discard (BYK_ENGINE (engine));
     IBUS_ENGINE_CLASS (byk_engine_parent_class)->disable (engine);
 }
 
