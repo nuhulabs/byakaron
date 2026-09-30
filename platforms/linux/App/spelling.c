@@ -21,6 +21,7 @@ struct _BykSpellPage {
 
     GtkWidget *stack;    /* loading / missing / ready */
     GtkWidget *editor;
+    GtkWidget *placeholder; /* over the editor while it is empty */
     GtkTextBuffer *buffer;
     GtkTextTag *squiggle;
 
@@ -43,6 +44,8 @@ struct _BykSpellPage {
 
     GtkWidget *fix_all;
     GtkWidget *toast;
+
+    gchar *file_path;       /* last Open / Save path; Save writes here again */
 
     GArray *found;          /* BykIssue, cleared each pass */
     GHashTable *ignored;    /* word -> itself; accepted for this session only */
@@ -149,6 +152,10 @@ byk_spell_page_update_status (BykSpellPage *self, gint words)
     }
 
     gtk_widget_set_sensitive (self->fix_all, issues > 0);
+    if (issues > 0)
+        byk_css_add (self->fix_all, "suggested-action");
+    else
+        byk_css_remove (self->fix_all, "suggested-action");
 }
 
 /* The list starts with no_show_all so the first window show_all leaves it
@@ -591,7 +598,183 @@ on_clear_clicked (GtkButton *button, gpointer user_data)
     (void) button;
 
     gtk_text_buffer_set_text (self->buffer, "", -1);
+    /* Otherwise the next Save would silently empty the file that was open. */
+    g_clear_pointer (&self->file_path, g_free);
     byk_spell_page_check_now (self);
+}
+
+static GtkWindow *
+byk_spell_page_window (BykSpellPage *self)
+{
+    GtkWidget *top = gtk_widget_get_toplevel (GTK_WIDGET (self));
+    return GTK_IS_WINDOW (top) ? GTK_WINDOW (top) : NULL;
+}
+
+/* Copy before freeing: Save passes self->file_path itself back in. */
+static void
+byk_spell_page_set_path (BykSpellPage *self, const gchar *path)
+{
+    gchar *copy = g_strdup (path);
+
+    g_free (self->file_path);
+    self->file_path = copy;
+}
+
+/* "Saved notes.txt": the name says which file, since Save reuses the last one. */
+static void
+byk_spell_page_toast_file (BykSpellPage *self, const gchar *verb, const gchar *path)
+{
+    gchar *name = g_path_get_basename (path);
+    gchar *message = g_strdup_printf ("%s %s", verb, name);
+
+    byk_toast_show (GTK_LABEL (self->toast), message);
+    g_free (message);
+    g_free (name);
+}
+
+static gboolean
+byk_spell_page_write_file (BykSpellPage *self, const gchar *path)
+{
+    GtkTextIter start, end;
+    GError *error = NULL;
+
+    gtk_text_buffer_get_bounds (self->buffer, &start, &end);
+    gchar *text = gtk_text_buffer_get_text (self->buffer, &start, &end, FALSE);
+    const gboolean ok = g_file_set_contents (path, text, -1, &error);
+    g_free (text);
+
+    if (!ok) {
+        gchar *msg = g_strdup_printf ("Could not save: %s", error->message);
+        byk_toast_show (GTK_LABEL (self->toast), msg);
+        g_free (msg);
+        g_error_free (error);
+        return FALSE;
+    }
+
+    /* `path` may be the old file_path, which set_path frees: use the copy. */
+    byk_spell_page_set_path (self, path);
+    byk_spell_page_toast_file (self, "Saved", self->file_path);
+    return TRUE;
+}
+
+static void
+on_open_clicked (GtkButton *button, gpointer user_data)
+{
+    BykSpellPage *self = BYK_SPELL_PAGE (user_data);
+    gchar *path;
+    gchar *contents = NULL;
+    gsize len = 0;
+    GError *error = NULL;
+    (void) button;
+
+    GtkWidget *dialog = gtk_file_chooser_dialog_new (
+        "Open",
+        byk_spell_page_window (self),
+        GTK_FILE_CHOOSER_ACTION_OPEN,
+        "_Cancel", GTK_RESPONSE_CANCEL,
+        "_Open", GTK_RESPONSE_ACCEPT,
+        NULL);
+
+    if (gtk_dialog_run (GTK_DIALOG (dialog)) != GTK_RESPONSE_ACCEPT) {
+        gtk_widget_destroy (dialog);
+        return;
+    }
+
+    path = gtk_file_chooser_get_filename (GTK_FILE_CHOOSER (dialog));
+    gtk_widget_destroy (dialog);
+
+    if (!g_file_get_contents (path, &contents, &len, &error)) {
+        gchar *msg = g_strdup_printf ("Could not open: %s", error->message);
+        byk_toast_show (GTK_LABEL (self->toast), msg);
+        g_free (msg);
+        g_error_free (error);
+        g_free (path);
+        return;
+    }
+
+    if (len > 0 && !g_utf8_validate (contents, (gssize) len, NULL)) {
+        byk_toast_show (GTK_LABEL (self->toast), "File is not UTF-8 text");
+        g_free (contents);
+        g_free (path);
+        return;
+    }
+
+    gtk_text_buffer_set_text (self->buffer, contents, (gint) len);
+    g_free (contents);
+    byk_spell_page_set_path (self, path);
+    byk_spell_page_toast_file (self, "Opened", path);
+    g_free (path);
+    byk_spell_page_check_now (self);
+}
+
+static void
+on_save_clicked (GtkButton *button, gpointer user_data)
+{
+    BykSpellPage *self = BYK_SPELL_PAGE (user_data);
+    (void) button;
+
+    if (self->file_path != NULL) {
+        byk_spell_page_write_file (self, self->file_path);
+        return;
+    }
+
+    GtkWidget *dialog = gtk_file_chooser_dialog_new (
+        "Save",
+        byk_spell_page_window (self),
+        GTK_FILE_CHOOSER_ACTION_SAVE,
+        "_Cancel", GTK_RESPONSE_CANCEL,
+        "_Save", GTK_RESPONSE_ACCEPT,
+        NULL);
+    gtk_file_chooser_set_do_overwrite_confirmation (GTK_FILE_CHOOSER (dialog), TRUE);
+    gtk_file_chooser_set_current_name (GTK_FILE_CHOOSER (dialog), "untitled.txt");
+
+    if (gtk_dialog_run (GTK_DIALOG (dialog)) == GTK_RESPONSE_ACCEPT) {
+        gchar *path = gtk_file_chooser_get_filename (GTK_FILE_CHOOSER (dialog));
+        byk_spell_page_write_file (self, path);
+        g_free (path);
+    }
+    gtk_widget_destroy (dialog);
+}
+
+/* Ctrl+O / Ctrl+S while typing. On the editor rather than as app accels: they
+ * mean nothing on the Layout or Setup pages. */
+static gboolean
+on_editor_key_press (GtkWidget *widget, GdkEventKey *event, gpointer user_data)
+{
+    (void) widget;
+
+    if ((event->state & gtk_accelerator_get_default_mod_mask ()) != GDK_CONTROL_MASK)
+        return GDK_EVENT_PROPAGATE;
+
+    switch (gdk_keyval_to_lower (event->keyval)) {
+    case GDK_KEY_o:
+        on_open_clicked (NULL, user_data);
+        return GDK_EVENT_STOP;
+    case GDK_KEY_s:
+        on_save_clicked (NULL, user_data);
+        return GDK_EVENT_STOP;
+    default:
+        return GDK_EVENT_PROPAGATE;
+    }
+}
+
+/*
+ * The theme's error colour is a dark red that all but disappears under dark
+ * text-view backgrounds, so pick the squiggle colour from the text colour:
+ * light text means a dark theme.
+ */
+static void
+on_editor_style_updated (GtkWidget *editor, gpointer user_data)
+{
+    BykSpellPage *self = BYK_SPELL_PAGE (user_data);
+    GdkRGBA fg, squiggle;
+
+    gtk_style_context_get_color (gtk_widget_get_style_context (editor),
+                                 gtk_widget_get_state_flags (editor), &fg);
+    const gdouble luminance = 0.2126 * fg.red + 0.7152 * fg.green + 0.0722 * fg.blue;
+
+    gdk_rgba_parse (&squiggle, luminance > 0.5 ? "#ff7b63" : "#c01c28");
+    g_object_set (self->squiggle, "underline-rgba", &squiggle, NULL);
 }
 
 static void
@@ -607,10 +790,26 @@ static void
 on_buffer_changed (GtkTextBuffer *buffer, gpointer user_data)
 {
     BykSpellPage *self = BYK_SPELL_PAGE (user_data);
-    (void) buffer;
+
+    /* Not debounced: the hint would sit on top of the first letter typed. */
+    gtk_widget_set_visible (self->placeholder,
+                            gtk_text_buffer_get_char_count (buffer) == 0);
 
     if (!self->syncing)
         byk_spell_page_schedule_check (self);
+}
+
+/* A word being composed in the input method is preedit, not buffer text, so
+ * the buffer is still empty while আমি is on screen. */
+static void
+on_preedit_changed (GtkTextView *view, gchar *preedit, gpointer user_data)
+{
+    BykSpellPage *self = BYK_SPELL_PAGE (user_data);
+
+    gtk_widget_set_visible (self->placeholder,
+                            (preedit == NULL || preedit[0] == '\0') &&
+                            gtk_text_buffer_get_char_count (
+                                gtk_text_view_get_buffer (view)) == 0);
 }
 
 static void
@@ -740,6 +939,14 @@ byk_spell_page_build_toolbar (BykSpellPage *self)
     gtk_widget_set_sensitive (self->fix_all, FALSE);
     g_signal_connect (self->fix_all, "clicked", G_CALLBACK (on_fix_all_clicked), self);
 
+    GtkWidget *open = byk_icon_button ("document-open-symbolic");
+    gtk_widget_set_tooltip_text (open, "Open a text file (Ctrl+O)");
+    g_signal_connect (open, "clicked", G_CALLBACK (on_open_clicked), self);
+
+    GtkWidget *save = byk_icon_button ("document-save-symbolic");
+    gtk_widget_set_tooltip_text (save, "Save to a file (Ctrl+S)");
+    g_signal_connect (save, "clicked", G_CALLBACK (on_save_clicked), self);
+
     GtkWidget *copy = byk_icon_button ("edit-copy-symbolic");
     gtk_widget_set_tooltip_text (copy, "Copy the full text to the clipboard");
     g_signal_connect (copy, "clicked", G_CALLBACK (on_copy_clicked), self);
@@ -748,11 +955,23 @@ byk_spell_page_build_toolbar (BykSpellPage *self)
     gtk_widget_set_tooltip_text (clear, "Clear the editor");
     g_signal_connect (clear, "clicked", G_CALLBACK (on_clear_clicked), self);
 
+    /* Linked pairs: file in / out, and what to do with the text. Four loose
+     * icons of the same size read as one undifferentiated row. */
+    GtkWidget *file_group = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+    byk_css_add (file_group, "linked");
+    byk_box_add (file_group, open);
+    byk_box_add (file_group, save);
+
+    GtkWidget *text_group = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+    byk_css_add (text_group, "linked");
+    byk_box_add (text_group, copy);
+    byk_box_add (text_group, clear);
+
     byk_box_add (bar, toggle);
+    byk_box_add (bar, file_group);
     byk_box_add_expand (bar, spacer);
+    byk_box_add (bar, text_group);
     byk_box_add (bar, self->fix_all);
-    byk_box_add (bar, copy);
-    byk_box_add (bar, clear);
 
     return bar;
 }
@@ -840,7 +1059,12 @@ byk_spell_page_build_editor (BykSpellPage *self)
     gtk_text_view_set_bottom_margin (GTK_TEXT_VIEW (self->editor), 12);
     gtk_text_view_set_left_margin (GTK_TEXT_VIEW (self->editor), 12);
     gtk_text_view_set_right_margin (GTK_TEXT_VIEW (self->editor), 12);
+    /* Bangla kars and reph reach well above and below the latin line, so
+     * GTK's default leading lets wrapped lines touch. */
+    gtk_text_view_set_pixels_inside_wrap (GTK_TEXT_VIEW (self->editor), 6);
+    gtk_text_view_set_pixels_below_lines (GTK_TEXT_VIEW (self->editor), 6);
     byk_css_add (self->editor, "byk-bangla");
+    byk_css_add (self->editor, "byk-editor");
 
     /* PANGO_UNDERLINE_ERROR is the platform's own squiggle, so a misspelling
      * looks the same here as in any other GTK text view. */
@@ -851,11 +1075,33 @@ byk_spell_page_build_editor (BykSpellPage *self)
     g_signal_connect (self->buffer, "changed", G_CALLBACK (on_buffer_changed), self);
     g_signal_connect (self->buffer, "notify::cursor-position",
                       G_CALLBACK (on_cursor_moved), self);
+    g_signal_connect (self->editor, "preedit-changed", G_CALLBACK (on_preedit_changed), self);
+    g_signal_connect (self->editor, "key-press-event", G_CALLBACK (on_editor_key_press), self);
+    g_signal_connect (self->editor, "style-updated", G_CALLBACK (on_editor_style_updated), self);
 
     GtkWidget *scroller = byk_scroller (self->editor, GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_widget_set_vexpand (scroller, TRUE);
 
-    return scroller;
+    /* GtkTextView has no placeholder in GTK3. The label ignores the pointer,
+     * so clicking the hint still lands in the editor underneath. */
+    self->placeholder = gtk_label_new ("Type or paste Bangla text here. "
+                                       "Misspelled words are underlined in red.");
+    byk_css_add (self->placeholder, "dim-label");
+    byk_css_add (self->placeholder, "byk-bangla");
+    gtk_label_set_line_wrap (GTK_LABEL (self->placeholder), TRUE);
+    gtk_label_set_xalign (GTK_LABEL (self->placeholder), 0.0);
+    gtk_widget_set_halign (self->placeholder, GTK_ALIGN_FILL);
+    gtk_widget_set_valign (self->placeholder, GTK_ALIGN_START);
+    gtk_widget_set_margin_top (self->placeholder, 12);
+    gtk_widget_set_margin_start (self->placeholder, 14);
+    gtk_widget_set_margin_end (self->placeholder, 14);
+
+    GtkWidget *overlay = gtk_overlay_new ();
+    gtk_container_add (GTK_CONTAINER (overlay), scroller);
+    gtk_overlay_add_overlay (GTK_OVERLAY (overlay), self->placeholder);
+    gtk_overlay_set_overlay_pass_through (GTK_OVERLAY (overlay), self->placeholder, TRUE);
+
+    return overlay;
 }
 
 static GtkWidget *
@@ -905,10 +1151,10 @@ byk_spell_page_build_missing (void)
     return byk_status_page (
         "dialog-warning-symbolic",
         "Dictionary unavailable",
-        "spell.db is not installed, so spelling cannot be checked. Typing Bangla "
-        "still works — the keyboard and its candidate list do not need it.\n\n"
-        "Build it with platforms/linux/scripts/prepare_spell_db.sh, or "
-        "install the .deb, which ships it.");
+        "The spelling dictionary is missing, so spelling cannot be checked. "
+        "Typing Bangla still works — the keyboard does not need it.\n\n"
+        "Reinstall Byakaron to get it back:\n"
+        BYK_INSTALL_COMMAND);
 }
 
 static void
@@ -927,6 +1173,7 @@ byk_spell_page_dispose (GObject *object)
     BykSpellPage *self = BYK_SPELL_PAGE (object);
 
     g_clear_handle_id (&self->check_source, g_source_remove);
+    g_clear_pointer (&self->file_path, g_free);
     g_clear_pointer (&self->found, g_array_unref);
     g_clear_pointer (&self->ignored, g_hash_table_unref);
 
