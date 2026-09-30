@@ -18,8 +18,15 @@ G_BEGIN_DECLS
 #define BYK_APP_ID      "dev.nuhu.labs.Byakaron"
 #define BYK_APP_VERSION "0.1.5"
 
-#define BYK_URL_GITHUB  "https://github.com/nuhulabs/byakaron"
-#define BYK_URL_WEBSITE "https://nuhulabs.github.io"
+/* Public pages only: nuhulabs/byakaron is private, so a link to it is a 404
+ * for everyone who installs the app. */
+#define BYK_URL_WEBSITE   "https://nuhulabs.com/byakaron"
+#define BYK_URL_DOWNLOADS "https://github.com/nuhulabs/Byakaron-Assets/releases"
+
+/* What Setup copies when the keyboard is missing: the same one-liner the
+ * website gives, since the app has no source checkout to run a script from. */
+#define BYK_INSTALL_COMMAND \
+    "curl -fsSL https://nuhulabs.com/byakaron/install.sh | sudo bash"
 
 /*
  * `spell` is NULL until the database has finished opening on a worker thread,

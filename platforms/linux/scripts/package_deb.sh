@@ -211,7 +211,7 @@ Conflicts: byakaron-app, byakaron-data
 Provides: byakaron-app, byakaron-data
 Section: utils
 Priority: optional
-Homepage: https://github.com/nuhulabs/byakaron
+Homepage: https://nuhulabs.com/byakaron
 Description: Bangla phonetic input method (IBus engine)
  Type Bangla phonetically from a latin keyboard. Registers as a
  first-class input source in GNOME Settings -> Keyboard -> Input Sources and
