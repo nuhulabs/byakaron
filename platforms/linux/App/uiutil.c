@@ -143,6 +143,8 @@ byk_status_page (const gchar *icon, const gchar *title, const gchar *body)
         gtk_label_set_line_wrap (GTK_LABEL (label), TRUE);
         gtk_label_set_justify (GTK_LABEL (label), GTK_JUSTIFY_CENTER);
         gtk_label_set_max_width_chars (GTK_LABEL (label), 48);
+        /* Bodies can carry a command to paste into a terminal. */
+        gtk_label_set_selectable (GTK_LABEL (label), TRUE);
         byk_box_add (box, label);
     }
     return box;
