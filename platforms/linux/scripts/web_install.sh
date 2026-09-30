@@ -28,28 +28,34 @@ case "$ARCH" in
     *) die "unsupported CPU '$ARCH' — need amd64 or arm64 (64-bit Ubuntu)" ;;
 esac
 
+# Three ways to find the .deb, most exact first. None needs python3: a stock
+# Ubuntu image does not have it, and the old python-only parse fell through to
+# VERSION_FALLBACK — a 404 whenever that version was not the latest release.
 deb_url=""
 if [[ -n "${BYAKARON_DEB_URL:-}" ]]; then
     deb_url="$BYAKARON_DEB_URL"
 else
+    # 1. The API lists the assets. It is rate-limited to 60 calls an hour per
+    #    IP, which a shared office or campus NAT can use up.
     api="https://api.github.com/repos/${REPO}/releases/latest"
     json="$(curl -fsSL -H "Accept: application/vnd.github+json" "$api" 2>/dev/null || true)"
-    if [[ -n "$json" ]] && command -v python3 >/dev/null; then
-        deb_url="$(printf '%s' "$json" | python3 -c '
-import json, sys
-arch = sys.argv[1]
-try:
-    rel = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
-for a in rel.get("assets") or []:
-    name = a.get("name") or ""
-    url = a.get("browser_download_url") or ""
-    if name.startswith("byakaron_") and name.endswith("_" + arch + ".deb") and "-data_" not in name:
-        print(url)
-        break
-' "$ARCH" || true)"
+    deb_url="$(printf '%s' "$json" \
+        | grep -oE '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]+"' \
+        | grep -oE 'https://[^"]+/byakaron_[^/"]+_'"$ARCH"'\.deb' \
+        | head -n 1 || true)"
+
+    # 2. The web redirect for "latest" names the tag (linux-0.1.5) and is not
+    #    rate-limited; the asset name follows from it.
+    if [[ -z "$deb_url" ]]; then
+        latest="$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+            "https://github.com/${REPO}/releases/latest" 2>/dev/null || true)"
+        tag="${latest##*/tag/}"
+        if [[ "$latest" == */tag/* && "$tag" == linux-* ]]; then
+            deb_url="https://github.com/${REPO}/releases/download/${tag}/byakaron_${tag#linux-}_${ARCH}.deb"
+        fi
     fi
+
+    # 3. Last resort, e.g. github.com unreachable for the lookups above.
     if [[ -z "$deb_url" ]]; then
         deb_url="https://github.com/${REPO}/releases/latest/download/byakaron_${VERSION_FALLBACK}_${ARCH}.deb"
     fi
@@ -60,7 +66,7 @@ trap 'rm -rf "$tmp"' EXIT
 deb="$tmp/byakaron.deb"
 
 echo ">>> Byakaron for Linux ($ARCH)"
-echo ">>> downloading"
+echo ">>> downloading $deb_url"
 curl -fL --progress-bar -o "$deb" "$deb_url" \
     || die "could not download $deb_url
        publish byakaron_*_${ARCH}.deb on nuhulabs/Byakaron-Assets (public), or set BYAKARON_DEB_URL"
