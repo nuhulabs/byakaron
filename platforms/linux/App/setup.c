@@ -131,8 +131,7 @@ on_copy_install_clicked (GtkButton *button, gpointer user_data)
     BykSetupPage *self = BYK_SETUP_PAGE (user_data);
     (void) button;
 
-    byk_clipboard_set (GTK_WIDGET (self),
-                       "sudo bash platforms/linux/scripts/install.sh");
+    byk_clipboard_set (GTK_WIDGET (self), BYK_INSTALL_COMMAND);
     byk_toast_show (GTK_LABEL (self->toast), "Install command copied");
 }
 
@@ -274,7 +273,7 @@ byk_setup_page_build_status (BykSetupPage *self)
     self->install_hint = byk_setup_row (
         NULL,
         "Install the input method",
-        "Run the install script from a checkout, or install the .deb",
+        "Paste the command into a terminal, or install the .deb",
         copy);
     byk_hide_until_shown (self->install_hint);
     byk_box_add (list, self->install_hint);
@@ -390,9 +389,9 @@ byk_setup_page_build_about (void)
     byk_css_add (version, "dim-label");
     byk_box_add (list, byk_setup_row (NULL, "Version", NULL, version));
     byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
-    byk_box_add (list, byk_setup_link_row ("Source code", BYK_URL_GITHUB));
-    byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
     byk_box_add (list, byk_setup_link_row ("Website", BYK_URL_WEBSITE));
+    byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
+    byk_box_add (list, byk_setup_link_row ("Downloads", BYK_URL_DOWNLOADS));
 
     return group;
 }
