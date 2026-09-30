@@ -298,6 +298,12 @@ int main(void)
                        "is_correct qqq", unknown);
                 if (unknown != 0) failures++;
 
+                /* NFC text spells য় as য + nukta; spell.db has U+09DF. */
+                const int nfc = byk_spell_is_correct(spell, "আমায়");
+                printf("  %-4s %-28s -> %d\n", nfc == 1 ? "ok" : "FAIL",
+                       "is_correct NFC আমায়", nfc);
+                if (nfc != 1) failures++;
+
                 gchar **sug = byk_spell_suggest(spell, "আমী", 5);
                 const int has_sug = sug && sug[0];
                 printf("  %-4s %-28s -> %s\n", has_sug ? "ok" : "FAIL",

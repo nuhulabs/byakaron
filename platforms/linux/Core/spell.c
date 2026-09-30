@@ -1,5 +1,7 @@
 #include "spell.h"
 
+#include <string.h>
+
 #include "autocomplete.h"
 #include "byakaron.h"
 
@@ -61,12 +63,46 @@ byk_spell_free (BykSpell *self)
     g_free (self);
 }
 
+/*
+ * spell.db spells ড় ঢ় য় as the single code points U+09DC/09DD/09DF, which is
+ * also what the keyboard types. Unicode NFC does the opposite — those three are
+ * composition exclusions, so normalised text (most web pages, other keyboards)
+ * carries ড/ঢ/য + nukta U+09BC — and without this every pasted পড়, আমায় was
+ * reported as misspelled. Fold to the dictionary's form before asking.
+ */
+static gchar *
+byk_spell_fold_nukta (const gchar *word)
+{
+    GString *out = g_string_sized_new (strlen (word));
+
+    for (const gchar *p = word; *p != '\0'; p = g_utf8_next_char (p)) {
+        const gunichar c = g_utf8_get_char (p);
+        const gchar *next = g_utf8_next_char (p);
+        const gboolean nukta = *next != '\0' && g_utf8_get_char (next) == 0x09BC;
+
+        if (nukta && (c == 0x09A1 || c == 0x09A2 || c == 0x09AF)) {
+            g_string_append_unichar (out, c == 0x09A1 ? 0x09DC
+                                          : c == 0x09A2 ? 0x09DD
+                                                        : 0x09DF);
+            p = next; /* skip the nukta too */
+        } else {
+            g_string_append_unichar (out, c);
+        }
+    }
+
+    return g_string_free (out, FALSE);
+}
+
 gint
 byk_spell_is_correct (BykSpell *self, const gchar *word)
 {
     g_return_val_if_fail (self != NULL, -1);
     g_return_val_if_fail (word != NULL, -1);
-    return byakaron_spell_is_correct (self->engine, word);
+
+    gchar *folded = byk_spell_fold_nukta (word);
+    const gint correct = byakaron_spell_is_correct (self->engine, folded);
+    g_free (folded);
+    return correct;
 }
 
 gchar **
@@ -78,7 +114,9 @@ byk_spell_suggest (BykSpell *self, const gchar *word, gint limit)
     if (*word == '\0')
         return g_new0 (gchar *, 1);
 
-    char *json = byakaron_spell_suggest (self->engine, word, limit);
+    gchar *folded = byk_spell_fold_nukta (word);
+    char *json = byakaron_spell_suggest (self->engine, folded, limit);
+    g_free (folded);
     if (json == NULL)
         return NULL;
 
