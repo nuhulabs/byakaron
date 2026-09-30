@@ -34,7 +34,9 @@ static const char BYK_CSS[] =
     ".error { color: #c01c28; }\n"
     ".card { border: 1px solid alpha(@theme_fg_color, 0.15); border-radius: 8px; }\n"
     ".byk-bangla { font-size: 1.25rem; }\n"
-    ".byk-layout-glyph { font-size: 1.15rem; }\n"
+    ".byk-layout-glyph { font-size: 1.4rem; }\n"
+    /* Accent pulled toward the text colour: readable on light and dark. */
+    ".byk-layout-keys { color: mix(@theme_selected_bg_color, @theme_fg_color, 0.3); font-weight: 600; }\n"
     ".byk-toast { padding: 8px 12px; }\n"
     ".byk-issue-word { font-weight: 600; }\n"
     ".byk-candidate { padding: 4px 8px; }\n"
