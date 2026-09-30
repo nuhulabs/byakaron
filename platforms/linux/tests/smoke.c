@@ -304,6 +304,12 @@ int main(void)
                        "is_correct NFC আমায়", nfc);
                 if (nfc != 1) failures++;
 
+                /* Would kill the process inside the engine without the guard. */
+                const int bad = byk_spell_is_correct(spell, "\xa6\xae");
+                printf("  %-4s %-28s -> %d\n", bad == -1 ? "ok" : "FAIL",
+                       "invalid UTF-8 rejected", bad);
+                if (bad != -1) failures++;
+
                 gchar **sug = byk_spell_suggest(spell, "আমী", 5);
                 const int has_sug = sug && sug[0];
                 printf("  %-4s %-28s -> %s\n", has_sug ? "ok" : "FAIL",

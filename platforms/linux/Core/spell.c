@@ -99,6 +99,10 @@ byk_spell_is_correct (BykSpell *self, const gchar *word)
     g_return_val_if_fail (self != NULL, -1);
     g_return_val_if_fail (word != NULL, -1);
 
+    /* The engine traps (SIGILL) on malformed UTF-8 instead of returning. */
+    if (!g_utf8_validate (word, -1, NULL))
+        return -1;
+
     gchar *folded = byk_spell_fold_nukta (word);
     const gint correct = byakaron_spell_is_correct (self->engine, folded);
     g_free (folded);
@@ -113,6 +117,8 @@ byk_spell_suggest (BykSpell *self, const gchar *word, gint limit)
 
     if (*word == '\0')
         return g_new0 (gchar *, 1);
+    if (!g_utf8_validate (word, -1, NULL))
+        return NULL;
 
     gchar *folded = byk_spell_fold_nukta (word);
     char *json = byakaron_spell_suggest (self->engine, folded, limit);
