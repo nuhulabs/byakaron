@@ -165,6 +165,8 @@ byk_setup_row (GtkWidget *prefix, const gchar *title, const gchar *subtitle, Gtk
         byk_box_add (row, prefix);
     }
     gtk_widget_set_hexpand (labels, TRUE);
+    /* Centred, or a one-line title sits above the middle of a taller button. */
+    gtk_widget_set_valign (labels, GTK_ALIGN_CENTER);
     byk_box_add_expand (row, labels);
     if (suffix != NULL) {
         gtk_widget_set_valign (suffix, GTK_ALIGN_CENTER);
