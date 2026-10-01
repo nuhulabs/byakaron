@@ -28,7 +28,7 @@ set -euo pipefail
 # then Super+Space to switch. Or open the Byakaron app → Setup.
 # ---------------------------------------------------------------------------
 
-VERSION="${VERSION:-0.1.5}"
+VERSION="${VERSION:-0.1.7}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -59,8 +59,14 @@ export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
 
 # Always rebuild the engine against glibc 2.31 (Ubuntu 20.04). Skipping when
 # zig-out/bin already exists is how a 24.04-only binary got shipped before.
-echo ">>> Building byakaron-ibus (ReleaseFast, $COMPAT_TARGET)..."
-( cd "$REPO_ROOT" && zig build linux -Doptimize=ReleaseFast $COMPAT_TARGET )
+#
+# And from an empty cache: the shared .zig-cache missed a header-only edit
+# (BYK_APP_VERSION in App/app.h), so 0.1.7 first packaged an app that still
+# printed 0.1.6. A release costs a minute more; it never ships stale objects.
+RELEASE_CACHE="$BUILD_DIR/zig-cache-release"
+rm -rf "$RELEASE_CACHE"
+echo ">>> Building byakaron-ibus (ReleaseFast, $COMPAT_TARGET, clean cache)..."
+( cd "$REPO_ROOT" && zig build --cache-dir "$RELEASE_CACHE" linux -Doptimize=ReleaseFast $COMPAT_TARGET )
 SRC_BIN="$REPO_ROOT/zig-out/bin/byakaron-ibus"
 [[ -x "$SRC_BIN" ]] || { echo "error: $SRC_BIN missing" >&2; exit 1; }
 byk_assert_glibc_20_04 "$SRC_BIN"
@@ -70,10 +76,10 @@ byk_assert_glibc_20_04 "$SRC_BIN"
 SRC_APP="$REPO_ROOT/zig-out/bin/byakaron"
 if pkg-config --exists gtk+-3.0 2>/dev/null; then
     echo ">>> Building the GTK3 app (ReleaseFast, $COMPAT_TARGET)..."
-    ( cd "$REPO_ROOT" && zig build linux-app -Doptimize=ReleaseFast $COMPAT_TARGET ) || true
-    if [[ -x "$SRC_APP" ]]; then
-        byk_assert_glibc_20_04 "$SRC_APP"
-    fi
+    # No `|| true`: a failed build would package whatever older binary is
+    # still sitting in zig-out/bin.
+    ( cd "$REPO_ROOT" && zig build --cache-dir "$RELEASE_CACHE" linux-app -Doptimize=ReleaseFast $COMPAT_TARGET )
+    byk_assert_glibc_20_04 "$SRC_APP"
 fi
 
 # --- 2. Assemble the package tree ------------------------------------------
@@ -144,7 +150,7 @@ FCITX_SO="$REPO_ROOT/zig-out/lib/fcitx5/byakaron.so"
 FCITX_BUILT=0
 if pkg-config --exists Fcitx5Core 2>/dev/null; then
     echo ">>> Building the Fcitx5 addon (ReleaseFast, $COMPAT_TARGET)..."
-    if ( cd "$REPO_ROOT" && zig build linux-fcitx5 -Doptimize=ReleaseFast $COMPAT_TARGET ); then
+    if ( cd "$REPO_ROOT" && zig build --cache-dir "$RELEASE_CACHE" linux-fcitx5 -Doptimize=ReleaseFast $COMPAT_TARGET ); then
         FCITX_BUILT=1
         byk_assert_glibc_20_04 "$FCITX_SO"
     fi
