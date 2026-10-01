@@ -128,7 +128,7 @@ This builds one complete file (keyboard, GTK app, and `spell.db`). If
 
 ```bash
 bash platforms/linux/scripts/package_deb.sh
-sudo apt install ./platforms/linux/build/byakaron_0.1.5_arm64.deb
+sudo apt install ./platforms/linux/build/byakaron_0.1.7_arm64.deb
 ```
 
 That file is `arm64`, not `amd64`. Use `apt`, not `dpkg -i`.
