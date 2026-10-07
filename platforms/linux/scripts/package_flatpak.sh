@@ -95,11 +95,19 @@ flatpak build "$APPDIR" install -D -m 644 "$PROJECT_ROOT/Resources/${APP_ID}.met
 
 # Flatpak's export validator often rejects this SVG (gdk-pixbuf in the
 # export environment has no SVG loader). A PNG is what GNOME Software shows.
-ICON_PNG="$BUILD_DIR/${APP_ID}.png"
-rsvg-convert -w 128 -h 128 "$PROJECT_ROOT/Resources/byakaron.svg" -o "$ICON_PNG"
-flatpak build "$APPDIR" install -d /app/share/icons/hicolor/128x128/apps
-flatpak build "$APPDIR" install -D -m 644 "$ICON_PNG" \
-    "/app/share/icons/hicolor/128x128/apps/${APP_ID}.png"
+#
+# Installed twice per size: ${APP_ID} is what gets exported to the host menu,
+# and `byakaron` is the name the app itself asks for (About logo, window
+# icon). Only the first leaves the sandbox; the second resolves inside it.
+for size in 128 256; do
+    ICON_PNG="$BUILD_DIR/byakaron-${size}.png"
+    rsvg-convert -w "$size" -h "$size" "$PROJECT_ROOT/Resources/byakaron.svg" -o "$ICON_PNG"
+    flatpak build "$APPDIR" install -d "/app/share/icons/hicolor/${size}x${size}/apps"
+    flatpak build "$APPDIR" install -D -m 644 "$ICON_PNG" \
+        "/app/share/icons/hicolor/${size}x${size}/apps/${APP_ID}.png"
+    flatpak build "$APPDIR" install -D -m 644 "$ICON_PNG" \
+        "/app/share/icons/hicolor/${size}x${size}/apps/byakaron.png"
+done
 
 echo ">>> installing GSettings schema..."
 SCHEMA_STAGE="$BUILD_DIR/schemas"

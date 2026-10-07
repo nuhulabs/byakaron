@@ -122,6 +122,10 @@ on_startup (GApplication *app, gpointer user_data)
                                                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     g_object_unref (provider);
 
+    /* GNOME finds the dock icon through StartupWMClass; X11 window managers
+     * that do not (Xfce, MATE, KDE) read the window's own icon instead. */
+    gtk_window_set_default_icon_name ("byakaron");
+
     /* GSimpleAction rather than GActionEntry: 24.04's GLib added a padding
      * field that 20.04 does not have, so a shared initializer cannot compile
      * against both headers. */

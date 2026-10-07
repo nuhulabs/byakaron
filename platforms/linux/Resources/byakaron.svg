@@ -1,18 +1,29 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Input-source icon, shown next to "Byakaron (Bangla Phonetic)" in GNOME
-  Settings and the input-source switcher.
+  Byakaron logo: a silver ব on a near-black tile. Used as the app icon and as
+  the input-source icon next to "Byakaron (Bangla Phonetic)".
 
-  Drawn as a plain <path> rather than <text> so it does not depend on a Bangla
-  font being present in whatever renders it (the icon is also read by the ibus
-  panel, which does not always have full fontconfig available).
+  The glyph is the same outline as the macOS icon (Byakaron_FG.svg), drawn as a
+  plain <path> rather than <text> so it does not depend on a Bangla font being
+  present in whatever renders it (the ibus panel does not always have full
+  fontconfig available).
 -->
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#1f6f4a"/>
-  <!-- Stylised ব: the top matra bar plus the bowl and stem. -->
-  <g fill="none" stroke="#ffffff" stroke-width="5"
-     stroke-linecap="round" stroke-linejoin="round">
-    <path d="M16 18 H48"/>
-    <path d="M22 18 V42 a11 11 0 0 0 22 0 a11 11 0 0 0 -11 -11 h-5"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0e1319"/>
+      <stop offset="1" stop-color="#07090d"/>
+    </linearGradient>
+    <linearGradient id="silver" gradientUnits="userSpaceOnUse"
+                    x1="0" y1="0" x2="443" y2="490">
+      <stop offset="0"   stop-color="#e8ebee"/>
+      <stop offset="0.3" stop-color="#c6cacf"/>
+      <stop offset="0.5" stop-color="#b1b5b9"/>
+      <stop offset="0.8" stop-color="#73777c"/>
+      <stop offset="1"   stop-color="#5c6065"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#tile)"/>
+  <path transform="translate(119 101) scale(0.6165)" fill="url(#silver)"
+        d="M362.812 43.5938V489.023L339.961 457.383L330.82 435.586L320.273 415.547L310.078 397.617C303.75 387.773 297.773 379.336 292.148 372.305C286.523 365.273 281.25 359.414 276.328 354.727C271.641 349.805 265.195 344.414 256.992 338.555C248.789 332.695 238.828 326.484 227.109 319.922C223.594 318.047 219.375 315.82 214.453 313.242L199.688 305.508L184.922 298.477L171.914 292.148C163.008 289.102 154.102 286.992 145.195 285.82C136.289 284.414 127.266 283.711 118.125 283.711L62.9297 205.312L114.961 169.805L169.102 137.812L243.633 101.25L278.789 86.4844L320.273 72.7734V43.5938H42.1875L0 0H400.781L442.969 43.5938H362.812ZM320.273 142.031C304.805 147.188 289.102 153.281 273.164 160.312C257.227 167.109 241.289 175.078 225.352 184.219L185.625 207.773L153.633 228.516C162.539 232.266 171.445 236.484 180.352 241.172C189.258 245.859 198.164 251.016 207.07 256.641C215.977 262.031 223.945 267.539 230.977 273.164C238.242 278.555 246.211 284.883 254.883 292.148L283.008 319.922C288.633 325.547 294.609 332.578 300.938 341.016C307.266 349.219 313.711 358.594 320.273 369.141V142.031Z"/>
 </svg>
