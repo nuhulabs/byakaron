@@ -18,6 +18,13 @@
   <keywords><keyword>Bangla</keyword><keyword>Bengali</keyword><keyword>বাংলা</keyword><keyword>phonetic</keyword><keyword>Avro</keyword><keyword>spell</keyword><keyword>keyboard</keyword></keywords>
   <icon type="stock">byakaron</icon>
   <url type="homepage">https://nuhulabs.com/byakaron</url>
-  <releases><release version="0.1.7" date="2026-10-01"/></releases>
+  <releases>
+    <release version="0.1.8" date="2026-10-07">
+      <description>
+        <p>New Byakaron logo. Spell-checking long documents no longer freezes the window. Qt apps no longer type a word twice when you click while composing it.</p>
+      </description>
+    </release>
+    <release version="0.1.7" date="2026-10-01"/>
+  </releases>
   <content_rating type="oars-1.1"/>
 </component>
