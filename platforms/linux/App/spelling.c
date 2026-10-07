@@ -5,6 +5,10 @@
 /* Coalesce keystrokes into one pass, the same 250ms the macOS app debounces. */
 #define BYK_CHECK_DEBOUNCE_MS 250
 #define BYK_SUGGEST_LIMIT     8
+/* Rows in the issues sidebar. A pasted chapter can have thousands of issues,
+ * and building a row for each froze the window for seconds per keystroke;
+ * nobody scrolls that list anyway. Squiggles still mark every one. */
+#define BYK_ISSUE_ROWS_MAX    200
 
 /* A misspelled span. Offsets are in characters, not bytes: GtkTextBuffer
  * counts that way and Bangla is three bytes per code point. */
@@ -278,10 +282,32 @@ byk_spell_page_fill_list (BykSpellPage *self)
 {
     byk_container_clear (self->issues_list);
 
-    for (guint i = 0; i < self->found->len; i++) {
+    const guint rows = MIN (self->found->len, BYK_ISSUE_ROWS_MAX);
+    for (guint i = 0; i < rows; i++) {
         const BykIssue *issue = &g_array_index (self->found, BykIssue, i);
         gtk_list_box_insert (GTK_LIST_BOX (self->issues_list),
                              byk_spell_page_make_issue_row (issue, (gint) i), -1);
+    }
+
+    if (self->found->len > rows) {
+        gchar *text = g_strdup_printf ("%u more not listed — fix these, or click a "
+                                       "squiggle in the text", self->found->len - rows);
+        GtkWidget *more = gtk_label_new (text);
+        g_free (text);
+        byk_css_add (more, "dim-label");
+        byk_css_add (more, "caption");
+        gtk_label_set_line_wrap (GTK_LABEL (more), TRUE);
+        gtk_label_set_xalign (GTK_LABEL (more), 0.0);
+        gtk_widget_set_margin_top (more, 8);
+        gtk_widget_set_margin_bottom (more, 8);
+        gtk_widget_set_margin_start (more, 12);
+        gtk_widget_set_margin_end (more, 12);
+
+        GtkWidget *row = gtk_list_box_row_new ();
+        gtk_list_box_row_set_selectable (GTK_LIST_BOX_ROW (row), FALSE);
+        gtk_list_box_row_set_activatable (GTK_LIST_BOX_ROW (row), FALSE);
+        gtk_container_add (GTK_CONTAINER (row), more);
+        gtk_list_box_insert (GTK_LIST_BOX (self->issues_list), row, -1);
     }
 
     const gboolean any = self->found->len > 0;
@@ -313,7 +339,15 @@ byk_spell_page_fill_list (BykSpellPage *self)
     }
 }
 
-/* Walk the buffer, collect words the engine rejects, underline them. */
+/*
+ * Walk the buffer, collect words the engine rejects, underline them.
+ *
+ * Linear in the length of the text, because it runs on every pause in typing:
+ * each distinct word is looked up once per pass (prose repeats most of its
+ * words), and one iterator walks forward to each squiggle instead of
+ * get_iter_at_offset seeking from the start for every issue. Before this, a
+ * 50 000-word paste took 19 s per pass here and 25 s more in the sidebar.
+ */
 static void
 byk_spell_page_check (BykSpellPage *self)
 {
@@ -327,6 +361,10 @@ byk_spell_page_check (BykSpellPage *self)
     gint words = 0;
 
     if (self->engines->spell != NULL) {
+        /* word -> GINT_TO_POINTER (1 misspelled, 2 fine); keys owned here. */
+        GHashTable *verdicts = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+        GtkTextIter cursor = start; /* sits at character offset `cursor_offset` */
+        gint cursor_offset = 0;
         const gchar *p = text;
         gint offset = 0;
 
@@ -349,19 +387,30 @@ byk_spell_page_check (BykSpellPage *self)
             words++;
             gchar *word = g_strndup (word_start, (gsize) (p - word_start));
 
-            if (!g_hash_table_contains (self->ignored, word) &&
-                byk_spell_is_correct (self->engines->spell, word) == 0) {
+            gint verdict = GPOINTER_TO_INT (g_hash_table_lookup (verdicts, word));
+            if (verdict == 0) {
+                const gboolean wrong = !g_hash_table_contains (self->ignored, word) &&
+                                       byk_spell_is_correct (self->engines->spell, word) == 0;
+                verdict = wrong ? 1 : 2;
+                g_hash_table_insert (verdicts, g_strdup (word), GINT_TO_POINTER (verdict));
+            }
+
+            if (verdict == 1) {
                 BykIssue issue = { .word = word, .start = start_offset, .end = offset };
                 g_array_append_val (self->found, issue);
 
-                GtkTextIter from, to;
-                gtk_text_buffer_get_iter_at_offset (self->buffer, &from, start_offset);
-                gtk_text_buffer_get_iter_at_offset (self->buffer, &to, offset);
-                gtk_text_buffer_apply_tag (self->buffer, self->squiggle, &from, &to);
+                gtk_text_iter_forward_chars (&cursor, start_offset - cursor_offset);
+                GtkTextIter to = cursor;
+                gtk_text_iter_forward_chars (&to, offset - start_offset);
+                gtk_text_buffer_apply_tag (self->buffer, self->squiggle, &cursor, &to);
+                cursor = to;
+                cursor_offset = offset;
             } else {
                 g_free (word);
             }
         }
+
+        g_hash_table_destroy (verdicts);
     }
 
     g_free (text);
@@ -545,25 +594,37 @@ on_fix_all_clicked (GtkButton *button, gpointer user_data)
      * after it; going backwards leaves the offsets still to be used untouched.
      */
     guint fixed = 0;
+    /* word -> its top suggestion, or "" for none. A suggestion costs ~1 ms,
+     * and a long text repeats the same misspelling many times. */
+    GHashTable *best = g_hash_table_new_full (g_str_hash, g_str_equal, NULL, g_free);
     self->syncing = TRUE;
     gtk_text_buffer_begin_user_action (self->buffer);
 
     for (gint i = (gint) self->found->len - 1; i >= 0; i--) {
         const BykIssue *issue = &g_array_index (self->found, BykIssue, i);
-        gchar **words = byk_spell_page_suggest (self, issue);
+        const gchar *replacement = g_hash_table_lookup (best, issue->word);
 
-        if (words != NULL && words[0] != NULL) {
+        if (replacement == NULL) {
+            gchar **words = byk_spell_page_suggest (self, issue);
+            gchar *top = g_strdup (words != NULL && words[0] != NULL ? words[0] : "");
+            g_strfreev (words);
+            g_hash_table_insert (best, issue->word, top);
+            replacement = top;
+        }
+
+        if (*replacement != '\0') {
             GtkTextIter from, to;
             gtk_text_buffer_get_iter_at_offset (self->buffer, &from, issue->start);
             gtk_text_buffer_get_iter_at_offset (self->buffer, &to, issue->end);
             gtk_text_buffer_delete (self->buffer, &from, &to);
-            gtk_text_buffer_insert (self->buffer, &from, words[0], -1);
+            gtk_text_buffer_insert (self->buffer, &from, replacement, -1);
             fixed++;
         }
-        g_strfreev (words);
     }
 
     gtk_text_buffer_end_user_action (self->buffer);
+    /* Keys borrow issue->word, which the re-check below frees. */
+    g_hash_table_destroy (best);
     self->syncing = FALSE;
     byk_spell_page_check_now (self);
 
