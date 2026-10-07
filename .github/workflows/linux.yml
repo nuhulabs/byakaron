@@ -12,9 +12,19 @@ on:
 
 jobs:
   build:
-    name: engine + app + tests
-    runs-on: ubuntu-latest
+    name: engine + app + tests (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    # arm64 on a native GitHub ARM runner, not qemu: the site promises arm64,
+    # so the same build and tests have to pass there.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: amd64
+          - os: ubuntu-24.04-arm
+            arch: arm64
 
     steps:
       - name: Checkout
@@ -54,3 +64,62 @@ jobs:
 
       - name: Build, smoke, IME test
         run: bash platforms/linux/scripts/ci.sh
+
+  # A `linux-*` tag (linux-0.1.8, ...) also builds the shareable .deb for both
+  # CPUs, installs it on the runner, and types through the *installed* engine.
+  # The .debs are uploaded as artifacts; they go to the public
+  # nuhulabs/Byakaron-Assets release by hand (`gh release create ...`).
+  package:
+    name: .deb (${{ matrix.arch }})
+    if: startsWith(github.ref, 'refs/tags/linux-')
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: amd64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: System packages
+        run: |
+          sudo bash platforms/linux/scripts/setup_deps.sh
+          sudo apt-get install -y --no-install-recommends xvfb dbus-x11
+
+      - name: Install Zig 0.17.0-dev.1422
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0-dev.1422+e863bf3be
+
+      - name: Clone ziex at the path build.zig.zon expects
+        run: |
+          dest="${GITHUB_WORKSPACE}/../../ziex-dev/ziex"
+          mkdir -p "$(dirname "$dest")"
+          git clone --filter=blob:none https://github.com/ziex-dev/ziex.git "$dest"
+          git -C "$dest" checkout --detach 29f9a85b
+
+      - name: Package .deb
+        run: bash platforms/linux/scripts/package_deb.sh
+
+      - name: Install it and type through the installed engine
+        run: |
+          source platforms/linux/scripts/compat.sh
+          zig build linux-test -Doptimize=ReleaseFast $(byk_compat_target_flag)
+          deb=$(ls platforms/linux/build/byakaron_*_${{ matrix.arch }}.deb)
+          sudo apt-get install -y "./$deb"
+          version=${GITHUB_REF_NAME#linux-}
+          bash platforms/linux/scripts/test_installed.sh zig-out/bin/byakaron-ime-test "$version"
+
+      - name: Upload .deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: byakaron-${{ matrix.arch }}
+          path: platforms/linux/build/byakaron_*_${{ matrix.arch }}.deb
+          if-no-files-found: error
