@@ -263,13 +263,21 @@ if [ "$1" = "configure" ]; then
     update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
     gtk-update-icon-cache -qtf /usr/share/icons/hicolor >/dev/null 2>&1 || true
     refresh_ibus
-    echo ""
-    echo "Byakaron installed. The package only registers the engine — add it:"
-    echo "  1. Settings -> Keyboard -> Input Sources -> '+'"
-    echo "  2. Choose Bangla, then Byakaron (Bangla Phonetic) -> Add"
-    echo "  3. Switch with Super+Space"
-    echo "  Or open the Byakaron app -> Setup, which walks through this."
-    echo "  If Byakaron is missing from the Bangla list, log out and back in."
+    # $2 is the version being upgraded from, empty on a first install. An
+    # upgrade keeps the input source the user already added, so the steps
+    # would only be noise. The curl installer prints them itself and sets
+    # BYAKARON_INSTALLER so they do not appear twice.
+    if [ -n "$2" ]; then
+        echo "Byakaron updated from $2. Your input source stays as it is."
+    elif [ -z "${BYAKARON_INSTALLER:-}" ]; then
+        echo ""
+        echo "Byakaron installed. The package only registers the engine — add it:"
+        echo "  1. Settings -> Keyboard -> Input Sources -> '+'"
+        echo "  2. Choose Bangla, then Byakaron (Bangla Phonetic) -> Add"
+        echo "  3. Switch with Super+Space"
+        echo "  Or open the Byakaron app -> Setup, which walks through this."
+        echo "  If Byakaron is missing from the Bangla list, log out and back in."
+    fi
 fi
 
 exit 0
