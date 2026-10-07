@@ -294,6 +294,49 @@ main (void)
     pump ();
 
     /*
+     * Qt commits the pending word itself on a click, then resets, so the
+     * daemon must not commit it too ("ami" + click -> আমিআমি in a Qt app).
+     * The engine learns the client name from focus_in_id, which needs IBus
+     * 1.5.27+; older libibus has no has-focus-id and is skipped, not passed.
+     */
+    GObjectClass *engine_class = g_type_class_ref (IBUS_TYPE_ENGINE);
+    const gboolean has_focus_id = g_object_class_find_property (engine_class, "has-focus-id") != NULL;
+    g_type_class_unref (engine_class);
+
+    g_print ("Qt client keeps the pending word itself:\n");
+    if (!has_focus_id) {
+        g_print ("  skip (libibus has no has-focus-id)\n");
+    } else {
+        IBusInputContext *qt = ibus_bus_create_input_context (g_bus, "QIBusInputContext");
+        g_signal_connect (qt, "update-preedit-text", G_CALLBACK (on_update_preedit), NULL);
+        g_signal_connect (qt, "hide-preedit-text", G_CALLBACK (on_hide_preedit), NULL);
+        g_signal_connect (qt, "commit-text", G_CALLBACK (on_commit), NULL);
+        ibus_input_context_set_capabilities (qt, IBUS_CAP_PREEDIT_TEXT | IBUS_CAP_FOCUS);
+        ibus_input_context_focus_in (qt);
+        ibus_input_context_set_engine (qt, "byakaron");
+        pump ();
+
+        reset_state (qt);
+        send_string (qt, "ami");
+        check ("Qt preedit", g_preedit, "আমি");
+        ibus_input_context_reset (qt);
+        pump ();
+        check ("daemon does not commit for Qt", g_committed, "");
+
+        ibus_input_context_focus_out (qt);
+        ibus_input_context_focus_in (ctx);
+        ibus_input_context_set_engine (ctx, "byakaron");
+        pump ();
+        g_object_unref (qt);
+
+        reset_state (ctx);
+        send_string (ctx, "ami");
+        ibus_input_context_reset (ctx);
+        pump ();
+        check ("other clients still commit once", g_committed, "আমি");
+    }
+
+    /*
      * Candidates. Only the first candidate is pinned to a literal, because that
      * one is a real guarantee: the word actually typed has to rank first, or
      * pressing "1" would change what the user wrote. The rest are checked
