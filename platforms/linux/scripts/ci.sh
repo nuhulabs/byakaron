@@ -9,8 +9,8 @@ set -euo pipefail
 #
 # Builds the shared library, the IBus engine, the GTK app, the IME test, then
 # runs smoke.sh. The IME integration test needs an ibus-daemon: in CI (no
-# session) this script starts Xvfb + dbus + ibus itself; on a desktop it uses
-# the one already running.
+# session) and on a desktop with Xvfb installed this script starts a private
+# Xvfb + dbus + ibus; otherwise it falls back to the session daemon.
 #
 # Does NOT generate spell.db (364 MB) and does not need it — smoke skips those
 # assertions when the file is absent.
@@ -133,18 +133,29 @@ start_headless_ibus() {
     exit 1
 }
 
+# A private daemon whenever one can be started, even on a desktop: the
+# session daemon follows real focus, so switching windows while this runs
+# resets the test's input context mid-word (seen as "bangla" -> লা) and
+# leaves the desktop on our throwaway engine. BYAKARON_SESSION_IBUS=1 opts
+# back into the session daemon.
+can_start_headless_ibus() {
+    command -v Xvfb >/dev/null && command -v ibus-daemon >/dev/null \
+        && command -v dbus-launch >/dev/null
+}
+
 echo
-if pgrep -x ibus-daemon >/dev/null; then
-    echo "=== IME integration test (session ibus-daemon) ==="
-    bash "$SCRIPT_DIR/test_ime.sh"
-elif [[ "${CI:-}" == "true" || "${BYAKARON_CI:-}" == "1" ]]; then
+if [[ "${CI:-}" == "true" || "${BYAKARON_CI:-}" == "1" ]] \
+   || { [[ "${BYAKARON_SESSION_IBUS:-}" != "1" ]] && can_start_headless_ibus; }; then
     start_headless_ibus
     echo "=== IME integration test (headless ibus-daemon) ==="
     bash "$SCRIPT_DIR/test_ime.sh"
+elif pgrep -x ibus-daemon >/dev/null; then
+    echo "=== IME integration test (session ibus-daemon) ==="
+    bash "$SCRIPT_DIR/test_ime.sh"
 else
     echo "=== IME integration test skipped ==="
-    echo "note: no ibus-daemon, and this is not CI. Start IBus or re-run with"
-    echo "      BYAKARON_CI=1 to spawn a throwaway Xvfb+ibus (needs xvfb, ibus)."
+    echo "note: no ibus-daemon, and Xvfb/dbus-launch are not installed to start"
+    echo "      a throwaway one (apt install xvfb ibus dbus-x11)."
 fi
 
 echo
