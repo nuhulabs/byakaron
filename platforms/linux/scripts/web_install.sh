@@ -73,14 +73,31 @@ curl -fL --progress-bar -o "$deb" "$deb_url" \
 
 echo ">>> installing (keyboard + app + spell-check)"
 export DEBIAN_FRONTEND=noninteractive
+# Tells the package's postinst that the steps are printed below, once.
+# `sudo env`, because sudo would otherwise drop the variable.
+was_installed="$(dpkg-query -W -f='${Version}' byakaron 2>/dev/null || true)"
 if [[ "${EUID}" -eq 0 ]]; then
-    apt-get install -y "$deb"
+    BYAKARON_INSTALLER=1 apt-get install -y "$deb"
 else
-    sudo apt-get install -y "$deb"
+    sudo env BYAKARON_INSTALLER=1 apt-get install -y "$deb"
+fi
+
+now_installed="$(dpkg-query -W -f='${Version}' byakaron 2>/dev/null || true)"
+if [[ -n "$was_installed" && "$was_installed" == "$now_installed" ]]; then
+    echo
+    echo "=== Byakaron $now_installed is already the latest ==="
+    echo
+    exit 0
+elif [[ -n "$was_installed" ]]; then
+    echo
+    echo "=== Byakaron updated: $was_installed -> $now_installed ==="
+    echo "  Your input source stays as it is. Switch with Super+Space."
+    echo
+    exit 0
 fi
 
 echo
-echo "=== Byakaron is installed. Add it as an input source: ==="
+echo "=== Byakaron $now_installed is installed. Add it as an input source: ==="
 echo "  1. Settings -> Keyboard -> Input Sources -> '+'"
 echo "  2. Choose Bangla, then Byakaron (Bangla Phonetic) -> Add"
 echo "  3. Switch with Super+Space and type ami then Space (আমি )"
