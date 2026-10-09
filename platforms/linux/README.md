@@ -340,22 +340,37 @@ Both end at the same engine. Setting `GTK_IM_MODULE=ibus` forces the D-Bus
 module on either backend; GNOME on Wayland often leaves it unset and uses
 text-input-v3 instead.
 
-Verified on this X11 session by starting a nested mutter (`mutter --wayland
---headless --no-x11 --virtual-monitor 1280x720`) and launching a GTK4 probe
-against it: backend `GdkWaylandDisplay`, IM context id `wayland`, widget
-realised. That is the text-input-v3 path.
+### Tested on a real GNOME Shell Wayland session
 
-Typing into a GtkEntry through the IBus GTK module (`scripts/wayland_type.sh`)
-asserts `ami` + Space → `আমি ` on the session display (X11 here, Xvfb in CI).
-The same binary against nested mutter realises a Wayland entry and loads the
-ibus module, but the virtual seat's synthetic keys are not eaten — that is
-why the script falls back. A full "type in Firefox on a Wayland login" check
-still wants a Wayland session.
+`scripts/gnome_wayland_test.sh` starts a **private** `gnome-shell --headless
+--wayland` (own D-Bus, dconf, runtime dir and ibus-daemon, input source set to
+Byakaron) next to the running desktop, opens GTK3 and GTK4 windows natively on
+it, and types through `org.gnome.Mutter.RemoteDesktop`. Those keys take the
+same path as a keyboard on an "Ubuntu on Wayland" login: text-input-v3 →
+GNOME Shell → IBus → `byakaron-ibus`. Five checks per toolkit: `ami bangla `,
+Shift (`bhalO.` → ভালো।), Bangla numerals, picking candidate 2, and a click
+while a word is pending (committed once). Switching the input source to
+English makes every check fail, so the test does measure the engine.
 
 ```bash
-bash platforms/linux/scripts/wayland_probe.sh
-bash platforms/linux/scripts/wayland_type.sh
+zig build linux
+bash platforms/linux/scripts/gnome_wayland_test.sh   # GTK3 + GTK4, 10 checks
 ```
+
+Qt was checked the same way from a container sharing the sandbox's Wayland
+and IBus sockets (not scripted here):
+
+| Qt on GNOME Wayland | Result |
+| --- | --- |
+| Qt 5.15 / 6.4, `QT_IM_MODULE=ibus` (Ubuntu's default session setting) | typing, Shift, numerals, candidates pass |
+| Qt 6.4 without `QT_IM_MODULE` | plain latin: Qt 6.4 has no text-input-v3, so no IME of any kind reaches it |
+
+A click *inside* a Qt field could not be synthesised on headless Wayland (the
+pointer cannot be placed without a screen-cast stream); the same IBus path is
+covered by the X11 Qt test.
+
+`scripts/wayland_probe.sh` and `scripts/wayland_type.sh` remain as the quick
+nested-mutter checks used by `ci.sh`.
 
 ## CI
 
@@ -455,13 +470,19 @@ the Debian package lives in `Resources/dev.nuhu.labs.Byakaron.metainfo.xml`.
 
 After installing the engine and adding **Byakaron** as an input source, switch to it with Super+Space and verify `ami` + Space commits `আমি ` in GTK4, Firefox, Chrome, one Qt application, and Cursor or another Electron app. In Cursor/Electron, specifically confirm a pending word is committed before its preedit is hidden. If using Fcitx5, also add Byakaron in the Fcitx5 configuration tool and confirm the same flow.
 
-For the Wayland check, log out and choose **GNOME on Wayland** at the display manager (nested Mutter is not equivalent); then repeat the Firefox test. This host currently uses X11, so that final session-level test remains manual.
+For Wayland without logging out, run `scripts/gnome_wayland_test.sh` (see [Wayland](#wayland)). A Wayland *login* is still the place to check things the sandbox cannot: candidate-window position, and browsers.
 
-## What is not in this port yet
+## Known issues
 
-- **Typing in Firefox on a Wayland *login* session.** Nested mutter covers the
-  compositor + GtkEntry path; switching this X11 box to a Wayland session is
-  a hand test, not a CI step.
+- **Qt apps on Ubuntu 20.04 / 22.04 type a pending word twice on a click**
+  (`ami` + click → আমিআমি). Qt's IBus module commits the word itself and does
+  not tell the daemon; IBus 1.5.22 / 1.5.26 cannot tell the engine which app
+  is focused, and Qt reports the same capabilities as GTK, so the engine has
+  no way to treat Qt differently there. The other choice (never let IBus
+  commit) would lose or misplace the word in GTK apps and browsers, which are
+  most of what people type in. Workaround: press Space before clicking away.
+  Fixed on Ubuntu 24.04 (IBus 1.5.29 reports the client name). GTK, Chrome,
+  Firefox and Electron are unaffected on all three releases.
 
 ## Notes
 
