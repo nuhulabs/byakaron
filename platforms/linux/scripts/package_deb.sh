@@ -28,7 +28,7 @@ set -euo pipefail
 # then Super+Space to switch. Or open the Byakaron app → Setup.
 # ---------------------------------------------------------------------------
 
-VERSION="${VERSION:-0.1.8}"
+VERSION="${VERSION:-0.1.9}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"

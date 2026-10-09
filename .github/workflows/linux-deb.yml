@@ -2,8 +2,8 @@
 # *public* GitHub Release on nuhulabs/Byakaron-Assets (not nuhulabs/byakaron —
 # that repo is private, so curl cannot download from it):
 #
-#   gh release create linux-0.1.8 platforms/linux/build/byakaron_*_amd64.deb \
-#     --repo nuhulabs/Byakaron-Assets --title "Linux 0.1.8"
+#   gh release create linux-0.1.9 platforms/linux/build/byakaron_*_amd64.deb \
+#     --repo nuhulabs/Byakaron-Assets --title "Linux 0.1.9"
 #
 # Then: curl -fsSL https://nuhulabs.com/byakaron/install.sh | sudo bash
 #
