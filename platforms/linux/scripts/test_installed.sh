@@ -93,6 +93,10 @@ else
     status=$?
     set -e
     grep -E '^  (ok|FAIL|skip)|^       expected|^ime test|^ime_test' "$log" || true
+    if [[ "$status" != 0 ]]; then
+        echo "  --- last lines of the IME session log:"
+        tail -15 "$log" | sed 's/^/  | /'
+    fi
     rm -f "$log"
     # 77 is the test's "engine unreachable" skip: for an install that is a failure.
     [[ "$status" == 0 ]] || fail "IME test exited $status"
