@@ -1,14 +1,19 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!--
-  Byakaron logo: a silver ব on a near-black tile. Used as the app icon and as
-  the input-source icon next to "Byakaron (Bangla Phonetic)".
-
-  The glyph is the same outline as the macOS icon (Byakaron_FG.svg), drawn as a
-  plain <path> rather than <text> so it does not depend on a Bangla font being
-  present in whatever renders it (the ibus panel does not always have full
-  fontconfig available).
--->
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!--
+    The <svg> tag must stay within the first few hundred bytes: gdk-pixbuf (what
+    GNOME draws app icons with) sniffs only the start of the file, and a long
+    header comment made it reject the icon as an unknown format (blank tile in
+    the app grid).
+  -->
+  <!--
+    Byakaron logo: a silver ব on a near-black tile. Used as the app icon and as
+    the input-source icon next to "Byakaron (Bangla Phonetic)".
+  
+    The glyph is the same outline as the macOS icon (Byakaron_FG.svg), drawn as a
+    plain <path> rather than <text> so it does not depend on a Bangla font being
+    present in whatever renders it (the ibus panel does not always have full
+    fontconfig available).
+  -->
   <defs>
     <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#0e1319"/>

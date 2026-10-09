@@ -47,7 +47,10 @@ jobs:
             ibus-gtk4 \
             xvfb \
             dbus-x11 \
-            appstream
+            appstream \
+            python3-gi \
+            gir1.2-gdkpixbuf-2.0 \
+            librsvg2-common
 
       - name: Install Zig 0.17.0-dev.1422
         uses: mlugg/setup-zig@v2
@@ -91,7 +94,7 @@ jobs:
       - name: System packages
         run: |
           sudo bash platforms/linux/scripts/setup_deps.sh
-          sudo apt-get install -y --no-install-recommends xvfb dbus-x11
+          sudo apt-get install -y --no-install-recommends xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
 
       - name: Install Zig 0.17.0-dev.1422
         uses: mlugg/setup-zig@v2
