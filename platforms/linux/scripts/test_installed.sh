@@ -33,6 +33,20 @@ for f in "$COMPONENT" \
          /usr/share/glib-2.0/schemas/dev.nuhu.labs.Byakaron.gschema.xml; do
     [[ -e "$f" ]] && ok "$f" || fail "missing $f"
 done
+# The app grid draws this with gdk-pixbuf; 0.1.8's icon failed to load there.
+icon=/usr/share/icons/hicolor/scalable/apps/byakaron.svg
+if python3 -c "import gi; gi.require_version('GdkPixbuf', '2.0')" 2>/dev/null; then
+    if python3 -c "
+import sys, gi; gi.require_version('GdkPixbuf', '2.0')
+from gi.repository import GdkPixbuf
+GdkPixbuf.Pixbuf.new_from_file_at_size(sys.argv[1], 64, 64)" "$icon" 2>/dev/null; then
+        ok "icon loads in gdk-pixbuf"
+    else
+        fail "icon does not load in gdk-pixbuf (blank in the app grid)"
+    fi
+else
+    echo "  note python3-gi not installed, icon load not checked"
+fi
 [[ -e /usr/share/byakaron/spell.db ]] && ok "spell.db" || echo "  note spell.db not installed (spell-check off, typing unaffected)"
 
 ENGINE="$(sed -n 's|.*<exec>\([^ <]*\).*|\1|p' "$COMPONENT" 2>/dev/null || true)"
