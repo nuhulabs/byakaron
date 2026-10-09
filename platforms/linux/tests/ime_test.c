@@ -186,6 +186,27 @@ check (const char *what, const char *got, const char *want)
     }
 }
 
+/*
+ * Name of the engine behind `ctx` once the daemon has started one, polling for
+ * up to 20 s. set_engine is asynchronous: the daemon asks the factory for an
+ * instance, and on GitHub's arm64 runner that took 6 s, longer than pump()'s
+ * 3 s cap, so a single check saw the placeholder "dummy" engine.
+ */
+static const gchar *
+wait_for_engine (IBusInputContext *ctx, const gchar *want)
+{
+    const gchar *name = NULL;
+    for (guint waited_ms = 0; waited_ms <= 20000; waited_ms += 250) {
+        IBusEngineDesc *desc = ibus_input_context_get_engine (ctx);
+        name = desc ? ibus_engine_desc_get_name (desc) : NULL;
+        if (g_strcmp0 (name, want) == 0)
+            break;
+        g_usleep (250 * 1000);
+        pump ();
+    }
+    return name;
+}
+
 static void
 check_flag (const char *what, gboolean got, gboolean want)
 {
@@ -231,9 +252,7 @@ main (void)
     ibus_input_context_set_engine (ctx, "byakaron");
     pump ();
 
-    const gchar *engine_ok = NULL;
-    IBusEngineDesc *desc = ibus_input_context_get_engine (ctx);
-    engine_ok = desc ? ibus_engine_desc_get_name (desc) : NULL;
+    const gchar *engine_ok = wait_for_engine (ctx, "byakaron");
     if (g_strcmp0 (engine_ok, "byakaron") != 0) {
         g_printerr ("ime_test: context engine is '%s', not 'byakaron' — "
                     "is dev_run.sh running?\n", engine_ok ? engine_ok : "(none)");
@@ -315,6 +334,7 @@ main (void)
         ibus_input_context_focus_in (qt);
         ibus_input_context_set_engine (qt, "byakaron");
         pump ();
+        wait_for_engine (qt, "byakaron");
 
         reset_state (qt);
         send_string (qt, "ami");
@@ -327,6 +347,7 @@ main (void)
         ibus_input_context_focus_in (ctx);
         ibus_input_context_set_engine (ctx, "byakaron");
         pump ();
+        wait_for_engine (ctx, "byakaron");
         g_object_unref (qt);
 
         reset_state (ctx);
