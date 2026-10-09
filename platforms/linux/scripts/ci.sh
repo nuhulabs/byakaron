@@ -189,6 +189,27 @@ else
 fi
 
 echo
+echo "=== icon loads in GNOME's image loader ==="
+# GNOME draws app icons with gdk-pixbuf, which sniffs only the start of a file
+# to decide it is SVG. 0.1.8 shipped a long header comment before <svg>, and the
+# app grid showed a blank tile. Check the tag is near the top and that it loads.
+ICON="$PROJECT_ROOT/Resources/byakaron.svg"
+svg_at=$(grep -bo '<svg' "$ICON" | head -1 | cut -d: -f1)
+if [[ -z "$svg_at" || "$svg_at" -gt 64 ]]; then
+    echo "error: <svg> starts at byte ${svg_at:-?} of $ICON; keep it at the top" >&2
+    exit 1
+fi
+python3 - "$ICON" <<'PY'
+import sys, gi
+gi.require_version('GdkPixbuf', '2.0')
+from gi.repository import GdkPixbuf
+for size in (16, 32, 64, 256):
+    p = GdkPixbuf.Pixbuf.new_from_file_at_size(sys.argv[1], size, size)
+    assert p.get_width() == size, (size, p.get_width())
+print(">>> byakaron.svg loads at 16/32/64/256 px")
+PY
+
+echo
 echo "=== AppStream metainfo ==="
 if ! command -v appstreamcli >/dev/null; then
     echo "error: appstreamcli is required (apt install appstream)" >&2
