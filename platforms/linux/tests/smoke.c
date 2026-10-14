@@ -245,6 +245,34 @@ int main(void)
             o = byk_composer_key(c, 0xff1b, 0); /* Escape */
             g_free(o.commit);
             byk_composer_set_phonetic_only(c, FALSE);
+            /* Bangla digits off: 0-9 outside the list stay ASCII; 1-9 still pick. */
+            {
+                byk_composer_set_bangla_digits(c, FALSE);
+                o = byk_composer_key(c, 0x0031, 0); /* '1', nothing pending */
+                const int pass = o.action == BYK_ACT_PASS;
+                g_free(o.commit);
+                for (i = 0; i < 3; i++) { o = byk_composer_key(c, (guint) ami[i], 0); g_free(o.commit); }
+                o = byk_composer_key(c, 0x0032, 0); /* '2' with the list: still picks */
+                const int picks = o.action == BYK_ACT_COMMIT && o.commit && strcmp(o.commit, "আমিন") == 0;
+                g_free(o.commit);
+                byk_composer_set_phonetic_only(c, TRUE);
+                for (i = 0; i < 3; i++) { o = byk_composer_key(c, (guint) ami[i], 0); g_free(o.commit); }
+                o = byk_composer_key(c, 0x0032, 0); /* '2', no list: word, then ASCII 2 */
+                const int ascii = o.action == BYK_ACT_COMMIT && o.pass_key && o.commit &&
+                                  strcmp(o.commit, "আমি") == 0;
+                g_free(o.commit);
+                byk_composer_set_phonetic_only(c, FALSE);
+                byk_composer_set_bangla_digits(c, TRUE);
+                for (const char *p = "2024"; *p; p++) { o = byk_composer_key(c, (guint) *p, 0); g_free(o.commit); }
+                gchar *nums = byk_composer_preedit(c);
+                const int bangla = nums && strcmp(nums, "২০২৪") == 0;
+                printf("  %-4s %-28s -> %s\n", pass && picks && ascii && bangla ? "ok" : "FAIL",
+                       "Bangla digits off / on", nums ? nums : "(null)");
+                if (!(pass && picks && ascii && bangla)) failures++;
+                g_free(nums);
+                o = byk_composer_key(c, 0xff1b, 0); g_free(o.commit);
+            }
+
             /* Arrow keys: highlight, Enter commits it; Space never does. */
             {
                 gchar **cands;

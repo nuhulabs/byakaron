@@ -48,6 +48,7 @@ struct _BykComposer {
     BykCorrector *corrector; /* borrowed; NULL = no spelling corrections */
     gboolean corrections;    /* the "spelling suggestions" setting */
     BykUserDict *userdict;   /* borrowed; the personal dictionary, or NULL */
+    gboolean bangla_digits;  /* the "Bangla digits" setting */
 };
 
 static BykOutcome
@@ -290,6 +291,7 @@ byk_composer_new (void)
     self->cursor = -1;
     self->latin = g_string_sized_new (32);
     self->corrections = TRUE;
+    self->bangla_digits = TRUE;
     self->transliterator = byk_transliterator_new ();
     self->autocomplete = byk_autocomplete_new ();
 
@@ -393,6 +395,13 @@ byk_composer_set_corrector (BykComposer *self, BykCorrector *corrector)
 {
     g_return_if_fail (self != NULL);
     self->corrector = corrector;
+}
+
+void
+byk_composer_set_bangla_digits (BykComposer *self, gboolean bangla)
+{
+    g_return_if_fail (self != NULL);
+    self->bangla_digits = !!bangla;
 }
 
 void
@@ -571,7 +580,11 @@ byk_composer_key (BykComposer *self, guint keyval, guint mods)
             return picked;
     }
 
-    if (byk_is_bufferable_key (keyval)) {
+    /* With Bangla digits off, a digit is not part of the word: the fallback
+     * below commits the word and lets the application type the 0-9. */
+    const gboolean digit = (keyval >= BYK_KEY_0 && keyval <= BYK_KEY_9) ||
+                           (keyval >= BYK_KEY_KP_0 && keyval <= BYK_KEY_KP_9);
+    if (byk_is_bufferable_key (keyval) && !(digit && !self->bangla_digits)) {
         g_string_append_c (self->latin, byk_latin_char (keyval));
         gchar *bangla = byk_composer_bangla (self);
         byk_composer_refill_candidates (self, bangla);

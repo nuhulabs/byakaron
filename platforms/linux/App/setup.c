@@ -1,6 +1,5 @@
 #include "setup.h"
 
-#include "prefs.h"
 #include "uiutil.h"
 
 /* The only directory ibus-daemon scans for components; scripts/install.sh
@@ -25,7 +24,6 @@ struct _BykSetupPage {
     GtkWidget *install_hint; /* only shown when nothing is installed */
     GtkWidget *toast;
 
-    GSettings *prefs; /* NULL when the schema is not installed */
 };
 
 G_DEFINE_TYPE (BykSetupPage, byk_setup_page, GTK_TYPE_BOX)
@@ -138,47 +136,6 @@ on_copy_install_clicked (GtkButton *button, gpointer user_data)
 /* ── rows ────────────────────────────────────────────────────────────────── */
 
 static GtkWidget *
-byk_setup_row (GtkWidget *prefix, const gchar *title, const gchar *subtitle, GtkWidget *suffix)
-{
-    GtkWidget *labels = gtk_box_new (GTK_ORIENTATION_VERTICAL, 2);
-    GtkWidget *title_w = gtk_label_new (title);
-    gtk_label_set_xalign (GTK_LABEL (title_w), 0.0);
-    gtk_label_set_line_wrap (GTK_LABEL (title_w), TRUE);
-    byk_box_add (labels, title_w);
-
-    GtkWidget *sub_w = NULL;
-    if (subtitle != NULL) {
-        sub_w = gtk_label_new (subtitle);
-        byk_css_add (sub_w, "dim-label");
-        gtk_label_set_xalign (GTK_LABEL (sub_w), 0.0);
-        gtk_label_set_line_wrap (GTK_LABEL (sub_w), TRUE);
-        byk_box_add (labels, sub_w);
-    }
-
-    GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 12);
-    gtk_widget_set_margin_top (row, 8);
-    gtk_widget_set_margin_bottom (row, 8);
-    gtk_widget_set_margin_start (row, 12);
-    gtk_widget_set_margin_end (row, 12);
-    if (prefix != NULL) {
-        gtk_widget_set_valign (prefix, GTK_ALIGN_CENTER);
-        byk_box_add (row, prefix);
-    }
-    gtk_widget_set_hexpand (labels, TRUE);
-    /* Centred, or a one-line title sits above the middle of a taller button. */
-    gtk_widget_set_valign (labels, GTK_ALIGN_CENTER);
-    byk_box_add_expand (row, labels);
-    if (suffix != NULL) {
-        gtk_widget_set_valign (suffix, GTK_ALIGN_CENTER);
-        byk_box_add (row, suffix);
-    }
-
-    g_object_set_data (G_OBJECT (row), "byk-title", title_w);
-    g_object_set_data (G_OBJECT (row), "byk-subtitle", sub_w);
-    return row;
-}
-
-static GtkWidget *
 byk_setup_step_row (guint number, const gchar *text, const gchar *note)
 {
     gchar *label = g_strdup_printf ("%u", number);
@@ -190,7 +147,7 @@ byk_setup_step_row (guint number, const gchar *text, const gchar *note)
     gtk_widget_set_halign (badge, GTK_ALIGN_CENTER);
     gtk_widget_set_size_request (badge, 24, 24);
 
-    return byk_setup_row (badge, text, note, NULL);
+    return byk_row (badge, text, note, NULL);
 }
 
 static GtkWidget *
@@ -201,14 +158,14 @@ byk_setup_tip_row (const gchar *key, const gchar *meaning)
     gtk_label_set_line_wrap (GTK_LABEL (value), TRUE);
     gtk_label_set_max_width_chars (GTK_LABEL (value), 40);
     gtk_label_set_xalign (GTK_LABEL (value), 1.0);
-    return byk_setup_row (NULL, key, NULL, value);
+    return byk_row (NULL, key, NULL, value);
 }
 
 static GtkWidget *
 byk_setup_link_row (const gchar *title, const gchar *uri)
 {
     GtkWidget *link = gtk_link_button_new_with_label (uri, "Open");
-    return byk_setup_row (NULL, title, NULL, link);
+    return byk_row (NULL, title, NULL, link);
 }
 
 static GtkWidget *
@@ -216,38 +173,9 @@ byk_setup_switch_row (const gchar *title, const gchar *subtitle, GtkWidget **out
 {
     GtkWidget *sw = gtk_switch_new ();
     *out_switch = sw;
-    return byk_setup_row (NULL, title, subtitle, sw);
+    return byk_row (NULL, title, subtitle, sw);
 }
 
-static GtkWidget *
-byk_framed_list (const gchar *title, const gchar *description, GtkWidget **out_box)
-{
-    GtkWidget *outer = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
-    gtk_widget_set_margin_start (outer, 18);
-    gtk_widget_set_margin_end (outer, 18);
-    gtk_widget_set_margin_top (outer, 12);
-
-    if (title != NULL) {
-        GtkWidget *label = gtk_label_new (title);
-        byk_css_add (label, "heading");
-        gtk_widget_set_halign (label, GTK_ALIGN_START);
-        byk_box_add (outer, label);
-    }
-    if (description != NULL) {
-        GtkWidget *label = gtk_label_new (description);
-        byk_css_add (label, "dim-label");
-        gtk_label_set_line_wrap (GTK_LABEL (label), TRUE);
-        gtk_label_set_xalign (GTK_LABEL (label), 0.0);
-        byk_box_add (outer, label);
-    }
-
-    GtkWidget *list = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
-    GtkWidget *frame = gtk_frame_new (NULL);
-    gtk_container_add (GTK_CONTAINER (frame), list);
-    byk_box_add (outer, frame);
-    *out_box = list;
-    return outer;
-}
 
 /* ── construction ────────────────────────────────────────────────────────── */
 
@@ -264,7 +192,7 @@ byk_setup_page_build_status (BykSetupPage *self)
     GtkWidget *recheck = gtk_button_new_with_label ("Re-check");
     g_signal_connect (recheck, "clicked", G_CALLBACK (on_recheck_clicked), self);
 
-    GtkWidget *status = byk_setup_row (self->status_icon, "", "", recheck);
+    GtkWidget *status = byk_row (self->status_icon, "", "", recheck);
     self->status_title = g_object_get_data (G_OBJECT (status), "byk-title");
     self->status_subtitle = g_object_get_data (G_OBJECT (status), "byk-subtitle");
     byk_box_add (list, status);
@@ -272,7 +200,7 @@ byk_setup_page_build_status (BykSetupPage *self)
     GtkWidget *copy = gtk_button_new_with_label ("Copy install command");
     g_signal_connect (copy, "clicked", G_CALLBACK (on_copy_install_clicked), self);
 
-    self->install_hint = byk_setup_row (
+    self->install_hint = byk_row (
         NULL,
         "Install the input method",
         "Paste the command into a terminal, or install the .deb",
@@ -319,9 +247,10 @@ byk_setup_page_build_typing (void)
 
     /*
      * Deliberately not a copy of the macOS cheat-sheet. This engine commits
-     * what was typed rather than the top suggestion, has no arrow-key
-     * navigation, and pages with Page Up / Page Down — describing macOS's
-     * behaviour here would be describing a different keyboard.
+     * what was typed rather than the top suggestion (Space never takes a
+     * candidate; arrows + Enter or a number key do), and pages with Page Up /
+     * Page Down — describing macOS's behaviour here would be describing a
+     * different keyboard.
      */
     static const struct {
         const gchar *key;
@@ -330,7 +259,8 @@ byk_setup_page_build_typing (void)
         { "Type phonetically", "ami \u2192 আমি,  bangla \u2192 বাংলা" },
         { "Space", "commits the word you typed" },
         { "1\u20139", "picks a candidate while the list is showing" },
-        { "0\u20139", "Bangla numerals otherwise (2024 \u2192 ২০২৪)" },
+        { "\u2193 \u2191  then Enter", "highlights a candidate and types it" },
+        { "0\u20139", "Bangla numerals otherwise (2024 \u2192 ২০২৪); off in Settings" },
         { ".", "dari (ami. \u2192 আমি।)" },
         { "Page Up / Page Down", "moves through pages of candidates" },
         { "Backspace", "deletes the last character" },
@@ -347,41 +277,6 @@ byk_setup_page_build_typing (void)
 }
 
 static GtkWidget *
-byk_setup_page_build_prefs (BykSetupPage *self)
-{
-    self->prefs = byk_prefs_try_open ();
-    if (self->prefs == NULL)
-        return NULL;
-
-    GtkWidget *list = NULL;
-    GtkWidget *group = byk_framed_list (
-        "Preferences",
-        "These apply to the input method as soon as you change them.",
-        &list);
-
-    GtkWidget *suggest_sw = NULL;
-    GtkWidget *suggest = byk_setup_switch_row (
-        "Suggest words",
-        "Dictionary completions while typing. 1\u20139 pick one. Off still transliterates.",
-        &suggest_sw);
-    g_settings_bind (self->prefs, BYK_PREFS_PHONETIC_ONLY, suggest_sw, "active",
-                     G_SETTINGS_BIND_DEFAULT | G_SETTINGS_BIND_INVERT_BOOLEAN);
-    byk_box_add (list, suggest);
-    byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
-
-    GtkWidget *horiz_sw = NULL;
-    GtkWidget *horiz = byk_setup_switch_row (
-        "Horizontal candidate list",
-        "The input method panel. Off for a vertical list.",
-        &horiz_sw);
-    g_settings_bind (self->prefs, BYK_PREFS_CANDIDATES_HORIZONTAL, horiz_sw, "active",
-                     G_SETTINGS_BIND_DEFAULT);
-    byk_box_add (list, horiz);
-
-    return group;
-}
-
-static GtkWidget *
 byk_setup_page_build_about (void)
 {
     GtkWidget *list = NULL;
@@ -389,7 +284,7 @@ byk_setup_page_build_about (void)
 
     GtkWidget *version = gtk_label_new (BYK_APP_VERSION);
     byk_css_add (version, "dim-label");
-    byk_box_add (list, byk_setup_row (NULL, "Version", NULL, version));
+    byk_box_add (list, byk_row (NULL, "Version", NULL, version));
     byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
     byk_box_add (list, byk_setup_link_row ("Website", BYK_URL_WEBSITE));
     byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
@@ -407,8 +302,6 @@ byk_setup_page_init (BykSetupPage *self)
 static void
 byk_setup_page_dispose (GObject *object)
 {
-    BykSetupPage *self = BYK_SETUP_PAGE (object);
-    g_clear_object (&self->prefs);
     G_OBJECT_CLASS (byk_setup_page_parent_class)->dispose (object);
 }
 
@@ -430,11 +323,6 @@ byk_setup_page_new (void)
     byk_box_add (column, byk_setup_page_build_status (self));
     byk_box_add (column, byk_setup_page_build_steps (self));
     byk_box_add (column, byk_setup_page_build_typing ());
-    {
-        GtkWidget *prefs = byk_setup_page_build_prefs (self);
-        if (prefs != NULL)
-            byk_box_add (column, prefs);
-    }
     byk_box_add (column, byk_setup_page_build_about ());
 
     self->toast = gtk_label_new ("");

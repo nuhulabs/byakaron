@@ -149,3 +149,76 @@ byk_status_page (const gchar *icon, const gchar *title, const gchar *body)
     }
     return box;
 }
+
+/* ── settings-style rows (Setup, Settings) ──────────────────────────────── */
+
+GtkWidget *
+byk_row (GtkWidget *prefix, const gchar *title, const gchar *subtitle, GtkWidget *suffix)
+{
+    GtkWidget *labels = gtk_box_new (GTK_ORIENTATION_VERTICAL, 2);
+    GtkWidget *title_w = gtk_label_new (title);
+    gtk_label_set_xalign (GTK_LABEL (title_w), 0.0);
+    gtk_label_set_line_wrap (GTK_LABEL (title_w), TRUE);
+    byk_box_add (labels, title_w);
+
+    GtkWidget *sub_w = NULL;
+    if (subtitle != NULL) {
+        sub_w = gtk_label_new (subtitle);
+        byk_css_add (sub_w, "dim-label");
+        gtk_label_set_xalign (GTK_LABEL (sub_w), 0.0);
+        gtk_label_set_line_wrap (GTK_LABEL (sub_w), TRUE);
+        byk_box_add (labels, sub_w);
+    }
+
+    GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 12);
+    gtk_widget_set_margin_top (row, 8);
+    gtk_widget_set_margin_bottom (row, 8);
+    gtk_widget_set_margin_start (row, 12);
+    gtk_widget_set_margin_end (row, 12);
+    if (prefix != NULL) {
+        gtk_widget_set_valign (prefix, GTK_ALIGN_CENTER);
+        byk_box_add (row, prefix);
+    }
+    gtk_widget_set_hexpand (labels, TRUE);
+    /* Centred, or a one-line title sits above the middle of a taller button. */
+    gtk_widget_set_valign (labels, GTK_ALIGN_CENTER);
+    byk_box_add_expand (row, labels);
+    if (suffix != NULL) {
+        gtk_widget_set_valign (suffix, GTK_ALIGN_CENTER);
+        byk_box_add (row, suffix);
+    }
+
+    g_object_set_data (G_OBJECT (row), "byk-title", title_w);
+    g_object_set_data (G_OBJECT (row), "byk-subtitle", sub_w);
+    return row;
+}
+
+GtkWidget *
+byk_framed_list (const gchar *title, const gchar *description, GtkWidget **out_box)
+{
+    GtkWidget *outer = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
+    gtk_widget_set_margin_start (outer, 18);
+    gtk_widget_set_margin_end (outer, 18);
+    gtk_widget_set_margin_top (outer, 12);
+
+    if (title != NULL) {
+        GtkWidget *label = gtk_label_new (title);
+        byk_css_add (label, "heading");
+        gtk_widget_set_halign (label, GTK_ALIGN_START);
+        byk_box_add (outer, label);
+    }
+    if (description != NULL) {
+        GtkWidget *label = gtk_label_new (description);
+        byk_css_add (label, "dim-label");
+        gtk_label_set_line_wrap (GTK_LABEL (label), TRUE);
+        gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+        byk_box_add (outer, label);
+    }
+
+    GtkWidget *list = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+    GtkWidget *frame = gtk_frame_new (NULL);
+    gtk_container_add (GTK_CONTAINER (frame), list);
+    byk_box_add (outer, frame);
+    *out_box = list;
+    return outer;
+}

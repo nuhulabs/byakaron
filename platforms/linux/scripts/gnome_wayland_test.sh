@@ -40,6 +40,10 @@ sed -e "s|@BYK_EXEC@|$ENGINE|g" -e "s|@BYK_ICON@|input-keyboard|g" -e "s|@BYK_SE
 # The spelling-correction case needs a spell.db the engine can open.
 BYK_SPELL_DB_PRESENT=0
 [[ -f "${BYAKARON_SPELL_DB:-}" || -f /usr/share/byakaron/spell.db ]] && BYK_SPELL_DB_PRESENT=1
+# The build tree's compiled schema, so gsettings and the engine agree on keys
+# (the sandbox has its own dconf, the desktop's settings are not touched).
+export GSETTINGS_SCHEMA_DIR="$REPO_ROOT/zig-out/share/glib-2.0/schemas"
+export BYK_SETTINGS_TEST=1
 export W RUN ENGINE XML PROJECT_ROOT BYK_SPELL_DB_PRESENT
 export XDG_RUNTIME_DIR="$RUN" XDG_CONFIG_HOME="$W/config" XDG_DATA_HOME="$W/data" XDG_CACHE_HOME="$W/cache"
 # Whatever forces a backend or IM module in the caller's session must not leak in.
