@@ -1,6 +1,7 @@
 #include "composer.h"
 
 #include "autocomplete.h"
+#include "corrector.h"
 #include "transliterator.h"
 
 /* X11 keysyms — IBus, GDK and Fcitx5 all speak these. */
@@ -43,6 +44,8 @@ struct _BykComposer {
     guint page;
     gint cursor;        /* highlighted candidate (whole list), or -1 for none */
     gboolean phonetic_only;
+    BykCorrector *corrector; /* borrowed; NULL = no spelling corrections */
+    gboolean corrections;    /* the "spelling suggestions" setting */
 };
 
 static BykOutcome
@@ -73,13 +76,31 @@ byk_composer_refill_candidates (BykComposer *self, const gchar *bangla)
 
     gchar **words = byk_autocomplete_prefix (self->autocomplete, bangla,
                                              BYK_COMPOSER_CANDIDATE_LIMIT);
-    if (words == NULL)
-        return;
-    if (words[0] == NULL) {
-        g_strfreev (words);
+    if (words != NULL && words[0] != NULL) {
+        self->candidates = words;
         return;
     }
-    self->candidates = words;
+    g_strfreev (words);
+
+    /*
+     * Nothing in the dictionary starts with this, so Avro probably spelled it
+     * wrong (`sonar` → সনার). Offer the spell checker's corrections after the
+     * typed word, which stays first so Space and 1 still mean "as typed".
+     * Single letters are skipped: everything is a "misspelling" of them.
+     */
+    if (self->corrector == NULL || !self->corrections || g_utf8_strlen (bangla, -1) < 2)
+        return;
+
+    gchar **fixes = byk_corrector_get (self->corrector, bangla);
+    if (fixes != NULL && fixes[0] != NULL) {
+        GPtrArray *list = g_ptr_array_new ();
+        g_ptr_array_add (list, g_strdup (bangla));
+        for (guint i = 0; fixes[i] != NULL; i++)
+            g_ptr_array_add (list, g_strdup (fixes[i]));
+        g_ptr_array_add (list, NULL);
+        self->candidates = (gchar **) g_ptr_array_free (list, FALSE);
+    }
+    g_strfreev (fixes);
 }
 
 static gchar *
@@ -229,6 +250,7 @@ byk_composer_new (void)
     BykComposer *self = g_new0 (BykComposer, 1);
     self->cursor = -1;
     self->latin = g_string_sized_new (32);
+    self->corrections = TRUE;
     self->transliterator = byk_transliterator_new ();
     self->autocomplete = byk_autocomplete_new ();
 
@@ -322,6 +344,34 @@ byk_composer_set_phonetic_only (BykComposer *self, gboolean phonetic_only)
         return;
     }
 
+    gchar *bangla = byk_composer_bangla (self);
+    byk_composer_refill_candidates (self, bangla);
+    g_free (bangla);
+}
+
+void
+byk_composer_set_corrector (BykComposer *self, BykCorrector *corrector)
+{
+    g_return_if_fail (self != NULL);
+    self->corrector = corrector;
+}
+
+void
+byk_composer_set_corrections (BykComposer *self, gboolean enabled)
+{
+    g_return_if_fail (self != NULL);
+    if (self->corrections == !!enabled)
+        return;
+    self->corrections = !!enabled;
+    byk_composer_refresh (self);
+}
+
+void
+byk_composer_refresh (BykComposer *self)
+{
+    g_return_if_fail (self != NULL);
+    if (self->latin->len == 0)
+        return;
     gchar *bangla = byk_composer_bangla (self);
     byk_composer_refill_candidates (self, bangla);
     g_free (bangla);

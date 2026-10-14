@@ -2,6 +2,7 @@
 #define BYAKARON_LINUX_FCITX5_ENGINE_H
 
 #include "composer.h"
+#include "corrector.h"
 
 #include <fcitx/addonfactory.h>
 #include <fcitx/inputcontextproperty.h>
@@ -28,6 +29,7 @@ public:
 class ByakaronEngine : public fcitx::InputMethodEngineV2 {
 public:
     explicit ByakaronEngine (fcitx::Instance *instance);
+    ~ByakaronEngine () override;
 
     void keyEvent (const fcitx::InputMethodEntry &entry,
                    fcitx::KeyEvent &keyEvent) override;
@@ -44,6 +46,10 @@ private:
                 fcitx::KeyEvent *keyEvent);
 
     fcitx::Instance *instance_;
+    /* Shared by every input context's composer. Inline lookups: Fcitx5 does
+     * not run a GLib main loop for the threaded mode's callback. Declared
+     * before factory_, which hands it to each new composer. */
+    BykCorrector *corrector_;
     fcitx::FactoryFor<ByakaronState> factory_;
 };
 

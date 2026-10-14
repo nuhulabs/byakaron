@@ -18,6 +18,7 @@ G_BEGIN_DECLS
 #define BYK_PREFS_SCHEMA                 "dev.nuhu.labs.Byakaron"
 #define BYK_PREFS_PHONETIC_ONLY          "phonetic-only"
 #define BYK_PREFS_CANDIDATES_HORIZONTAL  "candidates-horizontal"
+#define BYK_PREFS_SPELLING_SUGGESTIONS   "spelling-suggestions"
 
 /* Point GSETTINGS_SCHEMA_DIR at the schemas next to an uninstalled binary. */
 void byk_prefs_init_schema_dir (void);

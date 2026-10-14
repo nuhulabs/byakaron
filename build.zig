@@ -214,6 +214,7 @@ pub fn build(b: *std.Build) !void {
                 "platforms/linux/Core/transliterator.c",
                 "platforms/linux/Core/autocomplete.c",
                 "platforms/linux/Core/spell.c",
+                "platforms/linux/Core/corrector.c",
                 "platforms/linux/Core/composer.c",
                 "platforms/linux/Core/prefs.c",
             },
@@ -292,6 +293,7 @@ pub fn build(b: *std.Build) !void {
                 "platforms/linux/Core/transliterator.c",
                 "platforms/linux/Core/autocomplete.c",
                 "platforms/linux/Core/spell.c",
+                "platforms/linux/Core/corrector.c",
                 "platforms/linux/Core/composer.c",
                 "platforms/linux/Core/prefs.c",
             },
@@ -379,6 +381,8 @@ pub fn build(b: *std.Build) !void {
             fcitx.root_module.addCSourceFiles(.{
                 .files = &.{
                     "platforms/linux/Core/composer.c",
+                    "platforms/linux/Core/corrector.c",
+                    "platforms/linux/Core/spell.c",
                     "platforms/linux/Core/transliterator.c",
                     "platforms/linux/Core/autocomplete.c",
                     "platforms/linux/Core/prefs.c",
