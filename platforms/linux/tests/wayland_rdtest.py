@@ -2,7 +2,7 @@
 # the compositor's own input path, and check what the app received (the reader
 # prints its text). One D-Bus connection holds the session: it ends when the
 # connection that created it closes.
-import sys, time, subprocess
+import os, sys, time, subprocess
 from gi.repository import Gio, GLib
 label, reader = sys.argv[1], sys.argv[2:]
 bus = Gio.bus_get_sync(Gio.BusType.SESSION)
@@ -37,5 +37,14 @@ import os
 if os.environ.get("BYK_SPELL_DB_PRESENT") == "1":
     # The correction arrives from the engine's worker thread after the keystroke.
     t("sonar + 2 (spelling fix)", "সোনার", lambda: (typ("sonar"), time.sleep(1.0), key(ord('2'))))
+if os.environ.get("BYK_SETTINGS_TEST") == "1":
+    # Settings apply live: flip one with gsettings while the keyboard runs.
+    def gset(key, value):
+        subprocess.run(["gsettings", "set", "dev.nuhu.labs.Byakaron", key, value], check=True)
+        time.sleep(0.5)
+    gset("bangla-digits", "false")
+    t("Bangla digits off: 2026", "2026 ", lambda: typ("2026 "))
+    gset("bangla-digits", "true")
+    t("Bangla digits on: 2026", "২০২৬ ", lambda: typ("2026 "))
 call(sess, RD + '.Session', 'Stop')
 sys.exit(1 if fails else 0)
