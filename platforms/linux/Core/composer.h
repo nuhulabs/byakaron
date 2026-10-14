@@ -4,7 +4,8 @@
  *
  * IBus and Fcitx5 disagree about panels and how text is
  * committed. They agree on what a keystroke *means* — Space commits what was
- * typed, 1–9 pick a candidate while the list is showing, digits otherwise
+ * typed, 1–9 pick a candidate while the list is showing, arrows move a
+ * highlight through the list and Enter commits it, digits otherwise
  * become Bangla numerals, and printable punctuation stays in the latin buffer
  * so Avro can map it (`.` → `।`, `:` → `ঃ`, `$` → `৳`). That policy lives
  * here so the shells cannot drift.
@@ -66,6 +67,15 @@ gchar *byk_composer_preedit (BykComposer *self);
 gchar **byk_composer_candidates (BykComposer *self);
 gboolean byk_composer_table_visible (BykComposer *self);
 guint byk_composer_page (BykComposer *self);
+
+/*
+ * Highlighted candidate as an index into the whole list, or -1 when nothing is
+ * highlighted (the default). Arrow keys move it; Enter commits it.
+ */
+gint byk_composer_cursor (BykComposer *self);
+
+/* Panel cursor up/down: same as Up/Down while the list is showing. */
+BykOutcome byk_composer_cursor_move (BykComposer *self, gboolean forward);
 
 /*
  * When TRUE, the dictionary candidate list is hidden; transliteration is

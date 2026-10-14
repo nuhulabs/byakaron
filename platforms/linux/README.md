@@ -195,9 +195,10 @@ Key handling:
 | `.` `,` `:` `$` `^` backtick and other printable ASCII | Appended; Avro maps `.` → `।`, `:` → `ঃ`, `$` → `৳`, `^` → `ঁ` |
 | Backspace | Drops one latin character and re-transliterates |
 | Space | Commits the Bangla plus the space, in one commit |
-| Enter | Commits the word, then lets the application see the Enter |
+| Enter | Commits the highlighted candidate if an arrow key chose one (Enter is consumed); otherwise commits the word, then lets the application see the Enter |
 | Escape | Discards the pending word and its candidates |
 | `1`–`9` | Picks that candidate — but only while the list is on screen |
+| Down / Right, Up / Left | Moves a highlight through the candidates, across pages, while the list is on screen. Nothing is highlighted until the first arrow; Up from the first candidate removes it. Without a list the arrows commit the word and move the caret as usual |
 | Page Up / Page Down | Turns the candidate page, while the list is on screen |
 | Ctrl/Alt/Super + key | Commits the word, then passes the shortcut through |
 | Anything else | Commits the word and is handled by the application |
