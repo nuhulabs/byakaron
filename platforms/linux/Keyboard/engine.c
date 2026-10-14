@@ -12,6 +12,7 @@
 #include "composer.h"
 #include "corrector.h"
 #include "prefs.h"
+#include "userdict.h"
 
 #define BYK_PAGE_SIZE BYK_COMPOSER_PAGE_SIZE
 
@@ -19,6 +20,7 @@ struct _BykEngine {
     IBusEngine parent_instance;
     BykComposer *composer;
     BykCorrector *corrector; /* spelling corrections; NULL without spell.db */
+    BykUserDict *userdict;   /* personal dictionary, shared with the app via its file */
     IBusLookupTable *table;
     GSettings *prefs; /* NULL when the schema is not installed */
     gboolean table_visible;
@@ -176,6 +178,9 @@ byk_engine_process_key_event (IBusEngine *engine,
                               guint       state)
 {
     (void) keycode;
+    /* Words added in the app reach the keyboard without a restart. */
+    if (byk_userdict_reload_if_changed (BYK_ENGINE (engine)->userdict))
+        byk_composer_refresh (BYK_ENGINE (engine)->composer);
     return byk_engine_apply (BYK_ENGINE (engine),
                              byk_composer_key (BYK_ENGINE (engine)->composer,
                                                keyval, byk_ibus_mods (state)));
@@ -320,6 +325,9 @@ byk_engine_init (BykEngine *self)
         g_message ("byakaron: spell.db unavailable, no spelling corrections");
     byk_composer_set_corrector (self->composer, self->corrector);
 
+    self->userdict = byk_userdict_new ();
+    byk_composer_set_userdict (self->composer, self->userdict);
+
     self->preedit_mode = IBUS_ENGINE_PREEDIT_COMMIT;
     self->table = ibus_lookup_table_new (BYK_PAGE_SIZE, 0, FALSE, FALSE);
     g_object_ref_sink (self->table);
@@ -338,8 +346,9 @@ byk_engine_destroy (IBusObject *object)
     BykEngine *self = BYK_ENGINE (object);
 
     g_clear_pointer (&self->composer, byk_composer_free);
-    /* After the composer, which borrows it. */
+    /* After the composer, which borrows them. */
     g_clear_pointer (&self->corrector, byk_corrector_free);
+    g_clear_pointer (&self->userdict, byk_userdict_free);
     g_clear_object (&self->table);
     g_clear_object (&self->prefs);
 

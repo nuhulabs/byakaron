@@ -3,6 +3,7 @@
 #include "autocomplete.h"
 #include "corrector.h"
 #include "transliterator.h"
+#include "userdict.h"
 
 /* X11 keysyms — IBus, GDK and Fcitx5 all speak these. */
 #define BYK_KEY_BackSpace    0xff08
@@ -46,6 +47,7 @@ struct _BykComposer {
     gboolean phonetic_only;
     BykCorrector *corrector; /* borrowed; NULL = no spelling corrections */
     gboolean corrections;    /* the "spelling suggestions" setting */
+    BykUserDict *userdict;   /* borrowed; the personal dictionary, or NULL */
 };
 
 static BykOutcome
@@ -76,11 +78,48 @@ byk_composer_refill_candidates (BykComposer *self, const gchar *bangla)
 
     gchar **words = byk_autocomplete_prefix (self->autocomplete, bangla,
                                              BYK_COMPOSER_CANDIDATE_LIMIT);
-    if (words != NULL && words[0] != NULL) {
-        self->candidates = words;
+    /* Words the user saved that start with this. They go right after the
+     * first entry (the typed word when it is in the dictionary), ahead of the
+     * dictionary's other completions: the user chose them. */
+    gchar **mine = self->userdict != NULL
+        ? byk_userdict_prefix (self->userdict, bangla, 5) : NULL;
+
+    if ((words != NULL && words[0] != NULL) || (mine != NULL && mine[0] != NULL)) {
+        GPtrArray *list = g_ptr_array_new ();
+        GHashTable *seen = g_hash_table_new (g_str_hash, g_str_equal);
+        const gboolean from_lexicon = words != NULL && words[0] != NULL;
+        const gchar *first = from_lexicon ? words[0] : bangla;
+#define BYK_LIST_ADD(w) \
+        G_STMT_START { \
+            if (list->len < BYK_COMPOSER_CANDIDATE_LIMIT && g_hash_table_add (seen, (gpointer) (w))) \
+                g_ptr_array_add (list, g_strdup (w)); \
+        } G_STMT_END
+        BYK_LIST_ADD (first);
+        for (guint i = 0; mine != NULL && mine[i] != NULL; i++)
+            BYK_LIST_ADD (mine[i]);
+        for (guint i = 1; words != NULL && words[0] != NULL && words[i] != NULL; i++)
+            BYK_LIST_ADD (words[i]);
+#undef BYK_LIST_ADD
+        g_hash_table_destroy (seen);
+        g_strfreev (words);
+        g_strfreev (mine);
+
+        /* A saved word that is exactly what was typed, alone, is not a list
+         * worth showing (a dictionary hit alone still is, as before). */
+        if (!from_lexicon && list->len == 1 && g_strcmp0 (g_ptr_array_index (list, 0), bangla) == 0) {
+            g_ptr_array_free (list, TRUE);
+            return;
+        }
+        g_ptr_array_add (list, NULL);
+        self->candidates = (gchar **) g_ptr_array_free (list, FALSE);
         return;
     }
     g_strfreev (words);
+    g_strfreev (mine);
+
+    /* The user saved this exact word: it is not a misspelling. */
+    if (self->userdict != NULL && byk_userdict_contains (self->userdict, bangla))
+        return;
 
     /*
      * Nothing in the dictionary starts with this, so Avro probably spelled it
@@ -354,6 +393,13 @@ byk_composer_set_corrector (BykComposer *self, BykCorrector *corrector)
 {
     g_return_if_fail (self != NULL);
     self->corrector = corrector;
+}
+
+void
+byk_composer_set_userdict (BykComposer *self, BykUserDict *userdict)
+{
+    g_return_if_fail (self != NULL);
+    self->userdict = userdict;
 }
 
 void

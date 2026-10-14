@@ -1,5 +1,6 @@
 #include "window.h"
 
+#include "dictionary.h"
 #include "layout.h"
 #include "setup.h"
 #include "spelling.h"
@@ -128,9 +129,32 @@ on_page_activate (GSimpleAction *action, GVariant *parameter, gpointer user_data
     byk_window_show_page (self, g_variant_get_string (parameter, NULL));
 }
 
+static void
+on_dictionary_changed (gpointer user_data)
+{
+    BykWindow *self = BYK_WINDOW (user_data);
+    if (self->spell_page != NULL)
+        byk_spell_page_recheck (BYK_SPELL_PAGE (self->spell_page));
+}
+
+static void
+on_dictionary_activate (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+    BykWindow *self = BYK_WINDOW (user_data);
+    (void) action;
+    (void) parameter;
+    byk_dictionary_show (GTK_WINDOW (self), self->engines.userdict,
+                         G_CALLBACK (on_dictionary_changed), self);
+}
+
 static GtkWidget *
 byk_window_build_menu_button (BykWindow *self)
 {
+    GSimpleAction *dictionary = g_simple_action_new ("dictionary", NULL);
+    g_signal_connect (dictionary, "activate", G_CALLBACK (on_dictionary_activate), self);
+    g_action_map_add_action (G_ACTION_MAP (self), G_ACTION (dictionary));
+    g_object_unref (dictionary);
+
     GSimpleAction *page = g_simple_action_new_stateful (
         "page", G_VARIANT_TYPE_STRING, g_variant_new_string ("spelling"));
     g_signal_connect (page, "activate", G_CALLBACK (on_page_activate), self);
@@ -142,13 +166,18 @@ byk_window_build_menu_button (BykWindow *self)
     g_menu_append (pages, "_Layout", "win.page::layout");
     g_menu_append (pages, "_Setup", "win.page::setup");
 
+    GMenu *tools = g_menu_new ();
+    g_menu_append (tools, "Personal _Dictionary…", "win.dictionary");
+
     GMenu *app_items = g_menu_new ();
     g_menu_append (app_items, "_About Byakaron", "app.about");
     g_menu_append (app_items, "_Quit", "app.quit");
 
     GMenu *menu = g_menu_new ();
     g_menu_append_section (menu, NULL, G_MENU_MODEL (pages));
+    g_menu_append_section (menu, NULL, G_MENU_MODEL (tools));
     g_menu_append_section (menu, NULL, G_MENU_MODEL (app_items));
+    g_object_unref (tools);
     g_object_unref (pages);
     g_object_unref (app_items);
 
@@ -172,6 +201,7 @@ byk_window_init (BykWindow *self)
     self->engines.transliterator = NULL;
     self->engines.autocomplete = NULL;
     self->engines.spell = NULL;
+    self->engines.userdict = byk_userdict_new ();
 
     self->stack = gtk_stack_new ();
     gtk_stack_set_transition_type (GTK_STACK (self->stack),
@@ -228,6 +258,7 @@ byk_window_dispose (GObject *object)
     G_OBJECT_CLASS (byk_window_parent_class)->dispose (object);
 
     g_clear_pointer (&self->engines.spell, byk_spell_free);
+    g_clear_pointer (&self->engines.userdict, byk_userdict_free);
     g_clear_pointer (&self->engines.autocomplete, byk_autocomplete_free);
     g_clear_pointer (&self->engines.transliterator, byk_transliterator_free);
 }

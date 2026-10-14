@@ -390,7 +390,8 @@ byk_spell_page_check (BykSpellPage *self)
             gint verdict = GPOINTER_TO_INT (g_hash_table_lookup (verdicts, word));
             if (verdict == 0) {
                 const gboolean wrong = !g_hash_table_contains (self->ignored, word) &&
-                                       byk_spell_is_correct (self->engines->spell, word) == 0;
+                                       byk_spell_is_correct (self->engines->spell, word) == 0 &&
+                                       !byk_userdict_contains (self->engines->userdict, word);
                 verdict = wrong ? 1 : 2;
                 g_hash_table_insert (verdicts, g_strdup (word), GINT_TO_POINTER (verdict));
             }
@@ -578,6 +579,40 @@ on_ignore_clicked (GtkButton *button, gpointer user_data)
 }
 
 /* ── toolbar actions ─────────────────────────────────────────────────────── */
+
+/* Saved for good, in the file the keyboard reads too, unlike Ignore. */
+static void
+on_add_word_clicked (GtkButton *button, gpointer user_data)
+{
+    BykSpellPage *self = BYK_SPELL_PAGE (user_data);
+    const BykIssue *issue = byk_spell_page_issue (self, self->selected);
+    GError *error = NULL;
+    (void) button;
+
+    if (issue == NULL)
+        return;
+
+    gchar *word = g_strdup (issue->word);
+    if (!byk_userdict_add (self->engines->userdict, word, &error)) {
+        gchar *msg = g_strdup_printf ("Could not save: %s", error->message);
+        byk_toast_show (GTK_LABEL (self->toast), msg);
+        g_free (msg);
+        g_error_free (error);
+    } else {
+        gchar *msg = g_strdup_printf ("Added “%s” to your dictionary", word);
+        byk_toast_show (GTK_LABEL (self->toast), msg);
+        g_free (msg);
+        byk_spell_page_check_now (self);
+    }
+    g_free (word);
+}
+
+void
+byk_spell_page_recheck (BykSpellPage *self)
+{
+    g_return_if_fail (BYK_IS_SPELL_PAGE (self));
+    byk_spell_page_check_now (self);
+}
 
 static void
 on_fix_all_clicked (GtkButton *button, gpointer user_data)
@@ -1060,13 +1095,18 @@ byk_spell_page_build_correction_bar (BykSpellPage *self)
 
     /* Outside the scroller: with eight suggestions the strip overflows, and
      * Ignore is the one control that must not scroll out of reach. */
+    GtkWidget *add = gtk_button_new_with_label ("Add to Dictionary");
+    gtk_widget_set_tooltip_text (add, "Never mark this word again, here or in the keyboard");
+    g_signal_connect (add, "clicked", G_CALLBACK (on_add_word_clicked), self);
+
     GtkWidget *ignore = gtk_button_new_with_label ("Ignore");
-    gtk_widget_set_tooltip_text (ignore, "Accept this word for now");
+    gtk_widget_set_tooltip_text (ignore, "Accept this word until the app closes");
     g_signal_connect (ignore, "clicked", G_CALLBACK (on_ignore_clicked), self);
 
     byk_box_add (bar, self->correction_word);
     byk_box_add (bar, arrow);
     byk_box_add_expand (bar, scroller);
+    byk_box_add (bar, add);
     byk_box_add (bar, ignore);
 
     self->correction = gtk_revealer_new ();

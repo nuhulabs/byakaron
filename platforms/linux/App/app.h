@@ -12,6 +12,7 @@
 #include "autocomplete.h"
 #include "spell.h"
 #include "transliterator.h"
+#include "userdict.h"
 
 G_BEGIN_DECLS
 
@@ -37,6 +38,9 @@ typedef struct {
     BykTransliterator *transliterator;
     BykAutoComplete *autocomplete;
     BykSpell *spell;
+    /* The personal dictionary; always present (an empty file is fine). The
+     * keyboard reads the same file. */
+    BykUserDict *userdict;
 } BykEngines;
 
 G_END_DECLS
