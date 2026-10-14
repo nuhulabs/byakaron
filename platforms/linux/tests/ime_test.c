@@ -29,6 +29,7 @@ static int g_failures = 0;
 static gchar **g_candidates = NULL; /* NULL-terminated */
 static guint g_page_size = 0;
 static guint g_cursor_pos = 0;
+static gboolean g_cursor_visible = FALSE;
 static gboolean g_table_visible = FALSE;
 
 static void
@@ -89,6 +90,7 @@ on_update_lookup_table (IBusInputContext *context,
     g_candidates = (gchar **) g_ptr_array_free (words, FALSE);
     g_page_size = table ? ibus_lookup_table_get_page_size (table) : 0;
     g_cursor_pos = table ? ibus_lookup_table_get_cursor_pos (table) : 0;
+    g_cursor_visible = table ? ibus_lookup_table_is_cursor_visible (table) : FALSE;
     g_table_visible = visible;
 }
 
@@ -172,6 +174,7 @@ reset_state (IBusInputContext *ctx)
     g_strfreev (g_candidates); g_candidates = NULL;
     g_page_size = 0;
     g_cursor_pos = 0;
+    g_cursor_visible = FALSE;
     g_table_visible = FALSE;
 }
 
@@ -380,6 +383,22 @@ main (void)
         check ("\"2\" commits candidate 2", g_committed, second);
         check ("preedit cleared", g_preedit, "");
         check_flag ("lookup table hidden", g_table_visible, FALSE);
+        g_free (second);
+    }
+
+    g_print ("arrow keys move a highlight, Enter picks it:\n");
+    reset_state (ctx);
+    send_string (ctx, "ami");
+    check_flag ("no highlight before an arrow", g_cursor_visible, FALSE);
+    {
+        gchar *second = g_strdup (candidate_at (1));
+        send_key (ctx, IBUS_KEY_Down);
+        send_key (ctx, IBUS_KEY_Down);
+        check_flag ("highlight shown", g_cursor_visible, TRUE);
+        check_flag ("highlight on candidate 2", g_cursor_pos == 1, TRUE);
+        send_key (ctx, IBUS_KEY_Return);
+        check ("Enter commits the highlight", g_committed, second);
+        check ("preedit cleared", g_preedit, "");
         g_free (second);
     }
 
