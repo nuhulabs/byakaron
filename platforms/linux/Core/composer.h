@@ -94,6 +94,14 @@ typedef struct _BykCorrector BykCorrector;
 void byk_composer_set_corrector (BykComposer *self, BykCorrector *corrector);
 void byk_composer_set_corrections (BykComposer *self, gboolean enabled);
 
+/*
+ * The personal dictionary (borrowed, may be NULL): saved words that start
+ * with the typed word are suggested after the first candidate, and a saved
+ * word is never offered spelling corrections.
+ */
+typedef struct _BykUserDict BykUserDict;
+void byk_composer_set_userdict (BykComposer *self, BykUserDict *userdict);
+
 /* Rebuild the candidates for the current word, e.g. when corrections that were
  * still being looked up have arrived. Does nothing with no word pending. */
 void byk_composer_refresh (BykComposer *self);

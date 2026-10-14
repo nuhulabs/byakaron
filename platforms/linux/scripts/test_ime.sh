@@ -23,6 +23,13 @@ if [[ -z "${BYAKARON_SPELL_DB:-}" && -f "$REPO_ROOT/packages/data/spell.db" ]]; 
     export BYAKARON_SPELL_DB="$REPO_ROOT/packages/data/spell.db"
 fi
 
+# A throwaway personal dictionary: the test writes to it while the engine runs,
+# the way the app does, and never touches the user's real one.
+export BYAKARON_USER_DICT="$PROJECT_ROOT/build/ime-test-user-words.txt"
+# Not empty at start: reading an existing file at engine start is what once
+# crashed (a stat() struct mismatch under Zig's libc headers).
+printf 'আমায়\n' > "$BYAKARON_USER_DICT"
+
 if ! pgrep -x ibus-daemon >/dev/null; then
     echo "error: ibus-daemon is not running — start it with 'ibus-daemon -drx'" >&2
     exit 1

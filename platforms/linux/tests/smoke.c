@@ -17,6 +17,8 @@
 #include "composer.h"
 #include "spell.h"
 #include "corrector.h"
+#include "userdict.h"
+#include <glib/gstdio.h>
 
 /* Expected outputs are pinned so a regression in the engine is visible here. */
 static const struct {
@@ -463,6 +465,81 @@ int main(void)
             byk_corrector_free(corr);
             g_main_loop_unref(loop);
         }
+    }
+
+    puts("personal dictionary:");
+    {
+        gchar *dir = g_dir_make_tmp("byk-userdict-XXXXXX", NULL);
+        gchar *path = g_build_filename(dir, "sub", "user-words.txt", NULL);
+        g_setenv("BYAKARON_USER_DICT", path, TRUE);
+
+        BykUserDict *d = byk_userdict_new();
+        const int empty = byk_userdict_count(d) == 0;
+        GError *err = NULL;
+        /* য় spelled as য + nukta (NFD) must be the same entry as U+09DF. */
+        const int added = byk_userdict_add(d, "জিবন", &err) &&
+                          byk_userdict_add(d, "আমায়", &err) &&
+                          byk_userdict_add(d, " জিবন ", &err);
+        const int nfc = byk_userdict_contains(d, "আমায়") && byk_userdict_count(d) == 2;
+        gchar **pre = byk_userdict_prefix(d, "জি", 5);
+        const int prefix = pre[0] && strcmp(pre[0], "জিবন") == 0 && pre[1] == NULL;
+        g_strfreev(pre);
+        printf("  %-4s %-28s -> %s\n", empty && added && nfc && prefix ? "ok" : "FAIL",
+               "add, NFC, prefix", path);
+        if (!(empty && added && nfc && prefix)) failures++;
+
+        BykUserDict *again = byk_userdict_new();
+        const int reloaded = byk_userdict_contains(again, "জিবন") && byk_userdict_count(again) == 2;
+        printf("  %-4s %-28s -> %u words\n", reloaded ? "ok" : "FAIL", "saved and read back",
+               byk_userdict_count(again));
+        if (!reloaded) failures++;
+
+        /* Another process (the app) changes the file: the reader notices once
+         * its one-second check comes round, not before. */
+        byk_userdict_remove(d, "আমায়", NULL);
+        const int throttled = !byk_userdict_reload_if_changed(again);
+        g_usleep(1100 * 1000);
+        const int noticed = byk_userdict_reload_if_changed(again) &&
+                            !byk_userdict_contains(again, "আমায়") && byk_userdict_count(again) == 1;
+        printf("  %-4s %-28s -> %s\n", throttled && noticed ? "ok" : "FAIL", "other process's change seen",
+               noticed ? "yes" : "no");
+        if (!(throttled && noticed)) failures++;
+
+        /* Keyboard: a saved word is suggested while typing its start, and is
+         * never offered corrections. */
+        BykCorrector *corr = byk_corrector_new(FALSE, NULL, NULL);
+        BykComposer *c = byk_composer_new();
+        byk_composer_set_corrector(c, corr);
+        byk_composer_set_userdict(c, again);
+        BykOutcome o;
+        for (const char *p = "jib"; *p; p++) { o = byk_composer_key(c, (guint) *p, 0); g_free(o.commit); }
+        gchar **cands = byk_composer_candidates(c);
+        int suggested = 0;
+        for (guint i = 0; cands && cands[i] && i < 3; i++)
+            if (strcmp(cands[i], "জিবন") == 0) suggested = 1;
+        printf("  %-4s %-28s -> %s\n", suggested ? "ok" : "FAIL", "jib suggests saved জিবন",
+               cands && cands[1] ? cands[1] : "(none)");
+        if (!suggested) failures++;
+        for (const char *p = "on"; *p; p++) { o = byk_composer_key(c, (guint) *p, 0); g_free(o.commit); }
+        const int no_fix = !byk_composer_table_visible(c);
+        printf("  %-4s %-28s -> %s\n", no_fix ? "ok" : "FAIL", "jibon: saved, no corrections",
+               no_fix ? "no list" : "list shown");
+        if (!no_fix) failures++;
+        o = byk_composer_key(c, 0xff1b, 0); g_free(o.commit);
+        byk_composer_free(c);
+        byk_corrector_free(corr);
+
+        byk_userdict_free(again);
+        byk_userdict_free(d);
+        g_unsetenv("BYAKARON_USER_DICT");
+        g_remove(path);
+        gchar *sub = g_path_get_dirname(path);
+        g_rmdir(sub);
+        g_rmdir(dir);
+        g_free(sub);
+        g_free(path);
+        g_free(dir);
+        if (err) g_error_free(err);
     }
 
     /*

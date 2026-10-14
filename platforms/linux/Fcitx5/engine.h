@@ -3,6 +3,7 @@
 
 #include "composer.h"
 #include "corrector.h"
+#include "userdict.h"
 
 #include <fcitx/addonfactory.h>
 #include <fcitx/inputcontextproperty.h>
@@ -50,6 +51,7 @@ private:
      * not run a GLib main loop for the threaded mode's callback. Declared
      * before factory_, which hands it to each new composer. */
     BykCorrector *corrector_;
+    BykUserDict *userdict_; /* personal dictionary; the app writes, we re-read */
     fcitx::FactoryFor<ByakaronState> factory_;
 };
 

@@ -251,6 +251,29 @@ up inline (cached too): a new misspelled word can stall that keystroke once.
 Needs spell.db; without it nothing changes. GSettings key
 `spelling-suggestions` (default on) turns it off, live.
 
+### Personal dictionary
+
+Words the user marks as correct live in
+`~/.local/share/byakaron/user-words.txt` (one per line, NFC, sorted, written
+atomically; `BYAKARON_USER_DICT` overrides the path for tests).
+`Core/userdict.c` is shared by both sides:
+
+- **App:** "Add to Dictionary" next to Ignore in the Spelling page (Ignore
+  still lasts only until the app closes), and *Personal Dictionary…* in the
+  main menu to add a word by hand or remove one. Saved words are never flagged.
+- **Keyboard:** saved words that start with what is being typed are suggested
+  right after the first candidate, and a saved word is never offered spelling
+  corrections. The engine re-reads the file at most once a second on a
+  keystroke and compares contents, so a word added in the app works in the
+  keyboard without restarting either.
+
+Changes are detected by comparing contents rather than `stat()`: built by Zig
+against its bundled glibc headers, `struct stat` was smaller than what the
+system's `stat()` writes, and the overflow crashed the app at start once the
+file existed. GIO was ruled out too: it can load GVfs and block on D-Bus.
+The app-only Flatpak has its own data directory, so its dictionary is not the
+keyboard's.
+
 ## The app
 
 A separate process (`byakaron`) from the engine, sharing only `Core/` and the

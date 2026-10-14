@@ -10,6 +10,7 @@
  * Requires a running ibus-daemon with the engine registered — see
  * platforms/linux/scripts/dev_run.sh, which this test's runner starts for it.
  */
+#include <glib/gstdio.h>
 #include <ibus.h>
 #include <locale.h>
 #include <stdlib.h>
@@ -422,6 +423,27 @@ main (void)
             check ("correction offered", candidate_at (1), "সোনার");
             send_key (ctx, '2');
             check ("2 commits the correction", g_committed, "সোনার");
+        }
+    }
+
+    /* The app saves a word while the engine is running; the engine re-reads
+     * the file (at most once a second) and suggests it. */
+    g_print ("personal dictionary reaches the keyboard:\n");
+    {
+        const gchar *dict = g_getenv ("BYAKARON_USER_DICT");
+        if (dict == NULL || *dict == '\0') {
+            g_print ("  skip (BYAKARON_USER_DICT not set; run via test_ime.sh)\n");
+        } else {
+            g_file_set_contents (dict, "জিবন\n", -1, NULL);
+            g_usleep (1200 * 1000);
+            reset_state (ctx);
+            send_string (ctx, "jib");
+            gboolean found = FALSE;
+            for (guint i = 0; i < 3 && candidate_at (i) != NULL; i++)
+                found = found || g_strcmp0 (candidate_at (i), "জিবন") == 0;
+            check_flag ("saved word suggested for jib", found, TRUE);
+            send_key (ctx, IBUS_KEY_Escape);
+            g_remove (dict);
         }
     }
 
