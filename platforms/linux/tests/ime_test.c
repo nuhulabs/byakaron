@@ -402,6 +402,29 @@ main (void)
         g_free (second);
     }
 
+    /* Corrections come from the engine's worker thread a moment after the
+     * keystroke, with no further key: wait for the list rather than one pump. */
+    g_print ("spelling corrections in the candidate list:\n");
+    {
+        const gchar *env_db = g_getenv ("BYAKARON_SPELL_DB");
+        const gboolean have_db = (env_db != NULL && g_file_test (env_db, G_FILE_TEST_EXISTS)) ||
+                                 g_file_test ("/usr/share/byakaron/spell.db", G_FILE_TEST_EXISTS);
+        if (!have_db) {
+            g_print ("  skip (no spell.db for the engine)\n");
+        } else {
+            reset_state (ctx);
+            send_string (ctx, "sonar");
+            for (guint waited = 0; waited < 5000 && g_strcmp0 (candidate_at (1), "সোনার") != 0; waited += 100) {
+                g_usleep (100 * 1000);
+                pump ();
+            }
+            check ("typed word stays first", candidate_at (0), "সনার");
+            check ("correction offered", candidate_at (1), "সোনার");
+            send_key (ctx, '2');
+            check ("2 commits the correction", g_committed, "সোনার");
+        }
+    }
+
     g_print ("page down moves which candidates 1-9 mean:\n");
     reset_state (ctx);
     send_string (ctx, "ami");
@@ -418,9 +441,14 @@ main (void)
 
     g_print ("no candidates for a word outside the lexicon:\n");
     reset_state (ctx);
-    /* Real Bangla, but not a dictionary lemma. */
-    send_string (ctx, "sonar");
-    check ("preedit still transliterates", g_preedit, "সনার");
+    /* Not a dictionary prefix, and spell.db has no correction close to it
+     * either (sonar now gets সোনার offered, see above). */
+    send_string (ctx, "prithibi");
+    for (guint waited = 0; waited < 1000; waited += 100) {
+        g_usleep (100 * 1000);
+        pump ();
+    }
+    check ("preedit still transliterates", g_preedit, "প্রিথিবি");
     check_flag ("lookup table hidden", g_table_visible, FALSE);
 
     g_print ("escape drops the candidates with the word:\n");
