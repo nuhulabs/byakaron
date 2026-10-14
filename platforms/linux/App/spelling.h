@@ -17,6 +17,9 @@ GtkWidget *byk_spell_page_new (BykEngines *engines);
  */
 void byk_spell_page_engine_ready (BykSpellPage *self);
 
+/* Re-check the text now, e.g. after the personal dictionary changed. */
+void byk_spell_page_recheck (BykSpellPage *self);
+
 G_END_DECLS
 
 #endif /* BYAKARON_LINUX_APP_SPELLING_H */
