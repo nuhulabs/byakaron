@@ -22,6 +22,7 @@ cc -O2 -Wall -Wextra -o "$BUILD_DIR/bin/smoke" \
     "$PROJECT_ROOT/Core/spell.c" \
     "$PROJECT_ROOT/Core/transliterator.c" \
     "$PROJECT_ROOT/Core/composer.c" \
+    "$PROJECT_ROOT/Core/corrector.c" \
     -I"$BUILD_DIR/include" -I"$PROJECT_ROOT/Core" \
     $(pkg-config --cflags glib-2.0) \
     -L"$BUILD_DIR/lib" -lbyakaron \

@@ -37,7 +37,10 @@ XML="$W/byakaron.xml"
 sed -e "s|@BYK_EXEC@|$ENGINE|g" -e "s|@BYK_ICON@|input-keyboard|g" -e "s|@BYK_SETUP@||g" \
     "$PROJECT_ROOT/Resources/byakaron.xml.in" > "$XML"
 
-export W RUN ENGINE XML PROJECT_ROOT
+# The spelling-correction case needs a spell.db the engine can open.
+BYK_SPELL_DB_PRESENT=0
+[[ -f "${BYAKARON_SPELL_DB:-}" || -f /usr/share/byakaron/spell.db ]] && BYK_SPELL_DB_PRESENT=1
+export W RUN ENGINE XML PROJECT_ROOT BYK_SPELL_DB_PRESENT
 export XDG_RUNTIME_DIR="$RUN" XDG_CONFIG_HOME="$W/config" XDG_DATA_HOME="$W/data" XDG_CACHE_HOME="$W/cache"
 # Whatever forces a backend or IM module in the caller's session must not leak in.
 unset DISPLAY WAYLAND_DISPLAY GTK_IM_MODULE QT_IM_MODULE XMODIFIERS SESSION_MANAGER \

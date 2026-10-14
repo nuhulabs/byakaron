@@ -221,15 +221,35 @@ The list is kept out of the way like this:
 - **Only the number keys select, and only while the list is visible.** Space
   and Enter always commit what was *typed*, never a candidate. Off-screen,
   `0`–`9` become Bangla numerals (`1` → `১`). `0` is never a candidate key, so
-  it always types `০`. The list is drawn without a selection highlight, because
-  a highlight would imply Space would take it.
+  it always types `০`. The list is drawn without a selection highlight until an
+  arrow key moves one (then Enter takes it); Space never does.
 
 Escape drops the word and the list together rather than dismissing the list
 first: a two-stage Escape would mean two different things depending on state the
 user can no longer see once the list is gone.
 
 The panel's own paging arrows and mouse clicks work too — the engine implements
-the `page_up`, `page_down`, and `candidate_clicked` handlers the panel drives.
+the `page_up`, `page_down`, `cursor_up`, `cursor_down` and `candidate_clicked`
+handlers the panel drives.
+
+### Spelling corrections
+
+When nothing in the dictionary starts with the word Avro produced, it is
+probably misspelled (`sonar` → সনার, `shundor` → শুন্দর, `jibon` → জিবন), and
+there used to be no list at all. `Core/corrector.c` now asks spell.db for up to
+three corrections and lists them *after* the typed word, which stays first so
+Space and `1` keep meaning "as typed": `sonar` then `2` types সোনার. Correctly
+spelled words keep their normal list. Single letters are skipped.
+
+A correction lookup is 0.2–10 ms warm but up to ~150 ms on a cold disk cache,
+too slow for the keystroke path. In the IBus engine it runs on one worker
+thread with its own spell.db connection; when a word's corrections arrive and
+it is still the word on screen, the list updates by itself. Results are
+cached. The Fcitx5 addon has no GLib main loop for that callback, so it looks
+up inline (cached too): a new misspelled word can stall that keystroke once.
+
+Needs spell.db; without it nothing changes. GSettings key
+`spelling-suggestions` (default on) turns it off, live.
 
 ## The app
 

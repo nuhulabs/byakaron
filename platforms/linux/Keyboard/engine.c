@@ -10,15 +10,15 @@
 #include <string.h>
 
 #include "composer.h"
+#include "corrector.h"
 #include "prefs.h"
-#include "spell.h"
 
 #define BYK_PAGE_SIZE BYK_COMPOSER_PAGE_SIZE
 
 struct _BykEngine {
     IBusEngine parent_instance;
     BykComposer *composer;
-    BykSpell *spell; /* opened so a missing install is visible in the journal */
+    BykCorrector *corrector; /* spelling corrections; NULL without spell.db */
     IBusLookupTable *table;
     GSettings *prefs; /* NULL when the schema is not installed */
     gboolean table_visible;
@@ -133,6 +133,9 @@ byk_engine_reload_prefs (BykEngine *self)
     const gboolean phonetic =
         byk_prefs_boolean (self->prefs, BYK_PREFS_PHONETIC_ONLY, FALSE);
     byk_composer_set_phonetic_only (self->composer, phonetic);
+
+    byk_composer_set_corrections (self->composer,
+        byk_prefs_boolean (self->prefs, BYK_PREFS_SPELLING_SUGGESTIONS, TRUE));
 
     const gboolean horiz =
         byk_prefs_boolean (self->prefs, BYK_PREFS_CANDIDATES_HORIZONTAL, TRUE);
@@ -285,6 +288,24 @@ byk_engine_disable (IBusEngine *engine)
     IBUS_ENGINE_CLASS (byk_engine_parent_class)->disable (engine);
 }
 
+/* Corrections for `word` are cached now. If it is still the word on screen,
+ * rebuild the list so they appear without another keystroke. */
+static void
+byk_engine_on_corrections (const gchar *word, gpointer user_data)
+{
+    BykEngine *self = BYK_ENGINE (user_data);
+
+    if (self->composer == NULL || byk_composer_latin (self->composer)[0] == '\0')
+        return;
+
+    gchar *bangla = byk_composer_preedit (self->composer);
+    if (g_strcmp0 (bangla, word) == 0) {
+        byk_composer_refresh (self->composer);
+        byk_engine_sync_candidates (self);
+    }
+    g_free (bangla);
+}
+
 static void
 byk_engine_init (BykEngine *self)
 {
@@ -292,11 +313,12 @@ byk_engine_init (BykEngine *self)
     if (!byk_composer_ready (self->composer))
         g_warning ("byakaron: transliterator unavailable, keys will pass through");
 
-    /* Spell-check is the GTK app's job. Opening the file here still proves the
-     * install path works; a missing db must not stop typing. */
-    self->spell = byk_spell_new (NULL);
-    if (self->spell == NULL)
-        g_message ("byakaron: spell.db unavailable, spell-check is disabled");
+    /* Corrections are looked up on the corrector's worker thread; this runs
+     * back on the engine's main loop once a word's are cached. */
+    self->corrector = byk_corrector_new (TRUE, byk_engine_on_corrections, self);
+    if (self->corrector == NULL)
+        g_message ("byakaron: spell.db unavailable, no spelling corrections");
+    byk_composer_set_corrector (self->composer, self->corrector);
 
     self->preedit_mode = IBUS_ENGINE_PREEDIT_COMMIT;
     self->table = ibus_lookup_table_new (BYK_PAGE_SIZE, 0, FALSE, FALSE);
@@ -316,7 +338,8 @@ byk_engine_destroy (IBusObject *object)
     BykEngine *self = BYK_ENGINE (object);
 
     g_clear_pointer (&self->composer, byk_composer_free);
-    g_clear_pointer (&self->spell, byk_spell_free);
+    /* After the composer, which borrows it. */
+    g_clear_pointer (&self->corrector, byk_corrector_free);
     g_clear_object (&self->table);
     g_clear_object (&self->prefs);
 
