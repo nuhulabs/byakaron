@@ -16,6 +16,7 @@
 #include "byakaron.h"
 #include "composer.h"
 #include "spell.h"
+#include "corrector.h"
 
 /* Expected outputs are pinned so a regression in the engine is visible here. */
 static const struct {
@@ -31,6 +32,20 @@ static const struct {
     { "kO",                "কো" },
 };
 static const int CASE_COUNT = (int)(sizeof CASES / sizeof CASES[0]);
+
+static void smoke_on_ready(const gchar *word, gpointer data)
+{
+    struct { GMainLoop *loop; gchar *word; } *got = data;
+    g_free(got->word);
+    got->word = g_strdup(word);
+    g_main_loop_quit(got->loop);
+}
+
+static gboolean smoke_quit(gpointer loop)
+{
+    g_main_loop_quit(loop);
+    return G_SOURCE_REMOVE;
+}
 
 int main(void)
 {
@@ -368,6 +383,85 @@ int main(void)
 
                 byk_spell_free(spell);
             }
+        }
+    }
+
+    puts("spelling corrections in suggestions:");
+    {
+        gchar *db_path = byk_spell_locate_db();
+        if (db_path == NULL) {
+            puts("  skip spell.db not present (prepare_spell_db.sh)");
+        } else {
+            g_free(db_path);
+            BykCorrector *corr = byk_corrector_new(FALSE, NULL, NULL);
+            BykComposer *c = byk_composer_new();
+            byk_composer_set_corrector(c, corr);
+            BykOutcome o;
+
+            /* Typed word first, corrections after; worst keystroke timed. */
+            gint64 worst = 0;
+            for (const char *p = "sonar"; *p; p++) {
+                const gint64 t0 = g_get_monotonic_time();
+                o = byk_composer_key(c, (guint) *p, 0);
+                worst = MAX(worst, g_get_monotonic_time() - t0);
+                g_free(o.commit);
+            }
+            gchar **cands = byk_composer_candidates(c);
+            const int listed = cands && cands[0] && strcmp(cands[0], "সনার") == 0 &&
+                               cands[1] && strcmp(cands[1], "সোনার") == 0;
+            printf("  %-4s %-28s -> %s, %s\n", listed ? "ok" : "FAIL", "sonar lists সনার, সোনার",
+                   cands && cands[0] ? cands[0] : "(none)", cands && cands[0] && cands[1] ? cands[1] : "(none)");
+            if (!listed) failures++;
+            printf("  info slowest keystroke (inline, cold) %.1f ms\n", worst / 1000.0);
+
+            o = byk_composer_key(c, 0x0032, 0); /* '2' */
+            const int picked = o.action == BYK_ACT_COMMIT && o.commit && strcmp(o.commit, "সোনার") == 0;
+            printf("  %-4s %-28s -> %s\n", picked ? "ok" : "FAIL", "2 picks the correction",
+                   o.commit ? o.commit : "(none)");
+            if (!picked) failures++;
+            g_free(o.commit);
+
+            /* Correctly spelled words keep the normal list (no corrections). */
+            for (const char *p = "bangla"; *p; p++) { o = byk_composer_key(c, (guint) *p, 0); g_free(o.commit); }
+            cands = byk_composer_candidates(c);
+            const int normal = cands && cands[0] && strcmp(cands[0], "বাংলা") == 0;
+            printf("  %-4s %-28s -> %s\n", normal ? "ok" : "FAIL", "bangla keeps its own list",
+                   cands && cands[0] ? cands[0] : "(none)");
+            if (!normal) failures++;
+            o = byk_composer_key(c, 0xff1b, 0); g_free(o.commit);
+
+            /* The setting turns them off. */
+            byk_composer_set_corrections(c, FALSE);
+            for (const char *p = "jibon"; *p; p++) { o = byk_composer_key(c, (guint) *p, 0); g_free(o.commit); }
+            const int off = !byk_composer_table_visible(c);
+            byk_composer_set_corrections(c, TRUE); /* live: the list appears */
+            cands = byk_composer_candidates(c);
+            const int back_on = cands && cands[1] && strcmp(cands[1], "জীবন") == 0;
+            printf("  %-4s %-28s -> %s\n", off && back_on ? "ok" : "FAIL", "setting off/on (jibon)",
+                   back_on ? cands[1] : "(none)");
+            if (!(off && back_on)) failures++;
+            o = byk_composer_key(c, 0xff1b, 0); g_free(o.commit);
+
+            byk_composer_free(c);
+            byk_corrector_free(corr);
+
+            /* Threaded: nothing on the first ask, `ready` on the main loop, then cached. */
+            GMainLoop *loop = g_main_loop_new(NULL, FALSE);
+            struct { GMainLoop *loop; gchar *word; } got = { loop, NULL };
+            corr = byk_corrector_new(TRUE, smoke_on_ready, &got);
+            gchar **first = byk_corrector_get(corr, "শুন্দর");
+            const guint timeout = g_timeout_add_seconds(5, smoke_quit, loop);
+            g_main_loop_run(loop);
+            g_source_remove(timeout);
+            gchar **second = byk_corrector_get(corr, "শুন্দর");
+            const int threaded = first == NULL && g_strcmp0(got.word, "শুন্দর") == 0 &&
+                                 second && second[0] && strcmp(second[0], "সুন্দর") == 0;
+            printf("  %-4s %-28s -> %s\n", threaded ? "ok" : "FAIL", "threaded: ready, then cached",
+                   second && second[0] ? second[0] : "(none)");
+            if (!threaded) failures++;
+            g_strfreev(first); g_strfreev(second); g_free(got.word);
+            byk_corrector_free(corr);
+            g_main_loop_unref(loop);
         }
     }
 

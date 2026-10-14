@@ -18,5 +18,14 @@
         (matching the macOS default). When false, in a column.
       </description>
     </key>
+    <key name="spelling-suggestions" type="b">
+      <default>true</default>
+      <summary>Offer spelling corrections</summary>
+      <description>
+        When a word comes out spelled in a way the dictionary does not know
+        (sonar gives সনার), list the dictionary's corrections (সোনার) after the
+        typed word. Needs spell.db; without it nothing changes.
+      </description>
+    </key>
   </schema>
 </schemalist>

@@ -33,5 +33,9 @@ t("2026 numerals", "২০২৬ ", lambda: typ("2026 "))
 t("pick candidate 2", "আমিন", lambda: (typ("ami"), time.sleep(0.4), key(ord('2'))))
 t("click commits once", "আমি", lambda: (typ("ami"), time.sleep(0.4), click()))
 t("Down Down Enter", "আমিন", lambda: (typ("ami"), time.sleep(0.4), key(0xff54), key(0xff54), time.sleep(0.2), key(0xff0d)))
+import os
+if os.environ.get("BYK_SPELL_DB_PRESENT") == "1":
+    # The correction arrives from the engine's worker thread after the keystroke.
+    t("sonar + 2 (spelling fix)", "সোনার", lambda: (typ("sonar"), time.sleep(1.0), key(ord('2'))))
 call(sess, RD + '.Session', 'Stop')
 sys.exit(1 if fails else 0)

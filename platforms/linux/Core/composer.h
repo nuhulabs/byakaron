@@ -86,6 +86,19 @@ void byk_composer_set_phonetic_only (BykComposer *self, gboolean phonetic_only);
 gboolean byk_composer_phonetic_only (BykComposer *self);
 
 /*
+ * Spelling corrections for words the dictionary does not know (`sonar` →
+ * সনার, offering সোনার). The composer borrows `corrector`; the caller frees it
+ * after the composer. NULL turns them off, as does set_corrections(FALSE).
+ */
+typedef struct _BykCorrector BykCorrector;
+void byk_composer_set_corrector (BykComposer *self, BykCorrector *corrector);
+void byk_composer_set_corrections (BykComposer *self, gboolean enabled);
+
+/* Rebuild the candidates for the current word, e.g. when corrections that were
+ * still being looked up have arrived. Does nothing with no word pending. */
+void byk_composer_refresh (BykComposer *self);
+
+/*
  * Modifier-only keys (Shift, Caps, AltGr, …) PASS and must not commit. Avro
  * o-kar is capital O, so Shift during `bhalO` / `achO` has to stay in the
  * same word; otherwise the next letter starts a new one (ভালও, আছও).
