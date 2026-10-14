@@ -138,6 +138,8 @@ byk_engine_reload_prefs (BykEngine *self)
 
     byk_composer_set_corrections (self->composer,
         byk_prefs_boolean (self->prefs, BYK_PREFS_SPELLING_SUGGESTIONS, TRUE));
+    byk_composer_set_bangla_digits (self->composer,
+        byk_prefs_boolean (self->prefs, BYK_PREFS_BANGLA_DIGITS, TRUE));
 
     const gboolean horiz =
         byk_prefs_boolean (self->prefs, BYK_PREFS_CANDIDATES_HORIZONTAL, TRUE);

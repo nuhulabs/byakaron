@@ -102,6 +102,10 @@ void byk_composer_set_corrections (BykComposer *self, gboolean enabled);
 typedef struct _BykUserDict BykUserDict;
 void byk_composer_set_userdict (BykComposer *self, BykUserDict *userdict);
 
+/* FALSE: 0-9 typed outside the list stay ASCII (the word is committed first).
+ * TRUE (default): they become Bangla numerals. 1-9 pick candidates either way. */
+void byk_composer_set_bangla_digits (BykComposer *self, gboolean bangla);
+
 /* Rebuild the candidates for the current word, e.g. when corrections that were
  * still being looked up have arrived. Does nothing with no word pending. */
 void byk_composer_refresh (BykComposer *self);

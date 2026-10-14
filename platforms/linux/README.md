@@ -278,15 +278,18 @@ keyboard's.
 
 A separate process (`byakaron`) from the engine, sharing only `Core/` and the
 Zig core underneath. The input method works whether or not it is installed or
-running. Three pages, reached from the header-bar menu; the window opens on
+running. Four pages, reached from the header-bar menu; the window opens on
 **Spelling** and the header title names the current page. `byakaron --page=setup`
-opens Setup (that is what the IBus panel **Preferences** button runs).
+opens Setup (that is what the IBus panel **Preferences** button runs);
+`--page=settings` opens Settings. *Personal Dictionary…* in the menu opens the
+saved-word list.
 
 | Page | What it is for |
 | --- | --- |
 | **Spelling** | Editor with an issue list, red squiggles, and Fix All |
 | **Layout** | The Avro key map, as a lookup table |
 | **Setup** | Keyboard status, the steps to add it, a typing cheat-sheet |
+| **Settings** | The keyboard's switches and the personal dictionary |
 
 **Spelling checks per word, not with `byakaron_spell_check`.** The bulk call
 returns a JSON array of tokens with nested suggestion objects; the app already
@@ -315,14 +318,22 @@ since `g_settings_new` aborts the process on an unknown schema and that schema
 does not exist outside GNOME.
 
 **Preferences that change behaviour live in GSettings**
-(`dev.nuhu.labs.Byakaron`). Setup exposes two switches that the IBus engine
-and the Fcitx5 addon read:
+(`dev.nuhu.labs.Byakaron`). The Settings page binds a switch to each key; the
+IBus engine and the Fcitx5 addon read them:
 
-- **Suggest words** — off is phonetic-only: transliteration stays, the
-  dictionary candidate list is hidden, so 1–9 type Bangla numerals.
-- **Horizontal candidate list** — the IME panel.
+| Switch | Key | Default |
+| --- | --- | --- |
+| **Suggest words** — off is phonetic-only: transliteration stays, the candidate list is hidden, so 1–9 type Bangla numerals | `phonetic-only` (inverted) | on |
+| **Spelling corrections** — corrections for words the dictionary does not know (see [Spelling corrections](#spelling-corrections)) | `spelling-suggestions` | on |
+| **Bangla digits** — off keeps 0–9 as typed outside the list (the word is committed first); 1–9 still pick a candidate | `bangla-digits` | on |
+| **Horizontal suggestion list** — the IME panel's layout | `candidates-horizontal` | on |
 
-Flipping a switch updates the engine without a restart. There are no
+The Settings page also shows the saved-word count with **Manage…** for the
+personal dictionary. Without the schema installed it says so instead of
+showing switches that would do nothing.
+
+Flipping a switch updates the engine without a restart: the GNOME Wayland test
+turns Bangla digits off and on with `gsettings` while it types. There are no
 macOS-style "Coming soon" toggles. Candidates-per-page stays at 9 because
 1–9 are the selection keys.
 
