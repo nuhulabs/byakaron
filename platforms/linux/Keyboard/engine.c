@@ -54,8 +54,13 @@ byk_engine_sync_candidates (BykEngine *self)
         ibus_lookup_table_append_candidate (self->table,
                                             ibus_text_new_from_string (*w));
 
+    /* The highlight is only drawn once an arrow key has moved it: before that
+     * Space and Enter take the typed word, and a highlight would say otherwise. */
+    const gint cursor = byk_composer_cursor (self->composer);
     const guint page = byk_composer_page (self->composer);
-    ibus_lookup_table_set_cursor_pos (self->table, page * BYK_PAGE_SIZE);
+    ibus_lookup_table_set_cursor_visible (self->table, cursor >= 0);
+    ibus_lookup_table_set_cursor_pos (self->table,
+                                      cursor >= 0 ? (guint) cursor : page * BYK_PAGE_SIZE);
     self->table_visible = TRUE;
     ibus_engine_update_lookup_table (IBUS_ENGINE (self), self->table, TRUE);
 }
@@ -185,6 +190,20 @@ byk_engine_page_down (IBusEngine *engine)
 {
     byk_engine_apply (BYK_ENGINE (engine),
                       byk_composer_page_delta (BYK_ENGINE (engine)->composer, TRUE));
+}
+
+static void
+byk_engine_cursor_up (IBusEngine *engine)
+{
+    byk_engine_apply (BYK_ENGINE (engine),
+                      byk_composer_cursor_move (BYK_ENGINE (engine)->composer, FALSE));
+}
+
+static void
+byk_engine_cursor_down (IBusEngine *engine)
+{
+    byk_engine_apply (BYK_ENGINE (engine),
+                      byk_composer_cursor_move (BYK_ENGINE (engine)->composer, TRUE));
 }
 
 static void
@@ -355,5 +374,7 @@ byk_engine_class_init (BykEngineClass *klass)
     engine_class->disable = byk_engine_disable;
     engine_class->page_up = byk_engine_page_up;
     engine_class->page_down = byk_engine_page_down;
+    engine_class->cursor_up = byk_engine_cursor_up;
+    engine_class->cursor_down = byk_engine_cursor_down;
     engine_class->candidate_clicked = byk_engine_candidate_clicked;
 }
