@@ -100,9 +100,11 @@ ByakaronState::~ByakaronState ()
 ByakaronEngine::ByakaronEngine (fcitx::Instance *instance)
     : instance_ (instance),
       corrector_ (byk_corrector_new (FALSE, nullptr, nullptr)),
+      userdict_ (byk_userdict_new ()),
       factory_ ([this] (fcitx::InputContext &) {
           auto *state = new ByakaronState;
           byk_composer_set_corrector (state->composer, corrector_);
+          byk_composer_set_userdict (state->composer, userdict_);
           return state;
       })
 {
@@ -114,6 +116,8 @@ ByakaronEngine::~ByakaronEngine ()
 {
     byk_corrector_free (corrector_);
     corrector_ = nullptr;
+    byk_userdict_free (userdict_);
+    userdict_ = nullptr;
 }
 
 void
@@ -225,6 +229,8 @@ ByakaronEngine::keyEvent (const fcitx::InputMethodEntry &entry,
     byk_composer_set_corrections (
         state->composer,
         byk_prefs_boolean (byk_fcitx_prefs (), BYK_PREFS_SPELLING_SUGGESTIONS, TRUE));
+    if (byk_userdict_reload_if_changed (userdict_))
+        byk_composer_refresh (state->composer);
     const guint keyval = static_cast<guint> (keyEvent.key ().sym ());
     apply (ic, state,
            byk_composer_key (state->composer, keyval, byk_fcitx_mods (keyEvent)),
