@@ -146,10 +146,10 @@ ByakaronEngine::syncPanel (fcitx::InputContext *ic, ByakaronState *state)
     }
 
     /* Highlight only after an arrow key moved it (see byk_composer_cursor). */
-    const gint cursor = byk_composer_cursor (state->composer);
+    const gint highlight = byk_composer_cursor (state->composer);
     const gint first = static_cast<gint> (byk_composer_page (state->composer) * BYK_COMPOSER_PAGE_SIZE);
-    if (cursor >= first && cursor - first < list->size ())
-        list->setGlobalCursorIndex (cursor - first);
+    if (highlight >= first && highlight - first < list->size ())
+        list->setGlobalCursorIndex (highlight - first);
     else
         list->setGlobalCursorIndex (-1);
 
