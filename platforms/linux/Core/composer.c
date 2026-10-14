@@ -14,6 +14,14 @@
 #define BYK_KEY_KP_Enter     0xff8d
 #define BYK_KEY_KP_Page_Up   0xff9a
 #define BYK_KEY_KP_Page_Down 0xff9b
+#define BYK_KEY_Left         0xff51
+#define BYK_KEY_Up           0xff52
+#define BYK_KEY_Right        0xff53
+#define BYK_KEY_Down         0xff54
+#define BYK_KEY_KP_Left      0xff96
+#define BYK_KEY_KP_Up        0xff97
+#define BYK_KEY_KP_Right     0xff98
+#define BYK_KEY_KP_Down      0xff99
 #define BYK_KEY_0            0x0030
 #define BYK_KEY_9            0x0039
 #define BYK_KEY_KP_0         0xffb0
@@ -33,6 +41,7 @@ struct _BykComposer {
     BykAutoComplete *autocomplete;
     gchar **candidates; /* NULL-terminated, or NULL when hidden */
     guint page;
+    gint cursor;        /* highlighted candidate (whole list), or -1 for none */
     gboolean phonetic_only;
 };
 
@@ -48,6 +57,7 @@ byk_composer_drop_candidates (BykComposer *self)
 {
     g_clear_pointer (&self->candidates, g_strfreev);
     self->page = 0;
+    self->cursor = -1;
 }
 
 static void
@@ -107,19 +117,45 @@ byk_composer_commit_text (BykComposer *self, const gchar *suffix)
 }
 
 static BykOutcome
-byk_composer_commit_candidate (BykComposer *self, guint index)
+byk_composer_commit_at (BykComposer *self, guint pos)
 {
-    if (self->candidates == NULL)
-        return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
-
-    const guint pos = self->page * BYK_COMPOSER_PAGE_SIZE + index;
-    if (self->candidates[pos] == NULL)
+    if (self->candidates == NULL || pos >= g_strv_length (self->candidates))
         return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
 
     gchar *word = g_strdup (self->candidates[pos]);
     g_string_truncate (self->latin, 0);
     byk_composer_drop_candidates (self);
     return byk_outcome (BYK_ACT_COMMIT, word, FALSE);
+}
+
+static BykOutcome
+byk_composer_commit_candidate (BykComposer *self, guint index)
+{
+    if (index >= BYK_COMPOSER_PAGE_SIZE)
+        return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
+    return byk_composer_commit_at (self, self->page * BYK_COMPOSER_PAGE_SIZE + index);
+}
+
+/*
+ * Arrow keys walk a highlight through the list: Down/Right forward, Up/Left
+ * back, across pages. Nothing is highlighted until the first arrow, and Up
+ * from the first candidate removes the highlight again, so Enter goes back to
+ * meaning "the word as typed". Space never takes the highlight: it always
+ * commits what was typed, as before.
+ */
+static BykOutcome
+byk_composer_move_cursor (BykComposer *self, gboolean forward)
+{
+    const gint count = (gint) g_strv_length (self->candidates);
+
+    if (forward)
+        self->cursor = MIN (self->cursor + 1, count - 1);
+    else
+        self->cursor = MAX (self->cursor - 1, -1);
+
+    if (self->cursor >= 0)
+        self->page = (guint) self->cursor / BYK_COMPOSER_PAGE_SIZE;
+    return byk_outcome (BYK_ACT_EAT, NULL, FALSE);
 }
 
 /*
@@ -191,6 +227,7 @@ BykComposer *
 byk_composer_new (void)
 {
     BykComposer *self = g_new0 (BykComposer, 1);
+    self->cursor = -1;
     self->latin = g_string_sized_new (32);
     self->transliterator = byk_transliterator_new ();
     self->autocomplete = byk_autocomplete_new ();
@@ -254,6 +291,21 @@ byk_composer_page (BykComposer *self)
     return self != NULL ? self->page : 0;
 }
 
+gint
+byk_composer_cursor (BykComposer *self)
+{
+    return self != NULL && self->candidates != NULL ? self->cursor : -1;
+}
+
+BykOutcome
+byk_composer_cursor_move (BykComposer *self, gboolean forward)
+{
+    g_return_val_if_fail (self != NULL, byk_outcome (BYK_ACT_PASS, NULL, FALSE));
+    if (self->candidates == NULL)
+        return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
+    return byk_composer_move_cursor (self, forward);
+}
+
 void
 byk_composer_set_phonetic_only (BykComposer *self, gboolean phonetic_only)
 {
@@ -305,6 +357,10 @@ byk_composer_page_delta (BykComposer *self, gboolean down)
         self->page++;
     else if (!down && self->page > 0)
         self->page--;
+
+    /* A highlight follows the page, onto its first candidate. */
+    if (self->cursor >= 0)
+        self->cursor = (gint) (self->page * BYK_COMPOSER_PAGE_SIZE);
 
     /* Eat even at the end of the list: Page Down must not scroll the document
      * underneath a candidate list the user is reading through. */
@@ -374,11 +430,31 @@ byk_composer_key (BykComposer *self, guint keyval, guint mods)
     case BYK_KEY_KP_Enter:
         if (!has_preedit)
             return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
+        /* A highlighted candidate is what Enter picks; the Enter itself is
+         * consumed, the same as picking it with its number key. */
+        if (self->candidates != NULL && self->cursor >= 0)
+            return byk_composer_commit_at (self, (guint) self->cursor);
         {
             BykOutcome o = byk_composer_commit_text (self, NULL);
             o.pass_key = TRUE;
             return o;
         }
+
+    case BYK_KEY_Down:
+    case BYK_KEY_KP_Down:
+    case BYK_KEY_Right:
+    case BYK_KEY_KP_Right:
+    case BYK_KEY_Up:
+    case BYK_KEY_KP_Up:
+    case BYK_KEY_Left:
+    case BYK_KEY_KP_Left:
+        /* Without a list the arrows keep their usual meaning: commit the word
+         * and let the app move the caret (the fallback below). */
+        if (self->candidates != NULL)
+            return byk_composer_move_cursor (self,
+                keyval == BYK_KEY_Down || keyval == BYK_KEY_KP_Down ||
+                keyval == BYK_KEY_Right || keyval == BYK_KEY_KP_Right);
+        break;
 
     case BYK_KEY_Page_Down:
     case BYK_KEY_KP_Page_Down:

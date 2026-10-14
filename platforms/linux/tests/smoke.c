@@ -228,6 +228,55 @@ int main(void)
             o = byk_composer_key(c, 0xff1b, 0); /* Escape */
             g_free(o.commit);
             byk_composer_set_phonetic_only(c, FALSE);
+            /* Arrow keys: highlight, Enter commits it; Space never does. */
+            {
+                gchar **cands;
+                for (i = 0; i < 3; i++) { o = byk_composer_key(c, (guint) ami[i], 0); g_free(o.commit); }
+                cands = byk_composer_candidates(c);
+                const int none = byk_composer_cursor(c) == -1;
+                o = byk_composer_key(c, 0xff54, 0); g_free(o.commit); /* Down */
+                const int first = byk_composer_cursor(c) == 0;
+                o = byk_composer_key(c, 0xff54, 0); g_free(o.commit); /* Down */
+                const int second = byk_composer_cursor(c) == 1 && o.action == BYK_ACT_EAT;
+                gchar *want = cands && cands[1] ? g_strdup(cands[1]) : NULL;
+                o = byk_composer_key(c, 0xff0d, 0); /* Return */
+                const int enter_ok = o.action == BYK_ACT_COMMIT && !o.pass_key && want &&
+                                     o.commit && strcmp(o.commit, want) == 0;
+                printf("  %-4s %-28s -> %s\n", none && first && second && enter_ok ? "ok" : "FAIL",
+                       "Down Down Enter picks #2", o.commit ? o.commit : "(none)");
+                if (!(none && first && second && enter_ok)) failures++;
+                g_free(o.commit); g_free(want);
+
+                for (i = 0; i < 3; i++) { o = byk_composer_key(c, (guint) ami[i], 0); g_free(o.commit); }
+                o = byk_composer_key(c, 0xff54, 0); g_free(o.commit); /* Down -> 0 */
+                o = byk_composer_key(c, 0xff52, 0); g_free(o.commit); /* Up -> none */
+                const int cleared = byk_composer_cursor(c) == -1;
+                o = byk_composer_key(c, 0xff0d, 0); /* Return: typed word, Enter passes */
+                const int typed = cleared && o.action == BYK_ACT_COMMIT && o.pass_key &&
+                                  o.commit && strcmp(o.commit, "আমি") == 0;
+                printf("  %-4s %-28s -> %s\n", typed ? "ok" : "FAIL",
+                       "Up past top: Enter types word", o.commit ? o.commit : "(none)");
+                if (!typed) failures++;
+                g_free(o.commit);
+
+                for (i = 0; i < 3; i++) { o = byk_composer_key(c, (guint) ami[i], 0); g_free(o.commit); }
+                for (i = 0; i < 10; i++) { o = byk_composer_key(c, 0xff53, 0); g_free(o.commit); } /* Right x10 */
+                const int paged = byk_composer_cursor(c) == 9 && byk_composer_page(c) == 1;
+                o = byk_composer_key(c, (guint) 'n', 0); g_free(o.commit); /* typing resets */
+                const int reset = byk_composer_cursor(c) == -1 && byk_composer_page(c) == 0;
+                printf("  %-4s %-28s -> %s\n", paged && reset ? "ok" : "FAIL",
+                       "arrows cross pages, typing resets", paged && reset ? "yes" : "no");
+                if (!(paged && reset)) failures++;
+                o = byk_composer_key(c, 0x0020, 0); g_free(o.commit); /* Space commits typed */
+
+                o = byk_composer_key(c, 0xff54, 0); /* Down with nothing pending */
+                const int arrow_pass = o.action == BYK_ACT_PASS;
+                printf("  %-4s %-28s -> %s\n", arrow_pass ? "ok" : "FAIL",
+                       "Down with no word passes", arrow_pass ? "pass" : "eaten");
+                if (!arrow_pass) failures++;
+                g_free(o.commit);
+            }
+
             {
                 const char bhal[] = { 'b', 'h', 'a', 'l' };
                 for (i = 0; i < 4; i++) {
