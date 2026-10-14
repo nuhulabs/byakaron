@@ -253,6 +253,7 @@ pub fn build(b: *std.Build) void {
                 "platforms/linux/App/setup.c",
                 "platforms/linux/App/uiutil.c",
                 "platforms/linux/App/dictionary.c",
+                "platforms/linux/App/settings.c",
                 "platforms/linux/Core/transliterator.c",
                 "platforms/linux/Core/autocomplete.c",
                 "platforms/linux/Core/spell.c",

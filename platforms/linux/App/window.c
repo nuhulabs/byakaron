@@ -2,6 +2,7 @@
 
 #include "dictionary.h"
 #include "layout.h"
+#include "settings.h"
 #include "setup.h"
 #include "spelling.h"
 
@@ -14,6 +15,7 @@ struct _BykWindow {
     GtkWidget *header;
     GtkWidget *spell_page;
     GtkWidget *setup_page;
+    GtkWidget *settings_page;
 };
 
 G_DEFINE_TYPE (BykWindow, byk_window, GTK_TYPE_APPLICATION_WINDOW)
@@ -113,6 +115,11 @@ on_visible_page_changed (GObject *object, GParamSpec *pspec, gpointer user_data)
     if (self->setup_page != NULL &&
         gtk_stack_get_visible_child (GTK_STACK (self->stack)) == self->setup_page)
         byk_setup_page_refresh (BYK_SETUP_PAGE (self->setup_page));
+
+    /* The Spelling page may have saved a word since this was drawn. */
+    if (self->settings_page != NULL &&
+        gtk_stack_get_visible_child (GTK_STACK (self->stack)) == self->settings_page)
+        byk_settings_page_refresh (BYK_SETTINGS_PAGE (self->settings_page));
 }
 
 /* ── construction ────────────────────────────────────────────────────────── */
@@ -165,6 +172,7 @@ byk_window_build_menu_button (BykWindow *self)
     g_menu_append (pages, "_Spelling", "win.page::spelling");
     g_menu_append (pages, "_Layout", "win.page::layout");
     g_menu_append (pages, "_Setup", "win.page::setup");
+    g_menu_append (pages, "Se_ttings", "win.page::settings");
 
     GMenu *tools = g_menu_new ();
     g_menu_append (tools, "Personal _Dictionary…", "win.dictionary");
@@ -208,6 +216,8 @@ byk_window_init (BykWindow *self)
                                    GTK_STACK_TRANSITION_TYPE_SLIDE_LEFT_RIGHT);
     self->spell_page = byk_spell_page_new (&self->engines);
     self->setup_page = byk_setup_page_new ();
+    self->settings_page = byk_settings_page_new (&self->engines,
+                                                 G_CALLBACK (on_dictionary_changed), self);
 
     gtk_stack_add_titled (GTK_STACK (self->stack), self->spell_page,
                           "spelling", "Spelling");
@@ -215,6 +225,8 @@ byk_window_init (BykWindow *self)
                           "layout", "Layout");
     gtk_stack_add_titled (GTK_STACK (self->stack), self->setup_page,
                           "setup", "Setup");
+    gtk_stack_add_titled (GTK_STACK (self->stack), self->settings_page,
+                          "settings", "Settings");
 
     g_signal_connect (self->stack, "notify::visible-child",
                       G_CALLBACK (on_visible_page_changed), self);
@@ -251,6 +263,7 @@ byk_window_dispose (GObject *object)
     /* Tells a spell.db load still in flight that its page is gone. */
     self->spell_page = NULL;
     self->setup_page = NULL;
+    self->settings_page = NULL;
     self->header = NULL;
 
     /* Pages only borrow these, and they are all gone by the time dispose has

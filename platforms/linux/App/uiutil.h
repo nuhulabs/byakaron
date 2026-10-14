@@ -23,6 +23,15 @@ GtkWidget *byk_scroller (GtkWidget *child, GtkPolicyType h, GtkPolicyType v);
 GtkWidget *byk_section (const gchar *title, const gchar *description);
 GtkWidget *byk_status_page (const gchar *icon, const gchar *title, const gchar *body);
 
+/* A list row: optional prefix widget, title (+ dim subtitle), optional suffix
+ * (a switch, button or value). The title / subtitle labels are attached as
+ * "byk-title" / "byk-subtitle" data. */
+GtkWidget *byk_row (GtkWidget *prefix, const gchar *title, const gchar *subtitle,
+                    GtkWidget *suffix);
+
+/* A titled, framed group of rows; rows go into *out_box. */
+GtkWidget *byk_framed_list (const gchar *title, const gchar *description, GtkWidget **out_box);
+
 G_END_DECLS
 
 #endif /* BYAKARON_LINUX_APP_UIUTIL_H */

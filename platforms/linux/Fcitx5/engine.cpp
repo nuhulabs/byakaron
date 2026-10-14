@@ -229,6 +229,9 @@ ByakaronEngine::keyEvent (const fcitx::InputMethodEntry &entry,
     byk_composer_set_corrections (
         state->composer,
         byk_prefs_boolean (byk_fcitx_prefs (), BYK_PREFS_SPELLING_SUGGESTIONS, TRUE));
+    byk_composer_set_bangla_digits (
+        state->composer,
+        byk_prefs_boolean (byk_fcitx_prefs (), BYK_PREFS_BANGLA_DIGITS, TRUE));
     if (byk_userdict_reload_if_changed (userdict_))
         byk_composer_refresh (state->composer);
     const guint keyval = static_cast<guint> (keyEvent.key ().sym ());

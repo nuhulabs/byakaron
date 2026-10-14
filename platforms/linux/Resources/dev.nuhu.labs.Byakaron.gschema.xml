@@ -27,5 +27,14 @@
         typed word. Needs spell.db; without it nothing changes.
       </description>
     </key>
+    <key name="bangla-digits" type="b">
+      <default>true</default>
+      <summary>Type Bangla digits</summary>
+      <description>
+        When true, 0–9 typed outside the candidate list become Bangla numerals
+        (1 gives ১). When false they stay 0–9. While the list is showing, 1–9
+        still pick a candidate either way.
+      </description>
+    </key>
   </schema>
 </schemalist>
