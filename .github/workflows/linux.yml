@@ -68,6 +68,52 @@ jobs:
       - name: Build, smoke, IME test
         run: bash platforms/linux/scripts/ci.sh
 
+  # Types into GTK3 and GTK4 apps on a real GNOME Shell Wayland session
+  # (headless, private dbus/dconf/ibus), through org.gnome.Mutter.RemoteDesktop:
+  # the path a keyboard takes on an "Ubuntu on Wayland" login. Arrow keys,
+  # candidates, click-commit, Shift, numerals, and live settings.
+  wayland:
+    name: GNOME Wayland typing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: System packages
+        run: |
+          sudo bash platforms/linux/scripts/setup_deps.sh
+          sudo apt-get install -y --no-install-recommends \
+            gnome-shell mutter dbus-x11 ibus python3-gi \
+            gir1.2-gtk-3.0 gir1.2-gtk-4.0 libgl1-mesa-dri \
+            xdg-desktop-portal gsettings-desktop-schemas
+
+      - name: Install Zig 0.17.0-dev.1422
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0-dev.1422+e863bf3be
+
+      - name: Clone ziex at the path build.zig.zon expects
+        run: |
+          dest="${GITHUB_WORKSPACE}/../../ziex-dev/ziex"
+          mkdir -p "$(dirname "$dest")"
+          git clone --filter=blob:none https://github.com/ziex-dev/ziex.git "$dest"
+          git -C "$dest" checkout --detach 29f9a85b
+
+      - name: Build the engine
+        run: zig build linux -Doptimize=ReleaseFast
+
+      - name: Type on GNOME Shell (Wayland)
+        run: bash platforms/linux/scripts/gnome_wayland_test.sh
+
+      - name: Logs on failure
+        if: failure()
+        run: |
+          for f in platforms/linux/build/gnome-wayland/*.log; do
+            echo "=== $f"; tail -40 "$f"
+          done
+
   # A `linux-*` tag (linux-0.1.8, ...) also builds the shareable .deb for both
   # CPUs, installs it on the runner, and types through the *installed* engine.
   # The .debs are uploaded as artifacts; they go to the public
