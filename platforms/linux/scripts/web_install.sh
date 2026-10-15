@@ -11,6 +11,10 @@ set -euo pipefail
 
 REPO="${BYAKARON_REPO:-nuhulabs/Byakaron-Assets}"
 VERSION_FALLBACK="0.1.9"
+# Set in install-amd64.sh / install-arm64.sh, which scripts/site_installers.sh
+# generates from this file for the website's per-CPU commands. Empty here:
+# install.sh installs for whatever CPU it runs on.
+WANT_ARCH=""
 
 die() { echo "error: $*" >&2; exit 1; }
 
@@ -27,6 +31,12 @@ case "$ARCH" in
     amd64|arm64) ;;
     *) die "unsupported CPU '$ARCH' — need amd64 or arm64 (64-bit Ubuntu)" ;;
 esac
+
+cpu_name() { [[ "$1" == arm64 ]] && echo "ARM (arm64)" || echo "Intel/AMD (amd64)"; }
+if [[ -n "$WANT_ARCH" && "$ARCH" != "$WANT_ARCH" ]]; then
+    die "this is the $(cpu_name "$WANT_ARCH") installer, but this computer is $(cpu_name "$ARCH").
+       Use: curl -fsSL https://nuhulabs.com/byakaron/install-${ARCH}.sh | sudo bash"
+fi
 
 # Three ways to find the .deb, most exact first. None needs python3: a stock
 # Ubuntu image does not have it, and the old python-only parse fell through to
