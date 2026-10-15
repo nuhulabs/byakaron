@@ -27,6 +27,23 @@ def t(name, exp, action):
     ctrl('a'); key(0xff08); time.sleep(0.4); action(); time.sleep(1.2); got = text()
     ok = got == exp; fails += not ok
     print(f"  {'ok  ' if ok else 'FAIL'} {label} {name} -> [{got}]" + ('' if ok else f" expected [{exp}]"), flush=True)
+# The window can be on screen before it has keyboard focus and its input
+# context is wired to IBus (slow CI runners: the first checks got nothing).
+# Type until the whole path answers, then start.
+def warm_up(limit=30.0):
+    start = time.time()
+    while time.time() - start < limit:
+        ctrl('a'); key(0xff08); time.sleep(0.3)
+        typ("ami "); time.sleep(1.0)
+        if text() == "আমি ":
+            return True
+        time.sleep(1.0)
+    return False
+
+if not warm_up():
+    print(f"  FAIL {label} never received keys through IBus (30 s)", flush=True)
+    sys.exit(1)
+
 t("ami bangla + space", "আমি বাংলা ", lambda: typ("ami bangla "))
 t("bhalO. (Shift)", "ভালো। ", lambda: typ("bhalO. "))
 t("2026 numerals", "২০২৬ ", lambda: typ("2026 "))
