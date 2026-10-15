@@ -19,6 +19,11 @@
   <icon type="stock">byakaron</icon>
   <url type="homepage">https://nuhulabs.com/byakaron</url>
   <releases>
+    <release version="0.2.0" date="2026-10-15">
+      <description>
+        <p>Arrow keys pick a suggestion, spelling corrections while typing, a personal dictionary, and a Settings page with a Bangla digits switch.</p>
+      </description>
+    </release>
     <release version="0.1.9" date="2026-10-09">
       <description>
         <p>The Byakaron logo now shows in the app grid, dock and keyboard settings (0.1.8 showed a blank icon).</p>
