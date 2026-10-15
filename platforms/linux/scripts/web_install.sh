@@ -10,7 +10,7 @@
 set -euo pipefail
 
 REPO="${BYAKARON_REPO:-nuhulabs/Byakaron-Assets}"
-VERSION_FALLBACK="0.1.9"
+VERSION_FALLBACK="0.2.0"
 # Set in install-amd64.sh / install-arm64.sh, which scripts/site_installers.sh
 # generates from this file for the website's per-CPU commands. Empty here:
 # install.sh installs for whatever CPU it runs on.
