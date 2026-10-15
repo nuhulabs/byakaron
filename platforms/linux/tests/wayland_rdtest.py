@@ -30,18 +30,23 @@ def t(name, exp, action):
 # The window can be on screen before it has keyboard focus and its input
 # context is wired to IBus (slow CI runners: the first checks got nothing).
 # Type until the whole path answers, then start.
-def warm_up(limit=30.0):
+def warm_up(limit=60.0):
     start = time.time()
+    seen = []
     while time.time() - start < limit:
         ctrl('a'); key(0xff08); time.sleep(0.3)
         typ("ami "); time.sleep(1.0)
-        if text() == "আমি ":
+        got = text()
+        if got == "আমি ":
+            print(f"  info {label} ready after {time.time() - start:.1f} s", flush=True)
             return True
+        seen.append(got)
         time.sleep(1.0)
+    print(f"  info {label} warm-up saw: {seen[:3]} ... {seen[-2:]}", flush=True)
     return False
 
 if not warm_up():
-    print(f"  FAIL {label} never received keys through IBus (30 s)", flush=True)
+    print(f"  FAIL {label} never received keys through IBus (60 s)", flush=True)
     sys.exit(1)
 
 t("ami bangla + space", "আমি বাংলা ", lambda: typ("ami bangla "))
