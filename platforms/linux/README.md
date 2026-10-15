@@ -444,11 +444,45 @@ nested-mutter checks used by `ci.sh`.
 `spell.db` is not built on the runner (364 MB). Smoke skips those assertions
 when the file is missing; typing and candidates do not need it.
 
+It runs these on both `ubuntu-latest` (amd64) and `ubuntu-24.04-arm` (arm64).
+
+A second job, **GNOME Wayland typing**, installs `gnome-shell` and runs
+`scripts/gnome_wayland_test.sh` (see [Wayland](#wayland)): GTK3 and GTK4 apps
+on a headless GNOME Shell, typed into through `org.gnome.Mutter.RemoteDesktop`.
+On the runner GNOME Shell does not give a new window keyboard focus, so the test
+clicks into the window before typing, as a user would.
+
+A `linux-*` tag also packages, installs and tests both `.deb`s (see Releasing).
+
 To run the same steps locally:
 
 ```bash
 bash platforms/linux/scripts/ci.sh
+bash platforms/linux/scripts/gnome_wayland_test.sh   # needs gnome-shell
 ```
+
+## Releasing
+
+`scripts/release.sh` does the whole release; each stage stops on the first
+failure:
+
+```bash
+S=platforms/linux/scripts
+bash $S/release.sh prepare 0.2.0 "One-line summary for AppStream"  # bump everywhere, commit, tag
+bash $S/release.sh verify  0.2.0                                    # amd64 .deb in clean 20.04/22.04/24.04
+bash $S/release.sh publish 0.2.0 notes.md                           # push, CI builds+tests both CPUs, GitHub release
+bash $S/release.sh website 0.2.0                                    # site installers, deploy, live check
+```
+
+`prepare` refuses a dirty tree, an existing tag, or a version string it could
+not replace. `publish` waits for the tag's CI run, downloads both `.deb`s
+(resuming, since GitHub's artifact downloads time out on slow links), checks
+package/version/architecture, and creates the release on
+`nuhulabs/Byakaron-Assets` marked Latest, then compares the uploaded checksums.
+`website` regenerates `install.sh`, `install-amd64.sh` and `install-arm64.sh`
+(`scripts/site_installers.sh`) in the nuhulabs.com repo and checks the live
+files after the deploy. The page itself needs no version bump: both commands
+fetch the latest release.
 
 ## Fcitx5 (optional)
 
@@ -481,13 +515,17 @@ The settings app is GTK3, so Spelling / Layout / Setup run on
 
 ### Installing on Ubuntu
 
-One command installs the keyboard, the GTK app, and spell-check:
+One command installs the keyboard, the GTK app, and spell-check. The website
+shows the one for the computer's processor (an Intel / AMD | ARM switch):
 
 ```bash
-curl -fsSL https://nuhulabs.com/byakaron/install.sh | sudo bash
+curl -fsSL https://nuhulabs.com/byakaron/install-amd64.sh | sudo bash   # Intel / AMD
+curl -fsSL https://nuhulabs.com/byakaron/install-arm64.sh | sudo bash   # ARM
+curl -fsSL https://nuhulabs.com/byakaron/install.sh | sudo bash         # either: detects it
 ```
 
-That downloads the `.deb` for this CPU (amd64 or arm64) from the public
+Each per-CPU script stops with the right command if run on the other kind of
+computer. They download the `.deb` from the public
 [nuhulabs/Byakaron-Assets](https://github.com/nuhulabs/Byakaron-Assets/releases)
 releases and runs `apt`. Then **add the input source** (installing the package
 is not enough): Settings → Keyboard → Input Sources → **+** → **Bangla** →
