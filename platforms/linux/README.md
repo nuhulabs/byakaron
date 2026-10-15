@@ -500,7 +500,7 @@ and 24.04**. On ARM, see [ARM.md](ARM.md).
 
 ```bash
 bash platforms/linux/scripts/package_deb.sh
-sudo apt install ./platforms/linux/build/byakaron_0.1.9_amd64.deb
+sudo apt install ./platforms/linux/build/byakaron_0.2.0_amd64.deb
 ```
 
 Use `apt`, not `dpkg -i`. If an older Byakaron `.deb` is already installed
