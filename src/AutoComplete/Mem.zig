@@ -93,14 +93,33 @@ fn prefixLookup(
 
     const start = lowerBound(words_storage, prefix);
     const cap: usize = @intCast(limit);
-    var out: std.ArrayList(AutoComplete.LexiconEntry) = .empty;
+
+    var matches: std.ArrayList([]const u8) = .empty;
+    defer matches.deinit(allocator);
+
     var i = start;
-    while (i < words_storage.len and out.items.len < cap) : (i += 1) {
+    const max_scan: usize = 128;
+    while (i < words_storage.len and matches.items.len < max_scan) : (i += 1) {
         const w = words_storage[i];
         if (!std.mem.startsWith(u8, w, prefix)) break;
-        try out.append(allocator, .{ .word = w, .frequency = 0 });
+        try matches.append(allocator, w);
     }
-    return try out.toOwnedSlice(allocator);
+    if (matches.items.len == 0) return &.{};
+
+    // Stable sort by length ASC so natural base words beat long compounds
+    std.mem.sort([]const u8, matches.items, {}, struct {
+        fn less(_: void, a: []const u8, b: []const u8) bool {
+            if (a.len != b.len) return a.len < b.len;
+            return std.mem.order(u8, a, b) == .lt;
+        }
+    }.less);
+
+    const take_count = @min(matches.items.len, cap);
+    const out = try allocator.alloc(AutoComplete.LexiconEntry, take_count);
+    for (0..take_count) |idx| {
+        out[idx] = .{ .word = matches.items[idx], .frequency = 0 };
+    }
+    return out;
 }
 
 fn lowerBound(slice: []const []const u8, key: []const u8) usize {
