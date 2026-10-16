@@ -405,6 +405,7 @@ const RankedCandidate = struct {
 const trigram_context_weight: i64 = 140_000;
 const bigram_left_weight: i64 = 70_000;
 const bigram_right_weight: i64 = 45_000;
+const unigram_frequency_weight: i64 = 6_000;
 
 fn cloneRanked(
     allocator: std.mem.Allocator,
@@ -533,7 +534,7 @@ fn rankScore(typed: []const u8, candidate: []const u8, milli: i64, freq: i64) i6
     if (tn > 0 and cn > 0 and typed_cps[0] == cand_cps[0]) score += 80_000;
     score -= len_diff * 20_000;
     const f: u64 = if (freq > 0) @intCast(freq) else 1;
-    score += @as(i64, @intCast(std.math.log2_int(u64, f)));
+    score += @as(i64, @intCast(std.math.log2_int(u64, f))) * unigram_frequency_weight;
     return score;
 }
 

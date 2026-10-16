@@ -85,8 +85,8 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeCreate(
         spell_engine = ffi.byakaron_spell_create(path_cstr);
     }
 
-    // Embedded autocomplete lexicon (no DB path required). Non-fatal if OOM.
-    const ac_engine = ffi.byakaron_ac_create();
+    // Embedded autocomplete lexicon (only if no DB path was provided). Non-fatal if OOM.
+    const ac_engine = if (spell_engine == null) ffi.byakaron_ac_create() else null;
 
     session.* = .{
         .allocator = allocator,
@@ -375,7 +375,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeAcPrefix(
         return j_env.newObjectArray(0, string_class, null);
     }
     const session = sessionFromHandle(handle);
-    if (session.autocomplete_engine == null) {
+    if (session.spell_engine == null and session.autocomplete_engine == null) {
         return j_env.newObjectArray(0, string_class, null);
     }
 
@@ -384,13 +384,24 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeAcPrefix(
     defer j_env.releaseStringUTFChars(prefix, p);
 
     var out: [32][*:0]u8 = undefined;
-    const count = ffi.byakaron_ac_prefix_list(
-        session.autocomplete_engine,
-        p,
-        @intCast(suggestion_limit),
-        &out,
-        out.len,
-    );
+    const count: usize = if (session.spell_engine != null and suggestion_limit > 0)
+        ffi.byakaron_spell_prefix_list(
+            session.spell_engine,
+            p,
+            @intCast(suggestion_limit),
+            &out,
+            out.len,
+        )
+    else if (session.autocomplete_engine != null and suggestion_limit > 0)
+        ffi.byakaron_ac_prefix_list(
+            session.autocomplete_engine,
+            p,
+            @intCast(suggestion_limit),
+            &out,
+            out.len,
+        )
+    else
+        0;
     return stringArrayFromCStrings(&j_env, string_class, out[0..count], count);
 }
 
@@ -405,12 +416,18 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeAcContains(
     const j_env = jni.JNIEnv.warp(env);
     if (handle == 0 or word == null or j_env.isSameObject(word, null)) return -1;
     const session = sessionFromHandle(handle);
-    if (session.autocomplete_engine == null) return -1;
+    if (session.spell_engine == null and session.autocomplete_engine == null) return -1;
 
     var is_copy: bool = false;
     const w = jstrToC(&j_env, word, &is_copy);
     defer j_env.releaseStringUTFChars(word, w);
-    return ffi.byakaron_ac_contains(session.autocomplete_engine, w);
+    if (session.spell_engine != null) {
+        return ffi.byakaron_spell_is_correct(session.spell_engine, w);
+    }
+    if (session.autocomplete_engine != null) {
+        return ffi.byakaron_ac_contains(session.autocomplete_engine, w);
+    }
+    return -1;
 }
 
 // ── P2: spell.db prefix / next-word + tokenization ──────────────────────────

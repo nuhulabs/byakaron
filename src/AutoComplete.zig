@@ -63,10 +63,9 @@ pub fn prefixSuggest(
 
     std.mem.sort(Suggestion, list.items, {}, struct {
         fn less(_: void, a: Suggestion, b: Suggestion) bool {
+            if (a.frequency != b.frequency) return a.frequency > b.frequency;
             if (a.word.len != b.word.len) return a.word.len < b.word.len;
-            const ord = std.mem.order(u8, a.word, b.word);
-            if (ord != .eq) return ord == .lt;
-            return a.frequency > b.frequency;
+            return std.mem.order(u8, a.word, b.word) == .lt;
         }
     }.less);
 
