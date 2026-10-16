@@ -95,7 +95,7 @@ fn prefixLookup(
     return try self.db.rows(allocator, AutoComplete.LexiconEntry,
         \\SELECT word, frequency FROM dictionary
         \\WHERE word LIKE ?1
-        \\ORDER BY length(word) ASC, frequency DESC
+        \\ORDER BY frequency DESC, length(word) ASC
         \\LIMIT ?2
     , .{ like, limit });
 }

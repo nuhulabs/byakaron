@@ -108,7 +108,7 @@ fn prefixSuggestDb(ctx: *anyopaque, allocator: std.mem.Allocator, prefix: []cons
     return try self.db.rows(allocator, Spell.LexiconEntry,
         \\SELECT word, frequency FROM dictionary
         \\WHERE word LIKE ?1
-        \\ORDER BY frequency DESC
+        \\ORDER BY frequency DESC, length(word) ASC
         \\LIMIT ?2
     , .{ like, limit });
 }
