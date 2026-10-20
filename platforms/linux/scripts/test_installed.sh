@@ -103,6 +103,31 @@ else
 fi
 
 echo
+echo "=== app opens its window ==="
+# No session bus on purpose: the app must not depend on one, and a private
+# bus only adds a ~25 s portal wait. Needs xwininfo (x11-utils).
+if [[ -n "$APP" ]] && command -v xwininfo >/dev/null && command -v Xvfb >/dev/null; then
+    adisp=150
+    while [[ -e "/tmp/.X${adisp}-lock" ]]; do adisp=$((adisp + 1)); done
+    Xvfb ":$adisp" -screen 0 1024x768x24 -nolisten tcp >/dev/null 2>&1 &
+    axvfb=$!
+    sleep 0.5
+    DISPLAY=":$adisp" GDK_BACKEND=x11 NO_AT_BRIDGE=1 GTK_USE_PORTAL=0 \
+        DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent/bus "$APP" >/dev/null 2>&1 &
+    app=$!
+    shown=""
+    for _ in $(seq 1 80); do
+        if DISPLAY=":$adisp" xwininfo -root -tree 2>/dev/null | grep -q '"Spelling"'; then shown=yes; break; fi
+        kill -0 "$app" 2>/dev/null || break
+        sleep 0.5
+    done
+    [[ -n "$shown" ]] && ok "app window shown" || fail "app window did not appear (or the app exited)"
+    kill "$app" "$axvfb" 2>/dev/null || true
+else
+    echo "  note xwininfo/Xvfb not installed, app window not checked"
+fi
+
+echo
 if [[ "$failures" -gt 0 ]]; then
     echo "INSTALLED CHECK FAILED ($failures)"
     exit 1
