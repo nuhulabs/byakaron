@@ -23,6 +23,10 @@ if [[ -z "${BYAKARON_SPELL_DB:-}" && -f "$REPO_ROOT/packages/data/spell.db" ]]; 
     export BYAKARON_SPELL_DB="$REPO_ROOT/packages/data/spell.db"
 fi
 
+# Default settings, not the desktop's: the user's own choices (Bangla digits
+# off, say) would otherwise change what the engine types and fail the test.
+export GSETTINGS_BACKEND=memory
+
 # A throwaway personal dictionary: the test writes to it while the engine runs,
 # the way the app does, and never touches the user's real one.
 export BYAKARON_USER_DICT="$PROJECT_ROOT/build/ime-test-user-words.txt"
