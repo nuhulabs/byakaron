@@ -36,5 +36,16 @@
         still pick a candidate either way.
       </description>
     </key>
+    <key name="qt-click-fix" type="b">
+      <default>false</default>
+      <summary>Qt apps: type a word once when clicking (older IBus)</summary>
+      <description>
+        Ubuntu 20.04 and 22.04 only (IBus older than 1.5.27, which cannot report
+        the focused app). When true, IBus never commits the word being typed by
+        itself, so Qt apps (KDE, Telegram, VLC) do not type it twice on a click;
+        in GTK apps and browsers that word is dropped instead if you click away
+        before Space. Ignored on newer IBus, which handles Qt automatically.
+      </description>
+    </key>
   </schema>
 </schemalist>

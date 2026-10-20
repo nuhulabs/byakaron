@@ -68,6 +68,11 @@ byk_settings_build_typing (BykSettingsPage *self)
     byk_settings_switch (self, list, BYK_PREFS_CANDIDATES_HORIZONTAL, FALSE,
                          "Horizontal suggestion list",
                          "Off shows the suggestions in a column.");
+    byk_settings_switch (self, list, BYK_PREFS_QT_CLICK_FIX, FALSE,
+                         "Qt apps: type a word once on click",
+                         "Ubuntu 20.04 / 22.04, for Qt apps (KDE, Telegram, VLC). "
+                         "In other apps a word still being typed is dropped if you click away "
+                         "before Space. Not needed on Ubuntu 24.04.");
     return group;
 }
 
