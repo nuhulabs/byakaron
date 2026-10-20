@@ -210,6 +210,10 @@ print(">>> byakaron.svg loads at 16/32/64/256 px")
 PY
 
 echo
+echo "=== website installer: CPU / system detection ==="
+bash "$PROJECT_ROOT/tests/web_install_test.sh"
+
+echo
 echo "=== AppStream metainfo ==="
 if ! command -v appstreamcli >/dev/null; then
     echo "error: appstreamcli is required (apt install appstream)" >&2
