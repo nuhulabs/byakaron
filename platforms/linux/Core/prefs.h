@@ -20,6 +20,7 @@ G_BEGIN_DECLS
 #define BYK_PREFS_CANDIDATES_HORIZONTAL  "candidates-horizontal"
 #define BYK_PREFS_SPELLING_SUGGESTIONS   "spelling-suggestions"
 #define BYK_PREFS_BANGLA_DIGITS          "bangla-digits"
+#define BYK_PREFS_QT_CLICK_FIX           "qt-click-fix"
 
 /* Point GSETTINGS_SCHEMA_DIR at the schemas next to an uninstalled binary. */
 void byk_prefs_init_schema_dir (void);
