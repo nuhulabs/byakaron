@@ -31,6 +31,11 @@ struct _BykEngine {
 
 G_DEFINE_TYPE (BykEngine, byk_engine, IBUS_TYPE_ENGINE)
 
+/* TRUE when libibus has has-focus-id (1.5.27+): the daemon then reports the
+ * focused app, and Qt is told apart automatically. Set once, in the
+ * constructor. */
+static gboolean byk_client_names = FALSE;
+
 static void
 byk_engine_hide_candidates (BykEngine *self)
 {
@@ -140,6 +145,18 @@ byk_engine_reload_prefs (BykEngine *self)
         byk_prefs_boolean (self->prefs, BYK_PREFS_SPELLING_SUGGESTIONS, TRUE));
     byk_composer_set_bangla_digits (self->composer,
         byk_prefs_boolean (self->prefs, BYK_PREFS_BANGLA_DIGITS, TRUE));
+
+    /*
+     * Older IBus (Ubuntu 20.04 / 22.04) cannot say which app is focused, so
+     * the user chooses: with "Qt click fix" on, IBus never commits the pending
+     * word itself (PREEDIT_CLEAR). Qt then types it once on a click, but GTK
+     * apps and browsers drop a word that was still being typed. Newer IBus
+     * picks per app in byk_engine_focus_in_id and this switch is ignored.
+     */
+    if (!byk_client_names)
+        self->preedit_mode =
+            byk_prefs_boolean (self->prefs, BYK_PREFS_QT_CLICK_FIX, FALSE)
+                ? IBUS_ENGINE_PREEDIT_CLEAR : IBUS_ENGINE_PREEDIT_COMMIT;
 
     const gboolean horiz =
         byk_prefs_boolean (self->prefs, BYK_PREFS_CANDIDATES_HORIZONTAL, TRUE);
@@ -368,6 +385,7 @@ byk_engine_constructor (GType type, guint n_params, GObjectConstructParam *param
 {
     GObjectClass *parent = G_OBJECT_CLASS (byk_engine_parent_class);
     GParamSpec *pspec = g_object_class_find_property (parent, "has-focus-id");
+    byk_client_names = pspec != NULL;
 
     if (pspec == NULL)
         return parent->constructor (type, n_params, params);

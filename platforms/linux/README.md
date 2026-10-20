@@ -327,6 +327,7 @@ IBus engine and the Fcitx5 addon read them:
 | **Spelling corrections** — corrections for words the dictionary does not know (see [Spelling corrections](#spelling-corrections)) | `spelling-suggestions` | on |
 | **Bangla digits** — off keeps 0–9 as typed outside the list (the word is committed first); 1–9 still pick a candidate | `bangla-digits` | on |
 | **Horizontal suggestion list** — the IME panel's layout | `candidates-horizontal` | on |
+| **Qt apps: type a word once on click** — older IBus only (Ubuntu 20.04/22.04): IBus never commits the pending word itself, so Qt types it once; GTK apps and browsers then drop a word still being typed if you click away before Space. Ignored on IBus 1.5.27+ | `qt-click-fix` | off |
 
 The Settings page also shows the saved-word count with **Manage…** for the
 personal dictionary. Without the schema installed it says so instead of
@@ -573,7 +574,11 @@ For Wayland without logging out, run `scripts/gnome_wayland_test.sh` (see [Wayla
   is focused, and Qt reports the same capabilities as GTK, so the engine has
   no way to treat Qt differently there. The other choice (never let IBus
   commit) would lose or misplace the word in GTK apps and browsers, which are
-  most of what people type in. Workaround: press Space before clicking away.
+  most of what people type in. Workaround: press Space before clicking away,
+  or, on a mostly-Qt desktop (KDE), turn on **Settings → Qt apps: type a word
+  once on click** (then GTK apps drop an unfinished word on click instead).
+  Measured on 22.04 in clean containers: Qt `ami` + click gives আমি with the
+  switch on, আমিআমি off; GTK gives আমি off, nothing on.
   Fixed on Ubuntu 24.04 (IBus 1.5.29 reports the client name). GTK, Chrome,
   Firefox and Electron are unaffected on all three releases.
 
