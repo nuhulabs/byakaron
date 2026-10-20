@@ -11,32 +11,48 @@ set -euo pipefail
 
 REPO="${BYAKARON_REPO:-nuhulabs/Byakaron-Assets}"
 VERSION_FALLBACK="0.2.0"
-# Set in install-amd64.sh / install-arm64.sh, which scripts/site_installers.sh
-# generates from this file for the website's per-CPU commands. Empty here:
-# install.sh installs for whatever CPU it runs on.
-WANT_ARCH=""
 
 die() { echo "error: $*" >&2; exit 1; }
 
-if [[ "$(uname -s)" != "Linux" ]]; then
-    die "this installer is for Ubuntu/Debian. macOS: https://nuhulabs.com/byakaron"
-fi
+# One command for every supported computer: the CPU is detected here and the
+# matching .deb (amd64 or arm64) is installed. install-amd64.sh and
+# install-arm64.sh on the website are copies of this file, so links shared
+# while the site had one command per CPU still work on any computer.
 
-command -v curl >/dev/null || die "need curl"
-command -v apt-get >/dev/null || die "need apt (Ubuntu 20.04, 22.04, or 24.04)"
-command -v dpkg >/dev/null || die "need dpkg"
-
-ARCH="$(dpkg --print-architecture)"
-case "$ARCH" in
-    amd64|arm64) ;;
-    *) die "unsupported CPU '$ARCH' — need amd64 or arm64 (64-bit Ubuntu)" ;;
+case "$(uname -s)" in
+    Linux) ;;
+    Darwin) die "this is the Linux installer. For a Mac, download Byakaron for macOS: https://nuhulabs.com/byakaron" ;;
+    *) die "this installer is for Linux (Ubuntu or Debian), not $(uname -s)" ;;
 esac
 
-cpu_name() { [[ "$1" == arm64 ]] && echo "ARM (arm64)" || echo "Intel/AMD (amd64)"; }
-if [[ -n "$WANT_ARCH" && "$ARCH" != "$WANT_ARCH" ]]; then
-    die "this is the $(cpu_name "$WANT_ARCH") installer, but this computer is $(cpu_name "$ARCH").
-       Use: curl -fsSL https://nuhulabs.com/byakaron/install-${ARCH}.sh | sudo bash"
+# Which Linux, for the messages. BYAKARON_OS_RELEASE is for the tests.
+OS_RELEASE="${BYAKARON_OS_RELEASE:-/etc/os-release}"
+OS_NAME="Linux"
+if [[ -r "$OS_RELEASE" ]]; then
+    OS_NAME="$(sed -n 's/^PRETTY_NAME="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$OS_RELEASE" | head -n 1)"
+    [[ -n "$OS_NAME" ]] || OS_NAME="Linux"
 fi
+
+command -v apt-get >/dev/null && command -v dpkg >/dev/null \
+    || die "Byakaron is packaged for Ubuntu and Debian (apt). This is $OS_NAME, which has no apt."
+command -v curl >/dev/null || die "need curl: sudo apt install curl"
+
+ARCH="$(dpkg --print-architecture)"
+KERNEL_CPU="$(uname -m)"
+case "$ARCH" in
+    amd64) CPU_NAME="Intel/AMD 64-bit (amd64)" ;;
+    arm64) CPU_NAME="ARM 64-bit (arm64)" ;;
+    armhf|armel)
+        # Raspberry Pi OS (32-bit) runs a 32-bit system even on a 64-bit Pi.
+        hint=""
+        [[ "$KERNEL_CPU" == aarch64 ]] && hint=" The processor is 64-bit, but the installed system is 32-bit."
+        die "this is a 32-bit ARM system ($ARCH, $OS_NAME).$hint
+       Byakaron needs a 64-bit system: Raspberry Pi OS (64-bit) or Ubuntu Desktop arm64,
+       on a Raspberry Pi 4 or 5. See https://nuhulabs.com/byakaron" ;;
+    i386) die "this is a 32-bit PC system ($OS_NAME). Byakaron needs 64-bit Ubuntu or Debian." ;;
+    *) die "unsupported CPU '$ARCH' ($OS_NAME). Byakaron is built for amd64 and arm64." ;;
+esac
+echo ">>> Detected: $OS_NAME, $CPU_NAME"
 
 # Three ways to find the .deb, most exact first. None needs python3: a stock
 # Ubuntu image does not have it, and the old python-only parse fell through to
@@ -75,7 +91,6 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 deb="$tmp/byakaron.deb"
 
-echo ">>> Byakaron for Linux ($ARCH)"
 echo ">>> downloading $deb_url"
 curl -fL --progress-bar -o "$deb" "$deb_url" \
     || die "could not download $deb_url
