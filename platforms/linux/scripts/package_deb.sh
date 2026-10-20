@@ -209,7 +209,7 @@ Version: $VERSION
 Architecture: $ARCH
 Maintainer: Byakaron contributors <byakaron@example.com>
 Installed-Size: $INSTALLED_KB
-Depends: libc6 (>= 2.31), ibus (>= 1.5), libibus-1.0-5, libglib2.0-0t64 | libglib2.0-0, libgtk-3-0t64 | libgtk-3-0
+Depends: libc6 (>= 2.31), ibus (>= 1.5), libibus-1.0-5, libglib2.0-0t64 | libglib2.0-0, libgtk-3-0t64 | libgtk-3-0, libglib2.0-bin
 Recommends: ibus-gtk3 | ibus-gtk, ibus-gtk4
 Suggests: fcitx5
 Replaces: byakaron-app, byakaron-data
