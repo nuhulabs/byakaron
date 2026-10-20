@@ -114,6 +114,51 @@ jobs:
             echo "=== $f"; tail -40 "$f"
           done
 
+  # Installs the way a user does — the website installer, which detects the CPU
+  # and downloads the latest release — in clean Ubuntu 20.04 / 22.04 / 24.04
+  # and Debian 12 (Raspberry Pi OS 64-bit's base) containers, on both CPUs,
+  # then checks files, icon, the app window and typing through the installed
+  # engine. This is what a Raspberry Pi user runs.
+  install:
+    name: install (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: amd64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: System packages
+        run: sudo bash platforms/linux/scripts/setup_deps.sh
+
+      - name: Install Zig 0.17.0-dev.1422
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0-dev.1422+e863bf3be
+
+      - name: Clone ziex at the path build.zig.zon expects
+        run: |
+          dest="${GITHUB_WORKSPACE}/../../ziex-dev/ziex"
+          mkdir -p "$(dirname "$dest")"
+          git clone --filter=blob:none https://github.com/ziex-dev/ziex.git "$dest"
+          git -C "$dest" checkout --detach 29f9a85b
+
+      - name: IME test binary (glibc 2.31)
+        run: |
+          source platforms/linux/scripts/compat.sh
+          zig build linux-test -Doptimize=ReleaseFast $(byk_compat_target_flag)
+
+      - name: Install and test in clean containers
+        run: bash platforms/linux/scripts/test_install_matrix.sh zig-out/bin/byakaron-ime-test
+
   # A `linux-*` tag (linux-0.1.8, ...) also builds the shareable .deb for both
   # CPUs, installs it on the runner, and types through the *installed* engine.
   # The .debs are uploaded as artifacts; they go to the public

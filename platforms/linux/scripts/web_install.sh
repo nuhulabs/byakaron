@@ -123,9 +123,19 @@ fi
 
 echo
 echo "=== Byakaron $now_installed is installed. Add it as an input source: ==="
-echo "  1. Settings -> Keyboard -> Input Sources -> '+'"
-echo "  2. Choose Bangla, then Byakaron (Bangla Phonetic) -> Add"
-echo "  3. Switch with Super+Space and type ami then Space (আমি )"
-echo "  Or open the Byakaron app -> Setup."
-echo "  If it is missing from the Bangla list, log out and back in."
+if command -v gnome-control-center >/dev/null; then
+    echo "  1. Settings -> Keyboard -> Input Sources -> '+'"
+    echo "  2. Choose Bangla, then Byakaron (Bangla Phonetic) -> Add"
+    echo "  3. Switch with Super+Space and type ami then Space (আমি )"
+    echo "  Or open the Byakaron app -> Setup."
+    echo "  If it is missing from the Bangla list, log out and back in."
+else
+    # Raspberry Pi OS, KDE, Xfce, ...: no GNOME Settings; IBus has its own.
+    echo "  1. Make IBus start with your desktop (as yourself, not root):"
+    echo "       im-config -n ibus      (sudo apt install im-config if missing)"
+    echo "     then log out and back in."
+    echo "  2. Run ibus-setup -> Input Method -> Add -> Bangla -> Byakaron"
+    echo "  3. Switch with Super+Space and type ami then Space (আমি )"
+    echo "  Or open the Byakaron app -> Setup."
+fi
 echo

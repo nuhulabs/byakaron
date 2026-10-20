@@ -272,11 +272,17 @@ if [ "$1" = "configure" ]; then
     elif [ -z "${BYAKARON_INSTALLER:-}" ]; then
         echo ""
         echo "Byakaron installed. The package only registers the engine — add it:"
-        echo "  1. Settings -> Keyboard -> Input Sources -> '+'"
-        echo "  2. Choose Bangla, then Byakaron (Bangla Phonetic) -> Add"
-        echo "  3. Switch with Super+Space"
+        if command -v gnome-control-center >/dev/null; then
+            echo "  1. Settings -> Keyboard -> Input Sources -> '+'"
+            echo "  2. Choose Bangla, then Byakaron (Bangla Phonetic) -> Add"
+            echo "  3. Switch with Super+Space"
+            echo "  If Byakaron is missing from the Bangla list, log out and back in."
+        else
+            echo "  1. As yourself: im-config -n ibus   (then log out and back in)"
+            echo "  2. ibus-setup -> Input Method -> Add -> Bangla -> Byakaron"
+            echo "  3. Switch with Super+Space"
+        fi
         echo "  Or open the Byakaron app -> Setup, which walks through this."
-        echo "  If Byakaron is missing from the Bangla list, log out and back in."
     fi
 fi
 
