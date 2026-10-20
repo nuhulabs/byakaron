@@ -1,40 +1,64 @@
 # Byakaron on ARM (Raspberry Pi / Ubuntu arm64)
 
-The published Linux `.deb` is **amd64** (64-bit Intel/AMD). It will not run on
-a Raspberry Pi. The source is not AMD-only: build it **on the Pi** and
-`install.sh` already targets ARM64 (`aarch64-linux-gnu.2.31`).
-
-This is for **64-bit Ubuntu Desktop** on a Raspberry Pi 4 or 5. After install,
-use it the same way as on an Intel Ubuntu box: add the input source, then
-Super+Space.
-
-## What you need
-
-| Requirement | Why |
-| --- | --- |
-| Raspberry Pi 4 or 5, **4 GB RAM or more** | Zig compiles are heavy; 2 GB often runs out of memory |
-| **64-bit** Ubuntu 22.04 or 24.04 Desktop (`arm64`) | Scripts support `x86_64` and `aarch64` only — not 32-bit `armhf` |
-| A desktop session with IBus (Ubuntu Desktop / GNOME) | The engine is an IBus input method |
-
-Confirm the CPU first:
-
-```bash
-uname -m                    # must print aarch64
-dpkg --print-architecture   # must print arm64
-```
-
-If those say `armv7l` or `armhf`, this guide does not apply. Use a 64-bit
-Ubuntu image.
-
-Do **not** copy `byakaron_*_amd64.deb` onto the Pi.
-
-If a GitHub Release with an `arm64` `.deb` exists, this is enough:
+Byakaron is published for **ARM 64-bit** as well as Intel/AMD. On a Raspberry
+Pi the install is the same one command as everywhere else; the installer
+detects the CPU and downloads the ARM package:
 
 ```bash
 curl -fsSL https://nuhulabs.com/byakaron/install.sh | sudo bash
 ```
 
-Otherwise build on the Pi as below.
+**Typing it by hand?** The character before `sudo` is a pipe `|`. Raspberry Pi
+OS defaults to the UK keyboard layout, where the key that gives `|` on a US
+keyboard types `~` instead; with `~` curl treats `sudo` and `bash` as web
+addresses ("Could not resolve host: sudo") and only prints the script. Copy
+and paste the command, or set your keyboard layout first
+(Preferences → Raspberry Pi Configuration → Localisation → Keyboard).
+
+## What you need
+
+| Requirement | Why |
+| --- | --- |
+| Raspberry Pi 4 or 5 (or any ARM 64-bit computer) | The package is built for `arm64` |
+| A **64-bit** system: Raspberry Pi OS (64-bit) or Ubuntu Desktop arm64 | There is no 32-bit (`armhf`) package; the installer says so and stops |
+| A desktop session | The keyboard is an IBus input method |
+
+Check what you have:
+
+```bash
+uname -m                    # aarch64 (a 64-bit processor)
+dpkg --print-architecture   # arm64 (a 64-bit system); armhf means 32-bit
+```
+
+`aarch64` with `armhf` means a 64-bit Pi running the 32-bit Raspberry Pi OS:
+install Raspberry Pi OS (64-bit) to use Byakaron.
+
+Tested in CI on every push: the installer in clean Ubuntu 20.04, 22.04, 24.04
+and Debian 12 (Raspberry Pi OS's base) containers on an ARM 64-bit runner,
+then typing through the installed keyboard and opening the app.
+
+## After installing
+
+**Ubuntu (GNOME):** Settings → Keyboard → Input Sources → **+** → **Bangla** →
+**Byakaron (Bangla Phonetic)** → Add, then Super+Space.
+
+**Raspberry Pi OS, KDE, Xfce and other desktops** (no GNOME Settings):
+
+1. Make IBus start with your desktop, as yourself (not root):
+   `im-config -n ibus` (`sudo apt install im-config` if it is missing), then log out and back in.
+2. Run `ibus-setup` → **Input Method** → **Add** → **Bangla** → **Byakaron**.
+3. Switch with Super+Space, type `ami` then Space → আমি.
+
+The Byakaron app's Setup page shows the steps for your desktop and opens the
+right settings window.
+
+Not yet checked on a real Raspberry Pi OS desktop session (the CI containers
+have no desktop): if IBus does not appear after `im-config`, please report it.
+
+## Building on the Pi yourself (optional)
+
+Only needed to try unreleased changes. Building is heavy: use a Pi with 4 GB
+RAM or more.
 
 ## 1. Source and the `ziex` sibling
 

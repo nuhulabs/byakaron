@@ -1,5 +1,8 @@
 #include "setup.h"
 
+#include <string.h>
+#include <unistd.h>
+
 #include "uiutil.h"
 
 /* The only directory ibus-daemon scans for components; scripts/install.sh
@@ -8,9 +11,12 @@
 #define BYK_ENGINE_NAME   "byakaron"
 
 #define BYK_INPUT_SOURCES_SCHEMA "org.gnome.desktop.input-sources"
+/* Outside GNOME (Raspberry Pi OS, KDE, Xfce) IBus keeps its own list. */
+#define BYK_IBUS_GENERAL_SCHEMA  "org.freedesktop.ibus.general"
 
 typedef enum {
     BYK_KEYBOARD_MISSING, /* not installed on the system */
+    BYK_KEYBOARD_NO_IBUS, /* installed, but IBus is not running (non-GNOME) */
     BYK_KEYBOARD_READY,   /* installed, but not in the user's input sources */
     BYK_KEYBOARD_ADDED,   /* installed and added */
 } BykKeyboardState;
@@ -23,12 +29,96 @@ struct _BykSetupPage {
     GtkWidget *status_icon;
     GtkWidget *install_hint; /* only shown when nothing is installed */
     GtkWidget *toast;
+    gboolean gnome;          /* GNOME Settings manages input sources here */
 
 };
 
 G_DEFINE_TYPE (BykSetupPage, byk_setup_page, GTK_TYPE_BOX)
 
 /* ── detection ───────────────────────────────────────────────────────────── */
+
+/*
+ * GNOME (and Ubuntu's GNOME) adds input sources in its Settings app; other
+ * desktops (Raspberry Pi OS, KDE, Xfce) use IBus's own preferences, and the
+ * steps, button and "added" check differ. XDG_CURRENT_DESKTOP decides when it
+ * is set; otherwise whether GNOME Settings is installed.
+ */
+static gboolean
+byk_desktop_is_gnome (void)
+{
+    gchar *settings = g_find_program_in_path ("gnome-control-center");
+    const gboolean has_settings = settings != NULL;
+    g_free (settings);
+    if (!has_settings)
+        return FALSE;
+
+    const gchar *desktop = g_getenv ("XDG_CURRENT_DESKTOP");
+    if (desktop == NULL || *desktop == '\0')
+        return TRUE;
+    gchar *lower = g_ascii_strdown (desktop, -1);
+    const gboolean gnome = strstr (lower, "gnome") != NULL || strstr (lower, "unity") != NULL;
+    g_free (lower);
+    return gnome;
+}
+
+/* An ibus-daemon of this user: outside GNOME nothing starts IBus by default. */
+static gboolean
+byk_ibus_running (void)
+{
+    GDir *proc = g_dir_open ("/proc", 0, NULL);
+    if (proc == NULL)
+        return TRUE; /* cannot tell: do not nag */
+
+    gboolean found = FALSE;
+    const gchar *pid;
+    while (!found && (pid = g_dir_read_name (proc)) != NULL) {
+        if (!g_ascii_isdigit (pid[0]))
+            continue;
+        gchar *path = g_build_filename ("/proc", pid, "comm", NULL);
+        gchar *comm = NULL;
+        if (g_file_get_contents (path, &comm, NULL, NULL)) {
+            g_strstrip (comm);
+            if (strcmp (comm, "ibus-daemon") == 0) {
+                gchar *status_path = g_build_filename ("/proc", pid, "status", NULL);
+                gchar *status = NULL;
+                gchar *uid_line = g_strdup_printf ("\nUid:\t%u\t", (guint) getuid ());
+                if (g_file_get_contents (status_path, &status, NULL, NULL) &&
+                    strstr (status, uid_line) != NULL)
+                    found = TRUE;
+                g_free (uid_line);
+                g_free (status);
+                g_free (status_path);
+            }
+        }
+        g_free (comm);
+        g_free (path);
+    }
+    g_dir_close (proc);
+    return found;
+}
+
+/* `key` (an array of strings) of `schema` contains "byakaron". */
+static gboolean
+byk_settings_list_has_engine (const gchar *schema_id, const gchar *key)
+{
+    GSettingsSchemaSource *source = g_settings_schema_source_get_default ();
+    if (source == NULL)
+        return FALSE;
+    GSettingsSchema *schema = g_settings_schema_source_lookup (source, schema_id, TRUE);
+    if (schema == NULL)
+        return FALSE;
+    const gboolean has_key = g_settings_schema_has_key (schema, key);
+    g_settings_schema_unref (schema);
+    if (!has_key)
+        return FALSE;
+
+    GSettings *settings = g_settings_new (schema_id);
+    gchar **engines = g_settings_get_strv (settings, key);
+    const gboolean found = g_strv_contains ((const gchar * const *) engines, BYK_ENGINE_NAME);
+    g_strfreev (engines);
+    g_object_unref (settings);
+    return found;
+}
 
 /*
  * Whether "byakaron" is in the user's input sources.
@@ -74,12 +164,18 @@ byk_input_source_added (void)
 }
 
 static BykKeyboardState
-byk_keyboard_state (void)
+byk_keyboard_state (gboolean gnome)
 {
     if (!g_file_test (BYK_COMPONENT_XML, G_FILE_TEST_IS_REGULAR))
         return BYK_KEYBOARD_MISSING;
 
-    return byk_input_source_added () ? BYK_KEYBOARD_ADDED : BYK_KEYBOARD_READY;
+    if (gnome)
+        return byk_input_source_added () ? BYK_KEYBOARD_ADDED : BYK_KEYBOARD_READY;
+
+    if (!byk_ibus_running ())
+        return BYK_KEYBOARD_NO_IBUS;
+    return byk_settings_list_has_engine (BYK_IBUS_GENERAL_SCHEMA, "preload-engines")
+        ? BYK_KEYBOARD_ADDED : BYK_KEYBOARD_READY;
 }
 
 /* ── actions ─────────────────────────────────────────────────────────────── */
@@ -97,20 +193,23 @@ on_open_settings_clicked (GtkButton *button, gpointer user_data)
     BykSetupPage *self = BYK_SETUP_PAGE (user_data);
     (void) button;
 
-    /* GNOME's keyboard panel is where input sources live. There is no portal
-     * or D-Bus interface for "open this settings panel", so this is a plain
-     * spawn — and a missing binary is a normal outcome on other desktops. */
-    gchar *found = g_find_program_in_path ("gnome-control-center");
+    /* GNOME's keyboard panel is where input sources live; elsewhere it is
+     * IBus's own preferences. There is no portal or D-Bus interface for "open
+     * this settings panel", so this is a plain spawn. */
+    const gchar *program = self->gnome ? "gnome-control-center" : "ibus-setup";
+    gchar *found = g_find_program_in_path (program);
     if (found == NULL) {
         byk_toast_show (GTK_LABEL (self->toast),
-                        "GNOME Settings not found — open your desktop's "
-                        "keyboard settings and add Byakaron there");
+                        self->gnome ? "GNOME Settings not found"
+                                    : "ibus-setup not found: sudo apt install ibus");
         return;
     }
     g_free (found);
 
     GError *error = NULL;
-    const gchar *argv[] = { "gnome-control-center", "keyboard", NULL };
+    const gchar *gnome_argv[] = { "gnome-control-center", "keyboard", NULL };
+    const gchar *ibus_argv[] = { "ibus-setup", NULL };
+    const gchar **argv = self->gnome ? gnome_argv : ibus_argv;
 
     if (!g_spawn_async (NULL, (gchar **) argv, NULL,
                         G_SPAWN_SEARCH_PATH | G_SPAWN_STDOUT_TO_DEV_NULL |
@@ -217,18 +316,31 @@ byk_setup_page_build_steps (BykSetupPage *self)
     GtkWidget *list = NULL;
     GtkWidget *group = byk_framed_list ("Set Up", NULL, &list);
 
-    byk_box_add (list, byk_setup_step_row (
-        1, "Open Settings \u2192 Keyboard \u2192 Input Sources",
-        "Byakaron installs as a system input source"));
-    byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
-    byk_box_add (list, byk_setup_step_row (
-        2, "Click  +  \u2192 choose Bangla \u2192 select Byakaron \u2192 Add",
-        NULL));
+    if (self->gnome) {
+        byk_box_add (list, byk_setup_step_row (
+            1, "Open Settings \u2192 Keyboard \u2192 Input Sources",
+            "Byakaron installs as a system input source"));
+        byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
+        byk_box_add (list, byk_setup_step_row (
+            2, "Click  +  \u2192 choose Bangla \u2192 select Byakaron \u2192 Add",
+            NULL));
+    } else {
+        /* Raspberry Pi OS, KDE, Xfce: IBus is not started by default and has
+         * its own preferences window. */
+        byk_box_add (list, byk_setup_step_row (
+            1, "Make IBus start with your desktop",
+            "In a terminal: im-config -n ibus, then log out and back in"));
+        byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
+        byk_box_add (list, byk_setup_step_row (
+            2, "IBus Preferences \u2192 Input Method \u2192 Add \u2192 Bangla \u2192 Byakaron",
+            NULL));
+    }
     byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
     byk_box_add (list, byk_setup_step_row (
         3, "Switch to it with Super+Space", NULL));
 
-    GtkWidget *open = gtk_button_new_with_label ("Open Input Sources");
+    GtkWidget *open = gtk_button_new_with_label (self->gnome ? "Open Input Sources"
+                                                             : "Open IBus Preferences");
     gtk_widget_set_halign (open, GTK_ALIGN_CENTER);
     gtk_widget_set_margin_top (open, 12);
     gtk_widget_set_margin_bottom (open, 8);
@@ -315,6 +427,7 @@ GtkWidget *
 byk_setup_page_new (void)
 {
     BykSetupPage *self = g_object_new (BYK_TYPE_SETUP_PAGE, NULL);
+    self->gnome = byk_desktop_is_gnome ();
 
     GtkWidget *column = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
     gtk_widget_set_halign (column, GTK_ALIGN_CENTER);
@@ -348,7 +461,14 @@ byk_setup_page_refresh (BykSetupPage *self)
     const gchar *subtitle = NULL;
     const gchar *css = NULL;
 
-    switch (byk_keyboard_state ()) {
+    const BykKeyboardState state = byk_keyboard_state (self->gnome);
+    switch (state) {
+    case BYK_KEYBOARD_NO_IBUS:
+        icon = "dialog-warning-symbolic";
+        title = "IBus isn\u2019t running";
+        subtitle = "Run im-config -n ibus in a terminal, then log out and back in.";
+        css = "warning";
+        break;
     case BYK_KEYBOARD_MISSING:
         icon = "dialog-warning-symbolic";
         title = "Keyboard isn\u2019t installed yet";
@@ -358,7 +478,8 @@ byk_setup_page_refresh (BykSetupPage *self)
     case BYK_KEYBOARD_READY:
         icon = "dialog-information-symbolic";
         title = "Keyboard isn\u2019t added yet";
-        subtitle = "It is installed. Add it under Input Sources to start typing.";
+        subtitle = self->gnome ? "It is installed. Add it under Input Sources to start typing."
+                               : "It is installed. Add it in IBus Preferences to start typing.";
         css = "warning";
         break;
     case BYK_KEYBOARD_ADDED:
@@ -378,6 +499,5 @@ byk_setup_page_refresh (BykSetupPage *self)
     byk_css_remove (self->status_icon, "success");
     byk_css_add (self->status_icon, css);
 
-    gtk_widget_set_visible (self->install_hint,
-                            byk_keyboard_state () == BYK_KEYBOARD_MISSING);
+    gtk_widget_set_visible (self->install_hint, state == BYK_KEYBOARD_MISSING);
 }
