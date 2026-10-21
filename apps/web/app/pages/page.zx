@@ -1,8 +1,12 @@
 //! Interactive Bangla spell checker — client-side UI with `zx.fetch` to `/api/spell`.
 //! Typing, issue selection, and applying suggestions do not full-page refresh.
+//! Avro transliteration and the word-completion menu run in the browser (wasm)
+//! with the same `Transliteration` and `AutoComplete.Mem` the native apps use.
 
 const std = @import("std");
 const zx = @import("zx");
+const Transliteration = @import("transliteration").Transliteration;
+const AutoCompleteMem = @import("autocomplete_mem");
 
 // —— Client-side model (WASM module globals) ——
 
@@ -39,6 +43,48 @@ const check_throttle_ms: u32 = 400;
 var check_dirty: bool = false;
 var check_timer_armed: bool = false;
 
+/// Avro typing: English keystrokes are kept as the Latin source of the word being
+/// typed and re-transliterated on every key, replacing `compose_len` bytes of
+/// `draft_text` at `compose_start`.
+var transliterate_on: bool = true;
+var compose_latin: std.ArrayList(u8) = .empty;
+var compose_start: usize = 0;
+var compose_len: usize = 0;
+
+/// Completion menu for the word at the caret, spanning bytes `word_start..word_end`.
+const menu_limit: i64 = 6;
+var menu_items: []const []const u8 = &.{};
+var menu_sel: usize = 0;
+var word_start: usize = 0;
+var word_end: usize = 0;
+var menu_arena: std.heap.ArenaAllocator = undefined;
+var menu_arena_ready: bool = false;
+
+var avro: ?Transliteration = null;
+var ac_mem: ?*AutoCompleteMem = null;
+
+/// Persisted in the browser through `zx.kv` (localStorage on the client): the
+/// draft as raw text under `draft_key`, preferences as `Settings` under `settings_key`.
+const Settings = struct {
+    transliterate: bool = true,
+};
+/// The caret, as byte offsets into the draft, and the last spell-check results
+/// (JSON) are saved too, so a reload comes back exactly as it was left.
+const Caret = struct {
+    start: usize = 0,
+    end: usize = 0,
+};
+const draft_key = "draft";
+const settings_key = "settings";
+const caret_key = "caret";
+const results_key = "results";
+var store_loaded: bool = false;
+var saved_caret: ?Caret = null;
+/// False until the saved state is in place. The server cannot read the browser's
+/// store, so the parts it would change stay hidden (`.is-restoring`) until then
+/// instead of popping in and shifting the layout.
+var restored: bool = false;
+
 pub fn Page(ctx: zx.PageContext) !zx.Component {
     // Seed from ?q= for shareable links; client takes over after hydrate.
     if (ctx.request.queries.get("q")) |q| {
@@ -62,14 +108,15 @@ pub fn SpellApp(ctx: *zx.ComponentContext) zx.Component {
     const selected: ?Issue = if (unknown_count > 0) issues[sel_idx] else null;
     const word_count = results.len;
     const char_count = utf8Codepoints(draft_text);
+    if (zx.platform.role == .client and !store_loaded) loadStore();
     const meta = std.fmt.allocPrint(
         ctx.allocator,
-        "{d} words · {d} issues{s}",
-        .{ word_count, unknown_count, if (checking) " · checking…" else "" },
+        "{d} words · {d} issues",
+        .{ word_count, unknown_count },
     ) catch "—";
 
     return (
-        <div @allocator={ctx.allocator} class="app-layout">
+        <div @allocator={ctx.allocator} class={if (restored) "app-layout" else "app-layout is-restoring"}>
             <aside class="sidebar">
                 <h2 class="sidebar-title">Issues ({unknown_count})</h2>
                 <div class="issue-list">
@@ -97,9 +144,20 @@ pub fn SpellApp(ctx: *zx.ComponentContext) zx.Component {
                 <header class="main-header">
                     <div class="brand-block">
                         <h1 class="brand">Byakaron</h1>
-                        <p class="brand-meta">{meta}</p>
+                        <p class="brand-meta">
+                            {meta}
+                            <span class={if (checking) "check-dot is-busy" else "check-dot"} title="Checking" aria-hidden="true"></span>
+                        </p>
                     </div>
                     <div class="toolbar">
+                        <button
+                            class={if (transliterate_on) "tool-btn tool-toggle is-on" else "tool-btn tool-toggle"}
+                            type="button"
+                            title={if (transliterate_on) "Avro transliteration on: English typing becomes Bangla" else "Avro transliteration off"}
+                            aria-label="Toggle Avro transliteration"
+                            aria-pressed={if (transliterate_on) "true" else "false"}
+                            onclick={onToggleTransliterate}
+                        >{if (transliterate_on) "অ" else "A"}</button>
                         <button class="tool-btn" type="button" title="Check spelling" aria-label="Check spelling" onclick={onCheckNow}>
                             <span class="icon-wand" aria-hidden="true"></span>
                         </button>
@@ -122,12 +180,30 @@ pub fn SpellApp(ctx: *zx.ComponentContext) zx.Component {
                         class="editor-input"
                         rows="8"
                         autofocus
-                        placeholder="এখানে বাংলা লিখুন…"
+                        placeholder={if (transliterate_on) "ইংরেজিতে লিখুন: ami banglay gan gai…" else "এখানে বাংলা লিখুন…"}
                         spellcheck="false"
+                        autocomplete="off"
                         oninput={onTextInput}
+                        onkeydown={onEditorKeyDown}
+                        onkeyup={onCaretMoved}
+                        onmouseup={onCaretMoved}
+                        onblur={onEditorBlur}
                     >{draft_text}</textarea>
+                    {if (menu_items.len > 0) (
+                        <ul class="suggest-menu" role="listbox">
+                            {for (menu_items, 0..) |item, mi| (
+                                <li
+                                    class={if (mi == menu_sel) "suggest-item is-active" else "suggest-item"}
+                                    role="option"
+                                    value={mi}
+                                    onmousedown={onPickSuggestion}
+                                >{item}</li>
+                            )}
+                        </ul>
+                    )}
                 </div>
 
+                <div class="fix-slot">
                 {if (selected) |sel| (
                     <div class="fix-bar">
                         <div class="fix-target">
@@ -150,12 +226,13 @@ pub fn SpellApp(ctx: *zx.ComponentContext) zx.Component {
                         <button class="fix-ignore" type="button" onclick={onIgnore}>Ignore</button>
                     </div>
                 )}
-                {if (selected == null and draft_text.len > 0 and !checking) (
+                {if (selected == null and results.len > 0) (
                     <div class="fix-bar fix-bar-ok">
                         <span class="fix-ok">All words look good.</span>
                         <button class="fix-ignore" type="button" onclick={onCheckNow}>Recheck</button>
                     </div>
                 )}
+                </div>
 
                 <footer class="status-bar">
                     <div class="status-left">
@@ -224,7 +301,316 @@ fn utf8Codepoints(text: []const u8) usize {
 fn onTextInput(e: zx.client.Event) void {
     const v = e.value() orelse "";
     draft_text = zx.allocator.dupe(u8, v) catch return;
-    scheduleCheck();
+    // Avro keys are handled in keydown and never reach here: this is a paste, an
+    // OS input method, a deletion, or typing with transliteration off.
+    endComposition();
+    refreshMenu();
+    zx.client.rerender();
+    draftChanged();
+}
+
+fn onToggleTransliterate(_: zx.client.Event) void {
+    transliterate_on = !transliterate_on;
+    saveSettings();
+    endComposition();
+    closeMenu();
+    zx.client.rerender();
+    focusTextarea();
+}
+
+fn onEditorBlur(_: zx.client.Event) void {
+    if (compose_latin.items.len > 0) scheduleCheck();
+    endComposition();
+    if (menu_items.len == 0) return;
+    closeMenu();
+    zx.client.rerender();
+}
+
+fn onEditorKeyDown(e: zx.client.Event) void {
+    const ke = e.as(zx.client.events.KeyboardEvent, zx.allocator);
+    const k = ke.key;
+    if (ke.is_composing) return;
+
+    if (menu_items.len > 0) {
+        if (std.mem.eql(u8, k, "ArrowDown") or std.mem.eql(u8, k, "ArrowUp")) {
+            e.preventDefault();
+            const n = menu_items.len;
+            menu_sel = if (k[5] == 'D') (menu_sel + 1) % n else (menu_sel + n - 1) % n;
+            zx.client.rerender();
+            return;
+        }
+        if (std.mem.eql(u8, k, "Enter") or std.mem.eql(u8, k, "Tab")) {
+            e.preventDefault();
+            acceptSuggestion(menu_sel);
+            return;
+        }
+        if (std.mem.eql(u8, k, "Escape")) {
+            e.preventDefault();
+            endComposition();
+            closeMenu();
+            zx.client.rerender();
+            return;
+        }
+    }
+
+    if (!transliterate_on or ke.ctrl_key or ke.meta_key or ke.alt_key) return;
+
+    if (k.len == 1 and isAvroKey(k[0])) {
+        e.preventDefault();
+        composeKey(k[0]);
+        return;
+    }
+    if (std.mem.eql(u8, k, "Backspace") and compose_latin.items.len > 0) {
+        const sel = readSelection() orelse return;
+        if (sel.start == sel.end and sel.start == compose_start + compose_len) {
+            e.preventDefault();
+            _ = compose_latin.pop();
+            applyComposition();
+            return;
+        }
+    }
+    // Anything else (space, punctuation, arrows, Enter) commits the word as typed
+    // and keeps its default action. Modifier keydowns arrive mid-word (Shift for
+    // `O`), so they must not.
+    if (compose_latin.items.len > 0 and !isModifierKey(k)) {
+        endComposition();
+        closeMenu();
+        zx.client.rerender();
+        scheduleCheck();
+    }
+}
+
+fn onPickSuggestion(e: zx.client.Event) void {
+    // mousedown + preventDefault keeps focus (and the caret) in the textarea.
+    e.preventDefault();
+    const raw = e.value() orelse return;
+    acceptSuggestion(std.fmt.parseInt(usize, raw, 10) catch return);
+}
+
+/// Letters, digits and the Avro symbols (`.` → ।, `` ` `` breaks a conjunct,
+/// `^` → ঁ, `:` → ঃ, `$` → ৳).
+fn isAvroKey(c: u8) bool {
+    return std.ascii.isAlphanumeric(c) or switch (c) {
+        '.', '`', '^', ':', '$' => true,
+        else => false,
+    };
+}
+
+fn isModifierKey(k: []const u8) bool {
+    for ([_][]const u8{ "Shift", "Control", "Alt", "Meta", "CapsLock", "AltGraph", "Fn" }) |m| {
+        if (std.mem.eql(u8, k, m)) return true;
+    }
+    return false;
+}
+
+fn composeKey(c: u8) void {
+    syncDraftFromDom();
+    const sel = readSelection() orelse return;
+    if (compose_latin.items.len == 0 or sel.start != sel.end or sel.start != compose_start + compose_len) {
+        // New word: it replaces whatever is selected.
+        compose_latin.clearRetainingCapacity();
+        compose_start = sel.start;
+        compose_len = sel.end - sel.start;
+    }
+    compose_latin.append(zx.allocator, c) catch return;
+    applyComposition();
+}
+
+/// Re-transliterate the Latin buffer into its slot in `draft_text`.
+fn applyComposition() void {
+    const out: []const u8 = if (compose_latin.items.len > 0) avroEngine().transliterate(compose_latin.items) else "";
+    const end = @min(compose_start + compose_len, draft_text.len);
+    const next = std.mem.concat(zx.allocator, u8, &.{ draft_text[0..compose_start], out, draft_text[end..] }) catch return;
+    compose_len = out.len;
+    if (out.len > 0) zx.allocator.free(out);
+    draft_text = next;
+    setTextareaValue(draft_text, compose_start + compose_len);
+    if (compose_latin.items.len == 0) endComposition();
+    refreshMenu();
+    zx.client.rerender();
+    draftChanged();
+}
+
+fn endComposition() void {
+    compose_latin.clearRetainingCapacity();
+    compose_len = 0;
+}
+
+fn closeMenu() void {
+    menu_items = &.{};
+    menu_sel = 0;
+}
+
+fn acceptSuggestion(i: usize) void {
+    if (i >= menu_items.len) return;
+    const replacement = menu_items[i];
+    const end = @min(word_end, draft_text.len);
+    const next = std.mem.concat(zx.allocator, u8, &.{ draft_text[0..word_start], replacement, " ", draft_text[end..] }) catch return;
+    const caret = word_start + replacement.len + 1;
+    draft_text = next;
+    endComposition();
+    closeMenu();
+    setTextareaValue(draft_text, caret);
+    zx.client.rerender();
+    draftChanged();
+}
+
+/// Completions for the word ending at the caret. While composing, the first item
+/// is the transliteration itself, so Enter/Tab keep the word as typed.
+fn refreshMenu() void {
+    closeMenu();
+    if (zx.platform.role != .client) return;
+    if (!menu_arena_ready) {
+        menu_arena = .init(zx.allocator);
+        menu_arena_ready = true;
+    } else {
+        _ = menu_arena.reset(.retain_capacity);
+    }
+    const arena = menu_arena.allocator();
+
+    var typed = false;
+    if (compose_latin.items.len > 0) {
+        word_start = compose_start;
+        word_end = compose_start + compose_len;
+        typed = true;
+    } else {
+        const sel = readSelection() orelse return;
+        if (sel.start != sel.end) return;
+        word_end = sel.start;
+        word_start = wordStartBefore(draft_text, word_end);
+    }
+    const word = draft_text[word_start..word_end];
+    // Only Bangla words: the lexicon has nothing for Latin text.
+    if (word.len == 0 or std.ascii.isAscii(word[0])) return;
+
+    var items: std.ArrayList([]const u8) = .empty;
+    if (typed) items.append(arena, arena.dupe(u8, word) catch return) catch return;
+    for (suggest(arena, word)) |s| {
+        if (std.mem.eql(u8, s, word)) continue;
+        items.append(arena, s) catch break;
+    }
+    // A lone non-typed word that is already complete needs no menu.
+    if (items.items.len == 0 or (typed and items.items.len == 1)) return;
+    menu_items = items.items;
+    positionMenu();
+}
+
+fn suggest(arena: std.mem.Allocator, prefix: []const u8) []const []const u8 {
+    if (ac_mem == null) ac_mem = AutoCompleteMem.create(zx.allocator) catch return &.{};
+    const rows = ac_mem.?.autoComplete().prefixSuggest(arena, prefix, menu_limit) catch return &.{};
+    const out = arena.alloc([]const u8, rows.len) catch return &.{};
+    for (rows, out) |r, *o| o.* = r.word;
+    return out;
+}
+
+fn avroEngine() *Transliteration {
+    if (avro == null) avro = Transliteration.init(zx.allocator, .avro);
+    return &avro.?;
+}
+
+/// Byte offset where the word ending at `end` begins (after whitespace or ASCII
+/// punctuation).
+fn wordStartBefore(text: []const u8, end: usize) usize {
+    var i = end;
+    while (i > 0) {
+        const c = text[i - 1];
+        if (c < 0x80 and !std.ascii.isAlphanumeric(c)) break;
+        i -= 1;
+    }
+    // Bangla danda (।) also ends a word.
+    if (std.mem.lastIndexOf(u8, text[i..end], "।")) |d| i += d + "।".len;
+    return i;
+}
+
+const Selection = struct { start: usize, end: usize };
+
+/// Textarea selection as byte offsets into `draft_text` (the DOM counts UTF-16 units).
+fn readSelection() ?Selection {
+    if (zx.platform.role != .client) return null;
+    const document = zx.client.Document.init(zx.allocator);
+    defer document.deinit();
+    const el = document.getElementById("spell-text") catch return null;
+    defer el.deinit();
+    const a = el.ref.get(f64, "selectionStart") catch return null;
+    const b = el.ref.get(f64, "selectionEnd") catch return null;
+    return .{
+        .start = byteOffset(draft_text, @intFromFloat(a)),
+        .end = byteOffset(draft_text, @intFromFloat(b)),
+    };
+}
+
+fn byteOffset(text: []const u8, utf16_units: usize) usize {
+    var units: usize = 0;
+    var i: usize = 0;
+    while (i < text.len and units < utf16_units) {
+        const n = std.unicode.utf8ByteSequenceLength(text[i]) catch 1;
+        units += if (n == 4) 2 else 1;
+        i = @min(i + n, text.len);
+    }
+    return i;
+}
+
+fn utf16Len(text: []const u8) usize {
+    var units: usize = 0;
+    var i: usize = 0;
+    while (i < text.len) {
+        const n = std.unicode.utf8ByteSequenceLength(text[i]) catch 1;
+        units += if (n == 4) 2 else 1;
+        i += n;
+    }
+    return units;
+}
+
+/// Write the textarea value and put the caret at byte offset `caret`.
+fn setTextareaValue(text: []const u8, caret: usize) void {
+    if (zx.platform.role != .client) return;
+    const document = zx.client.Document.init(zx.allocator);
+    defer document.deinit();
+    const el = document.getElementById("spell-text") catch return;
+    defer el.deinit();
+    el.setProperty("value", zx.client.js.string(text));
+    const pos: f64 = @floatFromInt(utf16Len(text[0..@min(caret, text.len)]));
+    el.ref.call(void, "setSelectionRange", .{ pos, pos }) catch {};
+}
+
+fn focusTextarea() void {
+    if (zx.platform.role != .client) return;
+    const document = zx.client.Document.init(zx.allocator);
+    defer document.deinit();
+    const el = document.getElementById("spell-text") catch return;
+    defer el.deinit();
+    el.focus() catch {};
+}
+
+/// JS for `positionMenu` (the .zx transpiler takes no multiline string literals).
+const caret_js = "(() => {\n"
+    ++ " const t = document.getElementById('spell-text');\n"
+    ++ " if (!t) return;\n"
+    ++ " const cs = getComputedStyle(t);\n"
+    ++ " const m = document.createElement('div');\n"
+    ++ " for (const p of ['boxSizing', 'width', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',\n"
+    ++ "   'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'fontFamily',\n"
+    ++ "   'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'tabSize']) m.style[p] = cs[p];\n"
+    ++ " Object.assign(m.style, { position: 'absolute', visibility: 'hidden', top: '0', left: '0',\n"
+    ++ "   whiteSpace: 'pre-wrap', overflowWrap: 'break-word' });\n"
+    ++ " m.textContent = t.value.slice(0, t.selectionStart);\n"
+    ++ " const mark = document.createElement('span');\n"
+    ++ " mark.textContent = '\\u200b';\n"
+    ++ " m.appendChild(mark);\n"
+    ++ " t.parentElement.appendChild(m);\n"
+    ++ " const lh = parseFloat(cs.lineHeight) || mark.offsetHeight;\n"
+    ++ " const x = t.offsetLeft + mark.offsetLeft - t.scrollLeft;\n"
+    ++ " const y = t.offsetTop + mark.offsetTop - t.scrollTop + lh;\n"
+    ++ " m.remove();\n"
+    ++ " t.parentElement.style.setProperty('--caret-x', Math.max(0, x) + 'px');\n"
+    ++ " t.parentElement.style.setProperty('--caret-y', y + 'px');\n"
+    ++ "})()\n";
+
+/// Anchor the menu under the caret: measure it with a hidden mirror of the
+/// textarea and publish the position as CSS variables on `.editor`.
+fn positionMenu() void {
+    if (zx.platform.role != .client) return;
+    zx.client.eval(void, caret_js) catch {};
 }
 
 fn onCheckNow(_: zx.client.Event) void {
@@ -262,7 +648,7 @@ fn onApplySuggestion(e: zx.client.Event) void {
     selected_issue = if (idx + 1 < issues.len) idx else 0;
 
     zx.client.rerender();
-    scheduleCheck();
+    draftChanged();
 }
 
 /// Textareas keep their live `.value` after user edits; child text from rerender
@@ -277,6 +663,8 @@ fn syncTextarea(text: []const u8) void {
 }
 
 fn onClear(_: zx.client.Event) void {
+    endComposition();
+    closeMenu();
     draft_text = "";
     results = &.{};
     selected_issue = 0;
@@ -284,6 +672,8 @@ fn onClear(_: zx.client.Event) void {
     ignored = .empty;
     syncTextarea("");
     zx.client.rerender();
+    saveDraft();
+    saveResults();
 }
 
 fn onSelectIssue(e: zx.client.Event) void {
@@ -299,6 +689,86 @@ fn onIgnore(_: zx.client.Event) void {
     _ = ignored.put(zx.allocator, issues[idx].token, {}) catch {};
     selected_issue = if (idx + 1 < issues.len) idx else if (idx > 0) idx - 1 else 0;
     zx.client.rerender();
+}
+
+/// Persist the draft, and spell-check it unless a word is still being composed:
+/// a half-typed word reads as a misspelling and would flash the fix bar on every
+/// key. The check runs when the word is committed instead.
+fn draftChanged() void {
+    saveDraft();
+    if (compose_latin.items.len == 0) scheduleCheck();
+}
+
+fn loadStore() void {
+    store_loaded = true;
+    if (zx.kv.as(zx.allocator, settings_key, Settings) catch null) |settings| {
+        transliterate_on = settings.transliterate;
+    }
+    // A shared ?q= link wins over the saved draft.
+    if (draft_text.len == 0) {
+        if (zx.kv.get(zx.allocator, draft_key) catch null) |saved| {
+            draft_text = saved;
+            saved_caret = zx.kv.as(zx.allocator, caret_key, Caret) catch null;
+            if (zx.kv.get(zx.allocator, results_key) catch null) |raw| {
+                results = std.json.parseFromSliceLeaky([]const TokenResult, zx.allocator, raw, .{
+                    .ignore_unknown_fields = true,
+                }) catch &.{};
+            }
+        }
+    }
+    // The textarea is not in the DOM yet during this first render.
+    _ = zx.client.setTimeout(&onStoreLoaded, 0);
+}
+
+fn onStoreLoaded() void {
+    syncTextarea(draft_text);
+    if (saved_caret) |c| restoreCaret(c);
+    restored = true;
+    zx.client.rerender();
+    // The saved results may predate the last edits; a matching recheck changes nothing.
+    if (draft_text.len > 0) scheduleCheck();
+}
+
+fn restoreCaret(c: Caret) void {
+    const document = zx.client.Document.init(zx.allocator);
+    defer document.deinit();
+    const el = document.getElementById("spell-text") catch return;
+    defer el.deinit();
+    const start: f64 = @floatFromInt(utf16Len(draft_text[0..@min(c.start, draft_text.len)]));
+    const end: f64 = @floatFromInt(utf16Len(draft_text[0..@min(c.end, draft_text.len)]));
+    el.focus() catch {};
+    el.ref.call(void, "setSelectionRange", .{ start, end }) catch {};
+}
+
+fn onCaretMoved(_: zx.client.Event) void {
+    saveCaret();
+}
+
+fn saveCaret() void {
+    if (zx.platform.role != .client) return;
+    const sel = readSelection() orelse return;
+    const c: Caret = .{ .start = sel.start, .end = sel.end };
+    if (saved_caret) |prev| if (prev.start == c.start and prev.end == c.end) return;
+    saved_caret = c;
+    zx.kv.putAs(caret_key, c, .{}) catch {};
+}
+
+fn saveResults() void {
+    if (zx.platform.role != .client) return;
+    const json = std.json.Stringify.valueAlloc(zx.allocator, results, .{}) catch return;
+    defer zx.allocator.free(json);
+    zx.kv.put(results_key, json, .{}) catch {};
+}
+
+fn saveDraft() void {
+    if (zx.platform.role != .client) return;
+    zx.kv.put(draft_key, draft_text, .{}) catch {};
+    saveCaret();
+}
+
+fn saveSettings() void {
+    if (zx.platform.role != .client) return;
+    zx.kv.putAs(settings_key, Settings{ .transliterate = transliterate_on }, .{}) catch {};
 }
 
 fn scheduleCheck() void {
@@ -323,6 +793,7 @@ fn startFetch() void {
         results = &.{};
         checking = false;
         zx.client.rerender();
+        saveResults();
         return;
     }
 
@@ -357,6 +828,7 @@ fn onCheckResponse(res: ?*zx.Fetch.Response, err: ?zx.Fetch.FetchError) void {
     // Keep parsed memory alive for the UI model (wasm allocator).
     results = parsed.value.results;
     selected_issue = clampIndex(selected_issue, countIssues(results));
+    saveResults();
 }
 
 fn countIssues(list: []const TokenResult) usize {
