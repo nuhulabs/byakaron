@@ -269,6 +269,19 @@ pub fn build(b: *std.Build) !void {
         run_win_step.dependOn(&win_run.step);
     }
 
+    // Rewrite the transliteration grammars in canonical std.zon form (plain UTF-8
+    // Bangla, one field per line): `zig build rules`.
+    {
+        const fmt = hostExe(b, "rules", "src/transliteration/rules.zig");
+        const update = b.addUpdateSourceFiles();
+        for ([_][]const u8{ "src/transliteration/rules.zon", "src/transliteration/orva.zon" }) |path| {
+            const run = b.addRunArtifact(fmt);
+            run.addFileArg(b.path(path));
+            update.addCopyFileToSource(run.addOutputFileArg(std.fs.path.basename(path)), path);
+        }
+        b.step("rules", "Rewrite src/transliteration/{rules,orva}.zon in canonical form").dependOn(&update.step);
+    }
+
     // Testing
     {
         const lib_unit_tests = b.addTest(.{
