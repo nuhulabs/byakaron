@@ -12,8 +12,8 @@ Requires Zig **0.17.0** (pinned in `.tool-versions`).
 | `src/data/`        | Data pipeline tools: Wikipedia dump → `spell.db`                  |
 | `src/build/`       | Build-time tools (Avro lexicon generator, downloader)             |
 | `apps/web`         | Web spell-check UI (ziex app, part of the root build)             |
-| `platforms/macos`  | macOS app + IME (Xcode)                                           |
-| `platforms/windows`| WinUI app + TSF IME                                               |
+| `apps/macos`       | macOS app + IME (Xcode)                                           |
+| `apps/windows`     | WinUI app + TSF IME                                               |
 
 ## Data
 

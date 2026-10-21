@@ -34,13 +34,13 @@ zig build run-win
 
 ```powershell
 $env:ZIG_EXE = "<path-to-zig.exe>"   # optional if zig is on PATH
-.\platforms\windows\scripts\build_ime.ps1
+.\apps\windows\scripts\build_ime.ps1
 ```
 
 Produces:
 
-- `platforms/windows/Keyboard/bin/x64/Release/ByakaronIME.dll`
-- `platforms/windows/Keyboard/stage/` and `platforms/windows/Byakaron/ime/`
+- `apps/windows/Keyboard/bin/x64/Release/ByakaronIME.dll`
+- `apps/windows/Keyboard/stage/` and `apps/windows/Byakaron/ime/`
 
 ## Manual IME register
 

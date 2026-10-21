@@ -58,7 +58,7 @@
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
   </PropertyGroup>
 
-  <!-- Zig FFI DLL + spell.db staged by platforms/windows/scripts/build_zig.ps1.
+  <!-- Zig FFI DLL + spell.db staged by apps/windows/scripts/build_zig.ps1.
        Named byakaron_ffi.dll so it does not overwrite the managed Byakaron.dll.
        IME payload (ByakaronIME.dll + byakaron.dll) from build_ime / package scripts. -->
   <Target Name="CopyNativeFfi" AfterTargets="Build;Publish">

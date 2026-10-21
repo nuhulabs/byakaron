@@ -14,7 +14,7 @@ set -euo pipefail
 #   SANDBOX=1 ./scripts/build.sh        # sandboxed app variant
 # ---------------------------------------------------------------------------
 
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"   # platforms/macos
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"   # apps/macos
 BUILD_DIR="$PROJECT_ROOT/build"
 DERIVED_DIR="$BUILD_DIR/DerivedData"
 APP_NAME="Byakaron"

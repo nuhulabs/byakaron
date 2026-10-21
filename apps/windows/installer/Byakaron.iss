@@ -1,5 +1,5 @@
 ; Byakaron Windows installer (Inno Setup 6)
-; Built by platforms/windows/scripts/package_windows.ps1 via `zig build windows`.
+; Built by apps/windows/scripts/package_windows.ps1 via `zig build windows`.
 ;
 ; Defines (passed by the package script):
 ;   PublishDir  - published app folder (Byakaron.exe, ime\, native\, …)

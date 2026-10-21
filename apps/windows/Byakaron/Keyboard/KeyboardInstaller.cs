@@ -41,7 +41,7 @@ public static class KeyboardInstaller
             if (staged is null)
             {
                 return KeyboardInstallResult.Failed(
-                    "IME payload not found. Build it with platforms/windows/scripts/build_ime.ps1");
+                    "IME payload not found. Build it with apps/windows/scripts/build_ime.ps1");
             }
 
             Directory.CreateDirectory(InstallDirectory);
