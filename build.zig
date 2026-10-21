@@ -159,42 +159,98 @@ pub fn build(b: *std.Build) !void {
     // everything Xcode links and bundles under zig-out/ (libbyakaron.a +
     // byakaron.h in zig-out/macos/, Dictionary.json + spell.db in zig-out/db/), and
     // src/build/xcode.zig runs xcodebuild with its progress in zig's tree.
-    //   zig build macos        → apps/macos/build/Byakaron.app
-    //   zig build run-macos    → build and open it
+    //   zig build macos            → zig-out/macos/Byakaron.app
+    //   zig build run-macos        → build, quit the running copy, launch the build
+    //   zig build install-macos    → build, install into /Applications, launch
+    //   zig build uninstall-macos  → remove the app and keyboard (-Dmacos-remove-user-data)
+    //   zig build release-macos    → Release build → zig-out/macos/Byakaron-<version>.dmg
+    //   zig build macos-icons      → regenerate Resources/MenuIcon.{pdf,tiff}
     if (builtin.os.tag == .macos) {
-        const config = b.option(MacosConfig, "macos-config", "Xcode configuration for macos / run-macos") orelse .debug;
+        const config = b.option(MacosConfig, "macos-config", "Xcode configuration for macos / run-macos / install-macos") orelse .debug;
+        const remove_user_data = b.option(bool, "macos-remove-user-data", "uninstall-macos: also remove settings and learned words") orelse false;
 
         // ReleaseFast always: a Debug build compiles sqlite3.c with UBSan, whose
         // runtime Xcode's linker does not provide.
         const engine_mac = addEngine(b, b.resolveTargetQuery(.{ .cpu_arch = .aarch64, .os_tag = .macos }), .ReleaseFast, avro.words, false);
         const mac_lib = b.addLibrary(.{ .linkage = .static, .name = "byakaron", .root_module = engine_mac.root });
+        const inputs = [_]*std.Build.Step{
+            &b.addInstallFileWithDir(mac_lib.getEmittedBin(), .{ .custom = "macos/lib" }, "libbyakaron.a").step,
+            &b.addInstallFileWithDir(b.path("src/ffi/byakaron.h"), .{ .custom = "macos/include" }, "byakaron.h").step,
+            install_lexicon,
+            &install_spell_db.step,
+        };
+        const xcode_exe = hostExe(b, "xcode", "src/build/xcode.zig");
+        const tool = hostExe(b, "macos", "src/build/macos.zig");
 
-        const xcode = b.addRunArtifact(hostExe(b, "xcode", "src/build/xcode.zig"));
-        xcode.addArgs(&.{
-            rootPath(b, "apps/macos/Byakaron.xcodeproj"),
-            "Byakaron",
-            switch (config) {
-                .debug => "Debug",
-                .release => "Release",
-                .sandboxed => "Release-Sandboxed",
-            },
-            rootPath(b, "apps/macos/build/DerivedData"),
-            rootPath(b, "apps/macos/build/Byakaron.app"),
+        const app = struct {
+            /// Build Byakaron.app for `cfg` into a directory containing it. Each
+            /// configuration keeps its own DerivedData (Xcode's incremental state,
+            /// under the Zig cache) so two of them can run in one invocation.
+            fn build(bb: *std.Build, exe: *std.Build.Step.Compile, deps: []const *std.Build.Step, cfg: MacosConfig) std.Build.LazyPath {
+                const name = switch (cfg) {
+                    .debug => "Debug",
+                    .release => "Release",
+                    .sandboxed => "Release-Sandboxed",
+                };
+                const run = bb.addRunArtifact(exe);
+                run.addArgs(&.{ rootPath(bb, "apps/macos/Byakaron.xcodeproj"), "Byakaron", name });
+                run.addDirectoryArg(bb.graph.path(.local_cache, bb.fmt("xcode/{s}", .{name})));
+                const out = run.addOutputDirectoryArg("app");
+                _ = run.addOutputDirectoryArg("log");
+                // Xcode tracks its own inputs; always let it decide what to rebuild.
+                run.has_side_effects = true;
+                for (deps) |d| run.step.dependOn(d);
+                return out;
+            }
+        }.build;
+
+        const install_app = b.addInstallDirectory(.{
+            .source_dir = app(b, xcode_exe, &inputs, config),
+            .install_dir = .prefix,
+            .install_subdir = "macos",
         });
-        _ = xcode.addOutputDirectoryArg("log");
-        // Xcode tracks its own inputs; always let it decide what to rebuild.
-        xcode.has_side_effects = true;
-        xcode.step.dependOn(&b.addInstallFileWithDir(mac_lib.getEmittedBin(), .{ .custom = "macos/lib" }, "libbyakaron.a").step);
-        xcode.step.dependOn(&b.addInstallFileWithDir(b.path("src/ffi/byakaron.h"), .{ .custom = "macos/include" }, "byakaron.h").step);
-        xcode.step.dependOn(install_lexicon);
-        xcode.step.dependOn(&install_spell_db.step);
+        const installed_app = b.graph.path(.install_prefix, "macos/Byakaron.app");
+        b.step("macos", "Build the macOS app → zig-out/macos/Byakaron.app").dependOn(&install_app.step);
 
-        b.step("macos", "Build the macOS app → apps/macos/build/Byakaron.app").dependOn(&xcode.step);
+        const launch = b.addRunArtifact(tool);
+        launch.addArg("launch");
+        launch.addDirectoryArg(installed_app);
+        launch.has_side_effects = true;
+        launch.step.dependOn(&install_app.step);
+        b.step("run-macos", "Build, quit the running copy and launch the macOS app").dependOn(&launch.step);
 
-        const open_app = b.addSystemCommand(&.{ "open", rootPath(b, "apps/macos/build/Byakaron.app") });
-        open_app.step.dependOn(&xcode.step);
-        open_app.has_side_effects = true;
-        b.step("run-macos", "Build and open Byakaron.app (not the keyboard)").dependOn(&open_app.step);
+        const install = b.addRunArtifact(tool);
+        install.addArg("install");
+        install.addDirectoryArg(installed_app);
+        install.has_side_effects = true;
+        install.step.dependOn(&install_app.step);
+        b.step("install-macos", "Build and install the macOS app into /Applications, then launch it").dependOn(&install.step);
+
+        const uninstall = b.addRunArtifact(tool);
+        uninstall.addArg("uninstall");
+        if (remove_user_data) uninstall.addArg("--remove-user-data");
+        uninstall.has_side_effects = true;
+        b.step("uninstall-macos", "Remove the macOS app and keyboard (-Dmacos-remove-user-data for settings)").dependOn(&uninstall.step);
+
+        const dmg = b.addRunArtifact(tool);
+        dmg.addArg("dmg");
+        dmg.addDirectoryArg(app(b, xcode_exe, &inputs, .release).path(b, "Byakaron.app"));
+        const dmg_dir = dmg.addOutputDirectoryArg("dmg");
+        dmg.has_side_effects = true;
+        const install_dmg = b.addInstallDirectory(.{ .source_dir = dmg_dir, .install_dir = .prefix, .install_subdir = "macos" });
+        b.step("release-macos", "Release build → zig-out/macos/Byakaron-<version>.dmg").dependOn(&install_dmg.step);
+
+        // Menu-bar icon (template image), drawn by the Swift generators.
+        const icons = b.addUpdateSourceFiles();
+        for ([_][2][]const u8{
+            .{ "apps/macos/scripts/generate_icon_pdf.swift", "MenuIcon.pdf" },
+            .{ "apps/macos/scripts/generate_icon.swift", "MenuIcon.tiff" },
+        }) |gen| {
+            const swift = b.addSystemCommand(&.{"swift"});
+            swift.addFileArg(b.path(gen[0]));
+            icons.addCopyFileToSource(swift.addOutputFileArg(gen[1]), b.fmt("apps/macos/Resources/{s}", .{gen[1]}));
+        }
+        b.step("macos-icons", "Regenerate apps/macos/Resources/MenuIcon.{pdf,tiff}").dependOn(&icons.step);
     }
 
     // Web app (apps/web): a ziex app in this build graph, so it shares the cache.

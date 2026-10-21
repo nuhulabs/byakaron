@@ -1,12 +1,13 @@
 //! Build-time driver for `xcodebuild`, run by `zig build macos`.
 //!
-//!   xcode <project> <scheme> <configuration> <derived-data> <app-out> <log-dir>
+//!   xcode <project> <scheme> <configuration> <derived-data> <out-dir> <log-dir>
 //!
 //! Runs the Xcode build with ad-hoc signing, turns its task lines into a
 //! `std.Progress` tree (one node per target, with the current task under it),
 //! and prints only diagnostics: errors on failure, a warning count on success.
 //! The full output is kept in `<log-dir>/build.log` (stdout) and `stderr.log`.
-//! On success the product is copied to `<app-out>`.
+//! On success the product is copied to `<out-dir>/<scheme>.app`, which the
+//! build installs into zig-out/.
 
 const std = @import("std");
 const Io = std.Io;
@@ -17,10 +18,10 @@ pub fn main(init: std.process.Init) !void {
 
     const args = try init.minimal.args.toSlice(arena);
     if (args.len != 7) {
-        std.debug.print("usage: {s} <project> <scheme> <configuration> <derived-data> <app-out> <log-dir>\n", .{args[0]});
+        std.debug.print("usage: {s} <project> <scheme> <configuration> <derived-data> <out-dir> <log-dir>\n", .{args[0]});
         return error.InvalidArguments;
     }
-    const project, const scheme, const configuration, const derived_data, const app_out, const log_dir =
+    const project, const scheme, const configuration, const derived_data, const out_dir, const log_dir =
         .{ args[1], args[2], args[3], args[4], args[5], args[6] };
 
     const progress = std.Progress.start(io, .{ .root_name = "xcodebuild" });
@@ -134,6 +135,7 @@ pub fn main(init: std.process.Init) !void {
     const copy = progress.start("copy Byakaron.app", 0);
     defer copy.end();
     const product = try std.fmt.allocPrint(arena, "{s}/Build/Products/{s}/{s}.app", .{ derived_data, configuration, scheme });
+    const app_out = try std.fmt.allocPrint(arena, "{s}/{s}.app", .{ out_dir, scheme });
     cwd.deleteTree(io, app_out) catch {};
     // ditto keeps the bundle's symlinks, permissions and code signatures.
     var ditto = try std.process.spawn(io, .{ .argv = &.{ "ditto", product, app_out }, .stdin = .ignore });
