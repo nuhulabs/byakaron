@@ -8,7 +8,7 @@
 
          To build the sandboxed variant instead — which relies on the manual
          "Reveal Keyboard" flow — sign with Byakaron-sandboxed.entitlements
-         (scripts/build.sh: SANDBOX=1 ./scripts/build.sh). -->
+         (zig build macos -Dmacos-config=sandboxed). -->
     <key>com.apple.security.app-sandbox</key>
     <false/>
 </dict>

@@ -28,7 +28,7 @@ prune_stale_registrations() {
 }
 
 if [ ! -d "$APP_BUNDLE" ]; then
-    echo "Error: $APP_BUNDLE not found. Run ./scripts/build.sh first."
+    echo "Error: $APP_BUNDLE not found. Run zig build macos first."
     exit 1
 fi
 

@@ -12,12 +12,12 @@
 		894ACE122FF1A4970042A597 /* Suffix.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDFC2FF1A4970042A597 /* Suffix.json */; };
 		894ACE142FF1A4970042A597 /* Dictionary.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF62FF1A4970042A597 /* Dictionary.json */; };
 		894ACE162FF1A4970042A597 /* Autocorrect.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF42FF1A4970042A597 /* Autocorrect.json */; };
-		894ACE4A2FF1B24F0042A597 /* byakaron_zcu.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 894ACE492FF1B24F0042A597 /* byakaron_zcu.o */; };
-		894ACE4B2FF1B3D30042A597 /* byakaron_zcu.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 894ACE492FF1B24F0042A597 /* byakaron_zcu.o */; };
-		894ACE4CSQLITEO1 /* sqlite3.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 894ACE4CSQLITEO /* sqlite3.o */; };
-		894ACE4CSQLITEO2 /* sqlite3.o in Frameworks */ = {isa = PBXBuildFile; fileRef = 894ACE4CSQLITEO /* sqlite3.o */; };
+		894ACE4A2FF1B24F0042A597 /* libbyakaron.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 894ACE492FF1B24F0042A597 /* libbyakaron.a */; };
+		894ACE4B2FF1B3D30042A597 /* libbyakaron.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 894ACE492FF1B24F0042A597 /* libbyakaron.a */; };
 		894ACE4D2FF1B7FB0042A597 /* Byakaron Keyboard.app in CopyFiles */ = {isa = PBXBuildFile; fileRef = 894ACE1D2FF1A5AA0042A597 /* Byakaron Keyboard.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		894ACEB32FF1C6000042A597 /* Dictionary.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF62FF1A4970042A597 /* Dictionary.json */; };
+		894ACF022FF1D0000042A597 /* spell.db in Resources */ = {isa = PBXBuildFile; fileRef = 894ACF012FF1D0000042A597 /* spell.db */; };
+		894ACF032FF1D0000042A597 /* spell.db in Resources */ = {isa = PBXBuildFile; fileRef = 894ACF012FF1D0000042A597 /* spell.db */; };
 		894ACEB42FF1C6000042A597 /* Suffix.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDFC2FF1A4970042A597 /* Suffix.json */; };
 		899FBAA82FF2975C002BEA94 /* MenuIcon.pdf in Resources */ = {isa = PBXBuildFile; fileRef = 899FBAA62FF2975C002BEA94 /* MenuIcon.pdf */; };
 		899FBAA92FF2975C002BEA94 /* MenuIcon.tiff in Resources */ = {isa = PBXBuildFile; fileRef = 899FBAA72FF2975C002BEA94 /* MenuIcon.tiff */; };
@@ -51,12 +51,12 @@
 		894ACDCD2FF1A45F0042A597 /* Byakaron.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Byakaron.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		894ACDF42FF1A4970042A597 /* Autocorrect.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Autocorrect.json; sourceTree = "<group>"; };
 		894ACDF52FF1A4970042A597 /* Byakaron.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Byakaron.entitlements; sourceTree = "<group>"; };
-		894ACDF62FF1A4970042A597 /* Dictionary.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Dictionary.json; sourceTree = "<group>"; };
+		894ACDF62FF1A4970042A597 /* Dictionary.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = Dictionary.json; path = ../../zig-out/db/Dictionary.json; sourceTree = SOURCE_ROOT; };
+		894ACF012FF1D0000042A597 /* spell.db */ = {isa = PBXFileReference; lastKnownFileType = file; name = spell.db; path = ../../zig-out/db/spell.db; sourceTree = SOURCE_ROOT; };
 		894ACDFA2FF1A4970042A597 /* Info-keyboard.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info-keyboard.plist"; sourceTree = "<group>"; };
 		894ACDFC2FF1A4970042A597 /* Suffix.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Suffix.json; sourceTree = "<group>"; };
 		894ACE1D2FF1A5AA0042A597 /* Byakaron Keyboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Byakaron Keyboard.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		894ACE492FF1B24F0042A597 /* byakaron_zcu.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = byakaron_zcu.o; path = build/zig/byakaron_zcu.o; sourceTree = "<group>"; };
-		894ACE4CSQLITEO /* sqlite3.o */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.objfile"; name = sqlite3.o; path = build/zig/sqlite3.o; sourceTree = "<group>"; };
+		894ACE492FF1B24F0042A597 /* libbyakaron.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libbyakaron.a; path = ../../zig-out/macos/lib/libbyakaron.a; sourceTree = SOURCE_ROOT; };
 		899FBAA62FF2975C002BEA94 /* MenuIcon.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = MenuIcon.pdf; sourceTree = "<group>"; };
 		899FBAA72FF2975C002BEA94 /* MenuIcon.tiff */ = {isa = PBXFileReference; lastKnownFileType = image.tiff; path = MenuIcon.tiff; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -125,15 +125,13 @@
 		894ACDCA2FF1A45F0042A597 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
-				894ACE4A2FF1B24F0042A597 /* byakaron_zcu.o in Frameworks */,
-				894ACE4CSQLITEO1 /* sqlite3.o in Frameworks */,
+				894ACE4A2FF1B24F0042A597 /* libbyakaron.a in Frameworks */,
 			);
 		};
 		894ACE1A2FF1A5AA0042A597 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
-				894ACE4B2FF1B3D30042A597 /* byakaron_zcu.o in Frameworks */,
-				894ACE4CSQLITEO2 /* sqlite3.o in Frameworks */,
+				894ACE4B2FF1B3D30042A597 /* libbyakaron.a in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -169,6 +167,7 @@
 				894ACDF42FF1A4970042A597 /* Autocorrect.json */,
 				894ACDF52FF1A4970042A597 /* Byakaron.entitlements */,
 				894ACDF62FF1A4970042A597 /* Dictionary.json */,
+				894ACF012FF1D0000042A597 /* spell.db */,
 				894ACDFA2FF1A4970042A597 /* Info-keyboard.plist */,
 				894ACDFC2FF1A4970042A597 /* Suffix.json */,
 			);
@@ -178,8 +177,7 @@
 		894ACE402FF1AFA40042A597 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				894ACE492FF1B24F0042A597 /* byakaron_zcu.o */,
-				894ACE4CSQLITEO /* sqlite3.o */,
+				894ACE492FF1B24F0042A597 /* libbyakaron.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -191,7 +189,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 894ACDD82FF1A4600042A597 /* Build configuration list for PBXNativeTarget "Byakaron" */;
 			buildPhases = (
-				894ACDCCEMBEDSPELL /* Embed spell.db */,
 				894ACDC92FF1A45F0042A597 /* Sources */,
 				894ACDCA2FF1A45F0042A597 /* Frameworks */,
 				894ACDCB2FF1A45F0042A597 /* Resources */,
@@ -216,7 +213,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 894ACE272FF1A5AB0042A597 /* Build configuration list for PBXNativeTarget "Byakaron Keyboard" */;
 			buildPhases = (
-				894ACED02FF1C7000042A597 /* Build Zig engine */,
 				894ACE192FF1A5AA0042A597 /* Sources */,
 				894ACE1A2FF1A5AA0042A597 /* Frameworks */,
 				894ACEB02FF1C6000042A597 /* Resources */,
@@ -275,6 +271,7 @@
 			files = (
 				894ACE122FF1A4970042A597 /* Suffix.json in Resources */,
 				894ACE142FF1A4970042A597 /* Dictionary.json in Resources */,
+				894ACF022FF1D0000042A597 /* spell.db in Resources */,
 				899FBAAA2FF2975C002BEA94 /* MenuIcon.pdf in Resources */,
 				899FBAAB2FF2975C002BEA94 /* MenuIcon.tiff in Resources */,
 				894A7D722FF273890032AE26 /* Byakaron.icon in Resources */,
@@ -285,6 +282,7 @@
 			isa = PBXResourcesBuildPhase;
 			files = (
 				894ACEB32FF1C6000042A597 /* Dictionary.json in Resources */,
+				894ACF032FF1D0000042A597 /* spell.db in Resources */,
 				894ACEB42FF1C6000042A597 /* Suffix.json in Resources */,
 				894A7D712FF273890032AE26 /* Byakaron.icon in Resources */,
 				899FBAA82FF2975C002BEA94 /* MenuIcon.pdf in Resources */,
@@ -292,40 +290,6 @@
 			);
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		894ACDCCEMBEDSPELL /* Embed spell.db */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			name = "Embed spell.db";
-			shellPath = /bin/bash;
-			shellScript = (
-				"set -euo pipefail",
-				"SPELL_DB=\"$SRCROOT/../../zig-out/db/spell.db\"",
-				"DEST=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/spell.db\"",
-				"if [[ ! -f \"$SPELL_DB\" ]]; then echo \"warning: missing $SPELL_DB\" >&2; exit 0; fi",
-				"mkdir -p \"$(dirname \"$DEST\")\"",
-				"if cp -c \"$SPELL_DB\" \"$DEST\" 2>/dev/null; then :; elif ln \"$SPELL_DB\" \"$DEST\" 2>/dev/null; then :; else cp \"$SPELL_DB\" \"$DEST\"; fi",
-				"echo \">>> Embedded spell.db -> $DEST\"",
-				"",
-			);
-		};
-		894ACED02FF1C7000042A597 /* Build Zig engine */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			name = "Build Zig engine";
-			outputPaths = (
-				"$(SRCROOT)/build/zig/byakaron_zcu.o",
-				"$(SRCROOT)/build/zig/sqlite3.o",
-				"$(SRCROOT)/build/zig/libbyakaron.a",
-			);
-			shellPath = /bin/bash;
-			shellScript = (
-				"\"$SRCROOT/scripts/build_zig.sh\"",
-				"",
-			);
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		894ACDC92FF1A45F0042A597 /* Sources */ = {
@@ -484,7 +448,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/include";
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/include";
 				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -493,8 +457,7 @@
 					"@executable_path/../Frameworks",
 				);
 				LIBRARY_SEARCH_PATHS = (
-					"$(SRCROOT)/../../zig-out/lib/**",
-					"$(PROJECT_DIR)/build/zig",
+					"$(SRCROOT)/../../zig-out/macos/lib",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.nuhu.labs.Byakaron;
@@ -526,7 +489,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/include";
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/include";
 				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -535,8 +498,7 @@
 					"@executable_path/../Frameworks",
 				);
 				LIBRARY_SEARCH_PATHS = (
-					"$(SRCROOT)/../../zig-out/lib/**",
-					"$(PROJECT_DIR)/build/zig",
+					"$(SRCROOT)/../../zig-out/macos/lib",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.nuhu.labs.Byakaron;
@@ -567,7 +529,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/include";
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/include";
 				INFOPLIST_FILE = "Resources/Info-keyboard.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -577,7 +539,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/lib/**";
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/lib";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.nuhu.labs.inputmethod.Byakaron;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -606,7 +568,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/include";
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/include";
 				INFOPLIST_FILE = "Resources/Info-keyboard.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -616,7 +578,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/lib/**";
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/lib";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.nuhu.labs.inputmethod.Byakaron;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -702,7 +664,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/include";
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/include";
 				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -711,8 +673,7 @@
 					"@executable_path/../Frameworks",
 				);
 				LIBRARY_SEARCH_PATHS = (
-					"$(SRCROOT)/../../zig-out/lib/**",
-					"$(PROJECT_DIR)/build/zig",
+					"$(SRCROOT)/../../zig-out/macos/lib",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.nuhu.labs.Byakaron;
@@ -743,7 +704,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/include";
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/include";
 				INFOPLIST_FILE = "Resources/Info-keyboard.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -753,7 +714,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/lib/**";
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/lib";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.nuhu.labs.inputmethod.Byakaron;
 				PRODUCT_NAME = "$(TARGET_NAME)";

@@ -39,7 +39,8 @@ zig build            # libbyakaron + repl + web app + zig-out/db lexicon
 zig build lib        # just libbyakaron + header + lexicon (used by platform scripts)
 zig build test
 zig build db         # spell.db (see Data)
-zig build macos      # Byakaron.app via xcodebuild (stages spell.db + Dictionary.json)
+zig build macos      # apps/macos/build/Byakaron.app: engine, lexicon and spell.db from the build
+                     # graph, Xcode for Swift (-Dmacos-config=release|sandboxed); run-macos opens it
 zig build run-web    # apps/web dev server (builds spell.db first); serve-web for prod mode
 zig build windows    # Byakaron-Setup.exe (on Windows)
 zig build linux      # Linux IBus engine; linux-app for the GTK app. Cross-compiles from
