@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Byakaron": {
+      "commandName": "Project"
+    },
+    "Byakaron (Package)": {
+      "commandName": "MsixPackage"
+    }
+  }
+}

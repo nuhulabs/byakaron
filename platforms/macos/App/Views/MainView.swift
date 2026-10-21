@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// Main screen, modeled on the clean source-list layout of native macOS 26 apps:
 /// a plain sidebar listing the spelling issues, a detail pane holding the editor
@@ -10,6 +13,10 @@ struct MainView: View {
 
     /// The issue currently selected in the sidebar.
     @State private var selection: Misspelling.ID?
+
+    /// After apply/ignore, wait for the refreshed issue list then select the
+    /// misspelling at or after this UTF-16 offset (adjusted for the edit).
+    @State private var pendingJumpUTF16: Int?
 
     #if os(macOS)
     @Environment(\.openSettings) private var openSettings
@@ -34,6 +41,9 @@ struct MainView: View {
         #if os(macOS)
         .onAppear { promptSetupIfNeeded() }
         #endif
+        .onChange(of: checker.misspellings) { _, new in
+            resolvePendingJump(in: new)
+        }
     }
 
     #if os(macOS)
@@ -71,7 +81,7 @@ struct MainView: View {
     /// Issues that have at least one suggestion — i.e. the ones "Fix all" can act on.
     private var fixableCount: Int {
         checker.misspellings.reduce(into: 0) { total, miss in
-            if !checker.suggestions(for: miss.word).isEmpty { total += 1 }
+            if !checker.suggestions(for: miss).isEmpty { total += 1 }
         }
     }
 
@@ -88,7 +98,7 @@ struct MainView: View {
                     .foregroundStyle(.secondary)
                 } else {
                     ForEach(checker.misspellings) { miss in
-                        IssueListRow(word: miss.word, count: checker.suggestions(for: miss.word).count)
+                        IssueListRow(word: miss.word, count: checker.suggestions(for: miss).count)
                             .tag(miss.id)
                     }
                 }
@@ -113,7 +123,9 @@ struct MainView: View {
                         isEmpty: checker.text.isEmpty,
                         canFix: fixableCount > 0,
                         onFixAll: {
-                            if checker.fixAll() > 0 { advanceSelection() }
+                            if checker.fixAll() > 0 {
+                                pendingJumpUTF16 = 0
+                            }
                         },
                         onCopy: copyText,
                         onClear: {
@@ -132,9 +144,21 @@ struct MainView: View {
             ZStack(alignment: .topLeading) {
                 BanglaSpellTextView(
                     text: $checker.text,
+                    selectedRange: selectedMisspelling?.range,
                     isCorrect: { checker.isCorrect($0) },
-                    suggestions: { checker.suggestions(for: $0) },
-                    onLearn: { checker.learn($0) }
+                    suggestions: { word, range in
+                        checker.suggestions(for: word, at: range)
+                    },
+                    onLearn: { word in
+                        if let miss = checker.misspellings.first(where: { $0.word == word }) {
+                            queueAdvance(after: miss, utf16Delta: 0)
+                        }
+                        checker.learn(word)
+                    },
+                    onApplied: { nsRange, replacementUTF16 in
+                        handleEditorApply(nsRange: nsRange, replacementUTF16: replacementUTF16)
+                        checker.runCheckNow()
+                    }
                 )
 
                 if checker.text.isEmpty {
@@ -151,9 +175,16 @@ struct MainView: View {
                 Divider()
                 CorrectionBar(
                     word: miss.word,
-                    suggestions: checker.suggestions(for: miss.word),
-                    onApply: { checker.apply($0, to: miss); advanceSelection() },
-                    onIgnore: { checker.ignore(miss); advanceSelection() }
+                    suggestions: checker.suggestions(for: miss),
+                    onApply: { correction in
+                        let delta = (correction as NSString).length - (miss.word as NSString).length
+                        queueAdvance(after: miss, utf16Delta: delta)
+                        checker.apply(correction, to: miss)
+                    },
+                    onIgnore: {
+                        queueAdvance(after: miss, utf16Delta: 0)
+                        checker.ignore(miss)
+                    }
                 )
             }
 
@@ -220,10 +251,49 @@ struct MainView: View {
         checker.misspellings.first { $0.id == selection }
     }
 
-    /// After applying or ignoring, move to the next issue so the user can work
-    /// straight down the list.
-    private func advanceSelection() {
-        selection = checker.misspellings.first?.id
+    /// Remember where to land after the next misspellings refresh.
+    private func queueAdvance(after miss: Misspelling, utf16Delta: Int) {
+        let misses = checker.misspellings
+        guard let i = misses.firstIndex(where: { $0.id == miss.id }) else {
+            pendingJumpUTF16 = 0
+            return
+        }
+        if i + 1 < misses.count {
+            let nextOff = checker.utf16Offset(of: misses[i + 1].range.lowerBound)
+            pendingJumpUTF16 = nextOff + utf16Delta
+        } else {
+            // Last issue — clear selection once the list refreshes.
+            pendingJumpUTF16 = -1
+            selection = nil
+        }
+    }
+
+    private func handleEditorApply(nsRange: NSRange, replacementUTF16: Int) {
+        let delta = replacementUTF16 - nsRange.length
+        if let miss = checker.misspellings.first(where: {
+            NSRange($0.range, in: checker.text) == nsRange
+        }) {
+            queueAdvance(after: miss, utf16Delta: delta)
+        } else {
+            pendingJumpUTF16 = nsRange.location + replacementUTF16
+        }
+    }
+
+    private func resolvePendingJump(in new: [Misspelling]) {
+        guard let jump = pendingJumpUTF16 else {
+            // Keep selection valid across refreshes; auto-pick first if none.
+            if let selection, new.contains(where: { $0.id == selection }) { return }
+            selection = new.first?.id
+            return
+        }
+        pendingJumpUTF16 = nil
+        if jump < 0 || new.isEmpty {
+            selection = nil
+            return
+        }
+        selection = new.first { miss in
+            checker.utf16Offset(of: miss.range.lowerBound) >= jump
+        }?.id ?? new.first?.id
     }
 }
 

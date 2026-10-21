@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="Byakaron.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:Byakaron.Models"
+    mc:Ignorable="d"
+    Title="Byakaron">
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop Kind="Base" />
+    </Window.SystemBackdrop>
+
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="40" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Custom title bar (caption buttons stay top-right via WinUI) -->
+        <Grid
+            x:Name="AppTitleBar"
+            Grid.Row="0"
+            Padding="12,0,140,0"
+            Background="Transparent">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Button
+                x:Name="SidebarToggleButton"
+                Style="{StaticResource TitleIconButtonStyle}"
+                Click="SidebarToggleButton_Click"
+                ToolTipService.ToolTip="Toggle issues pane">
+                <FontIcon FontSize="14" Glyph="&#xE700;" />
+            </Button>
+
+            <TextBlock
+                Grid.Column="1"
+                Margin="8,0,0,0"
+                VerticalAlignment="Center"
+                FontSize="12"
+                Foreground="{StaticResource AppMutedTextBrush}"
+                Text="Byakaron" />
+        </Grid>
+
+        <!-- Body: sidebar | detail (macOS NavigationSplitView → Win11 split) -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="SidebarColumn" Width="268" MinWidth="0" MaxWidth="340" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Issues sidebar -->
+            <Border
+                x:Name="SidebarPane"
+                Grid.Column="0"
+                Background="{StaticResource AppSidebarBrush}"
+                BorderBrush="{StaticResource AppHairlineBrush}"
+                BorderThickness="0,0,1,0">
+                <Grid Padding="10,4,8,10" RowSpacing="6">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock
+                        x:Name="IssuesHeaderText"
+                        Margin="8,8,8,4"
+                        FontSize="12"
+                        FontWeight="SemiBold"
+                        Foreground="{StaticResource AppMutedTextBrush}"
+                        Text="Issues" />
+
+                    <ListView
+                        x:Name="IssuesList"
+                        Grid.Row="1"
+                        Padding="0"
+                        IsItemClickEnabled="True"
+                        ItemContainerStyle="{StaticResource IssueListViewItemStyle}"
+                        SelectionChanged="IssuesList_SelectionChanged"
+                        SelectionMode="Single">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="models:SpellIssue">
+                                <Grid Padding="10,8" ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <FontIcon
+                                        VerticalAlignment="Center"
+                                        FontSize="14"
+                                        Foreground="{StaticResource AppIssueIconBrush}"
+                                        Glyph="&#xE8D2;" />
+
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        FontFamily="Nirmala UI"
+                                        FontSize="14"
+                                        FontWeight="SemiBold"
+                                        Text="{x:Bind Word}"
+                                        TextTrimming="CharacterEllipsis"
+                                        ToolTipService.ToolTip="{x:Bind Word}" />
+
+                                    <Border
+                                        Grid.Column="2"
+                                        MinWidth="22"
+                                        Height="20"
+                                        Padding="6,0"
+                                        VerticalAlignment="Center"
+                                        Background="{StaticResource AppBadgeBrush}"
+                                        CornerRadius="10">
+                                        <TextBlock
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            FontSize="11"
+                                            Foreground="{StaticResource AppMutedTextBrush}"
+                                            Text="{x:Bind SuggestionCount, Mode=OneWay}" />
+                                    </Border>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Border>
+
+            <!-- Detail: header + editor + correction + status -->
+            <Grid Grid.Column="1" Background="{StaticResource AppEditorBrush}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Document header (macOS navigationTitle + toolbar) -->
+                <Grid
+                    Padding="20,10,16,10"
+                    BorderBrush="{StaticResource AppHairlineBrush}"
+                    BorderThickness="0,0,0,1"
+                    ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel VerticalAlignment="Center" Spacing="1">
+                        <TextBlock
+                            FontSize="20"
+                            FontWeight="SemiBold"
+                            Text="Byakaron" />
+                        <TextBlock
+                            x:Name="SubtitleText"
+                            FontSize="12"
+                            Foreground="{StaticResource AppSecondaryTextBrush}"
+                            Text="বাংলা বানান পরীক্ষক" />
+                    </StackPanel>
+
+                    <StackPanel
+                        Grid.Column="1"
+                        Orientation="Horizontal"
+                        Spacing="2"
+                        VerticalAlignment="Center">
+                        <Button
+                            x:Name="SettingsButton"
+                            Style="{StaticResource TitleIconButtonStyle}"
+                            Click="SettingsButton_Click"
+                            ToolTipService.ToolTip="Settings">
+                            <FontIcon FontSize="14" Glyph="&#xE713;" />
+                        </Button>
+                        <Button
+                            x:Name="KeyboardButton"
+                            Style="{StaticResource TitleIconButtonStyle}"
+                            Click="KeyboardButton_Click"
+                            ToolTipService.ToolTip="Install Bangla keyboard (Win+Space)">
+                            <FontIcon FontSize="14" Glyph="&#xE765;" />
+                        </Button>
+                        <Button
+                            x:Name="FixAllButton"
+                            Style="{StaticResource TitleIconButtonStyle}"
+                            Click="FixAllButton_Click"
+                            ToolTipService.ToolTip="Fix all — replace every issue with its top suggestion">
+                            <FontIcon FontSize="15" Glyph="&#xE945;" />
+                        </Button>
+                        <Button
+                            x:Name="CopyButton"
+                            Style="{StaticResource TitleIconButtonStyle}"
+                            Click="CopyButton_Click"
+                            ToolTipService.ToolTip="Copy text">
+                            <FontIcon FontSize="14" Glyph="&#xE8C8;" />
+                        </Button>
+                        <Button
+                            x:Name="ClearButton"
+                            Style="{StaticResource TitleIconButtonStyle}"
+                            Click="ClearButton_Click"
+                            ToolTipService.ToolTip="Clear editor">
+                            <FontIcon FontSize="14" Glyph="&#xE74D;" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Editor -->
+                <ScrollViewer
+                    Grid.Row="1"
+                    Padding="0"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto">
+                    <TextBox
+                        x:Name="EditorTextBox"
+                        Margin="4,0"
+                        Padding="20,16,24,24"
+                        AcceptsReturn="True"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        FontFamily="Nirmala UI"
+                        FontSize="18"
+                        PlaceholderText="এখানে বাংলা লিখুন বা পেস্ট করুন…"
+                        TextWrapping="Wrap"
+                        TextChanged="EditorTextBox_TextChanged" />
+                </ScrollViewer>
+
+                <!-- Correction bar (selected issue) -->
+                <Border
+                    x:Name="CorrectionBar"
+                    Grid.Row="2"
+                    Padding="16,12"
+                    Background="{StaticResource AppBarBrush}"
+                    BorderBrush="{StaticResource AppHairlineBrush}"
+                    BorderThickness="0,1,0,0"
+                    Visibility="Collapsed">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel VerticalAlignment="Center" Spacing="1">
+                            <TextBlock
+                                x:Name="CorrectionWordText"
+                                FontFamily="Nirmala UI"
+                                FontSize="15"
+                                FontWeight="SemiBold"
+                                Text="" />
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{StaticResource AppMutedTextBrush}"
+                                Text="Replace with" />
+                        </StackPanel>
+
+                        <ScrollViewer
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            HorizontalScrollBarVisibility="Auto"
+                            VerticalScrollBarVisibility="Disabled">
+                            <StackPanel
+                                x:Name="SuggestionsPanel"
+                                Orientation="Horizontal"
+                                Spacing="8" />
+                        </ScrollViewer>
+
+                        <Button
+                            Grid.Column="2"
+                            Style="{StaticResource QuietButtonStyle}"
+                            Content="Ignore"
+                            Click="IgnoreButton_Click"
+                            ToolTipService.ToolTip="Accept this word for now" />
+                    </Grid>
+                </Border>
+
+                <!-- Status bar -->
+                <Border
+                    Grid.Row="3"
+                    Padding="16,6"
+                    Background="{StaticResource AppBarBrush}"
+                    BorderBrush="{StaticResource AppHairlineBrush}"
+                    BorderThickness="0,1,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Orientation="Horizontal" Spacing="16">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon
+                                    FontSize="12"
+                                    Foreground="{StaticResource AppMutedTextBrush}"
+                                    Glyph="&#xE8D2;" />
+                                <TextBlock
+                                    x:Name="WordCountText"
+                                    FontSize="11"
+                                    Foreground="{StaticResource AppMutedTextBrush}"
+                                    Text="0 words" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon
+                                    FontSize="12"
+                                    Foreground="{StaticResource AppMutedTextBrush}"
+                                    Glyph="&#xE8C1;" />
+                                <TextBlock
+                                    x:Name="CharCountText"
+                                    FontSize="11"
+                                    Foreground="{StaticResource AppMutedTextBrush}"
+                                    Text="0 characters" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel
+                            x:Name="IssuesStatusPanel"
+                            Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="6">
+                            <FontIcon
+                                x:Name="IssuesStatusIcon"
+                                FontSize="12"
+                                Foreground="{StaticResource AppWarningBrush}"
+                                Glyph="&#xE7BA;" />
+                            <TextBlock
+                                x:Name="IssuesStatusText"
+                                FontSize="11"
+                                FontWeight="SemiBold"
+                                Foreground="{StaticResource AppWarningBrush}"
+                                Text="0 issues" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

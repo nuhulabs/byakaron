@@ -1,0 +1,92 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>Byakaron</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\SplashScreen.scale-200.png" />
+    <Content Include="Assets\LockScreenLogo.scale-200.png" />
+    <Content Include="Assets\Square150x150Logo.scale-200.png" />
+    <Content Include="Assets\Square44x44Logo.scale-200.png" />
+    <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
+    <Content Include="Assets\StoreLogo.png" />
+    <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+  </ItemGroup>
+
+  <!-- Exclude nested AppX copies that would duplicate types. -->
+  <ItemGroup>
+    <Compile Remove="AppX\**\*.cs" />
+    <Page Remove="AppX\**\*.xaml" />
+    <ApplicationDefinition Remove="AppX\App.xaml" />
+    <None Remove="AppX\**\*" />
+    <Content Remove="AppX\**\*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
+    <ProjectCapability Include="Msix" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.2.0" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
+    <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
+    <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
+    <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
+    <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
+  </PropertyGroup>
+
+  <!-- Zig FFI DLL + spell.db staged by platforms/windows/scripts/build_zig.ps1.
+       Named byakaron_ffi.dll so it does not overwrite the managed Byakaron.dll.
+       IME payload (ByakaronIME.dll + byakaron.dll) from build_ime / package scripts. -->
+  <Target Name="CopyNativeFfi" AfterTargets="Build;Publish">
+    <PropertyGroup>
+      <_NativeDest Condition="'$(PublishDir)' != '' and Exists('$(PublishDir)')">$(PublishDir)</_NativeDest>
+      <_NativeDest Condition="'$(_NativeDest)' == ''">$(OutputPath)</_NativeDest>
+    </PropertyGroup>
+    <MakeDir Directories="$(_NativeDest)native" Condition="Exists('native\spell.db')" />
+    <MakeDir Directories="$(_NativeDest)ime" Condition="Exists('ime\ByakaronIME.dll')" />
+    <Copy
+      SourceFiles="native\byakaron.dll"
+      DestinationFiles="$(_NativeDest)byakaron_ffi.dll"
+      SkipUnchangedFiles="true"
+      Condition="Exists('native\byakaron.dll')" />
+    <Copy
+      SourceFiles="native\spell.db"
+      DestinationFiles="$(_NativeDest)native\spell.db"
+      SkipUnchangedFiles="true"
+      Condition="Exists('native\spell.db')" />
+    <Copy
+      SourceFiles="ime\ByakaronIME.dll"
+      DestinationFiles="$(_NativeDest)ime\ByakaronIME.dll"
+      SkipUnchangedFiles="true"
+      Condition="Exists('ime\ByakaronIME.dll')" />
+    <Copy
+      SourceFiles="ime\byakaron.dll"
+      DestinationFiles="$(_NativeDest)ime\byakaron.dll"
+      SkipUnchangedFiles="true"
+      Condition="Exists('ime\byakaron.dll')" />
+  </Target>
+</Project>
