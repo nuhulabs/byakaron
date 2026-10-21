@@ -84,6 +84,10 @@ pub fn main(init: std.process.Init) !void {
         };
     }
 
+    // Four stages; the `data` runs below report into them via ZIG_PROGRESS.
+    const progress = std.Progress.start(io, .{ .root_name = "prepare", .estimated_total_items = 4 });
+    defer progress.end();
+
     const cwd = Io.Dir.cwd();
     try cwd.createDirPath(io, args.work);
     const exp = args.@"export";
@@ -91,48 +95,44 @@ pub fn main(init: std.process.Init) !void {
 
     var dictionary = try std.fs.path.join(arena, &.{ exp, "dictionary.csv" });
     if (args.avro) |avro| {
-        std.debug.print("\n==> [1/4] Merge Avro lexicon into Wikipedia dictionary\n", .{});
+        const stage = progress.start("merge Avro lexicon", 0);
+        defer stage.end();
         const merged = try std.fs.path.join(arena, &.{ args.work, "dictionary_prepared.csv" });
-        const stats = try mergeAvroDictionary(gpa, io, .{
+        _ = try mergeAvroDictionary(gpa, io, .{
             .wiki_csv = dictionary,
             .avro_words = avro,
             .out_csv = merged,
             .id_mode = id_mode,
         });
-        std.debug.print(
-            "    wiki={d} + avro_new={d} → {d} words\n",
-            .{ stats.wiki_count, stats.avro_added, stats.total },
-        );
         dictionary = merged;
-    } else {
-        std.debug.print("\n==> [1/4] skip Avro merge (no --avro)\n", .{});
     }
+    progress.completeOne();
 
-    std.debug.print("\n==> [2/4] SymSpell deletes ({s} mode)\n", .{if (id_mode) "word_id" else "word"});
     const deletes = try std.fs.path.join(arena, &.{ args.work, "deletes.csv" });
-    try runData(gpa, io, args.data, &.{ "--symspell-deletes", dictionary, "--out", deletes });
+    try runData(gpa, io, args.data, &.{ "--symspell-deletes", dictionary, "--out", deletes }, progress);
+    progress.completeOne();
 
     var confusions: ?[]const u8 = null;
     if (id_mode) {
-        std.debug.print("\n==> [3/4] Mine confusion weights\n", .{});
         const c = try std.fs.path.join(arena, &.{ args.work, "confusions.csv" });
         const mined = try std.fs.path.join(arena, &.{ args.work, "confusions_mined.csv" });
-        try runData(gpa, io, args.data, &.{ "--mine-confusions", dictionary, args.seed, "--out", c, "--out-mined", mined });
+        try runData(gpa, io, args.data, &.{ "--mine-confusions", dictionary, args.seed, "--out", c, "--out-mined", mined }, progress);
         confusions = c;
-    } else {
-        std.debug.print("\n==> [3/4] skip confusions (debug DB)\n", .{});
     }
+    progress.completeOne();
 
-    std.debug.print("\n==> [4/4] Assemble {s}\n", .{args.out});
-    try assemble(gpa, io, args, .{
-        .dictionary = dictionary,
-        .deletes = deletes,
-        .bigrams = try std.fs.path.join(arena, &.{ exp, "bigrams.csv" }),
-        .trigrams = try std.fs.path.join(arena, &.{ exp, "trigrams.csv" }),
-        .confusions = confusions,
-    });
-
-    std.debug.print("\n==> prepare done → {s}\n", .{args.out});
+    {
+        const stage = progress.start("assemble spell.db (sqlite3)", 0);
+        defer stage.end();
+        try assemble(gpa, io, args, .{
+            .dictionary = dictionary,
+            .deletes = deletes,
+            .bigrams = try std.fs.path.join(arena, &.{ exp, "bigrams.csv" }),
+            .trigrams = try std.fs.path.join(arena, &.{ exp, "trigrams.csv" }),
+            .confusions = confusions,
+        });
+    }
+    progress.completeOne();
 }
 
 const MergeStats = struct {
@@ -298,38 +298,22 @@ fn assemble(gpa: std.mem.Allocator, io: Io, args: Args, t: Tables) !void {
     var script: std.ArrayList(u8) = .empty;
     defer script.deinit(gpa);
     try script.print(gpa,
-        \\.echo off
-        \\.timer on
-        \\.print '→ creating schema…'
+        \\.bail on
         \\.read '{s}'
         \\.mode csv
-        \\.print '→ importing dictionary…'
         \\.import --skip 1 '{s}' dictionary
-        \\.print '→ importing deletes (largest step)…'
         \\.import --skip 1 '{s}' deletes
-        \\.print '→ importing bigrams…'
         \\.import --skip 1 '{s}' bigrams
-        \\.print '→ importing trigrams…'
         \\.import --skip 1 '{s}' trigrams
         \\
     , .{ args.schema, t.dictionary, t.deletes, t.bigrams, t.trigrams });
     if (t.confusions) |c| try script.print(gpa,
-        \\.print '→ importing confusions…'
         \\.import --skip 1 '{s}' confusions
         \\
     , .{c});
     try script.appendSlice(gpa,
-        \\.print '→ VACUUM + ANALYZE…'
         \\VACUUM;
         \\ANALYZE;
-        \\.headers on
-        \\.mode column
-        \\SELECT 'dictionary' AS t, COUNT(*) AS n FROM dictionary
-        \\UNION ALL SELECT 'deletes', COUNT(*) FROM deletes
-        \\UNION ALL SELECT 'bigrams', COUNT(*) FROM bigrams
-        \\UNION ALL SELECT 'trigrams', COUNT(*) FROM trigrams;
-        \\SELECT ROUND(page_count * page_size / 1024.0 / 1024.0, 1) AS db_mb
-        \\FROM pragma_page_count(), pragma_page_size();
         \\
     );
 
@@ -345,7 +329,7 @@ fn runSqlite3(io: Io, sqlite3: []const u8, db_path: []const u8, script_path: []c
     var child = try process.spawn(io, .{
         .argv = &.{ sqlite3, db_path },
         .stdin = .{ .file = script_file },
-        .stdout = .inherit,
+        .stdout = .ignore,
         .stderr = .inherit,
     });
     const term = try child.wait(io);
@@ -355,7 +339,7 @@ fn runSqlite3(io: Io, sqlite3: []const u8, db_path: []const u8, script_path: []c
     }
 }
 
-fn runData(gpa: std.mem.Allocator, io: Io, data_exe: []const u8, extra: []const []const u8) !void {
+fn runData(gpa: std.mem.Allocator, io: Io, data_exe: []const u8, extra: []const []const u8, progress: std.Progress.Node) !void {
     var argv: std.ArrayList([]const u8) = .empty;
     defer argv.deinit(gpa);
     try argv.append(gpa, data_exe);
@@ -363,6 +347,7 @@ fn runData(gpa: std.mem.Allocator, io: Io, data_exe: []const u8, extra: []const 
 
     var child = try process.spawn(io, .{
         .argv = argv.items,
+        .progress_node = progress,
         .stdin = .ignore,
         .stdout = .inherit,
         .stderr = .inherit,

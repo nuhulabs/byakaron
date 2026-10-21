@@ -9,6 +9,9 @@ const std = @import("std");
 const Io = std.Io;
 
 const DEFAULT_INPUT = "word_triplets.csv";
+
+/// Joins `zig build`'s progress tree via ZIG_PROGRESS.
+var progress: std.Progress.Node = .none;
 const DEFAULT_MIN_DEBUG: u64 = 2;
 const DEFAULT_MIN_ID: u64 = 15;
 
@@ -51,6 +54,9 @@ pub fn main(init: std.process.Init) !void {
             input = a;
         }
     }
+
+    progress = std.Progress.start(io, .{ .root_name = "export (MiB)" });
+    defer progress.end();
 
     try runExport(gpa, io, .{
         .input = input,
@@ -199,21 +205,14 @@ fn runExport(gpa: std.mem.Allocator, io: Io, opts: Options) !void {
     }
 
     reportProgress(in_reader.pos, total_size, row_count, id_to_word.items.len, bi_counts.count(), tri_counts.count());
-    std.debug.print(
-        "\nScan done. {d} rows | {d} words | {d} bigrams | {d} trigrams\n",
-        .{ row_count, id_to_word.items.len, bi_counts.count(), tri_counts.count() },
-    );
 
     try Io.Dir.cwd().createDirPath(io, opts.export_debug_dir);
     try Io.Dir.cwd().createDirPath(io, opts.export_id_dir);
 
-    // std.debug.print("Writing {s}/ …\n", .{opts.export_debug_dir});
     // try writeTextExports(gpa, io, opts, id_to_word.items, uni_counts.items, &bi_counts, &tri_counts);
 
-    std.debug.print("Writing {s}/ …\n", .{opts.export_id_dir});
+    progress.setName("export: writing CSVs");
     try writeIdExports(gpa, io, opts, id_to_word.items, uni_counts.items, &bi_counts, &tri_counts);
-
-    std.debug.print("Export complete.\n", .{});
 }
 
 const Triplet = struct { w1: []const u8, w2: []const u8, w3: []const u8 };
@@ -505,12 +504,8 @@ fn writeCsvField(out: *Io.Writer, s: []const u8) !void {
 }
 
 fn reportProgress(pos: u64, total: u64, rows: u64, words: usize, bigrams: u32, trigrams: u32) void {
-    const percent: f64 = if (total > 0)
-        @as(f64, @floatFromInt(pos)) / @as(f64, @floatFromInt(total)) * 100.0
-    else
-        0.0;
-    std.debug.print(
-        "\r{d:6.2}% | {d} rows | {d} words | {d} bigrams | {d} trigrams\x1b[K",
-        .{ percent, rows, words, bigrams, trigrams },
-    );
+    var buf: [96]u8 = undefined;
+    progress.setName(std.fmt.bufPrint(&buf, "export: {d} rows, {d} words, {d} bigrams, {d} trigrams (MiB)", .{ rows, words, bigrams, trigrams }) catch "export (MiB)");
+    progress.setEstimatedTotalItems(@intCast(total >> 20));
+    progress.setCompletedItems(@intCast(pos >> 20));
 }
