@@ -5,21 +5,21 @@ set -euo pipefail
 # Build the IBus engine and register it with the *running* ibus-daemon, without
 # installing anything into /usr.
 #
-#     bash platforms/linux/scripts/dev_run.sh
+#     bash apps/linux/scripts/dev_run.sh
 #
 # The registration lives only as long as this process, so Ctrl-C removes it
 # again. scripts/install.sh is the permanent counterpart (Day 3).
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"        # platforms/linux
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"        # apps/linux
 REPO_ROOT="$(cd "$PROJECT_ROOT/../.." && pwd)"
 BUILD_DIR="$PROJECT_ROOT/build"
 
 export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
 ZIG="${ZIG_EXE:-$(command -v zig || true)}"
 if [[ -z "$ZIG" ]]; then
-    echo "error: no 'zig' on PATH — see platforms/linux/README.md" >&2
+    echo "error: no 'zig' on PATH — see apps/linux/README.md" >&2
     exit 1
 fi
 

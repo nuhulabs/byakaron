@@ -4,7 +4,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Build packages/data/spell.db from the Avro lexicon already in the repo.
 #
-#     bash platforms/linux/scripts/prepare_spell_db.sh
+#     bash apps/linux/scripts/prepare_spell_db.sh
 #
 # The Wikipedia corpus (word_triplets.csv) is not in git. The candidate window
 # already uses src/assets/dictionary_macos_sorted.txt (~159k lemmas); this

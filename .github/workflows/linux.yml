@@ -66,7 +66,7 @@ jobs:
           git -C "$dest" rev-parse HEAD
 
       - name: Build, smoke, IME test
-        run: bash platforms/linux/scripts/ci.sh
+        run: bash apps/linux/scripts/ci.sh
 
   # Types into GTK3 and GTK4 apps on a real GNOME Shell Wayland session
   # (headless, private dbus/dconf/ibus), through org.gnome.Mutter.RemoteDesktop:
@@ -83,7 +83,7 @@ jobs:
 
       - name: System packages
         run: |
-          sudo bash platforms/linux/scripts/setup_deps.sh
+          sudo bash apps/linux/scripts/setup_deps.sh
           sudo apt-get install -y --no-install-recommends \
             gnome-shell mutter dbus-x11 ibus python3-gi \
             gir1.2-gtk-3.0 gir1.2-gtk-4.0 libgl1-mesa-dri \
@@ -105,12 +105,12 @@ jobs:
         run: zig build linux -Doptimize=ReleaseFast
 
       - name: Type on GNOME Shell (Wayland)
-        run: bash platforms/linux/scripts/gnome_wayland_test.sh
+        run: bash apps/linux/scripts/gnome_wayland_test.sh
 
       - name: Logs on failure
         if: failure()
         run: |
-          for f in platforms/linux/build/gnome-wayland/*.log; do
+          for f in apps/linux/build/gnome-wayland/*.log; do
             echo "=== $f"; tail -40 "$f"
           done
 
@@ -137,7 +137,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: System packages
-        run: sudo bash platforms/linux/scripts/setup_deps.sh
+        run: sudo bash apps/linux/scripts/setup_deps.sh
 
       - name: Install Zig 0.17.0-dev.1422
         uses: mlugg/setup-zig@v2
@@ -153,11 +153,11 @@ jobs:
 
       - name: IME test binary (glibc 2.31)
         run: |
-          source platforms/linux/scripts/compat.sh
+          source apps/linux/scripts/compat.sh
           zig build linux-test -Doptimize=ReleaseFast $(byk_compat_target_flag)
 
       - name: Install and test in clean containers
-        run: bash platforms/linux/scripts/test_install_matrix.sh zig-out/bin/byakaron-ime-test
+        run: bash apps/linux/scripts/test_install_matrix.sh zig-out/bin/byakaron-ime-test
 
   # A `linux-*` tag (linux-0.1.8, ...) also builds the shareable .deb for both
   # CPUs, installs it on the runner, and types through the *installed* engine.
@@ -184,7 +184,7 @@ jobs:
 
       - name: System packages
         run: |
-          sudo bash platforms/linux/scripts/setup_deps.sh
+          sudo bash apps/linux/scripts/setup_deps.sh
           sudo apt-get install -y --no-install-recommends xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
 
       - name: Install Zig 0.17.0-dev.1422
@@ -200,20 +200,20 @@ jobs:
           git -C "$dest" checkout --detach 29f9a85b
 
       - name: Package .deb
-        run: bash platforms/linux/scripts/package_deb.sh
+        run: bash apps/linux/scripts/package_deb.sh
 
       - name: Install it and type through the installed engine
         run: |
-          source platforms/linux/scripts/compat.sh
+          source apps/linux/scripts/compat.sh
           zig build linux-test -Doptimize=ReleaseFast $(byk_compat_target_flag)
-          deb=$(ls platforms/linux/build/byakaron_*_${{ matrix.arch }}.deb)
+          deb=$(ls apps/linux/build/byakaron_*_${{ matrix.arch }}.deb)
           sudo apt-get install -y "./$deb"
           version=${GITHUB_REF_NAME#linux-}
-          bash platforms/linux/scripts/test_installed.sh zig-out/bin/byakaron-ime-test "$version"
+          bash apps/linux/scripts/test_installed.sh zig-out/bin/byakaron-ime-test "$version"
 
       - name: Upload .deb
         uses: actions/upload-artifact@v4
         with:
           name: byakaron-${{ matrix.arch }}
-          path: platforms/linux/build/byakaron_*_${{ matrix.arch }}.deb
+          path: apps/linux/build/byakaron_*_${{ matrix.arch }}.deb
           if-no-files-found: error

@@ -209,23 +209,23 @@ pub fn build(b: *std.Build) !void {
         });
         ime.root_module.addCSourceFiles(.{
             .files = &.{
-                "platforms/linux/Keyboard/main.c",
-                "platforms/linux/Keyboard/engine.c",
-                "platforms/linux/Core/transliterator.c",
-                "platforms/linux/Core/autocomplete.c",
-                "platforms/linux/Core/spell.c",
-                "platforms/linux/Core/corrector.c",
-                "platforms/linux/Core/userdict.c",
-                "platforms/linux/Core/composer.c",
-                "platforms/linux/Core/prefs.c",
+                "apps/linux/Keyboard/main.c",
+                "apps/linux/Keyboard/engine.c",
+                "apps/linux/Core/transliterator.c",
+                "apps/linux/Core/autocomplete.c",
+                "apps/linux/Core/spell.c",
+                "apps/linux/Core/corrector.c",
+                "apps/linux/Core/userdict.c",
+                "apps/linux/Core/composer.c",
+                "apps/linux/Core/prefs.c",
             },
             .flags = engine_cflags,
         });
         ime.root_module.addIncludePath(b.path("src/ffi"));
-        ime.root_module.addIncludePath(b.path("platforms/linux/Core"));
-        ime.root_module.addIncludePath(b.path("platforms/linux/Keyboard"));
+        ime.root_module.addIncludePath(b.path("apps/linux/Core"));
+        ime.root_module.addIncludePath(b.path("apps/linux/Keyboard"));
         addHostLibdir(b, ime.root_module);
-        // Resolved through pkg-config; see platforms/linux/scripts/setup_deps.sh.
+        // Resolved through pkg-config; see apps/linux/scripts/setup_deps.sh.
         ime.root_module.linkSystemLibrary("ibus-1.0", .{});
         ime.root_module.linkSystemLibrary("glib-2.0", .{});
         ime.root_module.linkSystemLibrary("gobject-2.0", .{});
@@ -252,7 +252,7 @@ pub fn build(b: *std.Build) !void {
             }),
         });
         ime_test.root_module.addCSourceFiles(.{
-            .files = &.{"platforms/linux/tests/ime_test.c"},
+            .files = &.{"apps/linux/tests/ime_test.c"},
             .flags = engine_cflags,
         });
         addHostLibdir(b, ime_test.root_module);
@@ -285,27 +285,27 @@ pub fn build(b: *std.Build) !void {
         });
         app.root_module.addCSourceFiles(.{
             .files = &.{
-                "platforms/linux/App/main.c",
-                "platforms/linux/App/window.c",
-                "platforms/linux/App/spelling.c",
-                "platforms/linux/App/layout.c",
-                "platforms/linux/App/setup.c",
-                "platforms/linux/App/uiutil.c",
-                "platforms/linux/App/dictionary.c",
-                "platforms/linux/App/settings.c",
-                "platforms/linux/Core/transliterator.c",
-                "platforms/linux/Core/autocomplete.c",
-                "platforms/linux/Core/spell.c",
-                "platforms/linux/Core/corrector.c",
-                "platforms/linux/Core/userdict.c",
-                "platforms/linux/Core/composer.c",
-                "platforms/linux/Core/prefs.c",
+                "apps/linux/App/main.c",
+                "apps/linux/App/window.c",
+                "apps/linux/App/spelling.c",
+                "apps/linux/App/layout.c",
+                "apps/linux/App/setup.c",
+                "apps/linux/App/uiutil.c",
+                "apps/linux/App/dictionary.c",
+                "apps/linux/App/settings.c",
+                "apps/linux/Core/transliterator.c",
+                "apps/linux/Core/autocomplete.c",
+                "apps/linux/Core/spell.c",
+                "apps/linux/Core/corrector.c",
+                "apps/linux/Core/userdict.c",
+                "apps/linux/Core/composer.c",
+                "apps/linux/Core/prefs.c",
             },
             .flags = app_cflags,
         });
         app.root_module.addIncludePath(b.path("src/ffi"));
-        app.root_module.addIncludePath(b.path("platforms/linux/Core"));
-        app.root_module.addIncludePath(b.path("platforms/linux/App"));
+        app.root_module.addIncludePath(b.path("apps/linux/Core"));
+        app.root_module.addIncludePath(b.path("apps/linux/App"));
         addHostLibdir(b, app.root_module);
         app.root_module.linkSystemLibrary("gtk+-3.0", .{});
         app.root_module.linkSystemLibrary("glib-2.0", .{});
@@ -347,7 +347,7 @@ pub fn build(b: *std.Build) !void {
             "byk-compile-schemas",
         });
         const schema_dir = compile_schemas.addOutputDirectoryArg("gsettings-schemas");
-        compile_schemas.addFileArg(b.path("platforms/linux/Resources/dev.nuhu.labs.Byakaron.gschema.xml"));
+        compile_schemas.addFileArg(b.path("apps/linux/Resources/dev.nuhu.labs.Byakaron.gschema.xml"));
         const install_schemas = b.addInstallDirectory(.{
             .source_dir = schema_dir,
             .install_dir = .{ .custom = "share/glib-2.0/schemas" },
@@ -379,24 +379,24 @@ pub fn build(b: *std.Build) !void {
                 }),
             });
             fcitx.root_module.addCSourceFiles(.{
-                .files = &.{"platforms/linux/Fcitx5/engine.cpp"},
+                .files = &.{"apps/linux/Fcitx5/engine.cpp"},
                 .flags = fcitx_cxxflags,
             });
             fcitx.root_module.addCSourceFiles(.{
                 .files = &.{
-                    "platforms/linux/Core/composer.c",
-                    "platforms/linux/Core/corrector.c",
-                    "platforms/linux/Core/userdict.c",
-                    "platforms/linux/Core/spell.c",
-                    "platforms/linux/Core/transliterator.c",
-                    "platforms/linux/Core/autocomplete.c",
-                    "platforms/linux/Core/prefs.c",
+                    "apps/linux/Core/composer.c",
+                    "apps/linux/Core/corrector.c",
+                    "apps/linux/Core/userdict.c",
+                    "apps/linux/Core/spell.c",
+                    "apps/linux/Core/transliterator.c",
+                    "apps/linux/Core/autocomplete.c",
+                    "apps/linux/Core/prefs.c",
                 },
                 .flags = fcitx_cflags,
             });
             fcitx.root_module.addIncludePath(b.path("src/ffi"));
-            fcitx.root_module.addIncludePath(b.path("platforms/linux/Core"));
-            fcitx.root_module.addIncludePath(b.path("platforms/linux/Fcitx5"));
+            fcitx.root_module.addIncludePath(b.path("apps/linux/Core"));
+            fcitx.root_module.addIncludePath(b.path("apps/linux/Fcitx5"));
             addHostLibdir(b, fcitx.root_module);
             fcitx.root_module.linkSystemLibrary("Fcitx5Core", .{});
             fcitx.root_module.linkSystemLibrary("glib-2.0", .{});
@@ -415,12 +415,12 @@ pub fn build(b: *std.Build) !void {
                 "fcitx5/byakaron.so",
             );
             const install_fcitx_addon = b.addInstallFileWithDir(
-                b.path("platforms/linux/Fcitx5/byakaron-addon.conf"),
+                b.path("apps/linux/Fcitx5/byakaron-addon.conf"),
                 .{ .custom = "share/fcitx5/addon" },
                 "byakaron.conf",
             );
             const install_fcitx_im = b.addInstallFileWithDir(
-                b.path("platforms/linux/Fcitx5/byakaron.conf"),
+                b.path("apps/linux/Fcitx5/byakaron.conf"),
                 .{ .custom = "share/fcitx5/inputmethod" },
                 "byakaron.conf",
             );

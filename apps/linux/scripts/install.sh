@@ -5,7 +5,7 @@ set -euo pipefail
 # Install the Byakaron IBus engine so it survives a reboot and appears in
 # GNOME Settings -> Keyboard -> Input Sources.
 #
-#     sudo bash platforms/linux/scripts/install.sh
+#     sudo bash apps/linux/scripts/install.sh
 #
 # This is a system install because it has to be: ibus-daemon builds its registry
 # by scanning /usr/share/ibus/component only. A copy under
@@ -85,7 +85,7 @@ if pkg-config --exists gtk+-3.0 2>/dev/null; then
     fi
 else
     echo "note: gtk+-3.0 not found — skipping the GTK app"
-    echo "      install it with: sudo bash platforms/linux/scripts/setup_deps.sh"
+    echo "      install it with: sudo bash apps/linux/scripts/setup_deps.sh"
 fi
 
 SCHEMADIR="/usr/share/glib-2.0/schemas"
@@ -128,7 +128,7 @@ if [[ -f "$SPELL_DB" ]]; then
     echo ">>> Installed: $DATADIR/spell.db"
 else
     echo "note: $SPELL_DB missing — spell-check will be unavailable"
-    echo "      build it with: bash platforms/linux/scripts/prepare_spell_db.sh"
+    echo "      build it with: bash apps/linux/scripts/prepare_spell_db.sh"
 fi
 
 sed -e "s|@BYK_EXEC@|$LIBDIR/byakaron-ibus|g" \

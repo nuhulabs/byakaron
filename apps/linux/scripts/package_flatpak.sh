@@ -7,13 +7,13 @@ set -euo pipefail
 # register. The .deb remains the IME artefact; this is the app for people who
 # want Spelling / Layout / Setup from Flathub-style packaging.
 #
-#     bash platforms/linux/scripts/package_flatpak.sh
+#     bash apps/linux/scripts/package_flatpak.sh
 #
 # Uses org.gnome.Platform as both runtime and SDK so a box that already has
 # the Platform — and not org.gnome.Sdk — can still pack the binary we already
 # built. spell.db is omitted (364 MB; the app runs without it).
 #
-# Produces: platforms/linux/build/dev.nuhu.labs.Byakaron.flatpak
+# Produces: apps/linux/build/dev.nuhu.labs.Byakaron.flatpak
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -144,7 +144,7 @@ echo "=== Built: $OUT ==="
 echo "    size: $(du -h "$OUT" | cut -f1)"
 echo
 echo "This is the companion app only. The IBus engine still needs the .deb"
-echo "(or sudo bash platforms/linux/scripts/install.sh)."
+echo "(or sudo bash apps/linux/scripts/install.sh)."
 echo
 echo "Install the bundle with:"
 echo "    flatpak install --user $OUT"

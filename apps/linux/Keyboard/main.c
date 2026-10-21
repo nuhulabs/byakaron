@@ -8,7 +8,7 @@
  *       component XML. The component is already known to the daemon, so we only
  *       claim our bus name and serve engines.
  *
- *   byakaron-ibus --xml platforms/linux/Resources/byakaron.xml
+ *   byakaron-ibus --xml apps/linux/Resources/byakaron.xml
  *       Development mode: register the component with the running daemon at
  *       runtime, so the engine can be tested without installing anything into
  *       /usr/share. The registration disappears when this process exits.

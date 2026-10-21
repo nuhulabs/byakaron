@@ -10,7 +10,7 @@
  * session X11 / Xvfb path is the one that actually proves IM-module typing.
  * text-input-v3 on nested mutter is covered by wayland_probe.sh.
  *
- * Built and run by platforms/linux/scripts/wayland_type.sh.
+ * Built and run by apps/linux/scripts/wayland_type.sh.
  */
 #include <gtk/gtk.h>
 #include <locale.h>

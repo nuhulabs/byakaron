@@ -4,7 +4,7 @@
 # fake /etc/os-release, and a download URL that does not exist, so a supported
 # system stops right after detection with "could not download".
 #
-#     bash platforms/linux/tests/web_install_test.sh
+#     bash apps/linux/tests/web_install_test.sh
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

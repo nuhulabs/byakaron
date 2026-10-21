@@ -48,7 +48,7 @@ build system and no extra language runtime on the per-keystroke path.
 ## Layout
 
 ```
-platforms/linux/
+apps/linux/
 ├── App/         GTK3 app (main, window, spelling, layout, setup)
 ├── Core/        Shared C glue over byakaron.h (composer, transliterator,
 │                autocomplete, spell, prefs) — IBus, Fcitx5, and the app all use this
@@ -81,7 +81,7 @@ to link it.
 ### 1. System packages
 
 ```bash
-sudo bash platforms/linux/scripts/setup_deps.sh
+sudo bash apps/linux/scripts/setup_deps.sh
 ```
 
 ### 2. Zig
@@ -118,7 +118,7 @@ build option that our `build.zig` passes.
 ### 4. Verify the engine
 
 ```bash
-bash platforms/linux/scripts/smoke.sh
+bash apps/linux/scripts/smoke.sh
 ```
 
 This builds `libbyakaron.so` and calls it from C. Expect `ami → আমি`,
@@ -146,7 +146,7 @@ and installing those headers does not switch the session's input method.
 ### Development run
 
 ```bash
-bash platforms/linux/scripts/dev_run.sh
+bash apps/linux/scripts/dev_run.sh
 ```
 
 Registers the engine with the *running* `ibus-daemon` straight from the build
@@ -160,7 +160,7 @@ Settings → Keyboard → Input Sources) is `scripts/install.sh`.
 ### Integration test
 
 ```bash
-bash platforms/linux/scripts/test_ime.sh
+bash apps/linux/scripts/test_ime.sh
 ```
 
 Starts a throwaway engine, drives it through a *private* IBus input context, and
@@ -341,7 +341,7 @@ macOS-style "Coming soon" toggles. Candidates-per-page stays at 9 because
 ## Installing permanently
 
 ```bash
-sudo bash platforms/linux/scripts/install.sh
+sudo bash apps/linux/scripts/install.sh
 ```
 
 This is a **system** install (`/usr/libexec`, `/usr/share/ibus/component`,
@@ -376,7 +376,7 @@ After installing:
 3. Switch with **Super+Space**
 
 ```bash
-sudo bash platforms/linux/scripts/uninstall.sh
+sudo bash apps/linux/scripts/uninstall.sh
 ```
 
 removes everything install.sh added.
@@ -410,7 +410,7 @@ English makes every check fail, so the test does measure the engine.
 
 ```bash
 zig build linux
-bash platforms/linux/scripts/gnome_wayland_test.sh   # GTK3 + GTK4, 10 checks
+bash apps/linux/scripts/gnome_wayland_test.sh   # GTK3 + GTK4, 10 checks
 ```
 
 Qt was checked the same way from a container sharing the sandbox's Wayland
@@ -436,7 +436,7 @@ nested-mutter checks used by `ci.sh`.
 2. Zig **0.17.0-dev.1422+e863bf3be** via `mlugg/setup-zig` (not master)
 3. Clone `ziex` at commit `29f9a85b` to `../../ziex-dev/ziex`, which is what
    `build.zig.zon` already points at locally
-4. `bash platforms/linux/scripts/ci.sh` — `zig build linux linux-app linux-test
+4. `bash apps/linux/scripts/ci.sh` — `zig build linux linux-app linux-test
    -Dshared` targeted at glibc 2.31, `byakaron --help` / `--version`, smoke test,
    IME integration test against a throwaway Xvfb+ibus-daemon, display-path probe,
    Fcitx5 addon (headers are installed on the runner; same glibc 2.31 ceiling),
@@ -458,8 +458,8 @@ A `linux-*` tag also packages, installs and tests both `.deb`s (see Releasing).
 To run the same steps locally:
 
 ```bash
-bash platforms/linux/scripts/ci.sh
-bash platforms/linux/scripts/gnome_wayland_test.sh   # needs gnome-shell
+bash apps/linux/scripts/ci.sh
+bash apps/linux/scripts/gnome_wayland_test.sh   # needs gnome-shell
 ```
 
 ## Releasing
@@ -468,7 +468,7 @@ bash platforms/linux/scripts/gnome_wayland_test.sh   # needs gnome-shell
 failure:
 
 ```bash
-S=platforms/linux/scripts
+S=apps/linux/scripts
 bash $S/release.sh prepare 0.2.0 "One-line summary for AppStream"  # bump everywhere, commit, tag
 bash $S/release.sh verify  0.2.0                                    # amd64 .deb in clean 20.04/22.04/24.04
 bash $S/release.sh publish 0.2.0 notes.md                           # push, CI builds+tests both CPUs, GitHub release
@@ -487,7 +487,7 @@ fetch the latest release.
 
 ## Fcitx5 (optional)
 
-A second IME framework, not a skin over IBus. `platforms/linux/Fcitx5/` is a
+A second IME framework, not a skin over IBus. `apps/linux/Fcitx5/` is a
 C++ `InputMethodEngineV2` that applies the same `Core/composer.c` outcomes as
 `Keyboard/engine.c`. Build with `zig build linux-fcitx5` when
 `libfcitx5core-dev` is installed (or `PKG_CONFIG_PATH` points at those
@@ -538,8 +538,8 @@ The keyboard is built for **glibc 2.31**, so it works on **Ubuntu 20.04, 22.04,
 and 24.04**. On ARM, see [ARM.md](ARM.md).
 
 ```bash
-bash platforms/linux/scripts/package_deb.sh
-sudo apt install ./platforms/linux/build/byakaron_0.2.0_amd64.deb
+bash apps/linux/scripts/package_deb.sh
+sudo apt install ./apps/linux/build/byakaron_0.2.0_amd64.deb
 ```
 
 Use `apt`, not `dpkg -i`. If an older Byakaron `.deb` is already installed
@@ -551,7 +551,7 @@ the Bangla list, log out and back in.
 The companion GTK app *can* live in a sandbox:
 
 ```bash
-bash platforms/linux/scripts/package_flatpak.sh
+bash apps/linux/scripts/package_flatpak.sh
 ```
 
 That packs the already-built `byakaron` binary against `org.gnome.Platform`
@@ -586,7 +586,7 @@ For Wayland without logging out, run `scripts/gnome_wayland_test.sh` (see [Wayla
 
 - `spell.db` is a **local SQLite file**, not a server. It is generated, not
   committed (`*.db` is gitignored). Build it with:
-  `bash platforms/linux/scripts/prepare_spell_db.sh`
+  `bash apps/linux/scripts/prepare_spell_db.sh`
   That uses the Avro lexicon already in `src/assets/dictionary_macos_sorted.txt`
   (~159k words). Wikipedia n-grams are empty until someone later runs the full
   `word_triplets.csv` export; lookups and SymSpell suggestions still work.
@@ -595,4 +595,4 @@ For Wayland without logging out, run `scripts/gnome_wayland_test.sh` (see [Wayla
   and app, so one file is a complete install. Override the path
   with `BYAKARON_SPELL_DB` for development. The input method types without it;
   only spell-check needs it. Candidates use the compiled-in lexicon.
-- `platforms/linux/build/` is generated output and is git-ignored.
+- `apps/linux/build/` is generated output and is git-ignored.

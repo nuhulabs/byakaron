@@ -7,7 +7,7 @@ set -euo pipefail
 # installed engine — not a build-tree one.
 #
 #     sudo apt install ./byakaron_<ver>_<arch>.deb
-#     bash platforms/linux/scripts/test_installed.sh [path/to/byakaron-ime-test] [expected-version]
+#     bash apps/linux/scripts/test_installed.sh [path/to/byakaron-ime-test] [expected-version]
 #
 # Starts its own Xvfb + dbus + ibus-daemon, so it runs on a CI runner or in a
 # container with no desktop. `ibus engine byakaron` makes the daemon launch the

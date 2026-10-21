@@ -8,14 +8,14 @@ set -euo pipefail
 # objects into the Xcode targets) because two separate processes consume it —
 # the IBus engine and the GTK app — and both should share one mapped copy.
 #
-# Outputs into platforms/linux/build/:
+# Outputs into apps/linux/build/:
 #     lib/libbyakaron.so
 #     include/byakaron.h
 #     share/spell.db          (only when packages/data/spell.db has been built)
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"        # platforms/linux
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"        # apps/linux
 ZIG_REPO_ROOT="$(cd "$PROJECT_ROOT/../.." && pwd)"  # repo root
 BUILD_DIR="$PROJECT_ROOT/build"
 
@@ -26,7 +26,7 @@ export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
 ZIG="${ZIG_EXE:-$(command -v zig || true)}"
 if [[ -z "$ZIG" ]]; then
     echo "error: could not find the 'zig' executable on PATH" >&2
-    echo "       this branch needs 0.17.0-dev.1422+e863bf3be — see platforms/linux/README.md" >&2
+    echo "       this branch needs 0.17.0-dev.1422+e863bf3be — see apps/linux/README.md" >&2
     exit 1
 fi
 
@@ -46,7 +46,7 @@ cp "$HDR" "$BUILD_DIR/include/"
 echo ">>> Staged: $BUILD_DIR/lib/libbyakaron.so"
 
 # spell.db is generated, not committed. Build it with:
-#     bash platforms/linux/scripts/prepare_spell_db.sh
+#     bash apps/linux/scripts/prepare_spell_db.sh
 # The engine types without it; only spell-check needs it.
 SPELL_DB="$ZIG_REPO_ROOT/packages/data/spell.db"
 if [[ -f "$SPELL_DB" ]]; then

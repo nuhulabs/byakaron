@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Build libbyakaron.so (via build_zig.sh) and run the C ABI smoke test against it.
 #
-#     bash platforms/linux/scripts/smoke.sh
+#     bash apps/linux/scripts/smoke.sh
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"

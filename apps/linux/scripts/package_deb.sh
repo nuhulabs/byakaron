@@ -4,10 +4,10 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Build one shareable .deb of Byakaron.
 #
-#     bash platforms/linux/scripts/package_deb.sh
+#     bash apps/linux/scripts/package_deb.sh
 #
 # Produces:
-#     platforms/linux/build/byakaron_<version>_<arch>.deb
+#     apps/linux/build/byakaron_<version>_<arch>.deb
 #         IBus engine + GTK app + GSettings schema + spell.db
 #
 # One file is a complete install: typing Bangla *and* spell-check. The
@@ -45,7 +45,7 @@ fi
 if [[ $EUID -eq 0 ]]; then
     echo "error: do not run this as root — zig-out would become root-owned," >&2
     echo "       and the next non-root build would fail. Run:" >&2
-    echo "         bash platforms/linux/scripts/package_deb.sh" >&2
+    echo "         bash apps/linux/scripts/package_deb.sh" >&2
     exit 1
 fi
 
@@ -130,7 +130,7 @@ if [[ ! -f "$SPELL_DB" ]]; then
 fi
 [[ -f "$SPELL_DB" ]] || {
     echo "error: $SPELL_DB was not produced" >&2
-    echo "       run: bash platforms/linux/scripts/prepare_spell_db.sh" >&2
+    echo "       run: bash apps/linux/scripts/prepare_spell_db.sh" >&2
     exit 1
 }
 install -d "$STAGE/usr/share/byakaron"

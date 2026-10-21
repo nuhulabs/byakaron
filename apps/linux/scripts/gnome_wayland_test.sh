@@ -5,7 +5,7 @@ set -uo pipefail
 # Type into GTK3 and GTK4 apps on a real GNOME Shell Wayland session, without
 # logging out of the desktop:
 #
-#     bash platforms/linux/scripts/gnome_wayland_test.sh
+#     bash apps/linux/scripts/gnome_wayland_test.sh
 #
 # Starts a *private* `gnome-shell --headless --wayland` with its own D-Bus,
 # dconf, runtime dir and ibus-daemon (input source set to Byakaron), registers

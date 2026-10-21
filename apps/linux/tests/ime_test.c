@@ -8,7 +8,7 @@
  * without touching the desktop's active input source.
  *
  * Requires a running ibus-daemon with the engine registered — see
- * platforms/linux/scripts/dev_run.sh, which this test's runner starts for it.
+ * apps/linux/scripts/dev_run.sh, which this test's runner starts for it.
  */
 #include <glib/gstdio.h>
 #include <ibus.h>
