@@ -60,11 +60,7 @@ have no desktop): if IBus does not appear after `im-config`, please report it.
 Only needed to try unreleased changes. Building is heavy: use a Pi with 4 GB
 RAM or more.
 
-## 1. Source and the `ziex` sibling
-
-`build.zig.zon` expects `ziex` at `../../ziex-dev/ziex` relative to the
-repository root (so if the repo is `~/Code/byakaron`, clone ziex to
-`~/ziex-dev/ziex`).
+## 1. Source
 
 ```bash
 sudo apt update
@@ -72,13 +68,10 @@ sudo apt install -y git curl
 
 git clone git@github.com:nuhulabs/byakaron.git ~/Code/byakaron
 # HTTPS: git clone https://github.com/nuhulabs/byakaron.git ~/Code/byakaron
-
-git clone https://github.com/ziex-dev/ziex.git ~/ziex-dev/ziex
-git -C ~/ziex-dev/ziex checkout 29f9a85b
 ```
 
-Commit `29f9a85b` matters: the commit after it removes a build option this
-project still passes.
+Other dependencies (ziex, SQLite, the sysroot packages) are fetched by
+`zig build` from `build.zig.zon`.
 
 ## 2. System packages
 
@@ -87,28 +80,24 @@ cd ~/Code/byakaron
 sudo bash apps/linux/scripts/setup_deps.sh
 ```
 
-That installs IBus, GTK3, and the C headers the engine and app need.
+That installs IBus and the GTK3 input module. The build itself downloads the
+headers and libraries it compiles against (a pinned Ubuntu sysroot).
 
 ## 3. Zig for aarch64
 
-This branch is pinned to **`0.17.0-dev.1422+e863bf3be`**. Newer Zig will not
-compile. Use the **aarch64** tarball, not `zig-x86_64-linux-...`.
+Use Zig **0.17.0** (pinned in `.tool-versions`), the **aarch64** tarball:
 
 ```bash
 mkdir -p ~/.local/bin
-V=0.17.0-dev.1422+e863bf3be
-curl -fSL -o /tmp/zig.tar.xz \
-  "https://pkg.hexops.org/zig/builds/zig-aarch64-linux-$V.tar.xz"
+V=0.17.0
+curl -fSL -o /tmp/zig.tar.xz "https://ziglang.org/download/$V/zig-aarch64-linux-$V.tar.xz"
 tar -C ~/.local -xf /tmp/zig.tar.xz
 ln -sfn ~/.local/zig-aarch64-linux-$V/zig ~/.local/bin/zig
 
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
-zig version   # 0.17.0-dev.1422+e863bf3be
+zig version   # 0.17.0
 ```
-
-If that mirror 404s, fetch the same version's `zig-aarch64-linux-...tar.xz`
-from another Zig community mirror and unpack it the same way.
 
 ## 4. Build and install
 

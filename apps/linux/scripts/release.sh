@@ -6,7 +6,7 @@ set -euo pipefail
 #
 #   release.sh prepare <version> "<one-line summary>"
 #       Bump the version everywhere it is written (app.h, IBus component,
-#       package_deb.sh, the installer's fallback, README/ARM, linux-deb.yml),
+#       package_deb.sh, the installer's fallback, README/ARM, release.yml),
 #       add an AppStream <release> with the summary, commit and tag
 #       linux-<version>. Nothing is pushed.
 #
@@ -82,8 +82,8 @@ stage_prepare() {
     bump "$PROJECT_ROOT/scripts/web_install.sh" "VERSION_FALLBACK=\"$old\"" "VERSION_FALLBACK=\"$version\""
     bump "$PROJECT_ROOT/README.md" "byakaron_${old}_amd64.deb" "byakaron_${version}_amd64.deb"
     bump "$PROJECT_ROOT/ARM.md" "byakaron_${old}_arm64.deb" "byakaron_${version}_arm64.deb"
-    bump "$REPO_ROOT/.github/workflows/linux-deb.yml" "linux-$old platforms" "linux-$version platforms"
-    bump "$REPO_ROOT/.github/workflows/linux-deb.yml" "\"Linux $old\"" "\"Linux $version\""
+    bump "$REPO_ROOT/.github/workflows/release.yml" "linux-$old apps" "linux-$version apps"
+    bump "$REPO_ROOT/.github/workflows/release.yml" "\"Linux $old\"" "\"Linux $version\""
 
     local today escaped
     today="$(date +%Y-%m-%d)"
@@ -192,7 +192,7 @@ stage_publish() {
     say "waiting for the tag's CI run (builds, installs and types through both .debs)"
     local run="" i
     for i in $(seq 1 40); do
-        run="$(gh run list --repo "$SRC_REPO" --commit "$sha" --json databaseId,headBranch \
+        run="$(gh run list --repo "$SRC_REPO" --workflow release.yml --commit "$sha" --json databaseId,headBranch \
                -q "[.[] | select(.headBranch==\"linux-$version\")][0].databaseId" 2>/dev/null || true)"
         [[ -n "$run" ]] && break
         sleep 15

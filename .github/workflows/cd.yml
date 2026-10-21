@@ -1,0 +1,156 @@
+# Build the shippable packages and test them the way users install them.
+#
+# Runs on every push to main, by hand, and from release.yml (workflow_call),
+# which then attaches the packages to the release. Package jobs are a matrix
+# over `os` / `arch` so other platforms can join later.
+#
+# Artifacts: `byakaron-<arch>` (.deb). apps/linux/scripts/release.sh downloads
+# these from the tag's release.yml run.
+name: cd
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  # spell.db is the same for every CPU and expensive to build (bnwiki download
+  # + the whole data pipeline), so build it once, cache it on the inputs that
+  # produce it, and hand it to the package jobs.
+  spell-db:
+    name: spell.db
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache spell.db
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: zig-out/db/spell.db
+          key: spell-db-${{ hashFiles('build.zig', 'build.zig.zon', 'src/data/**', 'src/build/**') }}
+
+      - name: Install Zig
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      # The pipeline's intermediate files are several GB; /mnt has the room.
+      - name: zig build db
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo mkdir -p /mnt/zig-cache
+          sudo chown "$USER" /mnt/zig-cache
+          zig build db --cache-dir /mnt/zig-cache
+          ls -lh zig-out/db/spell.db
+
+      - name: Upload spell.db
+        uses: actions/upload-artifact@v4
+        with:
+          name: spell-db
+          path: zig-out/db/spell.db
+          retention-days: 1
+          compression-level: 1
+          if-no-files-found: error
+
+  # Build the shareable .deb for each CPU, install it on the runner, and type
+  # through the *installed* engine.
+  package:
+    name: package (${{ matrix.target }}-${{ matrix.arch }})
+    needs: spell-db
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+            arch: amd64
+          - os: ubuntu-24.04-arm
+            target: linux
+            arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: System packages
+        run: |
+          sudo bash apps/linux/scripts/setup_deps.sh
+          sudo apt-get install -y --no-install-recommends xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      - name: Download spell.db
+        uses: actions/download-artifact@v4
+        with:
+          name: spell-db
+          path: zig-out/db
+
+      - name: Package .deb
+        run: bash apps/linux/scripts/package_deb.sh
+
+      - name: Install it and type through the installed engine
+        run: |
+          source apps/linux/scripts/compat.sh
+          zig build linux-test -Doptimize=ReleaseFast $(byk_compat_target_flag)
+          deb=$(ls apps/linux/build/byakaron_*_${{ matrix.arch }}.deb)
+          sudo apt-get install -y "./$deb"
+          version=$(sed -n 's/^VERSION="\${VERSION:-\(.*\)}"$/\1/p' apps/linux/scripts/package_deb.sh)
+          bash apps/linux/scripts/test_installed.sh zig-out/bin/byakaron-ime-test "$version"
+
+      - name: Upload .deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: byakaron-${{ matrix.arch }}
+          path: apps/linux/build/byakaron_*_${{ matrix.arch }}.deb
+          if-no-files-found: error
+
+  # Installs the way a user does — the website installer, which detects the CPU
+  # and downloads the latest release — in clean Ubuntu 20.04 / 22.04 / 24.04
+  # and Debian 12 (Raspberry Pi OS 64-bit's base) containers, on both CPUs,
+  # then checks files, icon, the app window and typing through the installed
+  # engine. This is what a Raspberry Pi user runs.
+  install:
+    name: install (${{ matrix.target }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+            arch: amd64
+          - os: ubuntu-24.04-arm
+            target: linux
+            arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: System packages
+        run: sudo bash apps/linux/scripts/setup_deps.sh
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      - name: IME test binary (glibc 2.31)
+        run: |
+          source apps/linux/scripts/compat.sh
+          zig build linux-test -Doptimize=ReleaseFast $(byk_compat_target_flag)
+
+      - name: Install and test in clean containers
+        run: bash apps/linux/scripts/test_install_matrix.sh zig-out/bin/byakaron-ime-test
