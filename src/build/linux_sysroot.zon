@@ -1,0 +1,49 @@
+// Ubuntu 24.04 (noble) packages unpacked into the Linux cross sysroot by
+// `zig build linux` on non-Linux hosts (see `linuxSysroot` in build.zig).
+// Headers + shared libraries for IBus, GLib and GTK 3: the same ones the Linux
+// CI builds against on ubuntu-latest. The binaries still target glibc 2.31
+// (see engine_cflags). Resolved from noble, noble-updates and noble-security.
+.{
+    .x86_64 = .{
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/g/glib2.0/libglib2.0-dev_2.80.0-6ubuntu3.10_amd64.deb", .sha256 = "6d1d88d68192256603c0de05d084b8ef06ed9b16753215ec2c1ef9ef5fa15014" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/g/glib2.0/libglib2.0-0t64_2.80.0-6ubuntu3.10_amd64.deb", .sha256 = "ff1b650f655b36dfe202fdbae6bb02b363c7257b6dd23e4f95ab61f716190df3" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/universe/i/ibus/libibus-1.0-dev_1.5.29-2_amd64.deb", .sha256 = "b11cc603d1b59a2642cae5046da427a317c906c3cf905a38756af1b76b1f7a5d" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/i/ibus/libibus-1.0-5_1.5.29-2_amd64.deb", .sha256 = "2f9aac6e9690690bda1fc1fdb608ac8d98e570cc9041fdaf3e1380fb7c833d07" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/g/gtk+3.0/libgtk-3-dev_3.24.41-4ubuntu1.3_amd64.deb", .sha256 = "34dfb55e8b3dbaec5e17f42dc4084f81ebe0cadd6777163ab77e3f7fd5b1fdae" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/g/gtk+3.0/libgtk-3-0t64_3.24.41-4ubuntu1.3_amd64.deb", .sha256 = "fd61e308234b12d243160798216d0efcb605d83af185bf3414ac99c2ed5166fc" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/p/pango1.0/libpango1.0-dev_1.52.1+ds-1build1_amd64.deb", .sha256 = "0ca59542b1b0d6bce9747f1f9c0c079c278c6bff971f3c4bb64734aacc72cc2f" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/p/pango1.0/libpango-1.0-0_1.52.1+ds-1build1_amd64.deb", .sha256 = "09dfa5c881ab273ec6bc1830adcefdc407fcd619316e68fb26ca3a23d0fc9f54" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/p/pango1.0/libpangocairo-1.0-0_1.52.1+ds-1build1_amd64.deb", .sha256 = "98cf5fc9076c2911fe20dfc1e41cd8f686a2bb5d539b1105fab18105b0db1376" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/p/pango1.0/libpangoft2-1.0-0_1.52.1+ds-1build1_amd64.deb", .sha256 = "cc6bc9d86ef5f329edacaa4895232d8a9b8f95c5cbc77c3c460a3f64cecc213d" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/h/harfbuzz/libharfbuzz-dev_8.3.0-2build2_amd64.deb", .sha256 = "fe2eaa5977d6208328357e289d3166e079b100ce80feb70d4d13b929f508a3e0" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/h/harfbuzz/libharfbuzz0b_8.3.0-2build2_amd64.deb", .sha256 = "d6f7eea2244f98aa0463a056680d4629476bf624767ede301560e24add686b5c" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/c/cairo/libcairo2-dev_1.18.0-3build1_amd64.deb", .sha256 = "05d0ccb271a557d30a665d9f5f1420e9e60df02f49cfe4f8917674e218e5bb3c" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/c/cairo/libcairo2_1.18.0-3build1_amd64.deb", .sha256 = "96950b306889ff6e4248bb937b0a3b56e72dacf643fe732214ce375f0f6bbb36" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/c/cairo/libcairo-gobject2_1.18.0-3build1_amd64.deb", .sha256 = "f5483cbe43455fc9e9cba7f0e166bd0a731c02db2902ba562719848f72e8c403" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/a/at-spi2-core/libatk1.0-dev_2.52.0-1build1_amd64.deb", .sha256 = "ee13ff1d9b222874992cec38c9172efe79ac81bdf69b3aaf0c0153df5a2ef222" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/a/at-spi2-core/libatk1.0-0t64_2.52.0-1build1_amd64.deb", .sha256 = "42c5d4b00954f17c2c3c4b866844f691eb8b6d57bf08b59203e65f12dc84a4f9" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/g/gdk-pixbuf/libgdk-pixbuf-2.0-dev_2.42.10+dfsg-3ubuntu3.3_amd64.deb", .sha256 = "77571a946a9dea59ffefdd65c239467f5574aa2e422c2125e8e9b88021dabebe" },
+        .{ .url = "http://archive.ubuntu.com/ubuntu/pool/main/g/gdk-pixbuf/libgdk-pixbuf-2.0-0_2.42.10+dfsg-3ubuntu3.3_amd64.deb", .sha256 = "de84e0d777d9c9e39148d8491338e6b8c62bc2d066867266b1643a7a725a86ba" },
+    },
+    .aarch64 = .{
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/g/glib2.0/libglib2.0-dev_2.80.0-6ubuntu3.10_arm64.deb", .sha256 = "7cf6c28c1895d6843e901f68dd2d90be5a9280bfef70e1e8dfaa2096e14c13ad" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/g/glib2.0/libglib2.0-0t64_2.80.0-6ubuntu3.10_arm64.deb", .sha256 = "2bfe91a671013e938cdf228f87ea98123a93b328c0ab7654388c04a285e438b5" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/universe/i/ibus/libibus-1.0-dev_1.5.29-2_arm64.deb", .sha256 = "cc60fa5ddc6b180f24168c945692395f4e4a16b0b3d7e28d1ed70904c131b630" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/i/ibus/libibus-1.0-5_1.5.29-2_arm64.deb", .sha256 = "72992fcf5fa6c4185146818cccc779b499f6dab0db2f666e12fa9a3ae77c643a" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/g/gtk+3.0/libgtk-3-dev_3.24.41-4ubuntu1.3_arm64.deb", .sha256 = "c35abb301647f7803d215bc60a93517c90af51f0a62f6bdd2cfedb0ebcdb4eb7" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/g/gtk+3.0/libgtk-3-0t64_3.24.41-4ubuntu1.3_arm64.deb", .sha256 = "a6ce0b0e2a6553aa18e12cc4136b1e1bb5a85b9bd2bc04de3338369791af68c7" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/p/pango1.0/libpango1.0-dev_1.52.1+ds-1build1_arm64.deb", .sha256 = "c280fa4a955a6d199202acb4b1c4c2f948ba60f1efbfab42e842a01c27201c31" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/p/pango1.0/libpango-1.0-0_1.52.1+ds-1build1_arm64.deb", .sha256 = "4964bc4c61df425e41a32108e58a493cf311a8366a9cb2522e8ca07e30a81eb4" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/p/pango1.0/libpangocairo-1.0-0_1.52.1+ds-1build1_arm64.deb", .sha256 = "702129315e19f1bbf04a03d8c68c740b147b4d04ab677207e4b725c5ea174478" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/p/pango1.0/libpangoft2-1.0-0_1.52.1+ds-1build1_arm64.deb", .sha256 = "2fd4f45be306fbd8c9479a5180b496c9a98a33e5eee57d46e0e839a9cdb2b7c9" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/h/harfbuzz/libharfbuzz-dev_8.3.0-2build2_arm64.deb", .sha256 = "2897a334893c407502f3787fb1ca10ddfd2e35c05a19637396afcfd55873db8d" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/h/harfbuzz/libharfbuzz0b_8.3.0-2build2_arm64.deb", .sha256 = "f6917480f6e2df79563398f4fcfc25167fcaa512f35fe1f595a6e3fa7b78a46d" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/c/cairo/libcairo2-dev_1.18.0-3build1_arm64.deb", .sha256 = "5fa1bc87dfd6bdf24ba2a2adb629d98e1c01d347adfa8118aad74893639b6e60" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/c/cairo/libcairo2_1.18.0-3build1_arm64.deb", .sha256 = "d7820deae45510a3ca1c1f6e32baa2e8b12a234a410d185e42e75e9dd5fcd6da" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/c/cairo/libcairo-gobject2_1.18.0-3build1_arm64.deb", .sha256 = "413153d7898f726cd993a4e0f2f80d412ac42c8d717d49041d71342cc1d581cb" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/a/at-spi2-core/libatk1.0-dev_2.52.0-1build1_arm64.deb", .sha256 = "16b78b6db115e8e8f248a52cedd65335831c58dc485a718b937f59a957c1fb95" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/a/at-spi2-core/libatk1.0-0t64_2.52.0-1build1_arm64.deb", .sha256 = "8939633b3912c6476f3f501c2e8aa0fcc681dbd343b0a8138bf0ed5af8e9a77a" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/g/gdk-pixbuf/libgdk-pixbuf-2.0-dev_2.42.10+dfsg-3ubuntu3.3_arm64.deb", .sha256 = "5c5873d3a5d1166ca4a8a77a2b63c319f6ed700c6b8061b74f636d2957a9db2f" },
+        .{ .url = "http://ports.ubuntu.com/ubuntu-ports/pool/main/g/gdk-pixbuf/libgdk-pixbuf-2.0-0_2.42.10+dfsg-3ubuntu3.3_arm64.deb", .sha256 = "c6ccee122fe76846e04e0dbb9789bee63e1f3a9ab3dc1c383ff2087f941fdf90" },
+    },
+}
