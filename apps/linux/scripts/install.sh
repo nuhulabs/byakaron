@@ -75,17 +75,12 @@ byk_assert_glibc_20_04 "$SRC_BIN"
 # that is how an older app keeps showing after install.sh.
 SRC_APP="$REPO_ROOT/zig-out/bin/byakaron"
 APP_BUILT=0
-if pkg-config --exists gtk+-3.0 2>/dev/null; then
-    echo ">>> Building the GTK3 app..."
-    if as_build_user "zig build linux-app -Doptimize=ReleaseFast ${COMPAT_TARGET}"; then
-        APP_BUILT=1
-        byk_assert_glibc_20_04 "$SRC_APP"
-    else
-        echo "warning: linux-app build failed — leaving /usr/bin/byakaron unchanged" >&2
-    fi
+echo ">>> Building the GTK3 app..."
+if as_build_user "zig build linux-app -Doptimize=ReleaseFast ${COMPAT_TARGET}"; then
+    APP_BUILT=1
+    byk_assert_glibc_20_04 "$SRC_APP"
 else
-    echo "note: gtk+-3.0 not found — skipping the GTK app"
-    echo "      install it with: sudo bash apps/linux/scripts/setup_deps.sh"
+    echo "warning: linux-app build failed — leaving /usr/bin/byakaron unchanged" >&2
 fi
 
 SCHEMADIR="/usr/share/glib-2.0/schemas"

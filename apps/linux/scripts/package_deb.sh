@@ -73,14 +73,14 @@ byk_assert_glibc_20_04 "$SRC_BIN"
 
 # The GTK3 app ships in the same package as the keyboard, targeted at glibc
 # 2.31 so the UI runs on 20.04 / 22.04 / 24.04 like the engine.
+# Built against the pinned sysroot (see addLinux in build.zig), so no GTK -dev
+# packages are needed.
 SRC_APP="$REPO_ROOT/zig-out/bin/byakaron"
-if pkg-config --exists gtk+-3.0 2>/dev/null; then
-    echo ">>> Building the GTK3 app (ReleaseFast, $COMPAT_TARGET)..."
-    # No `|| true`: a failed build would package whatever older binary is
-    # still sitting in zig-out/bin.
-    ( cd "$REPO_ROOT" && zig build --cache-dir "$RELEASE_CACHE" linux-app -Doptimize=ReleaseFast $COMPAT_TARGET )
-    byk_assert_glibc_20_04 "$SRC_APP"
-fi
+echo ">>> Building the GTK3 app (ReleaseFast, $COMPAT_TARGET)..."
+# No `|| true`: a failed build would package whatever older binary is
+# still sitting in zig-out/bin.
+( cd "$REPO_ROOT" && zig build --cache-dir "$RELEASE_CACHE" linux-app -Doptimize=ReleaseFast $COMPAT_TARGET )
+byk_assert_glibc_20_04 "$SRC_APP"
 
 # --- 2. Assemble the package tree ------------------------------------------
 rm -rf "$STAGE"
@@ -120,7 +120,6 @@ if [[ -x "$SRC_APP" ]]; then
     echo ">>> Packaged the GTK app (Spelling / Layout / Setup)"
 else
     echo "note: $SRC_APP missing — the package will have the engine only"
-    echo "      install libgtk-3-dev to include the app"
 fi
 
 SPELL_DB="$REPO_ROOT/zig-out/db/spell.db"
