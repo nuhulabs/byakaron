@@ -102,7 +102,6 @@ pub fn build(b: *std.Build) !void {
     const spell_mod = engine.spell;
     const autocomplete_mod = engine.autocomplete;
     const autocomplete_mem_mod = engine.autocomplete_mem;
-    const jni_mod = engine.jni;
     const mod = engine.root;
 
     // Static lib (macOS Xcode links extracted objects). Shared lib (Windows C#
@@ -145,7 +144,6 @@ pub fn build(b: *std.Build) !void {
                     .{ .name = "spell", .module = spell_mod },
                     .{ .name = "autocomplete", .module = autocomplete_mod },
                     .{ .name = "autocomplete_mem", .module = autocomplete_mem_mod },
-                    .{ .name = "jni", .module = jni_mod },
                 },
             }),
         });
@@ -286,7 +284,6 @@ pub fn build(b: *std.Build) !void {
                 .{ .name = "spell", .module = spell_mod },
                 .{ .name = "autocomplete", .module = autocomplete_mod },
                 .{ .name = "autocomplete_mem", .module = autocomplete_mem_mod },
-                .{ .name = "jni", .module = jni_mod },
             },
         });
         const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
@@ -313,7 +310,7 @@ const Engine = struct {
     spell: *std.Build.Module,
     autocomplete: *std.Build.Module,
     autocomplete_mem: *std.Build.Module,
-    jni: *std.Build.Module,
+    jni: ?*std.Build.Module,
     root: *std.Build.Module,
 };
 
@@ -334,25 +331,29 @@ fn addEngine(
     });
     const zx_mod = ziex_dep.module("zx");
 
-    // zig-jni dependency for Android JNI bindings
-    const jni_dep = b.dependency("jni", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    const cjni = b.addTranslateC(.{
-        .root_source_file = b.path("src/ffi/jni_wrapper.h"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
-    cjni.addIncludePath(b.path("src/ffi/include"));
-    cjni.addIncludePath(jni_dep.path("src/include"));
-    const jni_mod = module(b, exported, "JNI", .{
-        .root_source_file = jni_dep.path("src/main/zig/lib.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    jni_mod.addImport("cjni", cjni.createModule());
+    // zig-jni for the Android JNI bridge (src/ffi/jni.zig). Android only: the
+    // JNI headers do not translate for other targets (e.g. win32/jni_md.h).
+    const jni_mod: ?*std.Build.Module = if (target.result.abi.isAndroid()) blk: {
+        const jni_dep = b.dependency("jni", .{
+            .target = target,
+            .optimize = optimize,
+        });
+        const cjni = b.addTranslateC(.{
+            .root_source_file = b.path("src/ffi/jni_wrapper.h"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        });
+        cjni.addIncludePath(b.path("src/ffi/include"));
+        cjni.addIncludePath(jni_dep.path("src/include"));
+        const m = module(b, exported, "JNI", .{
+            .root_source_file = jni_dep.path("src/main/zig/lib.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        m.addImport("cjni", cjni.createModule());
+        break :blk m;
+    } else null;
     {
         const app_opts = b.addOptions();
         app_opts.addOption(?[]const u8, "app_base_path", null);
@@ -413,9 +414,9 @@ fn addEngine(
             .{ .name = "spell", .module = spell_mod },
             .{ .name = "autocomplete", .module = autocomplete_mod },
             .{ .name = "autocomplete_mem", .module = autocomplete_mem_mod },
-            .{ .name = "jni", .module = jni_mod },
         },
     });
+    if (jni_mod) |m| mod.addImport("jni", m);
 
     return .{
         .zx = zx_mod,

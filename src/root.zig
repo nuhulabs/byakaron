@@ -16,11 +16,11 @@ pub const AutoCompleteMem = @import("autocomplete_mem");
 pub const AutoCompleteSqlite = @import("AutoComplete/Sqlite.zig");
 pub const TransliterationMode = @import("transliteration/transliteration.zig").Mode;
 
-// Pull in the C-ABI FFI and JNI exports
-// so they are included when this module is built as a static/shared library.
+// Pull in the C-ABI FFI exports (and the JNI bridge on Android) so they are
+// included when this module is built as a static/shared library.
 comptime {
     _ = @import("ffi/ffi.zig");
-    _ = @import("ffi/jni.zig");
+    if (@import("builtin").abi.isAndroid()) _ = @import("ffi/jni.zig");
 }
 
 test {
