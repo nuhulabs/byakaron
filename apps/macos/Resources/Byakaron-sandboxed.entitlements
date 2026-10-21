@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <!-- OPTIONAL: the sandboxed app variant. Sign the main app with this file
-         (SANDBOX=1 ./scripts/build.sh) when you want the App Store-style sandbox.
+         (zig build macos -Dmacos-config=sandboxed) when you want the App Store-style sandbox.
 
          A sandboxed app can't copy/register the keyboard itself, so users install
          it via the Setup guide's "Reveal Keyboard" button and drag it into

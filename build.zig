@@ -155,40 +155,46 @@ pub fn build(b: *std.Build) !void {
         run_step.dependOn(&run_cmd.step);
     }
 
-    // Build / run macOS app via the Xcode project (apps/macos/scripts/build.sh).
-    // The old hand-rolled swiftc graph depended on removed resources (Info-app.plist,
-    // AppIcon.icns, iconTemplate.pdf); Xcode owns Info.plist generation and icons now.
+    // macOS app (apps/macos) through its Xcode project. The build graph provides
+    // everything Xcode links and bundles under zig-out/ (libbyakaron.a +
+    // byakaron.h in zig-out/macos/, Dictionary.json + spell.db in zig-out/db/), and
+    // src/build/xcode.zig runs xcodebuild with its progress in zig's tree.
+    //   zig build macos        → apps/macos/build/Byakaron.app
+    //   zig build run-macos    → build and open it
     if (builtin.os.tag == .macos) {
-        const macos_config = b.option(
-            []const u8,
-            "macos-config",
-            "Xcode configuration for macos / run-macos: debug or release",
-        ) orelse "debug";
+        const config = b.option(MacosConfig, "macos-config", "Xcode configuration for macos / run-macos") orelse .debug;
 
-        const build_script = rootPath(b, "apps/macos/scripts/build.sh");
-        const app_bundle = rootPath(b, "apps/macos/build/Byakaron.app");
+        // ReleaseFast always: a Debug build compiles sqlite3.c with UBSan, whose
+        // runtime Xcode's linker does not provide.
+        const engine_mac = addEngine(b, b.resolveTargetQuery(.{ .cpu_arch = .aarch64, .os_tag = .macos }), .ReleaseFast, avro.words, false);
+        const mac_lib = b.addLibrary(.{ .linkage = .static, .name = "byakaron", .root_module = engine_mac.root });
 
-        const macos_build = b.addSystemCommand(&.{ "bash", build_script, macos_config });
-        macos_build.setCwd(b.path("apps/macos"));
-        macos_build.has_side_effects = true;
-        // Xcode / build_zig.sh need zig on PATH: put the zig running this build first.
-        // Preserve the rest of the inherited environment; only prepend zig + Homebrew.
-        const zig_dir = std.fs.path.dirname(b.graph.zig_exe) orelse "/usr/bin";
-        const prev_path = macos_build.getEnvMap().get("PATH") orelse "/usr/bin:/bin";
-        macos_build.setEnvironmentVariable(
-            "PATH",
-            b.fmt("{s}:/opt/homebrew/bin:/usr/local/bin:{s}", .{ zig_dir, prev_path }),
-        );
+        const xcode = b.addRunArtifact(hostExe(b, "xcode", "src/build/xcode.zig"));
+        xcode.addArgs(&.{
+            rootPath(b, "apps/macos/Byakaron.xcodeproj"),
+            "Byakaron",
+            switch (config) {
+                .debug => "Debug",
+                .release => "Release",
+                .sandboxed => "Release-Sandboxed",
+            },
+            rootPath(b, "apps/macos/build/DerivedData"),
+            rootPath(b, "apps/macos/build/Byakaron.app"),
+        });
+        _ = xcode.addOutputDirectoryArg("log");
+        // Xcode tracks its own inputs; always let it decide what to rebuild.
+        xcode.has_side_effects = true;
+        xcode.step.dependOn(&b.addInstallFileWithDir(mac_lib.getEmittedBin(), .{ .custom = "macos/lib" }, "libbyakaron.a").step);
+        xcode.step.dependOn(&b.addInstallFileWithDir(b.path("src/ffi/byakaron.h"), .{ .custom = "macos/include" }, "byakaron.h").step);
+        xcode.step.dependOn(install_lexicon);
+        xcode.step.dependOn(&install_spell_db.step);
 
-        const macos_step = b.step("macos", "Build macOS app (Byakaron.app via xcodebuild)");
-        macos_step.dependOn(&macos_build.step);
+        b.step("macos", "Build the macOS app → apps/macos/build/Byakaron.app").dependOn(&xcode.step);
 
-        const open_app = b.addSystemCommand(&.{ "open", app_bundle });
-        open_app.step.dependOn(&macos_build.step);
+        const open_app = b.addSystemCommand(&.{ "open", rootPath(b, "apps/macos/build/Byakaron.app") });
+        open_app.step.dependOn(&xcode.step);
         open_app.has_side_effects = true;
-
-        const run_macos_step = b.step("run-macos", "Build and open Byakaron.app (not the keyboard)");
-        run_macos_step.dependOn(&open_app.step);
+        b.step("run-macos", "Build and open Byakaron.app (not the keyboard)").dependOn(&open_app.step);
     }
 
     // Web app (apps/web): a ziex app in this build graph, so it shares the cache.
@@ -727,6 +733,10 @@ fn addLinux(
 }
 
 const LinuxArch = enum { x86_64, aarch64 };
+
+/// Xcode configurations: Debug, Release (non-sandboxed, auto-installs the
+/// keyboard), Release-Sandboxed (sandboxed app, manual keyboard install).
+const MacosConfig = enum { debug, release, sandboxed };
 
 const Sysroot = struct {
     root: std.Build.LazyPath,

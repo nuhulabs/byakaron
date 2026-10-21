@@ -14,8 +14,6 @@ zig-pkg/
 # Pre-`zig build db` local pipeline outputs
 packages/
 
-# Staged from zig-out by apps/macos/scripts/build_zig.sh
-apps/macos/Resources/Dictionary.json
 
 # Ziex (apps/web) bundle / export output
 /dist

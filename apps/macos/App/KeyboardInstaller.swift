@@ -20,12 +20,12 @@
     enum KeyboardInstaller {
 
         /// File name of the embedded helper bundle and its executable. Must match the
-        /// names produced by scripts/build.sh and recorded in Info-keyboard.plist.
+        /// names produced by the Xcode build (zig build macos) and recorded in Info-keyboard.plist.
         static let imeBundleName = "Byakaron Keyboard.app"
         private static let imeExecutableName = "Byakaron Keyboard"
 
         /// Identifier of the Byakaron input source. Both build systems in this repo
-        /// (scripts/build.sh and Byakaron.xcodeproj) now stamp the same id, recorded
+        /// (zig build macos via Byakaron.xcodeproj) now stamps the same id, recorded
         /// in Resources/Info-keyboard.plist as TISInputSourceID / CFBundleIdentifier.
         ///
         /// IMPORTANT: macOS only treats a bundle as a keyboard input source when its
