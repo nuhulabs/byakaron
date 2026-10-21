@@ -213,6 +213,19 @@ body {
     color: #5b6573;
 }
 
+.tool-toggle {
+    width: auto;
+    min-width: 34px;
+    padding: 0 0.55rem;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.tool-toggle.is-on {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
 .tool-btn:hover {
     background: #fff;
     color: var(--ink);
@@ -319,6 +332,61 @@ body {
     color: #a0a7b4;
 }
 
+/* —— Spell-check activity: fades in place, never shifts the layout —— */
+.check-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: 0.4rem;
+    vertical-align: middle;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.check-dot.is-busy {
+    opacity: 0.8;
+    transition-delay: 0.25s;
+}
+
+/* —— Completion menu (anchored at the caret via --caret-x / --caret-y) —— */
+.suggest-menu {
+    position: absolute;
+    z-index: 5;
+    left: min(var(--caret-x, 1rem), calc(100% - 12rem));
+    top: var(--caret-y, 2.5rem);
+    min-width: 9rem;
+    max-width: 18rem;
+    margin: 0.15rem 0 0;
+    padding: 0.25rem;
+    list-style: none;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(26, 29, 36, 0.12);
+}
+
+.suggest-item {
+    padding: 0.2rem 0.6rem;
+    border-radius: 7px;
+    font-size: 1.1rem;
+    line-height: 1.6;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.suggest-item:hover {
+    background: var(--sidebar);
+}
+
+.suggest-item.is-active {
+    background: var(--accent);
+    color: #fff;
+}
+
 /* —— Fix bar —— */
 .fix-bar {
     display: grid;
@@ -334,6 +402,34 @@ body {
 
 .fix-bar-ok {
     grid-template-columns: 1fr auto;
+}
+
+/* Holds the fix bar's place whether it shows an issue, the all-clear, or
+   nothing, so the editor above never changes height. */
+.fix-slot {
+    min-height: calc(4.25rem + 0.65rem);
+}
+
+.fix-slot .fix-bar {
+    min-height: 4.25rem;
+}
+
+/* Until the browser-saved draft is restored (see `restored` in page.zx), keep
+   what it would change invisible but in place. The animation reveals the page
+   anyway if the client never starts. */
+.is-restoring .editor,
+.is-restoring .issue-list,
+.is-restoring .brand-meta,
+.is-restoring .fix-slot,
+.is-restoring .status-bar > div {
+    visibility: hidden;
+    animation: reveal 0s 3s forwards;
+}
+
+@keyframes reveal {
+    to {
+        visibility: visible;
+    }
 }
 
 .fix-target {

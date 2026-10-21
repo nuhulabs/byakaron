@@ -20,8 +20,9 @@ engine: AutoComplete,
 
 /// Heap-allocate a Mem backend (stable pointer for the vtable ctx).
 pub fn create(allocator: std.mem.Allocator) !*Mem {
-    // Global lexicon index is process-lifetime; always back it with c_allocator.
-    try ensureWords(std.heap.c_allocator);
+    // Global lexicon index is process-lifetime; always back it with page_allocator
+    // (no libc needed, so the web client can embed it in wasm too).
+    try ensureWords(std.heap.page_allocator);
     const self = try allocator.create(Mem);
     self.* = .{ .engine = undefined };
     self.engine = AutoComplete.init(&vtable, self);

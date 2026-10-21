@@ -258,6 +258,17 @@ pub fn build(b: *std.Build) !void {
     //   zig build serve-web  production-mode server
     // Skipped on Android, where only libbyakaron.so is built.
     if (!is_android) {
+        // Engine pieces the page also runs in the browser (autocomplete +
+        // Avro transliteration). No target of their own, so the server exe and
+        // ziex's client wasm each build them for their own target.
+        const web_autocomplete = b.createModule(.{ .root_source_file = b.path("src/AutoComplete.zig") });
+        const web_autocomplete_mem = b.createModule(.{
+            .root_source_file = b.path("src/AutoComplete/Mem.zig"),
+            .imports = &.{.{ .name = "autocomplete", .module = web_autocomplete }},
+        });
+        web_autocomplete_mem.addAnonymousImport("avro_dictionary", .{ .root_source_file = avro.words });
+        const web_transliteration = b.createModule(.{ .root_source_file = b.path("src/transliteration/transliteration.zig") });
+
         const web_exe = b.addExecutable(.{
             .name = "web",
             .root_module = b.createModule(.{
@@ -267,20 +278,28 @@ pub fn build(b: *std.Build) !void {
                 .imports = &.{
                     .{ .name = "tokenization", .module = tokenization_mod },
                     .{ .name = "spell", .module = spell_mod },
-                    .{ .name = "autocomplete", .module = autocomplete_mod },
+                    .{ .name = "autocomplete", .module = web_autocomplete },
+                    // Declared here, before `ziex.init`, so ziex also hands them
+                    // to the client wasm (imports added later stay server-only).
+                    .{ .name = "autocomplete_mem", .module = web_autocomplete_mem },
+                    .{ .name = "transliteration", .module = web_transliteration },
                 },
             }),
         });
         // SQLite as a library only: the app opens zig-out/db/spell.db itself
         // (apps/web/app/pages/spell.zig) instead of ziex's data/db/default.db.
+        // Client-side `zx.kv` (browser localStorage) keeps the draft and settings.
         const web = try ziex.init(b, web_exe, .{
-            .app = .{ .path = b.path("apps/web/app"), .features = .{ .sqlite = .{} } },
+            .app = .{ .path = b.path("apps/web/app"), .features = .{
+                .sqlite = .{},
+                .kv = .{ .client = .enabled },
+            } },
             .cli = .{ .steps = .{ .dev = "run-web", .serve = "serve-web" } },
         });
         // SQLite backends bound to the app's `zx` module so they share its `zx.Db` type.
         inline for (.{
             .{ "spell_sqlite", "src/Spell/Sqlite.zig", "spell", spell_mod },
-            .{ "autocomplete_sqlite", "src/AutoComplete/Sqlite.zig", "autocomplete", autocomplete_mod },
+            .{ "autocomplete_sqlite", "src/AutoComplete/Sqlite.zig", "autocomplete", web_autocomplete },
         }) |m| {
             web.addImport(m[0], b.createModule(.{
                 .root_source_file = b.path(m[1]),
@@ -292,7 +311,6 @@ pub fn build(b: *std.Build) !void {
                 },
             }));
         }
-        web.addImport("autocomplete_mem", autocomplete_mem_mod);
         for ([_][]const u8{ "run-web", "serve-web" }) |name| {
             b.top_level_steps.get(name).?.step.dependOn(&install_spell_db.step);
         }
