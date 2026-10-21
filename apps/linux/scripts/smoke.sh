@@ -30,7 +30,7 @@ cc -O2 -Wall -Wextra -o "$BUILD_DIR/bin/smoke" \
     $(pkg-config --libs glib-2.0) \
     -Wl,-rpath,"$BUILD_DIR/lib"
 
-SPELL_DB="${BYAKARON_SPELL_DB:-$PROJECT_ROOT/../../packages/data/spell.db}"
+SPELL_DB="${BYAKARON_SPELL_DB:-$PROJECT_ROOT/../../zig-out/db/spell.db}"
 if [[ -f "$SPELL_DB" ]]; then
     export BYAKARON_SPELL_DB="$SPELL_DB"
 else

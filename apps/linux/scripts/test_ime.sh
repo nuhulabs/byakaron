@@ -19,8 +19,8 @@ export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
 ZIG="${ZIG_EXE:-$(command -v zig || true)}"
 [[ -n "$ZIG" ]] || { echo "error: no 'zig' on PATH" >&2; exit 1; }
 
-if [[ -z "${BYAKARON_SPELL_DB:-}" && -f "$REPO_ROOT/packages/data/spell.db" ]]; then
-    export BYAKARON_SPELL_DB="$REPO_ROOT/packages/data/spell.db"
+if [[ -z "${BYAKARON_SPELL_DB:-}" && -f "$REPO_ROOT/zig-out/db/spell.db" ]]; then
+    export BYAKARON_SPELL_DB="$REPO_ROOT/zig-out/db/spell.db"
 fi
 
 # Default settings, not the desktop's: the user's own choices (Bangla digits
