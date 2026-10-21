@@ -14,6 +14,8 @@ Requires Zig **0.17.0** (pinned in `.tool-versions`).
 | `apps/web`         | Web spell-check UI (ziex app, part of the root build)             |
 | `apps/macos`       | macOS app + IME (Xcode)                                           |
 | `apps/windows`     | WinUI app + TSF IME                                               |
+| `apps/linux`       | IBus engine, GTK 3 app, optional Fcitx5 (C over the FFI)          |
+| `apps/android`     | Android `.so` build script (`libbyakaron.so` + JNI)               |
 
 ## Data
 
@@ -40,4 +42,6 @@ zig build db         # spell.db (see Data)
 zig build macos      # Byakaron.app via xcodebuild (stages spell.db + Dictionary.json)
 zig build run-web    # apps/web dev server (builds spell.db first); serve-web for prod mode
 zig build windows    # Byakaron-Setup.exe (on Windows)
+zig build linux      # Linux IBus engine; linux-app for the GTK app. Cross-compiles from
+                     # macOS/Windows against a pinned Ubuntu sysroot (-Dlinux-arch=aarch64)
 ```
