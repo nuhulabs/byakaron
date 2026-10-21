@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Remove what install.sh added.
 #
-#     sudo bash platforms/linux/scripts/uninstall.sh
+#     sudo bash apps/linux/scripts/uninstall.sh
 
 if [[ $EUID -ne 0 ]]; then
     echo "error: this needs root — run: sudo bash $0" >&2

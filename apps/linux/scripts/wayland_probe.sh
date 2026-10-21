@@ -6,7 +6,7 @@ set -euo pipefail
 # (when mutter is installed) open a nested Wayland compositor to prove the
 # text-input-v3 stack actually comes up.
 #
-#     bash platforms/linux/scripts/wayland_probe.sh
+#     bash apps/linux/scripts/wayland_probe.sh
 #
 # The engine is not launched. It has no X11 or Wayland calls — Keyboard/engine.c
 # only speaks IBusEngine — so the question is whether *clients* on this machine

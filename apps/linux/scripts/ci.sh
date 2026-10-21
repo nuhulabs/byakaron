@@ -5,7 +5,7 @@ set -euo pipefail
 # What GitHub Actions runs on ubuntu-latest, and what you can run here to see
 # the same failures before pushing.
 #
-#     bash platforms/linux/scripts/ci.sh
+#     bash apps/linux/scripts/ci.sh
 #
 # Builds the shared library, the IBus engine, the GTK app, the IME test, then
 # runs smoke.sh. The IME integration test needs an ibus-daemon: in CI (no

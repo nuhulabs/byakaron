@@ -4,7 +4,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Write the website's installer files from scripts/web_install.sh:
 #
-#     bash platforms/linux/scripts/site_installers.sh <dir>
+#     bash apps/linux/scripts/site_installers.sh <dir>
 #
 #   <dir>/install.sh        the one command the page shows; detects the CPU
 #   <dir>/install-amd64.sh  \  the same installer under the names the page used

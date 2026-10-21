@@ -7,7 +7,7 @@ set -uo pipefail
 # the result with test_installed.sh (files, icon, app window, typing through
 # the installed engine).
 #
-#     bash platforms/linux/scripts/test_install_matrix.sh <ime-test binary> [image ...]
+#     bash apps/linux/scripts/test_install_matrix.sh <ime-test binary> [image ...]
 #
 # Default images: ubuntu:20.04 ubuntu:22.04 ubuntu:24.04 debian:bookworm
 # (bookworm is what Raspberry Pi OS 64-bit is built on). Run it on an arm64

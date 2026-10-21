@@ -84,7 +84,7 @@ project still passes.
 
 ```bash
 cd ~/Code/byakaron
-sudo bash platforms/linux/scripts/setup_deps.sh
+sudo bash apps/linux/scripts/setup_deps.sh
 ```
 
 That installs IBus, GTK3, and the C headers the engine and app need.
@@ -116,9 +116,9 @@ from another Zig community mirror and unpack it the same way.
 cd ~/Code/byakaron
 
 # optional sanity check (ami → আমি)
-bash platforms/linux/scripts/smoke.sh
+bash apps/linux/scripts/smoke.sh
 
-sudo bash platforms/linux/scripts/install.sh
+sudo bash apps/linux/scripts/install.sh
 ```
 
 `install.sh` detects `aarch64` and builds with
@@ -141,8 +141,8 @@ Typing does not need this. Spell-check in the GTK app does (`spell.db` is
 about 364 MB).
 
 ```bash
-bash platforms/linux/scripts/prepare_spell_db.sh
-sudo bash platforms/linux/scripts/install.sh
+bash apps/linux/scripts/prepare_spell_db.sh
+sudo bash apps/linux/scripts/install.sh
 ```
 
 ### Or package a Pi-native `.deb`
@@ -151,8 +151,8 @@ This builds one complete file (keyboard, GTK app, and `spell.db`). If
 `spell.db` is not already generated, the script builds it first.
 
 ```bash
-bash platforms/linux/scripts/package_deb.sh
-sudo apt install ./platforms/linux/build/byakaron_0.2.0_arm64.deb
+bash apps/linux/scripts/package_deb.sh
+sudo apt install ./apps/linux/build/byakaron_0.2.0_arm64.deb
 ```
 
 That file is `arm64`, not `amd64`. Use `apt`, not `dpkg -i`.
@@ -173,7 +173,7 @@ If Byakaron is missing from the Bangla list, log out and back in, then add
 the input source again.
 
 ```bash
-sudo bash platforms/linux/scripts/uninstall.sh
+sudo bash apps/linux/scripts/uninstall.sh
 ```
 
 removes everything `install.sh` added.

@@ -4,7 +4,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Type Bangla into a GtkEntry through GTK_IM_MODULE=ibus.
 #
-#     bash platforms/linux/scripts/wayland_type.sh
+#     bash apps/linux/scripts/wayland_type.sh
 #
 # Starts a throwaway byakaron-ibus (same as test_ime.sh), then either:
 #   - a nested mutter compositor, forcing GDK_BACKEND=wayland, or

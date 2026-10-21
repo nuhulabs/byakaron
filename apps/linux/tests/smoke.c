@@ -7,7 +7,7 @@
  * paths cannot be reached through the engine, because the only producer in the
  * repository never emits malformed input.
  *
- * Build and run with: platforms/linux/scripts/smoke.sh
+ * Build and run with: apps/linux/scripts/smoke.sh
  */
 #include <stdio.h>
 #include <string.h>

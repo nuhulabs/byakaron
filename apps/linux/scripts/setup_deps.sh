@@ -4,10 +4,10 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Install the system development packages the Linux port needs.
 #
-#   sudo bash platforms/linux/scripts/setup_deps.sh
+#   sudo bash apps/linux/scripts/setup_deps.sh
 #
 # Zig itself is NOT installed here: this branch is pinned to a specific 0.17-dev
-# build that the distro does not ship. See platforms/linux/README.md.
+# build that the distro does not ship. See apps/linux/README.md.
 # ---------------------------------------------------------------------------
 
 if [[ $EUID -ne 0 ]]; then

@@ -4,7 +4,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Run the IME integration test against a throwaway engine process.
 #
-#     bash platforms/linux/scripts/test_ime.sh
+#     bash apps/linux/scripts/test_ime.sh
 #
 # Starts byakaron-ibus registered with the running ibus-daemon, drives it
 # through a private input context, then shuts it down again. The desktop's own
