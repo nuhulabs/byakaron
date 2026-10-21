@@ -81,41 +81,35 @@ to link it.
 ### 1. System packages
 
 ```bash
-sudo bash apps/linux/scripts/setup_deps.sh
+sudo bash apps/linux/scripts/setup_deps.sh          # IBus, GTK3 IM module, glib-compile-schemas
+sudo bash apps/linux/scripts/setup_deps.sh --test   # + compiler and -dev packages for the tests
 ```
+
+Building needs no `-dev` packages: `zig build linux` / `linux-app` compile
+against a pinned Ubuntu 24.04 sysroot (IBus, GLib, GTK 3 headers and libraries,
+SHA-256 checked) that the build downloads and caches itself, targeting glibc
+2.31 so the binaries run on Ubuntu 20.04 and newer. The same build works from
+macOS or Windows (`-Dlinux-arch=aarch64` for ARM). For an offline or distro
+build, `-Dlinux-system-libs=true` links the system libraries through
+pkg-config instead.
 
 ### 2. Zig
 
-This branch is pinned to **`0.17.0-dev.1422+e863bf3be`**. Newer builds do not
-work — Zig master renamed the `Optimize` enum, which breaks the `ziex`
-dependency. Note that `.tool-versions` says `zig master`; that is stale.
-
-ziglang.org prunes old dev builds, so fetch it from a community mirror.
-On **ARM64** (Raspberry Pi / Ubuntu `aarch64`), use the aarch64 tarball instead
-— see [ARM.md](ARM.md).
+Use Zig **0.17.0**, pinned in the repository's `.tool-versions`
+(<https://ziglang.org/download/>). On **ARM64** (Raspberry Pi / Ubuntu
+`aarch64`), see [ARM.md](ARM.md).
 
 ```bash
-V=0.17.0-dev.1422+e863bf3be
-curl -fSL -o /tmp/zig.tar.xz \
-  "https://pkg.hexops.org/zig/builds/zig-x86_64-linux-$V.tar.xz"
+V=0.17.0
+curl -fSL -o /tmp/zig.tar.xz "https://ziglang.org/download/$V/zig-x86_64-linux-$V.tar.xz"
 tar -C ~/.local -xf /tmp/zig.tar.xz
 ln -sfn ~/.local/zig-x86_64-linux-$V/zig ~/.local/bin/zig
 ```
 
-### 3. The `ziex` path dependency
+All other dependencies (ziex, SQLite, the sysroot packages) are fetched by
+`zig build` from `build.zig.zon`.
 
-`build.zig.zon` refers to `ziex` by relative path (`../../ziex-dev/ziex`), so it
-must be checked out as a sibling of the repository's parent directory:
-
-```bash
-git clone https://github.com/ziex-dev/ziex.git ~/ziex-dev/ziex
-git -C ~/ziex-dev/ziex checkout 29f9a85b
-```
-
-Commit `29f9a85b` matters: the commit after it removes the `exclude-core-lang`
-build option that our `build.zig` passes.
-
-### 4. Verify the engine
+### 3. Verify the engine
 
 ```bash
 bash apps/linux/scripts/smoke.sh
@@ -137,11 +131,11 @@ zig build run-linux-app  # build and run the app
 ```
 
 The engine binary links the Zig core statically, so it is self-contained apart
-from system IBus and GLib. `linux-app` is a separate step on purpose: the engine
-must stay buildable on a box that has only `libibus-1.0-dev`, while the app also
-needs `libgtk-3-dev`. GTK3 3.24 is on Ubuntu 20.04, 22.04, and 24.04. `linux-fcitx5` is a third step for
-the same reason: it needs `libfcitx5core-dev`, which a GNOME box does not have,
-and installing those headers does not switch the session's input method.
+from system IBus and GLib at runtime. GTK3 3.24 is on Ubuntu 20.04, 22.04, and
+24.04. `linux-fcitx5` is a separate step: it builds against the host's
+`libfcitx5core-dev` (it is not in the pinned sysroot), which a GNOME box does
+not have, and installing those headers does not switch the session's input
+method.
 
 ### Development run
 
@@ -430,22 +424,19 @@ nested-mutter checks used by `ci.sh`.
 
 ## CI
 
-`.github/workflows/linux.yml` runs on every push and pull request:
+`.github/workflows/ci.yml` runs on every branch push and pull request, on
+`ubuntu-latest` (amd64) and `ubuntu-24.04-arm` (arm64):
 
-1. Ubuntu packages (`libibus-1.0-dev`, `libgtk-3-dev`, `libgtk-4-dev` for IME tests, `libfcitx5core-dev`, `ibus`, `xvfb`)
-2. Zig **0.17.0-dev.1422+e863bf3be** via `mlugg/setup-zig` (not master)
-3. Clone `ziex` at commit `29f9a85b` to `../../ziex-dev/ziex`, which is what
-   `build.zig.zon` already points at locally
-4. `bash apps/linux/scripts/ci.sh` — `zig build linux linux-app linux-test
-   -Dshared` targeted at glibc 2.31, `byakaron --help` / `--version`, smoke test,
-   IME integration test against a throwaway Xvfb+ibus-daemon, display-path probe,
-   Fcitx5 addon (headers are installed on the runner; same glibc 2.31 ceiling),
-   GtkEntry typing through the IBus IM module
+1. `setup_deps.sh --test` plus `libfcitx5core-dev`, `xvfb`, `appstream`, …
+2. Zig **0.17.0** via `mlugg/setup-zig`
+3. `bash apps/linux/scripts/ci.sh` — `zig build linux linux-app linux-test
+   -Dshared` against the pinned sysroot (glibc 2.31), `byakaron --help` /
+   `--version`, smoke test, IME integration test against a throwaway
+   Xvfb+ibus-daemon, display-path probe, Fcitx5 addon (system headers; same
+   glibc 2.31 ceiling), GtkEntry typing through the IBus IM module
 
-`spell.db` is not built on the runner (364 MB). Smoke skips those assertions
-when the file is missing; typing and candidates do not need it.
-
-It runs these on both `ubuntu-latest` (amd64) and `ubuntu-24.04-arm` (arm64).
+`spell.db` is not built there. Smoke skips those assertions when the file is
+missing; typing and candidates do not need it.
 
 A second job, **GNOME Wayland typing**, installs `gnome-shell` and runs
 `scripts/gnome_wayland_test.sh` (see [Wayland](#wayland)): GTK3 and GTK4 apps
@@ -453,7 +444,11 @@ on a headless GNOME Shell, typed into through `org.gnome.Mutter.RemoteDesktop`.
 On the runner GNOME Shell does not give a new window keyboard focus, so the test
 clicks into the window before typing, as a user would.
 
-A `linux-*` tag also packages, installs and tests both `.deb`s (see Releasing).
+`.github/workflows/cd.yml` runs on every push to `main`: it builds `spell.db`
+once (cached on its inputs), packages, installs and types through both `.deb`s,
+and runs the website installer in clean Ubuntu 20.04–24.04 / Debian 12
+containers. `.github/workflows/release.yml` runs the same for a `linux-*` tag or
+a published release (see Releasing).
 
 To run the same steps locally:
 
@@ -476,7 +471,7 @@ bash $S/release.sh website 0.2.0                                    # site insta
 ```
 
 `prepare` refuses a dirty tree, an existing tag, or a version string it could
-not replace. `publish` waits for the tag's CI run, downloads both `.deb`s
+not replace. `publish` waits for the tag's `release.yml` run, downloads both `.deb`s
 (resuming, since GitHub's artifact downloads time out on slow links), checks
 package/version/architecture, and creates the release on
 `nuhulabs/Byakaron-Assets` marked Latest, then compares the uploaded checksums.

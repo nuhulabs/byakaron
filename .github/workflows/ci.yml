@@ -1,18 +1,19 @@
-# Build and smoke-test the Linux IBus engine + GTK app on a stock Ubuntu runner.
+# Build and test on every branch push and pull request.
 #
-# Zig is pinned to the same 0.17-dev.1422 the branch was developed against —
-# master renamed an enum and will not compile ziex. ziex itself is a *path*
-# dependency (`../../ziex-dev/ziex` in build.zig.zon), so CI clones that pin
-# next to the workspace rather than rewriting the zon file.
-name: linux
+# Each job is a matrix over `os` / `arch` so other platforms can join later.
+# Linux targets build against the pinned Ubuntu sysroot (`zig build linux`
+# downloads it), so the runner only needs packages for running and for the C
+# test helpers (`setup_deps.sh --test`).
+name: ci
 
 on:
   push:
+    branches: ["**"]
   pull_request:
 
 jobs:
-  build:
-    name: engine + app + tests (${{ matrix.arch }})
+  linux:
+    name: linux engine + app + tests (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     # arm64 on a native GitHub ARM runner, not qemu: the site promises arm64,
@@ -32,18 +33,9 @@ jobs:
 
       - name: System packages
         run: |
-          sudo apt-get update
+          sudo bash apps/linux/scripts/setup_deps.sh --test
           sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            pkg-config \
-            libibus-1.0-dev \
-            libglib2.0-dev \
-            libglib2.0-bin \
-            libgtk-3-dev \
-            libgtk-4-dev \
             libfcitx5core-dev \
-            ibus \
-            ibus-gtk3 \
             ibus-gtk4 \
             xvfb \
             dbus-x11 \
@@ -52,18 +44,10 @@ jobs:
             gir1.2-gdkpixbuf-2.0 \
             librsvg2-common
 
-      - name: Install Zig 0.17.0-dev.1422
+      - name: Install Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.17.0-dev.1422+e863bf3be
-
-      - name: Clone ziex at the path build.zig.zon expects
-        run: |
-          dest="${GITHUB_WORKSPACE}/../../ziex-dev/ziex"
-          mkdir -p "$(dirname "$dest")"
-          git clone --filter=blob:none https://github.com/ziex-dev/ziex.git "$dest"
-          git -C "$dest" checkout --detach 29f9a85b
-          git -C "$dest" rev-parse HEAD
+          version: 0.17.0
 
       - name: Build, smoke, IME test
         run: bash apps/linux/scripts/ci.sh
@@ -72,8 +56,8 @@ jobs:
   # (headless, private dbus/dconf/ibus), through org.gnome.Mutter.RemoteDesktop:
   # the path a keyboard takes on an "Ubuntu on Wayland" login. Arrow keys,
   # candidates, click-commit, Shift, numerals, and live settings.
-  wayland:
-    name: GNOME Wayland typing
+  linux-wayland:
+    name: linux GNOME Wayland typing
     runs-on: ubuntu-24.04
     timeout-minutes: 30
 
@@ -83,23 +67,16 @@ jobs:
 
       - name: System packages
         run: |
-          sudo bash apps/linux/scripts/setup_deps.sh
+          sudo bash apps/linux/scripts/setup_deps.sh --test
           sudo apt-get install -y --no-install-recommends \
             gnome-shell mutter dbus-x11 ibus python3-gi \
             gir1.2-gtk-3.0 gir1.2-gtk-4.0 libgl1-mesa-dri \
             xdg-desktop-portal gsettings-desktop-schemas
 
-      - name: Install Zig 0.17.0-dev.1422
+      - name: Install Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.17.0-dev.1422+e863bf3be
-
-      - name: Clone ziex at the path build.zig.zon expects
-        run: |
-          dest="${GITHUB_WORKSPACE}/../../ziex-dev/ziex"
-          mkdir -p "$(dirname "$dest")"
-          git clone --filter=blob:none https://github.com/ziex-dev/ziex.git "$dest"
-          git -C "$dest" checkout --detach 29f9a85b
+          version: 0.17.0
 
       - name: Build the engine
         run: zig build linux -Doptimize=ReleaseFast
@@ -113,107 +90,3 @@ jobs:
           for f in apps/linux/build/gnome-wayland/*.log; do
             echo "=== $f"; tail -40 "$f"
           done
-
-  # Installs the way a user does — the website installer, which detects the CPU
-  # and downloads the latest release — in clean Ubuntu 20.04 / 22.04 / 24.04
-  # and Debian 12 (Raspberry Pi OS 64-bit's base) containers, on both CPUs,
-  # then checks files, icon, the app window and typing through the installed
-  # engine. This is what a Raspberry Pi user runs.
-  install:
-    name: install (${{ matrix.arch }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            arch: amd64
-          - os: ubuntu-24.04-arm
-            arch: arm64
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: System packages
-        run: sudo bash apps/linux/scripts/setup_deps.sh
-
-      - name: Install Zig 0.17.0-dev.1422
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0-dev.1422+e863bf3be
-
-      - name: Clone ziex at the path build.zig.zon expects
-        run: |
-          dest="${GITHUB_WORKSPACE}/../../ziex-dev/ziex"
-          mkdir -p "$(dirname "$dest")"
-          git clone --filter=blob:none https://github.com/ziex-dev/ziex.git "$dest"
-          git -C "$dest" checkout --detach 29f9a85b
-
-      - name: IME test binary (glibc 2.31)
-        run: |
-          source apps/linux/scripts/compat.sh
-          zig build linux-test -Doptimize=ReleaseFast $(byk_compat_target_flag)
-
-      - name: Install and test in clean containers
-        run: bash apps/linux/scripts/test_install_matrix.sh zig-out/bin/byakaron-ime-test
-
-  # A `linux-*` tag (linux-0.1.8, ...) also builds the shareable .deb for both
-  # CPUs, installs it on the runner, and types through the *installed* engine.
-  # The .debs are uploaded as artifacts; they go to the public
-  # nuhulabs/Byakaron-Assets release by hand (`gh release create ...`).
-  package:
-    name: .deb (${{ matrix.arch }})
-    if: startsWith(github.ref, 'refs/tags/linux-')
-    needs: build
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            arch: amd64
-          - os: ubuntu-24.04-arm
-            arch: arm64
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: System packages
-        run: |
-          sudo bash apps/linux/scripts/setup_deps.sh
-          sudo apt-get install -y --no-install-recommends xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
-
-      - name: Install Zig 0.17.0-dev.1422
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0-dev.1422+e863bf3be
-
-      - name: Clone ziex at the path build.zig.zon expects
-        run: |
-          dest="${GITHUB_WORKSPACE}/../../ziex-dev/ziex"
-          mkdir -p "$(dirname "$dest")"
-          git clone --filter=blob:none https://github.com/ziex-dev/ziex.git "$dest"
-          git -C "$dest" checkout --detach 29f9a85b
-
-      - name: Package .deb
-        run: bash apps/linux/scripts/package_deb.sh
-
-      - name: Install it and type through the installed engine
-        run: |
-          source apps/linux/scripts/compat.sh
-          zig build linux-test -Doptimize=ReleaseFast $(byk_compat_target_flag)
-          deb=$(ls apps/linux/build/byakaron_*_${{ matrix.arch }}.deb)
-          sudo apt-get install -y "./$deb"
-          version=${GITHUB_REF_NAME#linux-}
-          bash apps/linux/scripts/test_installed.sh zig-out/bin/byakaron-ime-test "$version"
-
-      - name: Upload .deb
-        uses: actions/upload-artifact@v4
-        with:
-          name: byakaron-${{ matrix.arch }}
-          path: apps/linux/build/byakaron_*_${{ matrix.arch }}.deb
-          if-no-files-found: error
