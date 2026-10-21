@@ -2,8 +2,29 @@
     .name = .byakaron,
     .version = "0.1.0",
     .fingerprint = 0x3fd6609b9d3cf29c,
-    .minimum_zig_version = "0.17.0-dev.877+a3ae499dc",
-    .dependencies = .{},
+    .minimum_zig_version = "0.17.0",
+    .dependencies = .{
+        .ziex = .{
+            .url = "git+https://github.com/ziex-dev/ziex#d654002a4d575ec7aa4abe40a3e9d7a5fa467d0c",
+            .hash = "ziex-0.1.0-dev-Z3YcvZHxnAHohIvfE0jxQsyzeK7CZQAjOVfhksd_Kivo",
+        },
+        .iavro = .{
+            .url = "git+https://github.com/omicronlab/iAvro#107a73283ac34a33faf7f6799c2e9dbfa97e6643",
+            .hash = "N-V-__8AALYhYQDtIQyQAYx98bu1pIeFMR-umdg3eAs6Yd2k",
+        },
+        .sqlite = .{
+            .url = "https://www.sqlite.org/2026/sqlite-amalgamation-3540100.zip",
+            .hash = "N-V-__8AAETTsABEodUZZFAyfdAm9hEyqBXuLw9pRSO0vFh9",
+        },
+        .bzip2 = .{
+            .url = "git+https://github.com/allyourcodebase/bzip2#d7668d5ee5eb55489c35632ecf0b0107c7a77569",
+            .hash = "bzip2-1.0.8-m7CPz2QGAADdAt97rbHaz6ekIt864HgHs9rZ3fsYF5Fy",
+        },
+        .xml = .{
+            .url = "git+https://github.com/ianprime0509/zig-xml.git#4beab29d68ab308af4bd12a4fc4187c24fdad0d6",
+            .hash = "xml-0.2.2-ZTbP35N4AgAN3HBgWmBp_LAQ0MIPKW17GAGMwx4DHGYK",
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",

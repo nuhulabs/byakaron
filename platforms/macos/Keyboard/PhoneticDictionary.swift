@@ -2,38 +2,33 @@ import Foundation
 
 /// Dictionary-backed suggestion source for the Zig (inline phonetic) input mode.
 ///
-/// Fully self-contained: it uses the bundled `Dictionary.json` (the Avro word
-/// list, keyed by first-letter group) and `suffix.json`, combined with the Zig
-/// transliterator, to produce Bangla candidates for a run of Latin keystrokes.
+/// Uses the Zig `AutoComplete/Mem` lexicon (Avro dictionary, embedded at
+/// compile time) for Bangla prefix completions, plus bundled `Suffix.json` for
+/// suffix-derived candidates. Latin → Bangla still goes through the Zig
+/// transliterator.
 ///
-/// Matching strategy: the Zig engine already renders Latin → Bangla with correct
-/// inherent vowels, so we transliterate the typed text and look the result up as
-/// a *prefix* in the sorted word list. That yields the exact word plus longer
-/// completions. Suffix support splits the Latin input, transliterates the stem,
-/// and appends a known suffix (suffix.json) using the same joining rules riti
-/// applies (vowel + kar → য়, ৎ → ত, ং → ঙ).
-///
-/// Loading sorts ~160k words, so it is done once on a background queue. Until the
-/// shared instance is ready, the Zig mode simply shows the live transliteration
-/// with no candidate window.
+/// Loading opens the Mem engine once on a background queue. Until the shared
+/// instance is ready, the Zig mode shows the live transliteration with no
+/// candidate window.
 final class PhoneticDictionary {
 
     /// Process-wide instance, populated by `preload()`. Read on the main thread.
     private(set) static var shared: PhoneticDictionary?
     private static var loading = false
 
-    /// All dictionary words, sorted (by Unicode scalars) for binary-search prefix
-    /// lookup.
-    private let sortedWords: [String]
-    /// Membership set for O(1) exact lookups.
-    private let wordSet: Set<String>
+    private var handle: OpaquePointer?
     /// Latin suffix → Bangla suffix (suffix.json).
     private let suffixes: [String: String]
 
-    private init(sortedWords: [String], wordSet: Set<String>, suffixes: [String: String]) {
-        self.sortedWords = sortedWords
-        self.wordSet = wordSet
+    private init(handle: OpaquePointer, suffixes: [String: String]) {
+        self.handle = handle
         self.suffixes = suffixes
+    }
+
+    deinit {
+        if let handle {
+            byakaron_ac_destroy(handle)
+        }
     }
 
     /// Kick off a one-time background load of the shared dictionary. Safe to call
@@ -46,37 +41,24 @@ final class PhoneticDictionary {
             DispatchQueue.main.async {
                 shared = dict
                 loading = false
-                NSLog(
-                    "Byakaron: PhoneticDictionary loaded (%d words)", dict?.sortedWords.count ?? 0)
+                NSLog("Byakaron: PhoneticDictionary loaded (Zig Mem autocomplete)")
             }
         }
     }
 
-    /// Load `Dictionary.json` and `suffix.json` from the bundle's `Resources`
-    /// directory. Returns nil if the dictionary is missing/malformed.
+    /// Open the Zig Mem autocomplete engine and optional `Suffix.json`.
     static func loadFromBundle(_ bundle: Bundle = .main) -> PhoneticDictionary? {
-        guard let dir = bundle.resourcePath else { return nil }
-        let dataDir = dir
+        guard let handle = byakaron_ac_create() else { return nil }
 
-        guard
-            let dictData = try? Data(
-                contentsOf: URL(fileURLWithPath: dataDir + "/Dictionary.json")),
-            let dictObj = try? JSONSerialization.jsonObject(with: dictData) as? [String: [String]]
-        else { return nil }
-
-        var set = Set<String>()
-        for (_, list) in dictObj { set.formUnion(list) }
-
-        // suffix.json is optional — suffix completions just won't appear without it.
         var suffixObj: [String: String] = [:]
-        if let suffixData = try? Data(contentsOf: URL(fileURLWithPath: dataDir + "/Suffix.json")),
+        if let dir = bundle.resourcePath,
+            let suffixData = try? Data(contentsOf: URL(fileURLWithPath: dir + "/Suffix.json")),
             let parsed = try? JSONSerialization.jsonObject(with: suffixData) as? [String: String]
         {
             suffixObj = parsed
         }
 
-        let sorted = set.sorted { Self.scalarLess($0, $1) }
-        return PhoneticDictionary(sortedWords: sorted, wordSet: set, suffixes: suffixObj)
+        return PhoneticDictionary(handle: handle, suffixes: suffixObj)
     }
 
     // MARK: - Suggestions
@@ -108,36 +90,22 @@ final class PhoneticDictionary {
 
     // MARK: - Internals
 
-    /// Dictionary words having `prefix`, ordered shortest-first then by scalars so
-    /// the exact match (when present) leads the completions.
+    /// Dictionary words having `prefix`, ordered by the Zig AutoComplete ranker
+    /// (shortest-first).
     private func prefixMatches(_ prefix: String, limit: Int) -> [String] {
-        guard !prefix.isEmpty else { return [] }
-        var i = lowerBound(prefix)
-        var hits: [String] = []
-        let scanCap = limit * 6
-        while i < sortedWords.count {
-            let w = sortedWords[i]
-            if !w.hasPrefix(prefix) { break }
-            hits.append(w)
-            i += 1
-            if hits.count >= scanCap { break }
-        }
-        hits.sort {
-            if $0.count != $1.count { return $0.count < $1.count }
-            return Self.scalarLess($0, $1)
-        }
-        return Array(hits.prefix(limit))
+        guard let handle, !prefix.isEmpty else { return [] }
+        guard let cstr = byakaron_ac_prefix(handle, prefix, Int32(limit)) else { return [] }
+        defer { byakaron_string_free(cstr) }
+        let json = String(cString: cstr)
+        guard let data = json.data(using: .utf8),
+            let arr = try? JSONSerialization.jsonObject(with: data) as? [String]
+        else { return [] }
+        return arr
     }
 
-    /// First index in `sortedWords` whose element is >= `key` (scalar order).
-    private func lowerBound(_ key: String) -> Int {
-        var lo = 0
-        var hi = sortedWords.count
-        while lo < hi {
-            let mid = (lo + hi) / 2
-            if Self.scalarLess(sortedWords[mid], key) { lo = mid + 1 } else { hi = mid }
-        }
-        return lo
+    private func containsWord(_ word: String) -> Bool {
+        guard let handle else { return false }
+        return byakaron_ac_contains(handle, word) == 1
     }
 
     /// Split the Latin input at each position; if the tail is a known suffix,
@@ -154,9 +122,8 @@ final class PhoneticDictionary {
             let stemBangla = Transliterator.toBangla(String(chars[0..<i]))
             guard !stemBangla.isEmpty else { continue }
 
-            // Bases: the stem word itself plus a few dictionary completions.
             var bases: [String] = []
-            if wordSet.contains(stemBangla) { bases.append(stemBangla) }
+            if containsWord(stemBangla) { bases.append(stemBangla) }
             for w in prefixMatches(stemBangla, limit: 4) where !bases.contains(w) {
                 bases.append(w)
             }
@@ -186,12 +153,6 @@ final class PhoneticDictionary {
             word.append("\u{0999}")  // ং → ঙ
         }
         return word + suffix
-    }
-
-    /// Lexicographic comparison by Unicode scalars — kept consistent between the
-    /// sort, the binary search, and `hasPrefix` so prefixed words stay contiguous.
-    private static func scalarLess(_ a: String, _ b: String) -> Bool {
-        a.unicodeScalars.lexicographicallyPrecedes(b.unicodeScalars)
     }
 
     /// Bengali independent vowels (অ … ঔ).

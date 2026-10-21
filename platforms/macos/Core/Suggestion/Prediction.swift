@@ -32,12 +32,12 @@ final class SpellChecker: ObservableObject {
 
     #if DEBUG
     /// Preview/test seam: build a checker with canned state and no engine load,
-    /// so SwiftUI previews render instantly without the bundled dictionary.
+    /// so SwiftUI previews render instantly without opening spell.db.
     static func preview(text: String = "", misspellings: [Misspelling] = []) -> SpellChecker {
         let checker = SpellChecker(skipLoad: ())
         checker.text = text
         checker.misspellings = misspellings
-        checker.engine = SpellEngine(words: [""])
+        // Leave engine nil — isCorrect treats nil as correct; UI still renders.
         return checker
     }
 
@@ -81,6 +81,13 @@ final class SpellChecker: ObservableObject {
         }
     }
 
+    /// Force an immediate recheck (cancels any pending debounce). Used after
+    /// apply/ignore so the issue list updates before we jump selection.
+    func runCheckNow() {
+        checkTask?.cancel()
+        runCheck()
+    }
+
     /// Walk word boundaries, collecting tokens the engine rejects.
     nonisolated private static func findMisspellings(in text: String, using engine: SpellEngine) -> [Misspelling] {
         var result: [Misspelling] = []
@@ -93,9 +100,55 @@ final class SpellChecker: ObservableObject {
         return result
     }
 
-    /// Correction candidates for a word.
+    /// Neighbors of a misspelling for trigram/bigram-aware ranking:
+    /// `(prev2, prev1, next)` over Unicode word tokens in `text`.
+    func context(around misspelling: Misspelling) -> (prev2: String, prev1: String, next: String) {
+        Self.context(around: misspelling.range, in: text)
+    }
+
+    /// Context for an arbitrary word range (e.g. editor context-menu click).
+    nonisolated static func context(
+        around range: Range<String.Index>,
+        in text: String
+    ) -> (prev2: String, prev1: String, next: String) {
+        var words: [(String, Range<String.Index>)] = []
+        text.enumerateSubstrings(in: text.startIndex..<text.endIndex, options: .byWords) { sub, wordRange, _, _ in
+            guard let sub else { return }
+            words.append((sub, wordRange))
+        }
+        guard let idx = words.firstIndex(where: { $0.1 == range })
+            ?? words.firstIndex(where: {
+                $0.1.overlaps(range) || $0.1.lowerBound == range.lowerBound
+            })
+        else { return ("", "", "") }
+
+        let prev2 = idx >= 2 ? words[idx - 2].0 : ""
+        let prev1 = idx >= 1 ? words[idx - 1].0 : ""
+        let next = idx + 1 < words.count ? words[idx + 1].0 : ""
+        return (prev2, prev1, next)
+    }
+
+    /// Correction candidates for a misspelling, ranked with local n-gram context.
+    func suggestions(for misspelling: Misspelling) -> [String] {
+        let ctx = context(around: misspelling)
+        return engine?.suggestions(
+            for: misspelling.word,
+            prev2: ctx.prev2,
+            prev1: ctx.prev1,
+            next: ctx.next
+        ) ?? []
+    }
+
+    /// Correction candidates for a bare word (no context) — used by the editor
+    /// menu when only the token string is known.
     func suggestions(for word: String) -> [String] {
         engine?.suggestions(for: word) ?? []
+    }
+
+    /// Contextual suggestions for a word at a known range in the current text.
+    func suggestions(for word: String, at range: Range<String.Index>) -> [String] {
+        let ctx = Self.context(around: range, in: text)
+        return engine?.suggestions(for: word, prev2: ctx.prev2, prev1: ctx.prev1, next: ctx.next) ?? []
     }
 
     /// Whether a token is spelled correctly. Used by the native editor to drive
@@ -109,19 +162,20 @@ final class SpellChecker: ObservableObject {
     /// then refresh the issue list.
     func learn(_ word: String) {
         engine?.learn(word)
-        runCheck()
+        runCheckNow()
     }
 
     /// Replace a misspelled span with a chosen correction.
     func apply(_ correction: String, to misspelling: Misspelling) {
         guard text.indices.contains(misspelling.range.lowerBound) else { return }
         text.replaceSubrange(misspelling.range, with: correction)
+        runCheckNow()
     }
 
     /// Accept a word for the rest of the session and drop it from the list.
     func ignore(_ misspelling: Misspelling) {
         engine?.learn(misspelling.word)
-        runCheck()
+        runCheckNow()
     }
 
     /// Replace every current misspelling that has at least one suggestion with
@@ -132,7 +186,7 @@ final class SpellChecker: ObservableObject {
     func fixAll() -> Int {
         let fixes = misspellings
             .compactMap { miss -> (Range<String.Index>, String)? in
-                guard let top = suggestions(for: miss.word).first else { return nil }
+                guard let top = suggestions(for: miss).first else { return nil }
                 return (miss.range, top)
             }
             .sorted { $0.0.lowerBound > $1.0.lowerBound }
@@ -143,6 +197,12 @@ final class SpellChecker: ObservableObject {
             text.replaceSubrange(range, with: replacement)
             corrected += 1
         }
+        if corrected > 0 { runCheckNow() }
         return corrected
+    }
+
+    /// UTF-16 offset of `index` in `text` (stable across Swift String views).
+    func utf16Offset(of index: String.Index) -> Int {
+        text.utf16.distance(from: text.startIndex, to: index)
     }
 }

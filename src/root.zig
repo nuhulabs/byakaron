@@ -8,7 +8,12 @@ const std = @import("std");
 const testing = std.testing;
 
 pub const Transliteration = @import("transliteration/transliteration.zig").Transliteration;
-pub const Tokenization = @import("tokenization/tokenizer.zig");
+pub const Tokenization = @import("tokenization");
+pub const Spell = @import("spell");
+pub const SpellSqlite = @import("Spell/Sqlite.zig");
+pub const AutoComplete = @import("autocomplete");
+pub const AutoCompleteMem = @import("autocomplete_mem");
+pub const AutoCompleteSqlite = @import("AutoComplete/Sqlite.zig");
 pub const TransliterationMode = @import("transliteration/transliteration.zig").Mode;
 
 // Pull in the C-ABI FFI exports (byakaron_transliterate / byakaron_string_free)
@@ -19,5 +24,10 @@ comptime {
 
 test {
     _ = @import("transliteration/transliteration.zig");
-    _ = @import("tokenization/tokenizer.zig");
+    _ = @import("tokenization");
+    _ = @import("spell");
+    _ = SpellSqlite;
+    _ = @import("autocomplete");
+    _ = AutoCompleteMem;
+    _ = AutoCompleteSqlite;
 }
