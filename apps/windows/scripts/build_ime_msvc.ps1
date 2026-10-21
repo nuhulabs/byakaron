@@ -1,6 +1,6 @@
 # Manual MSVC build of ByakaronIME.dll (VS PlatformToolsets may be incomplete).
 $ErrorActionPreference = "Stop"
-Set-Location c:\Users\nurulhudaapon\Projects\byakaron\platforms\windows\Keyboard
+Set-Location (Join-Path $PSScriptRoot "..\Keyboard")
 
 $msvcRoot = "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Tools\MSVC\14.51.36231"
 if (-not (Test-Path -LiteralPath (Join-Path $msvcRoot "include\excpt.h"))) {

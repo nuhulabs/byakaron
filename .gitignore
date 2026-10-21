@@ -14,18 +14,18 @@ zig-pkg/
 # Pre-`zig build db` local pipeline outputs
 packages/
 
-# Staged from zig-out by platforms/macos/scripts/build_zig.sh
-platforms/macos/Resources/Dictionary.json
+# Staged from zig-out by apps/macos/scripts/build_zig.sh
+apps/macos/Resources/Dictionary.json
 
 # Ziex (apps/web) bundle / export output
 /dist
 /bundle
 
 # Platform build output
-platforms/macos/build/
-platforms/windows/Keyboard/obj/
-platforms/windows/Keyboard/bin/
-platforms/windows/Keyboard/stage/
+apps/macos/build/
+apps/windows/Keyboard/obj/
+apps/windows/Keyboard/bin/
+apps/windows/Keyboard/stage/
 xcuserdata/
 .build/
 

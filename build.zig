@@ -142,7 +142,7 @@ pub fn build(b: *std.Build) !void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    // Build / run macOS app via the Xcode project (platforms/macos/scripts/build.sh).
+    // Build / run macOS app via the Xcode project (apps/macos/scripts/build.sh).
     // The old hand-rolled swiftc graph depended on removed resources (Info-app.plist,
     // AppIcon.icns, iconTemplate.pdf); Xcode owns Info.plist generation and icons now.
     if (builtin.os.tag == .macos) {
@@ -152,11 +152,11 @@ pub fn build(b: *std.Build) !void {
             "Xcode configuration for macos / run-macos: debug or release",
         ) orelse "debug";
 
-        const build_script = rootPath(b, "platforms/macos/scripts/build.sh");
-        const app_bundle = rootPath(b, "platforms/macos/build/Byakaron.app");
+        const build_script = rootPath(b, "apps/macos/scripts/build.sh");
+        const app_bundle = rootPath(b, "apps/macos/build/Byakaron.app");
 
         const macos_build = b.addSystemCommand(&.{ "bash", build_script, macos_config });
-        macos_build.setCwd(b.path("platforms/macos"));
+        macos_build.setCwd(b.path("apps/macos"));
         macos_build.has_side_effects = true;
         // Xcode / build_zig.sh need zig on PATH: put the zig running this build first.
         // Preserve the rest of the inherited environment; only prepend zig + Homebrew.
@@ -228,7 +228,7 @@ pub fn build(b: *std.Build) !void {
     if (builtin.os.tag == .windows) {
         const zig_dir = std.fs.path.dirname(b.graph.zig_exe) orelse "C:\\Windows\\System32";
 
-        const package_script = rootPath(b, "platforms/windows/scripts/package_windows.ps1");
+        const package_script = rootPath(b, "apps/windows/scripts/package_windows.ps1");
         const win_package = b.addSystemCommand(&.{ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", package_script });
         win_package.setCwd(b.path("."));
         win_package.has_side_effects = true;
@@ -241,7 +241,7 @@ pub fn build(b: *std.Build) !void {
         const windows_step = b.step("windows", "Build Byakaron-Setup.exe (zig-out/windows/)");
         windows_step.dependOn(&win_package.step);
 
-        const run_script = rootPath(b, "platforms/windows/scripts/run_windows.ps1");
+        const run_script = rootPath(b, "apps/windows/scripts/run_windows.ps1");
         const win_run = b.addSystemCommand(&.{ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", run_script });
         win_run.setCwd(b.path("."));
         win_run.has_side_effects = true;

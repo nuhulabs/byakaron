@@ -14,7 +14,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"        # platforms/macos
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"        # apps/macos
 ZIG_REPO_ROOT="$(cd "$PROJECT_ROOT/../.." && pwd)"  # repo root
 BUILD_DIR="$PROJECT_ROOT/build"
 ZIG_OBJ_DIR="$BUILD_DIR/zig"

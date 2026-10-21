@@ -2,8 +2,8 @@
 # Build the Zig FFI as a Windows DLL and stage it for the WinUI app.
 #
 # Produces:
-#   platforms/windows/Byakaron/native/byakaron.dll
-#   platforms/windows/Byakaron/native/spell.db   (hardlink/copy from `zig build db` output)
+#   apps/windows/Byakaron/native/byakaron.dll
+#   apps/windows/Byakaron/native/spell.db   (hardlink/copy from `zig build db` output)
 #
 # Invoked by `zig build windows` or directly.
 # ---------------------------------------------------------------------------
