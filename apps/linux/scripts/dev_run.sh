@@ -23,8 +23,8 @@ if [[ -z "$ZIG" ]]; then
     exit 1
 fi
 
-if [[ -z "${BYAKARON_SPELL_DB:-}" && -f "$REPO_ROOT/packages/data/spell.db" ]]; then
-    export BYAKARON_SPELL_DB="$REPO_ROOT/packages/data/spell.db"
+if [[ -z "${BYAKARON_SPELL_DB:-}" && -f "$REPO_ROOT/zig-out/db/spell.db" ]]; then
+    export BYAKARON_SPELL_DB="$REPO_ROOT/zig-out/db/spell.db"
 fi
 
 echo ">>> Building byakaron-ibus..."

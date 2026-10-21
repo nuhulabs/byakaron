@@ -123,14 +123,14 @@ else
     echo "      install libgtk-3-dev to include the app"
 fi
 
-SPELL_DB="$REPO_ROOT/packages/data/spell.db"
+SPELL_DB="$REPO_ROOT/zig-out/db/spell.db"
 if [[ ! -f "$SPELL_DB" ]]; then
     echo ">>> spell.db missing — building it so the .deb is a complete install..."
-    bash "$SCRIPT_DIR/prepare_spell_db.sh"
+    ( cd "$REPO_ROOT" && zig build db )
 fi
 [[ -f "$SPELL_DB" ]] || {
     echo "error: $SPELL_DB was not produced" >&2
-    echo "       run: bash apps/linux/scripts/prepare_spell_db.sh" >&2
+    echo "       run: zig build db" >&2
     exit 1
 }
 install -d "$STAGE/usr/share/byakaron"

@@ -374,7 +374,7 @@ int main(void)
             /* Typing and candidates do not need the file; CI never ships the
              * 364 MB database. Skip rather than fail so a fresh checkout still
              * goes green. */
-            puts("  skip spell.db not present (prepare_spell_db.sh)");
+            puts("  skip spell.db not present (zig build db)");
         } else {
             g_free(db_path);
             BykSpell *spell = byk_spell_new(NULL);
@@ -420,7 +420,7 @@ int main(void)
     {
         gchar *db_path = byk_spell_locate_db();
         if (db_path == NULL) {
-            puts("  skip spell.db not present (prepare_spell_db.sh)");
+            puts("  skip spell.db not present (zig build db)");
         } else {
             g_free(db_path);
             BykCorrector *corr = byk_corrector_new(FALSE, NULL, NULL);

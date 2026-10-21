@@ -122,13 +122,13 @@ if [[ "$APP_BUILT" -eq 1 && -x "$SRC_APP" ]]; then
     BYK_SETUP="$BINDIR/byakaron --page=setup"
 fi
 
-SPELL_DB="$REPO_ROOT/packages/data/spell.db"
+SPELL_DB="$REPO_ROOT/zig-out/db/spell.db"
 if [[ -f "$SPELL_DB" ]]; then
     install -m 644 "$SPELL_DB" "$DATADIR/spell.db"
     echo ">>> Installed: $DATADIR/spell.db"
 else
     echo "note: $SPELL_DB missing — spell-check will be unavailable"
-    echo "      build it with: bash apps/linux/scripts/prepare_spell_db.sh"
+    echo "      build it with: zig build db"
 fi
 
 sed -e "s|@BYK_EXEC@|$LIBDIR/byakaron-ibus|g" \

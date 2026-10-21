@@ -138,10 +138,10 @@ sudo swapon /swapfile
 ### Spell-check dictionary (optional)
 
 Typing does not need this. Spell-check in the GTK app does (`spell.db` is
-about 364 MB).
+about 1 GB; `zig build db` downloads the bnwiki dump and builds it).
 
 ```bash
-bash apps/linux/scripts/prepare_spell_db.sh
+zig build db
 sudo bash apps/linux/scripts/install.sh
 ```
 

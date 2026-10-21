@@ -6,7 +6,7 @@
  * the JSON and the Zig ownership rule both stop at this file — the same deal
  * transliterator.h makes for transliteration.
  *
- * The lexicon is compiled into the engine (dictionary_macos), so this needs no
+ * The lexicon is compiled into the engine (the Avro lexicon), so this needs no
  * database and no spell.db.
  *
  * Shared by Keyboard/ (candidate window) and App/ (the GTK settings app).

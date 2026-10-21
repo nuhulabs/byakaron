@@ -11,7 +11,7 @@ set -euo pipefail
 # Outputs into apps/linux/build/:
 #     lib/libbyakaron.so
 #     include/byakaron.h
-#     share/spell.db          (only when packages/data/spell.db has been built)
+#     share/spell.db          (only when `zig build db` has been run)
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -45,13 +45,12 @@ cp "$SO"  "$BUILD_DIR/lib/"
 cp "$HDR" "$BUILD_DIR/include/"
 echo ">>> Staged: $BUILD_DIR/lib/libbyakaron.so"
 
-# spell.db is generated, not committed. Build it with:
-#     bash apps/linux/scripts/prepare_spell_db.sh
+# spell.db is generated, not committed. Build it with `zig build db`.
 # The engine types without it; only spell-check needs it.
-SPELL_DB="$ZIG_REPO_ROOT/packages/data/spell.db"
+SPELL_DB="$ZIG_REPO_ROOT/zig-out/db/spell.db"
 if [[ -f "$SPELL_DB" ]]; then
     cp "$SPELL_DB" "$BUILD_DIR/share/spell.db"
     echo ">>> Staged: $BUILD_DIR/share/spell.db"
 else
-    echo "note: packages/data/spell.db not built yet — spell-check will be unavailable"
+    echo "note: zig-out/db/spell.db not built yet (run: zig build db) — spell-check will be unavailable"
 fi

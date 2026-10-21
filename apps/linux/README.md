@@ -55,7 +55,7 @@ apps/linux/
 ├── Keyboard/    The IBus engine (thin shell over Core/composer)
 ├── Fcitx5/      Optional Fcitx5 addon (same composer; needs libfcitx5core-dev)
 ├── Resources/   IBus component XML, GSettings schema, .desktop, icons, Flatpak manifest
-├── scripts/     setup_deps.sh, build_zig.sh, smoke.sh, prepare_spell_db.sh,
+├── scripts/     setup_deps.sh, build_zig.sh, smoke.sh,
 │                install.sh, uninstall.sh, package_deb.sh, package_flatpak.sh,
 │                ci.sh, wayland_probe.sh, wayland_type.sh
 └── tests/       C ABI + Core smoke test, IBus integration test, Wayland probes
@@ -585,11 +585,9 @@ For Wayland without logging out, run `scripts/gnome_wayland_test.sh` (see [Wayla
 ## Notes
 
 - `spell.db` is a **local SQLite file**, not a server. It is generated, not
-  committed (`*.db` is gitignored). Build it with:
-  `bash apps/linux/scripts/prepare_spell_db.sh`
-  That uses the Avro lexicon already in `src/assets/dictionary_macos_sorted.txt`
-  (~159k words). Wikipedia n-grams are empty until someone later runs the full
-  `word_triplets.csv` export; lookups and SymSpell suggestions still work.
+  committed (`*.db` is gitignored). Build it with `zig build db`, which
+  downloads the bnwiki dump and merges the Avro lexicon into a Wikipedia
+  dictionary with bigram/trigram tables (written to `zig-out/db/spell.db`).
   `install.sh` copies it to `/usr/share/byakaron/spell.db` when the file is
   present. The shareable `.deb` ships it in the same package as the keyboard
   and app, so one file is a complete install. Override the path
