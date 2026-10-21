@@ -26,13 +26,13 @@ export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
 ZIG="${ZIG_EXE:-$(command -v zig || true)}"
 if [[ -z "$ZIG" ]]; then
     echo "error: could not find the 'zig' executable on PATH" >&2
-    echo "       this branch needs 0.17.0-dev.1422+e863bf3be — see apps/linux/README.md" >&2
+    echo "       install Zig 0.17.0 (pinned in .tool-versions) — see apps/linux/README.md" >&2
     exit 1
 fi
 
 echo ">>> zig: $ZIG ($("$ZIG" version))"
 echo ">>> Building Zig engine (libbyakaron.so, $ZIG_OPTIMIZE)..."
-( cd "$ZIG_REPO_ROOT" && "$ZIG" build -Dshared=true -Doptimize="$ZIG_OPTIMIZE" )
+( cd "$ZIG_REPO_ROOT" && "$ZIG" build lib -Dshared=true -Doptimize="$ZIG_OPTIMIZE" )
 
 SO="$ZIG_REPO_ROOT/zig-out/lib/libbyakaron.so"
 HDR="$ZIG_REPO_ROOT/zig-out/include/byakaron.h"

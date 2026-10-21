@@ -126,8 +126,8 @@ pub fn build(b: *std.Build) !void {
         lib_step.dependOn(install_lexicon);
     }
 
-    // Linux: IBus engine, GTK app, optional Fcitx5. Native on a Linux host;
-    // cross-compiled against a cached Ubuntu 24.04 sysroot everywhere else.
+    // Linux: IBus engine, GTK app, optional Fcitx5, against a pinned Ubuntu
+    // sysroot on every host (see `addLinux`).
     addLinux(b, target, optimize, mod, avro.words);
 
     // Executable (only built for non-Android targets)
@@ -433,12 +433,14 @@ fn module(b: *std.Build, exported: bool, name: []const u8, options: std.Build.Mo
     return if (exported) b.addModule(name, options) else b.createModule(options);
 }
 
-/// Linux targets. On a Linux host this links the system IBus/GTK through
-/// pkg-config, as `apps/linux` documents. Elsewhere (`zig build linux` on macOS
-/// or Windows) it cross-compiles for glibc 2.31 against a sysroot unpacked from
-/// pinned Ubuntu 24.04 packages (`linuxSysroot`), the same headers the Linux CI
-/// builds with, so no Linux box or container is needed to produce the binaries.
-/// `-Dlinux-arch` picks the CPU there.
+/// Linux targets, built for glibc 2.31 (Ubuntu 20.04+) against a sysroot
+/// unpacked from pinned Ubuntu 24.04 packages (`linuxSysroot`) on every host,
+/// so a Linux, macOS or Windows machine produces the same binaries without the
+/// -dev packages, a Linux box or a container. `-Dlinux-arch` picks the CPU.
+///
+/// `-Dlinux-system-libs` (Linux hosts only) links the system IBus/GTK through
+/// pkg-config instead, honouring `-Dtarget`, for offline or distro builds.
+/// Running the app, the GSettings schema and Fcitx5 always need a Linux host.
 fn addLinux(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
@@ -446,8 +448,15 @@ fn addLinux(
     mod: *std.Build.Module,
     avro_words: std.Build.LazyPath,
 ) void {
-    const native = builtin.os.tag == .linux;
-    const arch = b.option(LinuxArch, "linux-arch", "CPU for the cross-compiled Linux build (non-Linux hosts)") orelse .x86_64;
+    const host_linux = builtin.os.tag == .linux;
+    const system_libs = b.option(bool, "linux-system-libs", "Link the Linux targets against system IBus/GTK via pkg-config (Linux host)") orelse false;
+    const arch = b.option(LinuxArch, "linux-arch", "CPU for the Linux targets (default: host CPU on Linux, else x86_64)") orelse
+        if (host_linux and builtin.cpu.arch == .aarch64) .aarch64 else .x86_64;
+    const misuse: ?*std.Build.Step = if (system_libs and !host_linux)
+        &b.addFail("-Dlinux-system-libs needs a Linux host").step
+    else
+        null;
+    const native = system_libs and host_linux;
     const linux_target = if (native) target else b.resolveTargetQuery(.{
         .cpu_arch = switch (arch) {
             .x86_64 => .x86_64,
@@ -505,6 +514,7 @@ fn addLinux(
 
     const install_ime = b.addInstallArtifact(ime, .{});
     const linux_step = b.step("linux", "Build the Linux IBus engine (byakaron-ibus)");
+    if (misuse) |f| linux_step.dependOn(f);
     linux_step.dependOn(&install_ime.step);
 
     // Integration test: drives the engine through a private IBus input
@@ -526,6 +536,7 @@ fn addLinux(
 
     const install_ime_test = b.addInstallArtifact(ime_test, .{});
     const linux_test_step = b.step("linux-test", "Build the Linux IME integration test");
+    if (misuse) |f| linux_test_step.dependOn(f);
     linux_test_step.dependOn(&install_ime_test.step);
 
     // GTK3 companion app. A separate step from `linux` on purpose: the
@@ -581,11 +592,12 @@ fn addLinux(
 
     const install_app = b.addInstallArtifact(app, .{});
     const linux_app_step = b.step("linux-app", "Build the Linux GTK app (byakaron)");
+    if (misuse) |f| linux_app_step.dependOn(f);
     linux_app_step.dependOn(&install_app.step);
 
     // Running the app and compiling the GSettings schema (glib-compile-schemas)
-    // need a Linux host; the cross build stops at the binaries.
-    if (native) {
+    // need a Linux host; elsewhere the build stops at the binaries.
+    if (host_linux) {
         const run_app = b.addRunArtifact(app);
         run_app.step.dependOn(&install_app.step);
         run_app.addPassthruArgs();
@@ -624,7 +636,10 @@ fn addLinux(
     // Optional Fcitx5 frontend. Same composer as IBus; skipped when the
     // headers are not installed so a GNOME-only box still `zig build linux`.
     const fcitx_step = b.step("linux-fcitx5", "Build the optional Fcitx5 addon (needs libfcitx5core-dev)");
-    if (native and pkgConfigExists(b, "Fcitx5Core")) {
+    if (misuse) |f| fcitx_step.dependOn(f);
+    // Fcitx5 is C++ against the host's libFcitx5Core, so it always uses the
+    // system libraries (it is not in the pinned sysroot).
+    if (host_linux and pkgConfigExists(b, "Fcitx5Core")) {
         const fcitx_core = b.addLibrary(.{
             .linkage = .static,
             .name = "byakaron_fcitx_core",
@@ -691,7 +706,7 @@ fn addLinux(
         fcitx_step.dependOn(&install_fcitx_addon.step);
         fcitx_step.dependOn(&install_fcitx_im.step);
     } else {
-        fcitx_step.dependOn(&b.addFail(if (native)
+        fcitx_step.dependOn(&b.addFail(if (host_linux)
             "Fcitx5Core not found — install libfcitx5core-dev or set PKG_CONFIG_PATH"
         else
             "the Fcitx5 addon is only built on a Linux host").step);

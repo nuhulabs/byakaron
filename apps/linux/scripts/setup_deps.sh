@@ -2,12 +2,18 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Install the system development packages the Linux port needs.
+# Install the system packages the Linux port needs.
 #
-#   sudo bash apps/linux/scripts/setup_deps.sh
+#   sudo bash apps/linux/scripts/setup_deps.sh          # build + run
+#   sudo bash apps/linux/scripts/setup_deps.sh --test   # + test toolchain (CI)
 #
-# Zig itself is NOT installed here: this branch is pinned to a specific 0.17-dev
-# build that the distro does not ship. See apps/linux/README.md.
+# `zig build linux` / `linux-app` compile against a pinned Ubuntu sysroot that
+# the build downloads itself, so building needs no -dev packages. The default
+# set is what running needs (IBus, the GTK3 IM module, glib-compile-schemas).
+# `--test` adds a C compiler and the -dev packages the test helpers (smoke.sh,
+# wayland_*.sh) build against with the system toolchain.
+#
+# Zig itself is not installed here: use 0.17.0 (pinned in .tool-versions).
 # ---------------------------------------------------------------------------
 
 if [[ $EUID -ne 0 ]]; then
@@ -15,25 +21,32 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# ibus + glib: the input-method engine. gtk3: the settings app (20.04 / 22.04 /
-# 24.04). ibus-gtk3 is the client-side im-module GTK3 apps use to talk to IBus.
-# gtk4 / ibus-gtk4 are optional: CI typing tests on 24.04, not the shipped app.
+WITH_TEST=0
+[[ "${1:-}" == "--test" ]] && WITH_TEST=1
+
 PACKAGES=(
-    build-essential
-    pkg-config
-    libibus-1.0-dev
-    libglib2.0-dev
-    libgtk-3-dev
-    gettext
     ibus
     ibus-gtk3
+    libglib2.0-bin
+    gettext
 )
+if [[ $WITH_TEST -eq 1 ]]; then
+    PACKAGES+=(
+        build-essential
+        pkg-config
+        libibus-1.0-dev
+        libglib2.0-dev
+        libgtk-3-dev
+    )
+fi
 
 echo ">>> apt-get update"
 apt-get update -qq
 
 echo ">>> installing: ${PACKAGES[*]}"
 apt-get install -y "${PACKAGES[@]}"
+
+[[ $WITH_TEST -eq 1 ]] || { echo; echo "=== dependencies ready ==="; exit 0; }
 
 # GTK4 is only needed for the IME typing tests (wayland_type.c), not the app.
 if apt-cache show libgtk-4-dev >/dev/null 2>&1; then
