@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"  # repo root
 DEST_DIR="${DEST_DIR:-"$ROOT_DIR/../HeliBoard/app/src/main/jniLibs"}"
 BUILD_MODE="${BUILD_MODE:-ReleaseFast}"
 MIN_API="${MIN_API:-21}"
@@ -77,7 +77,7 @@ kernel32_lib_dir=
 gcc_dir=$SYSROOT/usr/lib/$ZIG_TARGET/$MIN_API
 EOF
 
-    zig build \
+    zig build lib \
         --libc "$LIBC_CONF" \
         -Dtarget="$ZIG_TARGET" \
         -Doptimize="$BUILD_MODE"
