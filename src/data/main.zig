@@ -5,6 +5,9 @@ const xml = @import("xml");
 const Tokenizer = @import("tokenization").Tokenizer;
 const Bz2Reader = @import("Bz2Reader.zig");
 
+/// Progress of the running mode; joins `zig build`'s tree via ZIG_PROGRESS.
+var progress: std.Progress.Node = .none;
+
 pub fn main(init: std.process.Init) !void {
     const gpa = init.gpa;
     const arena = init.arena.allocator();
@@ -55,6 +58,14 @@ pub fn main(init: std.process.Init) !void {
             secondary = a;
         }
     }
+
+    progress = std.Progress.start(io, .{ .root_name = switch (mode) {
+        .sentences => "sentences (MiB)",
+        .word_triplets => "word triplets (MiB)",
+        .symspell_deletes => "SymSpell deletes (words)",
+        .mine_confusions => "mine confusions (words)",
+    } });
+    defer progress.end();
 
     switch (mode) {
         .word_triplets => try runWordTriplets(
@@ -203,7 +214,6 @@ fn runSentences(gpa: std.mem.Allocator, io: Io, input_path: []const u8, out_path
 
     try out.flush();
     reportProgress(input_reader.pos, total_size, page_count, sentence_count, title);
-    std.debug.print("\nDone. {d} pages, {d} sentences -> {s}\n", .{ page_count, sentence_count, out_path });
 }
 
 /// Reads the `value` column of sentences.csv, tokenizes each sentence with
@@ -287,7 +297,6 @@ fn runWordTriplets(gpa: std.mem.Allocator, io: Io, input_path: []const u8, limit
 
     try out.flush();
     reportTripletProgress(in_reader.pos, total_size, line_count, triplet_count);
-    std.debug.print("\nDone. {d} sentences, {d} word triplets -> {s}\n", .{ line_count, triplet_count, triplets_path });
 
     if (limit != null) {
         var words_file = try Io.Dir.cwd().createFile(io, "words_sample.csv", .{});
@@ -353,8 +362,9 @@ fn runMineConfusions(
                 i += len;
             }
         }
-        if (scanned % 50_000 == 0) {
-            std.debug.print("\r{d} words scanned\x1b[K", .{scanned});
+        if (scanned % 1_000 == 0) {
+            progress.setEstimatedTotalItems(words.count());
+            progress.setCompletedItems(scanned);
         }
     }
 
@@ -367,7 +377,6 @@ fn runMineConfusions(
 
     var count_lookup: std.StringHashMapUnmanaged(u64) = .empty;
     var cit = counts.iterator();
-    var edge_hits: usize = 0;
     while (cit.next()) |e| {
         var parts = std.mem.splitScalar(u8, e.key_ptr.*, '\x1f');
         const from_g = parts.next() orelse continue;
@@ -376,7 +385,6 @@ fn runMineConfusions(
         try writeCsvRow4(mined_out, from_g, to_g, kind, e.value_ptr.*);
         const key = try std.fmt.allocPrint(arena, "{s}\x1f{s}\x1f{s}", .{ from_g, to_g, kind });
         try count_lookup.put(arena, key, e.value_ptr.*);
-        edge_hits += 1;
     }
     try mined_out.flush();
 
@@ -398,11 +406,6 @@ fn runMineConfusions(
         try writeConfusionRow(out, edge.from_g, edge.to_g, weight, edge.kind);
     }
     try out.flush();
-
-    std.debug.print(
-        "\nDone. {d} lexicon words, {d} mined edges -> {s} + {s}\n",
-        .{ scanned, edge_hits, mined_path, out_path },
-    );
 }
 
 const SeedEdge = struct {
@@ -575,18 +578,10 @@ fn runSymSpellDeletes(gpa: std.mem.Allocator, io: Io, input_path: []const u8, ou
 
         try emitDeletes(arena, &seen, out, row.ref, row.word, max_edit_distance, &delete_count);
         word_count += 1;
-        if (word_count % 10_000 == 0) {
-            std.debug.print("\r{d} words | {d} deletes\x1b[K", .{ word_count, delete_count });
-        }
+        if (word_count % 1_000 == 0) progress.setCompletedItems(word_count);
     }
 
     try out.flush();
-    std.debug.print("\nDone. {d} words, {d} deletes -> {s} ({s})\n", .{
-        word_count,
-        delete_count,
-        out_path,
-        if (id_mode) "word_id" else "word",
-    });
 }
 
 const DictionaryRow = struct {
@@ -722,11 +717,10 @@ fn writeCsvField(out: *Io.Writer, s: []const u8) !void {
 }
 
 fn reportTripletProgress(pos: u64, total: u64, sentences: usize, triplets: usize) void {
-    const percent: f64 = if (total > 0)
-        @as(f64, @floatFromInt(pos)) / @as(f64, @floatFromInt(total)) * 100.0
-    else
-        0.0;
-    std.debug.print("\r{d:6.2}% | {d} sentences | {d} word triplets\x1b[K", .{ percent, sentences, triplets });
+    var buf: [64]u8 = undefined;
+    progress.setName(std.fmt.bufPrint(&buf, "word triplets: {d} sentences, {d} triplets (MiB)", .{ sentences, triplets }) catch "word triplets (MiB)");
+    progress.setEstimatedTotalItems(@intCast(total >> 20));
+    progress.setCompletedItems(@intCast(pos >> 20));
 }
 
 /// Splits `text` into clean Bangla sentences and appends one CSV row per
@@ -888,29 +882,11 @@ fn writeCsvRow(out: *Io.Writer, page_id: []const u8, rev_id: []const u8, value: 
 }
 
 fn reportProgress(pos: u64, total: u64, pages: usize, sentences: usize, title: []const u8) void {
-    const percent: f64 = if (total > 0)
-        @as(f64, @floatFromInt(pos)) / @as(f64, @floatFromInt(total)) * 100.0
-    else
-        0.0;
-    std.debug.print("\r{d:6.2}% | {d} pages | {d} sentences | {s}\x1b[K", .{
-        percent,
-        pages,
-        sentences,
-        truncateUtf8(title, 48),
-    });
-}
-
-/// Truncates a UTF-8 string to at most `max` bytes without splitting a
-/// codepoint, so progress output never emits invalid UTF-8.
-fn truncateUtf8(s: []const u8, max: usize) []const u8 {
-    if (s.len <= max) return s;
-    var it: std.unicode.Utf8Iterator = .{ .bytes = s, .i = 0 };
-    var last: usize = 0;
-    while (it.nextCodepointSlice()) |_| {
-        if (it.i > max) break;
-        last = it.i;
-    }
-    return s[0..last];
+    _ = title;
+    var buf: [64]u8 = undefined;
+    progress.setName(std.fmt.bufPrint(&buf, "sentences: {d} pages, {d} sentences (MiB)", .{ pages, sentences }) catch "sentences (MiB)");
+    progress.setEstimatedTotalItems(@intCast(total >> 20));
+    progress.setCompletedItems(@intCast(pos >> 20));
 }
 
 // -- MediaWiki wikitext normalization ---------------------------------------
