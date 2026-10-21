@@ -20,7 +20,6 @@ packages/
 /bundle
 
 # Platform build output
-apps/macos/build/
 apps/windows/Keyboard/obj/
 apps/windows/Keyboard/bin/
 apps/windows/Keyboard/stage/
