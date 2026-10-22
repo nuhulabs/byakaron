@@ -150,7 +150,7 @@ on_dictionary_activate (GSimpleAction *action, GVariant *parameter, gpointer use
     BykWindow *self = BYK_WINDOW (user_data);
     (void) action;
     (void) parameter;
-    byk_dictionary_show (GTK_WINDOW (self), self->engines.userdict,
+    byk_dictionary_show (GTK_WINDOW (self), self->engines.composer,
                          G_CALLBACK (on_dictionary_changed), self);
 }
 
@@ -203,13 +203,10 @@ byk_window_build_menu_button (BykWindow *self)
 static void
 byk_window_init (BykWindow *self)
 {
-    /* Spelling is the only page that needs an engine handle, and spell.db is
-     * the only one worth a thread. Write is gone, so the transliterator and
-     * lexicon stay unused. */
-    self->engines.transliterator = NULL;
-    self->engines.autocomplete = NULL;
+    /* spell.db is the only handle worth a thread; the composer opens at once
+     * (and moves old GSettings values into settings.json the first time). */
     self->engines.spell = NULL;
-    self->engines.userdict = byk_userdict_new ();
+    self->engines.composer = byk_composer_open (FALSE, NULL, NULL);
 
     self->stack = gtk_stack_new ();
     gtk_stack_set_transition_type (GTK_STACK (self->stack),
@@ -271,9 +268,7 @@ byk_window_dispose (GObject *object)
     G_OBJECT_CLASS (byk_window_parent_class)->dispose (object);
 
     g_clear_pointer (&self->engines.spell, byk_spell_free);
-    g_clear_pointer (&self->engines.userdict, byk_userdict_free);
-    g_clear_pointer (&self->engines.autocomplete, byk_autocomplete_free);
-    g_clear_pointer (&self->engines.transliterator, byk_transliterator_free);
+    g_clear_pointer (&self->engines.composer, byakaron_composer_destroy);
 }
 
 static void

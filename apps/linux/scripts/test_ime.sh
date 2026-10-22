@@ -23,16 +23,21 @@ if [[ -z "${BYAKARON_SPELL_DB:-}" && -f "$REPO_ROOT/zig-out/db/spell.db" ]]; the
     export BYAKARON_SPELL_DB="$REPO_ROOT/zig-out/db/spell.db"
 fi
 
-# Default settings, not the desktop's: the user's own choices (Bangla digits
-# off, say) would otherwise change what the engine types and fail the test.
+# Default settings, not the desktop's: the user's old GSettings choices (Bangla
+# digits off, say) would otherwise be migrated into the throwaway settings.json
+# and change what the engine types.
 export GSETTINGS_BACKEND=memory
 
-# A throwaway personal dictionary: the test writes to it while the engine runs,
-# the way the app does, and never touches the user's real one.
-export BYAKARON_USER_DICT="$PROJECT_ROOT/build/ime-test-user-words.txt"
+# A throwaway data directory (settings.json, selections.json, user-words.txt):
+# the test writes the personal dictionary while the engine runs, the way the
+# app does, and never touches the user's real files. Avro's remembered choices
+# start empty each run: one left over would change what Space commits.
+export BYAKARON_DATA_DIR="$PROJECT_ROOT/build/ime-test-data"
+rm -rf "$BYAKARON_DATA_DIR"
+mkdir -p "$BYAKARON_DATA_DIR"
 # Not empty at start: reading an existing file at engine start is what once
 # crashed (a stat() struct mismatch under Zig's libc headers).
-printf 'আমায়\n' > "$BYAKARON_USER_DICT"
+printf 'আমায়\n' > "$BYAKARON_DATA_DIR/user-words.txt"
 
 if ! pgrep -x ibus-daemon >/dev/null; then
     echo "error: ibus-daemon is not running — start it with 'ibus-daemon -drx'" >&2

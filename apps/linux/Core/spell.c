@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-#include "autocomplete.h"
+#include "composer.h"
 #include "byakaron.h"
 
 struct _BykSpell {
@@ -126,8 +126,8 @@ byk_spell_suggest (BykSpell *self, const gchar *word, gint limit)
     if (json == NULL)
         return NULL;
 
-    /* Same JSON string-array as autocomplete; one parser, one ownership rule. */
-    gchar **words = byk_autocomplete_parse_json_array (json);
+    /* The ABI's JSON string array; one parser, one ownership rule. */
+    gchar **words = byk_parse_json_strings (json);
     byakaron_string_free (json);
 
     if (words == NULL)

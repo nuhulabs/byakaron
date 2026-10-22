@@ -51,6 +51,41 @@ internal static partial class ByakaronNative
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
     internal static partial nint SpellCheck(nint spell, string text);
 
+    // ── Composer (keyboard settings + personal dictionary) ─────────────────
+
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_composer_create", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial nint ComposerCreate(string dataDir, string? spellDb, nint onUpdate, nint userdata);
+
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_composer_destroy")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial void ComposerDestroy(nint composer);
+
+    /// <summary>Settings JSON; free with <see cref="StringFree"/> (use <see cref="TakeUtf8String"/>).</summary>
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_settings_get")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial nint SettingsGet(nint composer);
+
+    /// <summary>0, or -1 on invalid JSON. Missing fields take their defaults.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_settings_set", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial int SettingsSet(nint composer, string json);
+
+    /// <summary>JSON array of personal words; free with <see cref="StringFree"/>.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_userdict_get")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial nint UserDictGet(nint composer);
+
+    /// <summary>1 added, 0 already there, -1 not a valid word.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_userdict_add", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial int UserDictAdd(nint composer, string word);
+
+    /// <summary>1 removed, 0 not there, -1 on error.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_userdict_remove", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial int UserDictRemove(nint composer, string word);
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     /// <summary>Read a NUL-terminated UTF-8 C string and free it with the Zig allocator.</summary>

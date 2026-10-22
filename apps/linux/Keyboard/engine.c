@@ -1,29 +1,33 @@
 /*
- * BykEngine — IBus shell around Core/composer.c.
+ * BykEngine — IBus shell around libbyakaron's Composer (Core/composer.h).
  *
- * The word policy (what Space, 1–9, digits, Escape mean) lives in the composer.
- * This file turns those outcomes into IBus preedit / commit / lookup-table
- * calls, including the commit-then-hide order Electron/Monaco requires.
+ * Every keystroke means whatever the composer says (src/Composer.zig, the same
+ * on every platform). This file maps X11 keysyms to composer keys, inserts the
+ * text it commits, and draws its state: the highlighted candidate as the
+ * preedit and the current page as the lookup table. What stays here is IBus
+ * glue: the commit-then-hide order Electron/Monaco requires, the preedit focus
+ * mode (Qt vs everyone else), and hopping spelling corrections from the
+ * composer's worker thread back to the main loop.
+ *
+ * The lookup table only ever holds the current page: paging, wrapping and
+ * learning happen in the composer, so the panel's arrows and clicks are
+ * forwarded to it as keys and picks.
  */
 #include "engine.h"
 
 #include <string.h>
 
 #include "composer.h"
-#include "corrector.h"
 #include "prefs.h"
-#include "userdict.h"
-
-#define BYK_PAGE_SIZE BYK_COMPOSER_PAGE_SIZE
 
 struct _BykEngine {
     IBusEngine parent_instance;
-    BykComposer *composer;
-    BykCorrector *corrector; /* spelling corrections; NULL without spell.db */
-    BykUserDict *userdict;   /* personal dictionary, shared with the app via its file */
+    ByakaronComposer *composer; /* NULL if it could not be created: keys pass */
     IBusLookupTable *table;
-    GSettings *prefs; /* NULL when the schema is not installed */
+    GSettings *prefs; /* qt-click-fix; NULL when the schema is not installed */
     gboolean table_visible;
+    gboolean preedit_visible;
+    gint update_pending; /* atomic: a refresh is queued on the main loop */
     /* How IBus treats the pending word on click / focus-out / reset; see
      * byk_engine_focus_in_id. COMMIT unless the focused client is Qt. */
     IBusPreeditFocusMode preedit_mode;
@@ -45,107 +49,79 @@ byk_engine_hide_candidates (BykEngine *self)
     ibus_engine_hide_lookup_table (IBUS_ENGINE (self));
 }
 
+/* Draw the composer's state: preedit and candidate page. */
 static void
-byk_engine_sync_candidates (BykEngine *self)
+byk_engine_redraw (BykEngine *self)
 {
-    gchar **words = byk_composer_candidates (self->composer);
+    ByakaronComposerState st;
+    byakaron_composer_state (self->composer, &st);
 
-    ibus_lookup_table_clear (self->table);
+    if (st.composing && st.preedit[0] != '\0') {
+        IBusText *text = ibus_text_new_from_string (st.preedit);
+        ibus_text_append_attribute (text, IBUS_ATTR_TYPE_UNDERLINE,
+                                    IBUS_ATTR_UNDERLINE_SINGLE, 0, -1);
+        const guint cursor = (guint) g_utf8_strlen (st.preedit, -1);
+        /*
+         * PREEDIT_COMMIT: on a click, focus-out, reset or source switch, IBus
+         * itself commits this text — the GTK module on button-press, before the
+         * text view moves its cursor. Committing from the engine instead arrives
+         * over D-Bus *after* the move, so typing "ami bangla" and clicking at the
+         * start of the line produced বাংলাআমি. The preedit is the highlighted
+         * candidate, which is exactly what byakaron_composer_flush commits.
+         */
+        ibus_engine_update_preedit_text_with_mode (IBUS_ENGINE (self), text, cursor, TRUE,
+                                                   self->preedit_mode);
+        self->preedit_visible = TRUE;
+    } else if (self->preedit_visible) {
+        self->preedit_visible = FALSE;
+        ibus_engine_hide_preedit_text (IBUS_ENGINE (self));
+    }
 
-    if (words == NULL || words[0] == NULL) {
+    if (!st.panel_visible || st.candidate_count == 0) {
         byk_engine_hide_candidates (self);
         return;
     }
 
-    for (gchar **w = words; *w != NULL; w++)
+    ibus_lookup_table_clear (self->table);
+    ibus_lookup_table_set_page_size (self->table, (guint) st.candidate_count);
+    for (size_t i = 0; i < st.candidate_count; i++)
         ibus_lookup_table_append_candidate (self->table,
-                                            ibus_text_new_from_string (*w));
-
-    /* The highlight is only drawn once an arrow key has moved it: before that
-     * Space and Enter take the typed word, and a highlight would say otherwise. */
-    const gint cursor = byk_composer_cursor (self->composer);
-    const guint page = byk_composer_page (self->composer);
-    ibus_lookup_table_set_cursor_visible (self->table, cursor >= 0);
-    ibus_lookup_table_set_cursor_pos (self->table,
-                                      cursor >= 0 ? (guint) cursor : page * BYK_PAGE_SIZE);
+                                            ibus_text_new_from_string (st.candidates[i]));
+    ibus_lookup_table_set_cursor_visible (self->table, TRUE);
+    ibus_lookup_table_set_cursor_pos (self->table, (guint) st.highlight);
+    ibus_lookup_table_set_orientation (self->table,
+                                       st.vertical ? IBUS_ORIENTATION_VERTICAL
+                                                   : IBUS_ORIENTATION_HORIZONTAL);
     self->table_visible = TRUE;
     ibus_engine_update_lookup_table (IBUS_ENGINE (self), self->table, TRUE);
 }
 
-static void
-byk_engine_sync_preedit (BykEngine *self)
-{
-    const gchar *latin = byk_composer_latin (self->composer);
-
-    if (latin == NULL || *latin == '\0') {
-        ibus_engine_hide_preedit_text (IBUS_ENGINE (self));
-        byk_engine_hide_candidates (self);
-        return;
-    }
-
-    gchar *bangla = byk_composer_preedit (self->composer);
-    IBusText *text = ibus_text_new_from_string (bangla);
-    ibus_text_append_attribute (text, IBUS_ATTR_TYPE_UNDERLINE,
-                                IBUS_ATTR_UNDERLINE_SINGLE, 0, -1);
-    const guint cursor = (guint) g_utf8_strlen (bangla, -1);
-    /*
-     * PREEDIT_COMMIT: on a click, focus-out, reset or source switch, IBus
-     * itself commits this text — the GTK module on button-press, before the
-     * text view moves its cursor. Committing from the engine instead arrives
-     * over D-Bus *after* the move, so typing "ami bangla" and clicking at the
-     * start of the line produced বাংলাআমি.
-     */
-    ibus_engine_update_preedit_text_with_mode (IBUS_ENGINE (self), text, cursor, TRUE,
-                                               self->preedit_mode);
-    byk_engine_sync_candidates (self);
-    g_free (bangla);
-}
-
 /*
- * Apply a composer outcome. Returns the IBus process_key_event boolean:
- * TRUE = eaten, FALSE = pass to the application.
+ * Apply a composer result. Returns the IBus process_key_event boolean:
+ * TRUE = eaten, FALSE = the application gets the key too.
  */
 static gboolean
-byk_engine_apply (BykEngine *self, BykOutcome outcome)
+byk_engine_apply (BykEngine *self, ByakaronKeyResult result)
 {
-    switch (outcome.action) {
-    case BYK_ACT_PASS:
-        g_free (outcome.commit);
+    /* Commit first, then hide (in redraw): Electron/Monaco treats
+     * HidePreeditText as cancel, so the reverse order deletes the word. */
+    if (result.commit != NULL && result.commit[0] != '\0')
+        ibus_engine_commit_text (IBUS_ENGINE (self), ibus_text_new_from_string (result.commit));
+    byk_engine_redraw (self);
+    return result.handled != 0;
+}
+
+static gboolean
+byk_engine_send (BykEngine *self, int kind, unsigned int ch, unsigned int mods)
+{
+    if (self->composer == NULL)
         return FALSE;
-
-    case BYK_ACT_EAT:
-        byk_engine_sync_preedit (self);
-        g_free (outcome.commit);
-        return TRUE;
-
-    case BYK_ACT_COMMIT:
-        byk_engine_hide_candidates (self);
-        if (outcome.commit != NULL && outcome.commit[0] != '\0')
-            ibus_engine_commit_text (IBUS_ENGINE (self),
-                                     ibus_text_new_from_string (outcome.commit));
-        /* Commit first, then hide: Electron/Monaco treats HidePreeditText as
-         * cancel, so the reverse order deletes the word. */
-        ibus_engine_hide_preedit_text (IBUS_ENGINE (self));
-        g_free (outcome.commit);
-        return outcome.pass_key ? FALSE : TRUE;
-    }
-
-    g_free (outcome.commit);
-    return FALSE;
+    return byk_engine_apply (self, byakaron_composer_key (self->composer, kind, ch, mods));
 }
 
 static void
 byk_engine_reload_prefs (BykEngine *self)
 {
-    const gboolean phonetic =
-        byk_prefs_boolean (self->prefs, BYK_PREFS_PHONETIC_ONLY, FALSE);
-    byk_composer_set_phonetic_only (self->composer, phonetic);
-
-    byk_composer_set_corrections (self->composer,
-        byk_prefs_boolean (self->prefs, BYK_PREFS_SPELLING_SUGGESTIONS, TRUE));
-    byk_composer_set_bangla_digits (self->composer,
-        byk_prefs_boolean (self->prefs, BYK_PREFS_BANGLA_DIGITS, TRUE));
-
     /*
      * Older IBus (Ubuntu 20.04 / 22.04) cannot say which app is focused, so
      * the user chooses: with "Qt click fix" on, IBus never commits the pending
@@ -157,17 +133,6 @@ byk_engine_reload_prefs (BykEngine *self)
         self->preedit_mode =
             byk_prefs_boolean (self->prefs, BYK_PREFS_QT_CLICK_FIX, FALSE)
                 ? IBUS_ENGINE_PREEDIT_CLEAR : IBUS_ENGINE_PREEDIT_COMMIT;
-
-    const gboolean horiz =
-        byk_prefs_boolean (self->prefs, BYK_PREFS_CANDIDATES_HORIZONTAL, TRUE);
-    ibus_lookup_table_set_orientation (self->table,
-                                       horiz ? IBUS_ORIENTATION_HORIZONTAL
-                                             : IBUS_ORIENTATION_VERTICAL);
-
-    /* Flipping "Suggest words" while a word is pending must hide or refill
-     * the list immediately, not on the next key. */
-    if (byk_composer_latin (self->composer)[0] != '\0')
-        byk_engine_sync_preedit (self);
 }
 
 static void
@@ -178,15 +143,18 @@ byk_engine_on_prefs (GSettings *settings, gchar *key, gpointer user_data)
     byk_engine_reload_prefs (BYK_ENGINE (user_data));
 }
 
-static guint
+static unsigned int
 byk_ibus_mods (guint state)
 {
-    guint mods = 0;
-    if (state & IBUS_RELEASE_MASK)
-        mods |= BYK_MOD_RELEASE;
-    if (state & (IBUS_CONTROL_MASK | IBUS_MOD1_MASK | IBUS_MOD4_MASK |
-                 IBUS_SUPER_MASK | IBUS_HYPER_MASK))
-        mods |= BYK_MOD_SHORTCUT;
+    unsigned int mods = 0;
+    if (state & IBUS_SHIFT_MASK)
+        mods |= BYAKARON_MOD_SHIFT;
+    if (state & IBUS_CONTROL_MASK)
+        mods |= BYAKARON_MOD_CTRL;
+    if (state & IBUS_MOD1_MASK)
+        mods |= BYAKARON_MOD_ALT;
+    if (state & (IBUS_MOD4_MASK | IBUS_SUPER_MASK | IBUS_HYPER_MASK | IBUS_META_MASK))
+        mods |= BYAKARON_MOD_META;
     return mods;
 }
 
@@ -197,40 +165,37 @@ byk_engine_process_key_event (IBusEngine *engine,
                               guint       state)
 {
     (void) keycode;
-    /* Words added in the app reach the keyboard without a restart. */
-    if (byk_userdict_reload_if_changed (BYK_ENGINE (engine)->userdict))
-        byk_composer_refresh (BYK_ENGINE (engine)->composer);
-    return byk_engine_apply (BYK_ENGINE (engine),
-                             byk_composer_key (BYK_ENGINE (engine)->composer,
-                                               keyval, byk_ibus_mods (state)));
+    /* Released keys must never reach the composer (that would double every
+     * character); pure modifier keys are not sent at all. */
+    int kind;
+    unsigned int ch;
+    if ((state & IBUS_RELEASE_MASK) || !byk_keysym_to_key (keyval, &kind, &ch))
+        return FALSE;
+    return byk_engine_send (BYK_ENGINE (engine), kind, ch, byk_ibus_mods (state));
 }
 
 static void
 byk_engine_page_up (IBusEngine *engine)
 {
-    byk_engine_apply (BYK_ENGINE (engine),
-                      byk_composer_page_delta (BYK_ENGINE (engine)->composer, FALSE));
+    byk_engine_send (BYK_ENGINE (engine), BYAKARON_KEY_PAGE_UP, 0, 0);
 }
 
 static void
 byk_engine_page_down (IBusEngine *engine)
 {
-    byk_engine_apply (BYK_ENGINE (engine),
-                      byk_composer_page_delta (BYK_ENGINE (engine)->composer, TRUE));
+    byk_engine_send (BYK_ENGINE (engine), BYAKARON_KEY_PAGE_DOWN, 0, 0);
 }
 
 static void
 byk_engine_cursor_up (IBusEngine *engine)
 {
-    byk_engine_apply (BYK_ENGINE (engine),
-                      byk_composer_cursor_move (BYK_ENGINE (engine)->composer, FALSE));
+    byk_engine_send (BYK_ENGINE (engine), BYAKARON_KEY_UP, 0, 0);
 }
 
 static void
 byk_engine_cursor_down (IBusEngine *engine)
 {
-    byk_engine_apply (BYK_ENGINE (engine),
-                      byk_composer_cursor_move (BYK_ENGINE (engine)->composer, TRUE));
+    byk_engine_send (BYK_ENGINE (engine), BYAKARON_KEY_DOWN, 0, 0);
 }
 
 static void
@@ -239,22 +204,26 @@ byk_engine_candidate_clicked (IBusEngine *engine,
                               guint       button,
                               guint       state)
 {
+    BykEngine *self = BYK_ENGINE (engine);
     (void) button;
     (void) state;
-    byk_engine_apply (BYK_ENGINE (engine),
-                      byk_composer_select (BYK_ENGINE (engine)->composer, index));
+    if (self->composer != NULL)
+        byk_engine_apply (self, byakaron_composer_pick (self->composer, index));
 }
 
 /*
  * Focus-out / reset / disable: the pending word has already been committed by
- * IBus (PREEDIT_COMMIT, see byk_engine_sync_preedit), so only forget it here.
- * Committing it again would type the word twice.
+ * IBus (PREEDIT_COMMIT, see byk_engine_redraw), or deliberately kept by Qt
+ * (PREEDIT_CLEAR), so the composer's flush text is dropped here — inserting it
+ * would type the word twice. Flushing rather than resetting still saves a
+ * choice Avro learned while the word was typed.
  */
 static void
 byk_engine_discard (BykEngine *self)
 {
-    BykOutcome outcome = byk_composer_flush (self->composer);
-    g_free (outcome.commit);
+    if (self->composer != NULL)
+        (void) byakaron_composer_flush (self->composer);
+    self->preedit_visible = FALSE; /* the daemon has dealt with it */
     byk_engine_hide_candidates (self);
 }
 
@@ -312,49 +281,44 @@ byk_engine_disable (IBusEngine *engine)
     IBUS_ENGINE_CLASS (byk_engine_parent_class)->disable (engine);
 }
 
-/* Corrections for `word` are cached now. If it is still the word on screen,
- * rebuild the list so they appear without another keystroke. */
-static void
-byk_engine_on_corrections (const gchar *word, gpointer user_data)
+/* Main loop: corrections the worker looked up have arrived. */
+static gboolean
+byk_engine_on_update_idle (gpointer user_data)
 {
     BykEngine *self = BYK_ENGINE (user_data);
-
-    if (self->composer == NULL || byk_composer_latin (self->composer)[0] == '\0')
-        return;
-
-    gchar *bangla = byk_composer_preedit (self->composer);
-    if (g_strcmp0 (bangla, word) == 0) {
-        byk_composer_refresh (self->composer);
-        byk_engine_sync_candidates (self);
+    g_atomic_int_set (&self->update_pending, 0);
+    if (self->composer != NULL) {
+        byakaron_composer_refresh (self->composer);
+        byk_engine_redraw (self);
     }
-    g_free (bangla);
+    return G_SOURCE_REMOVE;
+}
+
+/* The composer's worker thread: queue one refresh on the main loop. The idle
+ * holds a reference, and finds composer == NULL if the engine went first. */
+static void
+byk_engine_on_update (void *userdata)
+{
+    BykEngine *self = BYK_ENGINE (userdata);
+    if (g_atomic_int_compare_and_exchange (&self->update_pending, 0, 1))
+        g_idle_add_full (G_PRIORITY_DEFAULT, byk_engine_on_update_idle,
+                         g_object_ref (self), g_object_unref);
 }
 
 static void
 byk_engine_init (BykEngine *self)
 {
-    self->composer = byk_composer_new ();
-    if (!byk_composer_ready (self->composer))
-        g_warning ("byakaron: transliterator unavailable, keys will pass through");
-
-    /* Corrections are looked up on the corrector's worker thread; this runs
-     * back on the engine's main loop once a word's are cached. */
-    self->corrector = byk_corrector_new (TRUE, byk_engine_on_corrections, self);
-    if (self->corrector == NULL)
-        g_message ("byakaron: spell.db unavailable, no spelling corrections");
-    byk_composer_set_corrector (self->composer, self->corrector);
-
-    self->userdict = byk_userdict_new ();
-    byk_composer_set_userdict (self->composer, self->userdict);
+    self->composer = byk_composer_open (TRUE, byk_engine_on_update, self);
+    if (self->composer == NULL)
+        g_warning ("byakaron: composer unavailable, keys will pass through");
 
     self->preedit_mode = IBUS_ENGINE_PREEDIT_COMMIT;
-    self->table = ibus_lookup_table_new (BYK_PAGE_SIZE, 0, FALSE, FALSE);
+    self->table = ibus_lookup_table_new (9, 0, FALSE, FALSE);
     g_object_ref_sink (self->table);
-    self->table_visible = FALSE;
 
     self->prefs = byk_prefs_try_open ();
     if (self->prefs != NULL)
-        g_signal_connect (self->prefs, "changed",
+        g_signal_connect (self->prefs, "changed::" BYK_PREFS_QT_CLICK_FIX,
                           G_CALLBACK (byk_engine_on_prefs), self);
     byk_engine_reload_prefs (self);
 }
@@ -364,10 +328,7 @@ byk_engine_destroy (IBusObject *object)
 {
     BykEngine *self = BYK_ENGINE (object);
 
-    g_clear_pointer (&self->composer, byk_composer_free);
-    /* After the composer, which borrows them. */
-    g_clear_pointer (&self->corrector, byk_corrector_free);
-    g_clear_pointer (&self->userdict, byk_userdict_free);
+    g_clear_pointer (&self->composer, byakaron_composer_destroy);
     g_clear_object (&self->table);
     g_clear_object (&self->prefs);
 

@@ -296,7 +296,8 @@ main (void)
     g_print ("multi-word sentence:\n");
     reset_state (ctx);
     send_string (ctx, "amar sonar bangla ");
-    check ("committed text", g_committed, "আমার সনার বাংলা ");
+    /* Space commits Avro's highlighted candidate: সোনার, not the plain সনার. */
+    check ("committed text", g_committed, "আমার সোনার বাংলা ");
 
     /* PREEDIT_COMMIT: the daemon commits the pending word, the engine only
      * forgets it. Both committing would read আমিআমি. */
@@ -362,49 +363,69 @@ main (void)
     }
 
     /*
-     * Candidates. Only the first candidate is pinned to a literal, because that
-     * one is a real guarantee: the word actually typed has to rank first, or
-     * pressing "1" would change what the user wrote. The rest are checked
-     * against the list the daemon reported, so these assertions test the
-     * selection and paging machinery and do not break when the lexicon grows.
+     * Candidates. Only Avro's first candidate for "ami" is pinned to a literal;
+     * the rest are checked against the list the daemon reported, so these
+     * assertions test the selection, memory and paging machinery and do not
+     * break when the dictionary changes.
      */
     g_print ("candidates appear while typing:\n");
     reset_state (ctx);
     send_string (ctx, "ami");
     check_flag ("lookup table shown", g_table_visible, TRUE);
-    check ("first candidate is the typed word", candidate_at (0), "আমি");
-    check_flag ("more than one page offered", candidate_count () > g_page_size, TRUE);
+    check ("first candidate is Avro's best", candidate_at (0), "আমি");
+    check_flag ("highlight on the first", g_cursor_visible && g_cursor_pos == 0, TRUE);
+    send_key (ctx, IBUS_KEY_Escape);
 
-    g_print ("number key selects a candidate:\n");
+    /* "amar" from here on, so the choices Avro remembers for it do not change
+     * what later "ami" tests commit. */
+    g_print ("number key selects a candidate, and Avro remembers it:\n");
     reset_state (ctx);
-    send_string (ctx, "ami");
+    send_string (ctx, "amar");
     {
         gchar *second = g_strdup (candidate_at (1));
         send_key (ctx, IBUS_KEY_2);
         check ("\"2\" commits candidate 2", g_committed, second);
         check ("preedit cleared", g_preedit, "");
         check_flag ("lookup table hidden", g_table_visible, FALSE);
+
+        reset_state (ctx);
+        send_string (ctx, "amar");
+        check_flag ("opens on candidate 2 next time", g_cursor_visible && g_cursor_pos == 1, TRUE);
+        gchar *spaced = g_strconcat (second, " ", NULL);
+        send_key (ctx, IBUS_KEY_space);
+        check ("Space commits the highlight", g_committed, spaced);
+        g_free (spaced);
         g_free (second);
     }
 
-    g_print ("arrow keys move a highlight, Enter picks it:\n");
+    g_print ("arrow keys move the highlight (wrapping), Enter picks it:\n");
     reset_state (ctx);
-    send_string (ctx, "ami");
-    check_flag ("no highlight before an arrow", g_cursor_visible, FALSE);
+    send_string (ctx, "amar");
     {
-        gchar *second = g_strdup (candidate_at (1));
+        gchar *first = g_strdup (candidate_at (0));
+        send_key (ctx, IBUS_KEY_Up);
+        check ("Up from the first wraps to the last", g_preedit,
+               candidate_at (g_cursor_pos));
+        check_flag ("…which is not the first", g_strcmp0 (g_preedit, first) != 0, TRUE);
+        send_key (ctx, IBUS_KEY_Down);
+        check ("Down wraps back to the first", g_preedit, first);
+        g_free (first);
+        gchar *third = g_strdup (candidate_at (2));
         send_key (ctx, IBUS_KEY_Down);
         send_key (ctx, IBUS_KEY_Down);
-        check_flag ("highlight shown", g_cursor_visible, TRUE);
-        check_flag ("highlight on candidate 2", g_cursor_pos == 1, TRUE);
+        check_flag ("highlight on candidate 3", g_cursor_visible && g_cursor_pos == 2, TRUE);
+        check ("inline text is the highlight", g_preedit, third);
         send_key (ctx, IBUS_KEY_Return);
-        check ("Enter commits the highlight", g_committed, second);
+        /* newline_on_enter is off by default: the word only, Enter consumed. */
+        check ("Enter commits the highlight only", g_committed, third);
         check ("preedit cleared", g_preedit, "");
-        g_free (second);
+        g_free (third);
     }
 
     /* Corrections come from the engine's worker thread a moment after the
-     * keystroke, with no further key: wait for the list rather than one pump. */
+     * keystroke, with no further key: wait for the list rather than one pump.
+     * "bangl" is Avro's বাংল alone (no dictionary word is close), which is
+     * when corrections are offered, after it. */
     g_print ("spelling corrections in the candidate list:\n");
     {
         const gchar *env_db = g_getenv ("BYAKARON_SPELL_DB");
@@ -414,28 +435,36 @@ main (void)
             g_print ("  skip (no spell.db for the engine)\n");
         } else {
             reset_state (ctx);
-            send_string (ctx, "sonar");
-            for (guint waited = 0; waited < 5000 && g_strcmp0 (candidate_at (1), "সোনার") != 0; waited += 100) {
+            send_string (ctx, "bangl");
+            for (guint waited = 0; waited < 5000 && candidate_count () < 2; waited += 100) {
                 g_usleep (100 * 1000);
                 pump ();
             }
-            check ("typed word stays first", candidate_at (0), "সনার");
-            check ("correction offered", candidate_at (1), "সোনার");
-            send_key (ctx, '2');
-            check ("2 commits the correction", g_committed, "সোনার");
+            guint at = 0;
+            for (guint i = 1; i < g_page_size && candidate_at (i) != NULL; i++)
+                if (g_strcmp0 (candidate_at (i), "বাংলা") == 0)
+                    at = i;
+            check ("Avro's word stays first", candidate_at (0), "বাংল");
+            check_flag ("correction বাংলা offered", at > 0, TRUE);
+            if (at > 0) {
+                send_key (ctx, IBUS_KEY_1 + at);
+                check ("its number commits it", g_committed, "বাংলা");
+            } else {
+                send_key (ctx, IBUS_KEY_Escape);
+            }
         }
     }
 
-    /* The app saves a word while the engine is running; the engine re-reads
-     * the file (at most once a second) and suggests it. */
+    /* The app saves a word while the engine is running; the engine's composer
+     * re-reads the data directory when the next word starts and suggests it. */
     g_print ("personal dictionary reaches the keyboard:\n");
     {
-        const gchar *dict = g_getenv ("BYAKARON_USER_DICT");
-        if (dict == NULL || *dict == '\0') {
-            g_print ("  skip (BYAKARON_USER_DICT not set; run via test_ime.sh)\n");
+        const gchar *data_dir = g_getenv ("BYAKARON_DATA_DIR");
+        if (data_dir == NULL || *data_dir == '\0') {
+            g_print ("  skip (BYAKARON_DATA_DIR not set; run via test_ime.sh)\n");
         } else {
+            gchar *dict = g_build_filename (data_dir, "user-words.txt", NULL);
             g_file_set_contents (dict, "জিবন\n", -1, NULL);
-            g_usleep (1200 * 1000);
             reset_state (ctx);
             send_string (ctx, "jib");
             gboolean found = FALSE;
@@ -444,33 +473,37 @@ main (void)
             check_flag ("saved word suggested for jib", found, TRUE);
             send_key (ctx, IBUS_KEY_Escape);
             g_remove (dict);
+            g_free (dict);
         }
     }
 
+    /* The table holds only the current page; the composer pages. */
     g_print ("page down moves which candidates 1-9 mean:\n");
     reset_state (ctx);
-    send_string (ctx, "ami");
+    send_string (ctx, "bhalo"); /* more than one page of candidates */
     {
-        /* First entry of page two, which "1" must select once we are there. */
-        gchar *next_page_first = g_strdup (candidate_at (g_page_size));
+        gchar *page_one_first = g_strdup (candidate_at (0));
         send_key (ctx, IBUS_KEY_Page_Down);
         check_flag ("still shown after Page Down", g_table_visible, TRUE);
-        check_flag ("cursor moved to page two", g_cursor_pos == g_page_size, TRUE);
+        check_flag ("a different page", g_strcmp0 (candidate_at (0), page_one_first) != 0, TRUE);
+        check_flag ("highlight on its first", g_cursor_pos == 0, TRUE);
+        gchar *page_two_first = g_strdup (candidate_at (0));
         send_key (ctx, IBUS_KEY_1);
-        check ("\"1\" commits page two's first", g_committed, next_page_first);
-        g_free (next_page_first);
+        check ("\"1\" commits page two's first", g_committed, page_two_first);
+        g_free (page_two_first);
+        g_free (page_one_first);
     }
 
     g_print ("no candidates for a word outside the lexicon:\n");
     reset_state (ctx);
-    /* Not a dictionary prefix, and spell.db has no correction close to it
-     * either (sonar now gets সোনার offered, see above). */
-    send_string (ctx, "prithibi");
+    /* Avro has only the transliteration for it, and spell.db has no
+     * correction close to it either. */
+    send_string (ctx, "jhjh");
     for (guint waited = 0; waited < 1000; waited += 100) {
         g_usleep (100 * 1000);
         pump ();
     }
-    check ("preedit still transliterates", g_preedit, "প্রিথিবি");
+    check ("preedit still transliterates", g_preedit, "ঝঝ");
     check_flag ("lookup table hidden", g_table_visible, FALSE);
 
     g_print ("escape drops the candidates with the word:\n");
@@ -481,16 +514,15 @@ main (void)
     check ("preedit cleared", g_preedit, "");
     check ("nothing committed", g_committed, "");
 
-    g_print ("space commits what was typed, not a candidate:\n");
+    g_print ("space commits the highlighted candidate, as Avro does:\n");
     reset_state (ctx);
-    /* "bangl" is a prefix, not a word: its first candidate (বাংলা) differs from
-     * the preedit (বাংল), which is what gives this assertion teeth. */
-    send_string (ctx, "bangl");
+    /* Avro's first candidate (সোনার) differs from the plain transliteration
+     * (সনার); the inline text is the highlighted candidate, not the latter. */
+    send_string (ctx, "sonar");
     check_flag ("candidates offered", g_table_visible, TRUE);
-    check ("first candidate differs from preedit",
-           g_strcmp0 (candidate_at (0), g_preedit) != 0 ? "differs" : "same", "differs");
+    check ("inline text is the highlight", g_preedit, "সোনার");
     send_key (ctx, IBUS_KEY_space);
-    check ("committed the typed word", g_committed, "বাংল ");
+    check ("committed the highlight", g_committed, "সোনার ");
 
     g_print ("digits become Bangla numerals:\n");
     reset_state (ctx);

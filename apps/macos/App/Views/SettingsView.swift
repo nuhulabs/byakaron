@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// Tabs of the Settings window. The raw values double as the persisted selection
@@ -5,7 +6,7 @@ import SwiftUI
 /// can deep-link to a specific tab by writing `selectionKey` before opening
 /// Settings.
 enum SettingsTab: String, CaseIterable {
-    case setup, general, typing, suggestions, layout, experimental
+    case setup, typing, suggestions, dictionary, layout
 
     /// UserDefaults key (in the shared suite) backing the selected tab.
     static let selectionKey = "ByakaronSettingsTab"
@@ -15,264 +16,210 @@ struct SettingsView: View {
     @AppStorage(SettingsTab.selectionKey, store: ByakaronSettings.defaults)
     private var selection = SettingsTab.setup.rawValue
 
+    @StateObject private var model = KeyboardSettingsModel()
+
     var body: some View {
         TabView(selection: $selection) {
             GettingStartedTab()
                 .tabItem { Label("Setup", systemImage: "sparkles") }
                 .tag(SettingsTab.setup.rawValue)
 
-            GeneralSettings()
-                .tabItem { Label("General", systemImage: "gearshape") }
-                .tag(SettingsTab.general.rawValue)
-
-            TypingSettings()
+            TypingSettings(model: model)
                 .tabItem { Label("Typing", systemImage: "keyboard") }
                 .tag(SettingsTab.typing.rawValue)
 
-            CandidateSettings()
+            CandidateSettings(model: model)
                 .tabItem { Label("Suggestions", systemImage: "list.bullet.rectangle") }
                 .tag(SettingsTab.suggestions.rawValue)
+
+            PersonalDictionarySettings(model: model)
+                .tabItem { Label("Dictionary", systemImage: "character.book.closed") }
+                .tag(SettingsTab.dictionary.rawValue)
 
             LayoutTab()
                 .tabItem { Label("Layout", systemImage: "keyboard.badge.ellipsis") }
                 .tag(SettingsTab.layout.rawValue)
-
-//            ExperimentalSettings()
-//                .tabItem { Label("Experimental", systemImage: "flask") }
-//                .tag(SettingsTab.experimental.rawValue)
         }
         .frame(width: 580, height: 620)
-    }
-}
-
-// MARK: - Shared helpers
-
-/// A "Coming soon" tag for controls whose feature isn't wired up yet.
-private struct ComingSoon: View {
-    var body: some View {
-        Text("Coming soon")
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Capsule().fill(Color.secondary.opacity(0.15)))
-    }
-}
-
-private extension View {
-    /// Dim and disable a demo control while still showing it.
-    func demo() -> some View {
-        self.disabled(true).opacity(0.6)
-    }
-}
-
-// MARK: - General
-
-private struct GeneralSettings: View {
-    @AppStorage("ByakaronStartAtLogin", store: ByakaronSettings.defaults) private var startAtLogin = false
-    @AppStorage("ByakaronShowInMenuBar", store: ByakaronSettings.defaults) private var showInMenuBar = true
-    @AppStorage("ByakaronUpdateChannel", store: ByakaronSettings.defaults) private var updateChannel = "stable"
-    @AppStorage("ByakaronAutoUpdate", store: ByakaronSettings.defaults) private var autoUpdate = true
-
-    var body: some View {
-        Form {
-            Section("Startup") {
-                LabeledContent {
-                    HStack { ComingSoon(); Toggle("", isOn: $startAtLogin).labelsHidden().demo() }
-                } label: { Text("Start at login") }
-
-                LabeledContent {
-                    HStack { ComingSoon(); Toggle("", isOn: $showInMenuBar).labelsHidden().demo() }
-                } label: { Text("Show in menu bar") }
-            }
-
-            Section {
-                LabeledContent {
-                    HStack { ComingSoon(); Toggle("", isOn: $autoUpdate).labelsHidden().demo() }
-                } label: { Text("Automatically download updates") }
-
-                Picker("Update channel", selection: $updateChannel) {
-                    Text("Stable").tag("stable")
-                    Text("Beta").tag("beta")
-                }
-                .demo()
-            } header: {
-                Text("Updates")
-            } footer: {
-             
-            }
+        .onAppear {
+            // A tab removed since it was last selected.
+            if SettingsTab(rawValue: selection) == nil { selection = SettingsTab.setup.rawValue }
+            model.reload()
         }
-        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Model
+
+/// The keyboard's shared settings and personal dictionary, through the app's own
+/// composer on the keyboard's data directory (no spell.db: it never types). The
+/// running keyboard picks up what is saved here at its next word.
+final class KeyboardSettingsModel: ObservableObject {
+    private let composer: OpaquePointer?
+
+    @Published var values = ByakaronSettings.Values() {
+        didSet {
+            guard values != oldValue, !loading, let composer else { return }
+            ByakaronSettings.set(values, composer)
+        }
+    }
+    @Published private(set) var userWords: [String] = []
+    private var loading = false
+
+    init() {
+        composer = ByakaronSettings.openComposer()
+        reload()
+    }
+
+    deinit {
+        if let composer { byakaron_composer_destroy(composer) }
+    }
+
+    /// Re-read what is on disk (another process may have changed it).
+    func reload() {
+        guard let composer else { return }
+        loading = true
+        values = ByakaronSettings.get(composer)
+        userWords = ByakaronSettings.userWords(composer)
+        loading = false
+    }
+
+    /// Add a word; false if it was already there or is not a word.
+    @discardableResult
+    func addWord(_ word: String) -> Bool {
+        guard let composer else { return false }
+        let added = byakaron_userdict_add(composer, word) == 1
+        userWords = ByakaronSettings.userWords(composer)
+        return added
+    }
+
+    func removeWord(_ word: String) {
+        guard let composer else { return }
+        _ = byakaron_userdict_remove(composer, word)
+        userWords = ByakaronSettings.userWords(composer)
     }
 }
 
 // MARK: - Typing
 
 private struct TypingSettings: View {
-    // Live: read by the IME engine.
-    @AppStorage(ByakaronSettings.phoneticOnlyModeKey, store: ByakaronSettings.defaults)
-    private var phoneticOnly = false
+    @ObservedObject var model: KeyboardSettingsModel
 
-    // Demo: persisted, not consumed yet.
-    @AppStorage("ByakaronAutoCorrect", store: ByakaronSettings.defaults) private var autoCorrect = true
-    @AppStorage("ByakaronSmartDigits", store: ByakaronSettings.defaults) private var smartDigits = true
-    @AppStorage("ByakaronAutoVowel", store: ByakaronSettings.defaults) private var autoVowel = true
-    @AppStorage("ByakaronLearnWords", store: ByakaronSettings.defaults) private var learnWords = true
-    @AppStorage("ByakaronKeyboardLayout", store: ByakaronSettings.defaults)
-    
-    private var keyboardLayout = "avro"
-    
     var body: some View {
         Form {
             Section {
-                Picker("Keyboard layout", selection: $keyboardLayout) {
-                    Text("Avro Phonetic").tag("avro")
-                    Text("Probhat").tag("probhat")
-                    Text("National (Jatiyo)").tag("national")
+                Toggle(isOn: $model.values.suggestions) {
+                    Text("Word suggestions")
+                    Text("Avro dictionary mode. Off types exactly what you spell, with no list.")
                 }
-                .demo()
-            } header: {
-//                Text("Layout")
-            } footer: {
-                Text("Only Avro Phonetic is available today; other layouts come soon.")
-                    .font(.caption).foregroundStyle(.tertiary)
-            }
-            Section {
-                Toggle(isOn: $phoneticOnly) {
-                    Text("Phonetic-only mode")
-                    Text("Hides suggestions of words while typing.")
+                Toggle(isOn: $model.values.spellingCorrections) {
+                    Text("Spelling corrections")
+                    Text("Suggest corrections when the dictionary has no match.")
+                }
+                Toggle(isOn: $model.values.learnChoices) {
+                    Text("Remember my choices")
+                    Text("Highlight the word you chose last time for the same input.")
                 }
             } header: {
-                Text("Mode")
-            }
-            .onChange(of: phoneticOnly) { _, _ in
-                // @AppStorage wrote the shared suite; tell the running IME.
-                ByakaronSettings.broadcastChange()
-            }
-
-            Section("Corrections") {
-                demoToggle("Auto-correct misspellings", $autoCorrect)
-                demoToggle("Learn words as I type", $learnWords)
+                Text("Suggestions")
             }
 
             Section {
-                demoToggle("Convert digits to Bangla numerals (০–৯)", $smartDigits)
-                demoToggle("Smart vowel & conjunct handling", $autoVowel)
+                Toggle("Bangla digits (০–৯)", isOn: $model.values.banglaDigits)
+                Toggle(isOn: $model.values.newlineOnEnter) {
+                    Text("New line on Enter")
+                    Text("Enter commits the word and starts a new line.")
+                }
             } header: {
-                Text("Bangla")
+                Text("Typing")
             }
         }
         .formStyle(.grouped)
-    }
-
-    private func demoToggle(_ title: String, _ binding: Binding<Bool>) -> some View {
-        LabeledContent {
-            HStack { ComingSoon(); Toggle("", isOn: binding).labelsHidden().demo() }
-        } label: { Text(title) }
     }
 }
 
 // MARK: - Candidates
 
 private struct CandidateSettings: View {
-    // Live: read by CandidatePanel.
-    @AppStorage(ByakaronSettings.candidateOrientationKey, store: ByakaronSettings.defaults)
-    private var orientationRaw = ByakaronSettings.CandidateOrientation.horizontal.rawValue
-
-    // Demo: persisted, not consumed yet.
-    @AppStorage(ByakaronSettings.candidatesPerPageKey, store: ByakaronSettings.defaults)
-    private var perPage = 9
-    @AppStorage(ByakaronSettings.candidateFontSizeKey, store: ByakaronSettings.defaults)
-    private var fontSize = 17.0
-    @AppStorage("ByakaronShowEnglish", store: ByakaronSettings.defaults) private var showEnglish = true
-    @AppStorage("ByakaronShowEmoji", store: ByakaronSettings.defaults) private var showEmoji = true
-
-    private var orientation: Binding<ByakaronSettings.CandidateOrientation> {
-        Binding(
-            get: { ByakaronSettings.CandidateOrientation(rawValue: orientationRaw) ?? .horizontal },
-            set: { orientationRaw = $0.rawValue }
-        )
-    }
+    @ObservedObject var model: KeyboardSettingsModel
 
     var body: some View {
         Form {
             Section {
-                Picker("List orientation", selection: orientation) {
-                    ForEach(ByakaronSettings.CandidateOrientation.allCases) { o in
+                Picker("List orientation", selection: $model.values.candidateOrientation) {
+                    ForEach(ByakaronSettings.Orientation.allCases) { o in
                         Text(o.label).tag(o)
                     }
                 }
                 .pickerStyle(.segmented)
-                .onChange(of: orientationRaw) { _, _ in
-                    ByakaronSettings.broadcastChange()
+
+                LabeledContent("Candidates per page") {
+                    Stepper(
+                        "\(model.values.candidatesPerPage)",
+                        value: $model.values.candidatesPerPage,
+                        in: ByakaronSettings.candidatesPerPageRange)
                 }
             } header: {
-                Text("Appearance")
+                Text("Candidate list")
             } footer: {
                 Text("Applies to the candidate popup the keyboard shows while you type.")
                     .font(.caption).foregroundStyle(.tertiary)
             }
-
-            Section("Layout") {
-                LabeledContent("Candidates per page") {
-                    HStack {
-                        ComingSoon()
-                        Stepper("\(perPage)", value: $perPage, in: 3...9).demo()
-                    }
-                }
-                LabeledContent("Candidate font size") {
-                    HStack {
-                        ComingSoon()
-                        Text("\(Int(fontSize)) pt").foregroundStyle(.secondary)
-                        Slider(value: $fontSize, in: 12...28).frame(width: 140).demo()
-                    }
-                }
-            }
-
-            Section {
-                demoToggle("Show English word in candidates", $showEnglish)
-                demoToggle("Show emoji suggestions", $showEmoji)
-            } header: {
-                Text("Contents")
-            }
         }
         .formStyle(.grouped)
     }
-
-    private func demoToggle(_ title: String, _ binding: Binding<Bool>) -> some View {
-        LabeledContent {
-            HStack { ComingSoon(); Toggle("", isOn: binding).labelsHidden().demo() }
-        } label: { Text(title) }
-    }
 }
 
+// MARK: - Personal dictionary
 
-// MARK: - Experimental
-
-private struct ExperimentalSettings: View {
-    // Live: read by the IME. When on, transliteration runs through the Zig
-    @AppStorage(ByakaronSettings.useZigTransliterationKey, store: ByakaronSettings.defaults)
-    private var useZig = true
+private struct PersonalDictionarySettings: View {
+    @ObservedObject var model: KeyboardSettingsModel
+    @State private var newWord = ""
 
     var body: some View {
         Form {
             Section {
-                Toggle(isOn: $useZig) {
-                    Text("Use Zig transliteration engine")
+                HStack {
+                    TextField("Add a word", text: $newWord)
+                        .onSubmit(add)
+                    Button("Add", action: add)
+                        .disabled(trimmed.isEmpty)
                 }
-                .disabled(true)
-                .onChange(of: useZig) { _, _ in
-                    // @AppStorage wrote the shared suite; tell the running IME to rebuild.
-                    ByakaronSettings.broadcastChange()
-                }
-            } header: {
-                Text("Engine")
             } footer: {
-                Text("Experimental features may be unstable. Turn this off to return to the default engine with full suggestions.")
+                Text("Your words are suggested while you type, after Avro's.")
                     .font(.caption).foregroundStyle(.tertiary)
+            }
+
+            Section("Words") {
+                if model.userWords.isEmpty {
+                    Text("No words yet").foregroundStyle(.secondary)
+                }
+                ForEach(model.userWords, id: \.self) { word in
+                    HStack {
+                        Text(word)
+                        Spacer()
+                        Button {
+                            model.removeWord(word)
+                        } label: {
+                            Image(systemName: "minus.circle")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Remove \(word)")
+                    }
+                }
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var trimmed: String {
+        newWord.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func add() {
+        guard !trimmed.isEmpty else { return }
+        model.addWord(trimmed)
+        newWord = ""
     }
 }
 
@@ -280,16 +227,13 @@ private struct ExperimentalSettings: View {
 #Preview("Setup") {
     GettingStartedTab().frame(width: 540)
 }
-#Preview("General") {
-    GeneralSettings().frame(width: 540)
-}
 #Preview("Typing") {
-    TypingSettings().frame(width: 540)
+    TypingSettings(model: KeyboardSettingsModel()).frame(width: 540)
 }
 #Preview("Suggestions") {
-    CandidateSettings().frame(width: 540)
+    CandidateSettings(model: KeyboardSettingsModel()).frame(width: 540)
 }
-#Preview("Experimental") {
-    ExperimentalSettings().frame(width: 540)
+#Preview("Dictionary") {
+    PersonalDictionarySettings(model: KeyboardSettingsModel()).frame(width: 540)
 }
 #endif

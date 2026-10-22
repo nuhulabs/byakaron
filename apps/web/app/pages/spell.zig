@@ -1,8 +1,10 @@
 //! Thin web façade over byakaron `src/` spell + autocomplete backends.
 //!
-//! Storage is `<install prefix>/db/spell.db` (built by `zig build db`), opened
-//! read-only. `zx dev` / `zx serve` set ZIEX_ROOT_DIR to the install prefix.
-//! Backends are process-static (no heap) so hot-reload doesn't trip leak checks.
+//! Storage is the app database `zx.db`: Cloudflare D1 on the Workers build
+//! (imported from spell.db by apps/web/scripts/d1_import.sh), and natively
+//! `<install prefix>/db/spell.db` (built by `zig build db`) opened read-only by
+//! main.zig. Backends are process-static (no heap) so hot-reload doesn't trip
+//! leak checks.
 
 const std = @import("std");
 const zx = @import("zx");
@@ -16,9 +18,6 @@ pub const Suggestion = Spell.Suggestion;
 pub const TokenResult = Spell.TokenResult;
 pub const AutoCompleteSuggestion = AutoComplete.Suggestion;
 
-var db: zx.Db = undefined;
-var db_ready: bool = false;
-
 var spell_backend: SpellSqlite = undefined;
 var spell_ready: bool = false;
 
@@ -27,27 +26,29 @@ var ac_sqlite_ready: bool = false;
 
 var ac_mem_backend: ?*AutoCompleteMem = null;
 
-fn spellDb() *zx.Db {
-    if (!db_ready) {
-        const allocator = std.heap.page_allocator;
-        const root: []const u8 = if (std.c.getenv("ZIEX_ROOT_DIR")) |r| std.mem.span(r) else "zig-out";
-        const path = std.fs.path.join(allocator, &.{ root, "db", "spell.db" }) catch @panic("OOM");
-        db = zx.Db.Sqlite.open(allocator, zx.io(), path, .{
-            .readonly = true,
-            .create = false,
-            .readwrite = false,
-            // ziex's pooled mode forces `journal_mode=wal`, which a read-only
-            // connection rejects; one serialized connection is plenty here.
-            .max_pool_size = 1,
-        }) catch |err| std.debug.panic("byakaron: cannot open {s} ({t}); run `zig build db`", .{ path, err });
-        db_ready = true;
-    }
-    return &db;
+/// Opens spell.db read-only as `zx.db` on native targets. On wasm32-wasi ziex
+/// already binds `zx.db` to the platform database (D1 on Cloudflare).
+pub fn openLocalDb() !void {
+    if (zx.platform.isWasm()) return;
+    const allocator = std.heap.page_allocator;
+    const root: []const u8 = if (std.c.getenv("ZIEX_ROOT_DIR")) |r| std.mem.span(r) else "zig-out";
+    const path = try std.fs.path.join(allocator, &.{ root, "db", "spell.db" });
+    zx.db = zx.Db.Sqlite.open(allocator, zx.io(), path, .{
+        .readonly = true,
+        .create = false,
+        .readwrite = false,
+        // ziex's pooled mode forces `journal_mode=wal`, which a read-only
+        // connection rejects; one serialized connection is plenty here.
+        .max_pool_size = 1,
+    }) catch |err| {
+        std.log.err("byakaron: cannot open {s} ({t}); run `zig build db`", .{ path, err });
+        return err;
+    };
 }
 
 fn spellEngine() *Spell {
     if (!spell_ready) {
-        SpellSqlite.initBorrowedInto(&spell_backend, spellDb());
+        SpellSqlite.initBorrowedInto(&spell_backend, &zx.db);
         spell_ready = true;
     }
     return spell_backend.engine();
@@ -55,7 +56,7 @@ fn spellEngine() *Spell {
 
 fn autoCompleteSqlite() *AutoComplete {
     if (!ac_sqlite_ready) {
-        AutoCompleteSqlite.initBorrowedInto(&ac_sqlite_backend, spellDb());
+        AutoCompleteSqlite.initBorrowedInto(&ac_sqlite_backend, &zx.db);
         ac_sqlite_ready = true;
     }
     return ac_sqlite_backend.autoComplete();

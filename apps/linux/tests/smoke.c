@@ -2,22 +2,19 @@
  * Smoke test for libbyakaron's C ABI on Linux, and for the Core/ glue over it.
  *
  * Proves the Zig engine is reachable across the FFI boundary — if this fails,
- * nothing built on top of it can work. It needs no IBus daemon, which is what
- * makes it the right place for the candidate JSON parser: the parser's failure
- * paths cannot be reached through the engine, because the only producer in the
- * repository never emits malformed input.
+ * nothing built on top of it can work. It needs no IBus daemon. The keyboard's
+ * behaviour itself is tested in Zig (src/Composer.zig); here it is driven
+ * through the same glue the IBus engine and Fcitx5 addon use (X11 keysyms ->
+ * byk_keysym_to_key -> byakaron_composer_key), to prove the shell wiring.
  *
  * Build and run with: apps/linux/scripts/smoke.sh
  */
 #include <stdio.h>
 #include <string.h>
 
-#include "autocomplete.h"
 #include "byakaron.h"
 #include "composer.h"
 #include "spell.h"
-#include "corrector.h"
-#include "userdict.h"
 #include <glib/gstdio.h>
 
 /* Expected outputs are pinned so a regression in the engine is visible here. */
@@ -35,23 +32,55 @@ static const struct {
 };
 static const int CASE_COUNT = (int)(sizeof CASES / sizeof CASES[0]);
 
-static void smoke_on_ready(const gchar *word, gpointer data)
+static int failures = 0;
+
+static void expect(int ok, const char *what, const char *got)
 {
-    struct { GMainLoop *loop; gchar *word; } *got = data;
-    g_free(got->word);
-    got->word = g_strdup(word);
-    g_main_loop_quit(got->loop);
+    printf("  %-4s %-34s -> %s\n", ok ? "ok" : "FAIL", what, got ? got : "(null)");
+    if (!ok) failures++;
 }
 
-static gboolean smoke_quit(gpointer loop)
+/* A keystroke the way the IME shells send it. Returns the result's commit
+ * (copied; g_free) and sets *handled. Modifier-only keys are not sent. */
+static gchar *press(ByakaronComposer *c, guint keyval, int *handled)
 {
-    g_main_loop_quit(loop);
-    return G_SOURCE_REMOVE;
+    int kind;
+    unsigned int ch;
+    *handled = 0;
+    if (!byk_keysym_to_key(keyval, &kind, &ch))
+        return g_strdup("");
+    ByakaronKeyResult r = byakaron_composer_key(c, kind, ch, 0);
+    *handled = r.handled;
+    return g_strdup(r.commit ? r.commit : "");
+}
+
+static void type(ByakaronComposer *c, const char *ascii)
+{
+    int handled;
+    for (const char *p = ascii; *p; p++)
+        g_free(press(c, (guint)(unsigned char)*p, &handled));
+}
+
+static void rm_rf(const gchar *dir)
+{
+    GDir *d = g_dir_open(dir, 0, NULL);
+    const gchar *name;
+    while (d && (name = g_dir_read_name(d)) != NULL) {
+        gchar *path = g_build_filename(dir, name, NULL);
+        g_remove(path);
+        g_free(path);
+    }
+    if (d) g_dir_close(d);
+    g_rmdir(dir);
 }
 
 int main(void)
 {
-    int failures = 0;
+    /* Settings, learned choices and personal words go to a scratch dir. */
+    gchar *data_dir = g_dir_make_tmp("byk-smoke-XXXXXX", NULL);
+    g_setenv("BYAKARON_DATA_DIR", data_dir, TRUE);
+    /* No GSettings migration from the developer's desktop. */
+    g_setenv("GSETTINGS_BACKEND", "memory", TRUE);
 
     ByakaronEngine *engine = byakaron_engine_create(BYAKARON_MODE_AVRO);
     if (!engine) {
@@ -63,308 +92,118 @@ int main(void)
     for (int i = 0; i < CASE_COUNT; i++) {
         char *out = byakaron_engine_transliterate(engine, CASES[i].latin);
         const int ok = out && strcmp(out, CASES[i].bangla) == 0;
-        printf("  %-4s %-20s -> %s\n", ok ? "ok" : "FAIL", CASES[i].latin,
-               out ? out : "(null)");
-        if (!ok) {
-            printf("       expected: %s\n", CASES[i].bangla);
-            failures++;
-        }
+        expect(ok, CASES[i].latin, out);
+        if (!ok) printf("       expected: %s\n", CASES[i].bangla);
         byakaron_string_free(out);
     }
     byakaron_engine_destroy(engine);
 
-    /* Round-trip through the reverse mode to exercise the second engine mode. */
-    puts("transliteration (orva, reverse):");
-    char *latin = byakaron_transliterate(BYAKARON_MODE_ORVA, "আমি");
-    printf("  %-4s %-20s -> %s\n", latin ? "ok" : "FAIL", "আমি",
-           latin ? latin : "(null)");
-    if (!latin) failures++;
-    byakaron_string_free(latin);
-
-    /* Autocomplete is in-memory (no spell.db needed), so it must work already. */
-    puts("autocomplete (Core wrapper):");
-    BykAutoComplete *ac = byk_autocomplete_new();
-    if (!ac) {
-        fprintf(stderr, "  FAIL byk_autocomplete_new returned NULL\n");
-        failures++;
-    } else {
-        /* The candidate window depends on three things this checks: that a
-         * prefix finds words, that the word itself comes back first (so the
-         * first candidate is a no-op choice), and that "no completions" is an
-         * empty list rather than an error. */
-        gchar **words = byk_autocomplete_prefix(ac, "আম", 5);
-        const int found = words && words[0];
-        printf("  %-4s %-28s -> %s\n", found ? "ok" : "FAIL", "prefix আম",
-               found ? words[0] : "(none)");
-        if (!found) failures++;
-
-        const int exact_first = found && strcmp(words[0], "আম") == 0;
-        printf("  %-4s %-28s -> %s\n", exact_first ? "ok" : "FAIL",
-               "typed word ranks first", found ? words[0] : "(none)");
-        if (!exact_first) failures++;
-        g_strfreev(words);
-
-        /* "সনার" is real Bangla but not a dictionary lemma. */
-        words = byk_autocomplete_prefix(ac, "সনার", 5);
-        const int empty = words && words[0] == NULL;
-        printf("  %-4s %-28s -> %s\n", empty ? "ok" : "FAIL",
-               "unknown prefix is empty", words ? (words[0] ? words[0] : "[]") : "(null)");
-        if (!empty) failures++;
-        g_strfreev(words);
-
-        byk_autocomplete_free(ac);
+    puts("keysyms -> composer keys:");
+    {
+        static const struct { guint keyval; gboolean sent; int kind; unsigned int ch; const char *name; } KEYS[] = {
+            { 'a',    TRUE,  BYAKARON_KEY_CHAR,      'a', "a" },
+            { 'O',    TRUE,  BYAKARON_KEY_CHAR,      'O', "O" },
+            { 0xffb5, TRUE,  BYAKARON_KEY_CHAR,      '5', "KP_5" },
+            { 0x0020, TRUE,  BYAKARON_KEY_SPACE,     0,   "space" },
+            { 0xff0d, TRUE,  BYAKARON_KEY_ENTER,     0,   "Return" },
+            { 0xff8d, TRUE,  BYAKARON_KEY_ENTER,     0,   "KP_Enter" },
+            { 0xfe20, TRUE,  BYAKARON_KEY_TAB,       0,   "ISO_Left_Tab" },
+            { 0xff97, TRUE,  BYAKARON_KEY_UP,        0,   "KP_Up" },
+            { 0xff9b, TRUE,  BYAKARON_KEY_PAGE_DOWN, 0,   "KP_Page_Down" },
+            { 0xff50, TRUE,  BYAKARON_KEY_OTHER,     0,   "Home" },
+            { 0xffe1, FALSE, 0,                      0,   "Shift_L (not sent)" },
+            { 0xffe5, FALSE, 0,                      0,   "Caps_Lock (not sent)" },
+            { 0xfe03, FALSE, 0,                      0,   "ISO_Level3_Shift (not sent)" },
+        };
+        for (size_t i = 0; i < sizeof KEYS / sizeof KEYS[0]; i++) {
+            int kind = -1;
+            unsigned int ch = 0;
+            const gboolean sent = byk_keysym_to_key(KEYS[i].keyval, &kind, &ch);
+            const int ok = sent == KEYS[i].sent &&
+                           (!sent || (kind == KEYS[i].kind && ch == KEYS[i].ch));
+            expect(ok, KEYS[i].name, ok ? "ok" : "wrong");
+        }
     }
 
-    puts("composer (shared IME policy):");
+    puts("composer through the shell:");
     {
-        BykComposer *c = byk_composer_new();
-        if (!c || !byk_composer_ready(c)) {
-            fprintf(stderr, "  FAIL byk_composer_new\n");
-            failures++;
-        } else {
-            BykOutcome o;
-            guint i;
-            const char ami[] = { 'a', 'm', 'i' };
-            for (i = 0; i < 3; i++) {
-                o = byk_composer_key(c, (guint) ami[i], 0);
-                if (o.action != BYK_ACT_EAT) failures++;
-                g_free(o.commit);
-            }
-            gchar *pre = byk_composer_preedit(c);
-            const int ami_ok = pre && strcmp(pre, "আমি") == 0;
-            printf("  %-4s %-28s -> %s\n", ami_ok ? "ok" : "FAIL",
-                   "type ami", pre ? pre : "(null)");
-            if (!ami_ok) failures++;
-            g_free(pre);
+        ByakaronComposer *c = byk_composer_open(FALSE, NULL, NULL);
+        expect(c != NULL, "byk_composer_open", c ? "created" : "NULL");
+        if (c == NULL)
+            return 1;
 
-            const int listed = byk_composer_table_visible(c);
-            printf("  %-4s %-28s -> %s\n", listed ? "ok" : "FAIL",
-                   "candidates while typing", listed ? "yes" : "no");
-            if (!listed) failures++;
+        gchar *settings_path = g_build_filename(data_dir, "settings.json", NULL);
+        expect(g_file_test(settings_path, G_FILE_TEST_EXISTS), "first open writes settings.json",
+               settings_path);
+        g_free(settings_path);
 
-            o = byk_composer_key(c, 0x0032, 0); /* '2' */
-            const int picked = o.action == BYK_ACT_COMMIT && o.commit &&
-                               strcmp(o.commit, "আমিন") == 0;
-            printf("  %-4s %-28s -> %s\n", picked ? "ok" : "FAIL",
-                   "2 picks candidate 2", o.commit ? o.commit : "(none)");
-            if (!picked) failures++;
-            g_free(o.commit);
+        ByakaronComposerState st;
+        int handled;
+        type(c, "ami");
+        byakaron_composer_state(c, &st);
+        expect(st.composing && strcmp(st.preedit, "আমি") == 0, "\"ami\" preedit", st.preedit);
+        expect(st.panel_visible && st.candidate_count > 0 &&
+               strcmp(st.candidates[st.highlight], st.preedit) == 0,
+               "preedit is the highlighted candidate", st.panel_visible ? "shown" : "hidden");
 
-            o = byk_composer_key(c, 0x0031, 0); /* '1' with no list */
-            pre = byk_composer_preedit(c);
-            const int digit = o.action == BYK_ACT_EAT && pre &&
-                              strcmp(pre, "১") == 0;
-            printf("  %-4s %-28s -> %s\n", digit ? "ok" : "FAIL",
-                   "1 becomes ১", pre ? pre : "(null)");
-            if (!digit) failures++;
-            g_free(pre);
-            g_free(o.commit);
+        gchar *out = press(c, 0x0020, &handled);
+        expect(handled && strcmp(out, "আমি ") == 0, "Space commits word + space", out);
+        g_free(out);
+        byakaron_composer_state(c, &st);
+        expect(!st.composing && !st.panel_visible, "nothing pending after", st.composing ? "composing" : "idle");
 
-            o = byk_composer_key(c, 0xff08, 0); /* BackSpace */
-            g_free(o.commit);
-            o = byk_composer_key(c, 0x0061, 0); /* a */
-            g_free(o.commit);
-            o = byk_composer_key(c, 0x006d, 0);
-            g_free(o.commit);
-            o = byk_composer_key(c, 0x0069, 0);
-            g_free(o.commit);
-            o = byk_composer_key(c, 0x0020, 0); /* space */
-            const int spaced = o.action == BYK_ACT_COMMIT && o.commit &&
-                               strcmp(o.commit, "আমি ") == 0;
-            printf("  %-4s %-28s -> %s\n", spaced ? "ok" : "FAIL",
-                   "space commits typed word", o.commit ? o.commit : "(none)");
-            if (!spaced) failures++;
-            g_free(o.commit);
+        /* Before anything is learned, which would change the highlight. */
+        type(c, "bhal");
+        g_free(press(c, 0xffe1, &handled)); /* Shift: not sent, the word goes on */
+        type(c, "O");
+        const char *word = byakaron_composer_flush(c);
+        expect(strcmp(word, "ভালো") == 0, "Shift stays in the word (flush)", word);
 
-            /* Punctuation is latin, not a commit-and-pass: Avro maps `.` → `।`. */
-            o = byk_composer_key(c, (guint) '.', 0);
-            pre = byk_composer_preedit(c);
-            const int dari = o.action == BYK_ACT_EAT && pre &&
-                             strcmp(pre, "।") == 0;
-            printf("  %-4s %-28s -> %s\n", dari ? "ok" : "FAIL",
-                   ". becomes ।", pre ? pre : "(null)");
-            if (!dari) failures++;
-            g_free(pre);
-            g_free(o.commit);
+        type(c, "bhalo");
+        byakaron_composer_state(c, &st);
+        const size_t pages = st.page_count;
+        g_free(press(c, 0xff52, &handled)); /* Up from the first wraps */
+        byakaron_composer_state(c, &st);
+        expect(handled && st.page == pages - 1, "Up wraps to the last page",
+               st.page == pages - 1 ? "last page" : "elsewhere");
+        gchar *highlighted = g_strdup(st.preedit);
+        out = press(c, 0xff8d, &handled); /* KP_Enter */
+        expect(handled && strcmp(out, highlighted) == 0, "Enter commits the word only", out);
+        g_free(out);
+        g_free(highlighted);
 
-            o = byk_composer_key(c, 0xff1b, 0); /* Escape */
-            g_free(o.commit);
-            {
-                const char ami_dot[] = { 'a', 'm', 'i', '.' };
-                for (i = 0; i < 4; i++) {
-                    o = byk_composer_key(c, (guint) ami_dot[i], 0);
-                    g_free(o.commit);
-                }
-            }
-            pre = byk_composer_preedit(c);
-            const int ami_dari = pre && strcmp(pre, "আমি।") == 0;
-            printf("  %-4s %-28s -> %s\n", ami_dari ? "ok" : "FAIL",
-                   "ami. is আমি।", pre ? pre : "(null)");
-            if (!ami_dari) failures++;
-            g_free(pre);
+        type(c, "ami");
+        g_free(press(c, 0xff1b, &handled));
+        byakaron_composer_state(c, &st);
+        expect(handled && !st.composing, "Escape drops the word", st.composing ? "composing" : "dropped");
 
-            o = byk_composer_key(c, 0x0020, 0);
-            const int dari_commit = o.action == BYK_ACT_COMMIT && o.commit &&
-                                    strcmp(o.commit, "আমি। ") == 0;
-            printf("  %-4s %-28s -> %s\n", dari_commit ? "ok" : "FAIL",
-                   "space commits আমি। ", o.commit ? o.commit : "(none)");
-            if (!dari_commit) failures++;
-            g_free(o.commit);
+        BykSettings s;
+        byk_settings_load(c, &s);
+        expect(s.suggestions && s.bangla_digits && !s.vertical && s.candidates_per_page == 9,
+               "default settings", "loaded");
+        s.vertical = TRUE;
+        s.candidates_per_page = 5;
+        s.bangla_digits = FALSE;
+        expect(byk_settings_save(c, &s), "save settings", "saved");
+        BykSettings back;
+        byk_settings_load(c, &back);
+        expect(back.vertical && back.candidates_per_page == 5 && !back.bangla_digits,
+               "settings round trip", "loaded");
+        type(c, "bhalo");
+        byakaron_composer_state(c, &st);
+        expect(st.vertical && st.candidate_count <= 5, "composer obeys them",
+               st.vertical ? "vertical" : "horizontal");
+        byakaron_composer_reset(c);
 
-            byk_composer_set_phonetic_only(c, TRUE);
-            {
-                const char ami2[] = { 'a', 'm', 'i' };
-                for (i = 0; i < 3; i++) {
-                    o = byk_composer_key(c, (guint) ami2[i], 0);
-                    g_free(o.commit);
-                }
-            }
-            pre = byk_composer_preedit(c);
-            const int phonetic_pre = pre && strcmp(pre, "আমি") == 0;
-            const int phonetic_hide = !byk_composer_table_visible(c);
-            printf("  %-4s %-28s -> %s\n", phonetic_pre ? "ok" : "FAIL",
-                   "phonetic-only still types", pre ? pre : "(null)");
-            printf("  %-4s %-28s -> %s\n", phonetic_hide ? "ok" : "FAIL",
-                   "phonetic-only hides list", phonetic_hide ? "hidden" : "shown");
-            if (!phonetic_pre) failures++;
-            if (!phonetic_hide) failures++;
-            g_free(pre);
+        expect(byakaron_userdict_add(c, "জিবনানন্দ") == 1, "add a personal word", "added");
+        expect(byk_userdict_contains(c, "জিবনানন্দ"), "contains it", "yes");
+        gchar **words = byk_userdict_words(c);
+        expect(g_strv_length(words) == 1, "one saved word", words[0]);
+        g_strfreev(words);
+        expect(byakaron_userdict_remove(c, "জিবনানন্দ") == 1, "remove it", "removed");
+        expect(!byk_userdict_contains(c, "জিবনানন্দ"), "gone", "no");
 
-            o = byk_composer_key(c, 0x0032, 0); /* '2' with no list */
-            pre = byk_composer_preedit(c);
-            const int phonetic_digit = o.action == BYK_ACT_EAT && pre &&
-                                       strcmp(pre, "আমি২") == 0;
-            printf("  %-4s %-28s -> %s\n", phonetic_digit ? "ok" : "FAIL",
-                   "phonetic-only 2 is ২", pre ? pre : "(null)");
-            if (!phonetic_digit) failures++;
-            g_free(pre);
-            g_free(o.commit);
-
-            /* Shift must not commit: Avro o-kar is Shift+o (`bhalO` → ভালো).
-             * IBus delivers Shift_L as its own key event before the letter. */
-            o = byk_composer_key(c, 0xff1b, 0); /* Escape */
-            g_free(o.commit);
-            byk_composer_set_phonetic_only(c, FALSE);
-            /* Bangla digits off: 0-9 outside the list stay ASCII; 1-9 still pick. */
-            {
-                byk_composer_set_bangla_digits(c, FALSE);
-                o = byk_composer_key(c, 0x0031, 0); /* '1', nothing pending */
-                const int pass = o.action == BYK_ACT_PASS;
-                g_free(o.commit);
-                for (i = 0; i < 3; i++) { o = byk_composer_key(c, (guint) ami[i], 0); g_free(o.commit); }
-                o = byk_composer_key(c, 0x0032, 0); /* '2' with the list: still picks */
-                const int picks = o.action == BYK_ACT_COMMIT && o.commit && strcmp(o.commit, "আমিন") == 0;
-                g_free(o.commit);
-                byk_composer_set_phonetic_only(c, TRUE);
-                for (i = 0; i < 3; i++) { o = byk_composer_key(c, (guint) ami[i], 0); g_free(o.commit); }
-                o = byk_composer_key(c, 0x0032, 0); /* '2', no list: word, then ASCII 2 */
-                const int ascii = o.action == BYK_ACT_COMMIT && o.pass_key && o.commit &&
-                                  strcmp(o.commit, "আমি") == 0;
-                g_free(o.commit);
-                byk_composer_set_phonetic_only(c, FALSE);
-                byk_composer_set_bangla_digits(c, TRUE);
-                for (const char *p = "2024"; *p; p++) { o = byk_composer_key(c, (guint) *p, 0); g_free(o.commit); }
-                gchar *nums = byk_composer_preedit(c);
-                const int bangla = nums && strcmp(nums, "২০২৪") == 0;
-                printf("  %-4s %-28s -> %s\n", pass && picks && ascii && bangla ? "ok" : "FAIL",
-                       "Bangla digits off / on", nums ? nums : "(null)");
-                if (!(pass && picks && ascii && bangla)) failures++;
-                g_free(nums);
-                o = byk_composer_key(c, 0xff1b, 0); g_free(o.commit);
-            }
-
-            /* Arrow keys: highlight, Enter commits it; Space never does. */
-            {
-                gchar **cands;
-                for (i = 0; i < 3; i++) { o = byk_composer_key(c, (guint) ami[i], 0); g_free(o.commit); }
-                cands = byk_composer_candidates(c);
-                const int none = byk_composer_cursor(c) == -1;
-                o = byk_composer_key(c, 0xff54, 0); g_free(o.commit); /* Down */
-                const int first = byk_composer_cursor(c) == 0;
-                o = byk_composer_key(c, 0xff54, 0); g_free(o.commit); /* Down */
-                const int second = byk_composer_cursor(c) == 1 && o.action == BYK_ACT_EAT;
-                gchar *want = cands && cands[1] ? g_strdup(cands[1]) : NULL;
-                o = byk_composer_key(c, 0xff0d, 0); /* Return */
-                const int enter_ok = o.action == BYK_ACT_COMMIT && !o.pass_key && want &&
-                                     o.commit && strcmp(o.commit, want) == 0;
-                printf("  %-4s %-28s -> %s\n", none && first && second && enter_ok ? "ok" : "FAIL",
-                       "Down Down Enter picks #2", o.commit ? o.commit : "(none)");
-                if (!(none && first && second && enter_ok)) failures++;
-                g_free(o.commit); g_free(want);
-
-                for (i = 0; i < 3; i++) { o = byk_composer_key(c, (guint) ami[i], 0); g_free(o.commit); }
-                o = byk_composer_key(c, 0xff54, 0); g_free(o.commit); /* Down -> 0 */
-                o = byk_composer_key(c, 0xff52, 0); g_free(o.commit); /* Up -> none */
-                const int cleared = byk_composer_cursor(c) == -1;
-                o = byk_composer_key(c, 0xff0d, 0); /* Return: typed word, Enter passes */
-                const int typed = cleared && o.action == BYK_ACT_COMMIT && o.pass_key &&
-                                  o.commit && strcmp(o.commit, "আমি") == 0;
-                printf("  %-4s %-28s -> %s\n", typed ? "ok" : "FAIL",
-                       "Up past top: Enter types word", o.commit ? o.commit : "(none)");
-                if (!typed) failures++;
-                g_free(o.commit);
-
-                for (i = 0; i < 3; i++) { o = byk_composer_key(c, (guint) ami[i], 0); g_free(o.commit); }
-                for (i = 0; i < 10; i++) { o = byk_composer_key(c, 0xff53, 0); g_free(o.commit); } /* Right x10 */
-                const int paged = byk_composer_cursor(c) == 9 && byk_composer_page(c) == 1;
-                o = byk_composer_key(c, (guint) 'n', 0); g_free(o.commit); /* typing resets */
-                const int reset = byk_composer_cursor(c) == -1 && byk_composer_page(c) == 0;
-                printf("  %-4s %-28s -> %s\n", paged && reset ? "ok" : "FAIL",
-                       "arrows cross pages, typing resets", paged && reset ? "yes" : "no");
-                if (!(paged && reset)) failures++;
-                o = byk_composer_key(c, 0x0020, 0); g_free(o.commit); /* Space commits typed */
-
-                o = byk_composer_key(c, 0xff54, 0); /* Down with nothing pending */
-                const int arrow_pass = o.action == BYK_ACT_PASS;
-                printf("  %-4s %-28s -> %s\n", arrow_pass ? "ok" : "FAIL",
-                       "Down with no word passes", arrow_pass ? "pass" : "eaten");
-                if (!arrow_pass) failures++;
-                g_free(o.commit);
-            }
-
-            {
-                const char bhal[] = { 'b', 'h', 'a', 'l' };
-                for (i = 0; i < 4; i++) {
-                    o = byk_composer_key(c, (guint) bhal[i], 0);
-                    g_free(o.commit);
-                }
-            }
-            o = byk_composer_key(c, 0xffe1, 0); /* Shift_L */
-            const int shift_pass = o.action == BYK_ACT_PASS;
-            printf("  %-4s %-28s -> %s\n", shift_pass ? "ok" : "FAIL",
-                   "Shift does not commit", shift_pass ? "pass" : "commit");
-            if (!shift_pass) failures++;
-            g_free(o.commit);
-            o = byk_composer_key(c, (guint) 'O', 0);
-            g_free(o.commit);
-            pre = byk_composer_preedit(c);
-            const int bhalo_ok = pre && strcmp(pre, "ভালো") == 0;
-            printf("  %-4s %-28s -> %s\n", bhalo_ok ? "ok" : "FAIL",
-                   "bhal + Shift + O is ভালো", pre ? pre : "(null)");
-            if (!bhalo_ok) failures++;
-            g_free(pre);
-
-            o = byk_composer_key(c, 0xff1b, 0);
-            g_free(o.commit);
-            {
-                const char ach[] = { 'a', 'c', 'h' };
-                for (i = 0; i < 3; i++) {
-                    o = byk_composer_key(c, (guint) ach[i], 0);
-                    g_free(o.commit);
-                }
-            }
-            o = byk_composer_key(c, 0xffe5, 0); /* Caps_Lock */
-            g_free(o.commit);
-            o = byk_composer_key(c, (guint) 'O', 0);
-            g_free(o.commit);
-            pre = byk_composer_preedit(c);
-            const int acho_ok = pre && strcmp(pre, "আছো") == 0;
-            printf("  %-4s %-28s -> %s\n", acho_ok ? "ok" : "FAIL",
-                   "ach + Caps + O is আছো", pre ? pre : "(null)");
-            if (!acho_ok) failures++;
-            g_free(pre);
-        }
-        byk_composer_free(c);
+        byakaron_composer_destroy(c);
     }
 
     puts("spell-check (local spell.db):");
@@ -416,166 +255,8 @@ int main(void)
         }
     }
 
-    puts("spelling corrections in suggestions:");
-    {
-        gchar *db_path = byk_spell_locate_db();
-        if (db_path == NULL) {
-            puts("  skip spell.db not present (zig build db)");
-        } else {
-            g_free(db_path);
-            BykCorrector *corr = byk_corrector_new(FALSE, NULL, NULL);
-            BykComposer *c = byk_composer_new();
-            byk_composer_set_corrector(c, corr);
-            BykOutcome o;
-
-            /* Typed word first, corrections after; worst keystroke timed. */
-            gint64 worst = 0;
-            for (const char *p = "sonar"; *p; p++) {
-                const gint64 t0 = g_get_monotonic_time();
-                o = byk_composer_key(c, (guint) *p, 0);
-                worst = MAX(worst, g_get_monotonic_time() - t0);
-                g_free(o.commit);
-            }
-            gchar **cands = byk_composer_candidates(c);
-            const int listed = cands && cands[0] && strcmp(cands[0], "সনার") == 0 &&
-                               cands[1] && strcmp(cands[1], "সোনার") == 0;
-            printf("  %-4s %-28s -> %s, %s\n", listed ? "ok" : "FAIL", "sonar lists সনার, সোনার",
-                   cands && cands[0] ? cands[0] : "(none)", cands && cands[0] && cands[1] ? cands[1] : "(none)");
-            if (!listed) failures++;
-            printf("  info slowest keystroke (inline, cold) %.1f ms\n", worst / 1000.0);
-
-            o = byk_composer_key(c, 0x0032, 0); /* '2' */
-            const int picked = o.action == BYK_ACT_COMMIT && o.commit && strcmp(o.commit, "সোনার") == 0;
-            printf("  %-4s %-28s -> %s\n", picked ? "ok" : "FAIL", "2 picks the correction",
-                   o.commit ? o.commit : "(none)");
-            if (!picked) failures++;
-            g_free(o.commit);
-
-            /* Correctly spelled words keep the normal list (no corrections). */
-            for (const char *p = "bangla"; *p; p++) { o = byk_composer_key(c, (guint) *p, 0); g_free(o.commit); }
-            cands = byk_composer_candidates(c);
-            const int normal = cands && cands[0] && strcmp(cands[0], "বাংলা") == 0;
-            printf("  %-4s %-28s -> %s\n", normal ? "ok" : "FAIL", "bangla keeps its own list",
-                   cands && cands[0] ? cands[0] : "(none)");
-            if (!normal) failures++;
-            o = byk_composer_key(c, 0xff1b, 0); g_free(o.commit);
-
-            /* The setting turns them off. */
-            byk_composer_set_corrections(c, FALSE);
-            for (const char *p = "jibon"; *p; p++) { o = byk_composer_key(c, (guint) *p, 0); g_free(o.commit); }
-            const int off = !byk_composer_table_visible(c);
-            byk_composer_set_corrections(c, TRUE); /* live: the list appears */
-            cands = byk_composer_candidates(c);
-            const int back_on = cands && cands[1] && strcmp(cands[1], "জীবন") == 0;
-            printf("  %-4s %-28s -> %s\n", off && back_on ? "ok" : "FAIL", "setting off/on (jibon)",
-                   back_on ? cands[1] : "(none)");
-            if (!(off && back_on)) failures++;
-            o = byk_composer_key(c, 0xff1b, 0); g_free(o.commit);
-
-            byk_composer_free(c);
-            byk_corrector_free(corr);
-
-            /* Threaded: nothing on the first ask, `ready` on the main loop, then cached. */
-            GMainLoop *loop = g_main_loop_new(NULL, FALSE);
-            struct { GMainLoop *loop; gchar *word; } got = { loop, NULL };
-            corr = byk_corrector_new(TRUE, smoke_on_ready, &got);
-            gchar **first = byk_corrector_get(corr, "শুন্দর");
-            const guint timeout = g_timeout_add_seconds(5, smoke_quit, loop);
-            g_main_loop_run(loop);
-            g_source_remove(timeout);
-            gchar **second = byk_corrector_get(corr, "শুন্দর");
-            const int threaded = first == NULL && g_strcmp0(got.word, "শুন্দর") == 0 &&
-                                 second && second[0] && strcmp(second[0], "সুন্দর") == 0;
-            printf("  %-4s %-28s -> %s\n", threaded ? "ok" : "FAIL", "threaded: ready, then cached",
-                   second && second[0] ? second[0] : "(none)");
-            if (!threaded) failures++;
-            g_strfreev(first); g_strfreev(second); g_free(got.word);
-            byk_corrector_free(corr);
-            g_main_loop_unref(loop);
-        }
-    }
-
-    puts("personal dictionary:");
-    {
-        gchar *dir = g_dir_make_tmp("byk-userdict-XXXXXX", NULL);
-        gchar *path = g_build_filename(dir, "sub", "user-words.txt", NULL);
-        g_setenv("BYAKARON_USER_DICT", path, TRUE);
-
-        BykUserDict *d = byk_userdict_new();
-        const int empty = byk_userdict_count(d) == 0;
-        GError *err = NULL;
-        /* য় spelled as য + nukta (NFD) must be the same entry as U+09DF. */
-        const int added = byk_userdict_add(d, "জিবন", &err) &&
-                          byk_userdict_add(d, "আমায়", &err) &&
-                          byk_userdict_add(d, " জিবন ", &err);
-        const int nfc = byk_userdict_contains(d, "আমায়") && byk_userdict_count(d) == 2;
-        gchar **pre = byk_userdict_prefix(d, "জি", 5);
-        const int prefix = pre[0] && strcmp(pre[0], "জিবন") == 0 && pre[1] == NULL;
-        g_strfreev(pre);
-        printf("  %-4s %-28s -> %s\n", empty && added && nfc && prefix ? "ok" : "FAIL",
-               "add, NFC, prefix", path);
-        if (!(empty && added && nfc && prefix)) failures++;
-
-        BykUserDict *again = byk_userdict_new();
-        const int reloaded = byk_userdict_contains(again, "জিবন") && byk_userdict_count(again) == 2;
-        printf("  %-4s %-28s -> %u words\n", reloaded ? "ok" : "FAIL", "saved and read back",
-               byk_userdict_count(again));
-        if (!reloaded) failures++;
-
-        /* Another process (the app) changes the file: the reader notices once
-         * its one-second check comes round, not before. */
-        byk_userdict_remove(d, "আমায়", NULL);
-        const int throttled = !byk_userdict_reload_if_changed(again);
-        g_usleep(1100 * 1000);
-        const int noticed = byk_userdict_reload_if_changed(again) &&
-                            !byk_userdict_contains(again, "আমায়") && byk_userdict_count(again) == 1;
-        printf("  %-4s %-28s -> %s\n", throttled && noticed ? "ok" : "FAIL", "other process's change seen",
-               noticed ? "yes" : "no");
-        if (!(throttled && noticed)) failures++;
-
-        /* Keyboard: a saved word is suggested while typing its start, and is
-         * never offered corrections. */
-        BykCorrector *corr = byk_corrector_new(FALSE, NULL, NULL);
-        BykComposer *c = byk_composer_new();
-        byk_composer_set_corrector(c, corr);
-        byk_composer_set_userdict(c, again);
-        BykOutcome o;
-        for (const char *p = "jib"; *p; p++) { o = byk_composer_key(c, (guint) *p, 0); g_free(o.commit); }
-        gchar **cands = byk_composer_candidates(c);
-        int suggested = 0;
-        for (guint i = 0; cands && cands[i] && i < 3; i++)
-            if (strcmp(cands[i], "জিবন") == 0) suggested = 1;
-        printf("  %-4s %-28s -> %s\n", suggested ? "ok" : "FAIL", "jib suggests saved জিবন",
-               cands && cands[1] ? cands[1] : "(none)");
-        if (!suggested) failures++;
-        for (const char *p = "on"; *p; p++) { o = byk_composer_key(c, (guint) *p, 0); g_free(o.commit); }
-        const int no_fix = !byk_composer_table_visible(c);
-        printf("  %-4s %-28s -> %s\n", no_fix ? "ok" : "FAIL", "jibon: saved, no corrections",
-               no_fix ? "no list" : "list shown");
-        if (!no_fix) failures++;
-        o = byk_composer_key(c, 0xff1b, 0); g_free(o.commit);
-        byk_composer_free(c);
-        byk_corrector_free(corr);
-
-        byk_userdict_free(again);
-        byk_userdict_free(d);
-        g_unsetenv("BYAKARON_USER_DICT");
-        g_remove(path);
-        gchar *sub = g_path_get_dirname(path);
-        g_rmdir(sub);
-        g_rmdir(dir);
-        g_free(sub);
-        g_free(path);
-        g_free(dir);
-        if (err) g_error_free(err);
-    }
-
-    /*
-     * The parser is strict so that a change to the Zig side is loud rather than
-     * silent. These cases are the contract: accept what ffi.zig emits, reject
-     * everything else.
-     */
-    puts("candidate JSON parser:");
+    /* The ABI's word lists (personal dictionary, spell suggestions). */
+    puts("JSON string-array parser:");
     static const struct {
         const char *json;
         const char *want; /* NULL = must be rejected; "" = empty array */
@@ -585,20 +266,17 @@ int main(void)
         { "[\"a\",\"b\"]",          "a"           },
         { "[\"say \\\"hi\\\"\"]",   "say \"hi\""  },
         { "[\"back\\\\slash\"]",    "back\\slash" },
-        { "[\"tab\\there\"]",       "tab\there"   },
+        { "[\"\\u0985\"]",          "অ"           },
         { "[\"unterminated]",       NULL          },
-        { "[\"\\u0985\"]",          NULL          }, /* ffi.zig never emits \u */
         { "[42]",                   NULL          },
         { "[\"a\" \"b\"]",          NULL          }, /* missing comma */
         { "[\"a\"] trailing",       NULL          },
         { "{\"a\":1}",              NULL          },
+        { "[\"\xa6\xae\"]",         NULL          }, /* not UTF-8 */
     };
-    static const int JSON_COUNT = (int)(sizeof JSON_CASES / sizeof JSON_CASES[0]);
-
-    for (int i = 0; i < JSON_COUNT; i++) {
-        gchar **got = byk_autocomplete_parse_json_array(JSON_CASES[i].json);
+    for (size_t i = 0; i < sizeof JSON_CASES / sizeof JSON_CASES[0]; i++) {
+        gchar **got = byk_parse_json_strings(JSON_CASES[i].json);
         const char *want = JSON_CASES[i].want;
-
         int ok;
         const char *shown;
         if (want == NULL) {
@@ -611,11 +289,12 @@ int main(void)
             ok = got != NULL && got[0] != NULL && strcmp(got[0], want) == 0;
             shown = (got && got[0]) ? got[0] : "(none)";
         }
-
-        printf("  %-4s %-28s -> %s\n", ok ? "ok" : "FAIL", JSON_CASES[i].json, shown);
-        if (!ok) failures++;
+        expect(ok, JSON_CASES[i].json, shown);
         g_strfreev(got);
     }
+
+    rm_rf(data_dir);
+    g_free(data_dir);
 
     printf("\n%s (%d failure%s)\n", failures ? "SMOKE TEST FAILED" : "smoke test passed",
            failures, failures == 1 ? "" : "s");

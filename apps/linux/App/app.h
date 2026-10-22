@@ -1,18 +1,16 @@
 /*
  * Vocabulary shared by every page of the Byakaron GTK app.
  *
- * The spell engine handle is created once by the window and borrowed by the
- * Spelling page, because spell.db is a 364MB file. Nothing here owns it.
+ * The spell engine and composer handles are created once by the window and
+ * borrowed by the pages (spell.db is a 364MB file). Nothing here owns them.
  */
 #ifndef BYAKARON_LINUX_APP_H
 #define BYAKARON_LINUX_APP_H
 
 #include <gtk/gtk.h>
 
-#include "autocomplete.h"
+#include "composer.h"
 #include "spell.h"
-#include "transliterator.h"
-#include "userdict.h"
 
 G_BEGIN_DECLS
 
@@ -35,12 +33,14 @@ G_BEGIN_DECLS
  * that, the same way the input method types without one.
  */
 typedef struct {
-    BykTransliterator *transliterator;
-    BykAutoComplete *autocomplete;
     BykSpell *spell;
-    /* The personal dictionary; always present (an empty file is fine). The
-     * keyboard reads the same file. */
-    BykUserDict *userdict;
+    /*
+     * The app's own composer on the keyboard's data directory (no spell.db):
+     * the shared settings and the personal dictionary go through it, and a
+     * running keyboard picks changes up at its next word. NULL only if it
+     * could not be created; every use copes with that.
+     */
+    ByakaronComposer *composer;
 } BykEngines;
 
 G_END_DECLS

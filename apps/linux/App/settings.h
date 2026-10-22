@@ -1,9 +1,11 @@
 /*
  * Settings page: how the keyboard behaves, and the personal dictionary.
  *
- * Every switch is bound to GSettings (Core/prefs.h), which the IBus engine and
- * the Fcitx5 addon read live, so a change applies to the next keystroke with
- * no restart. The dictionary row opens the same window as the main menu.
+ * The seven settings every Byakaron keyboard shares, saved to settings.json
+ * through the app's composer (Core/composer.h); the IBus engine and the Fcitx5
+ * addon pick them up at their next word, with no restart. The Linux-only Qt
+ * click fix stays in GSettings (Core/prefs.h). The dictionary row opens the
+ * same window as the main menu.
  */
 #ifndef BYAKARON_LINUX_APP_SETTINGS_H
 #define BYAKARON_LINUX_APP_SETTINGS_H

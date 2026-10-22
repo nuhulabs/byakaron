@@ -5,7 +5,7 @@
 #include "uiutil.h"
 
 typedef struct {
-    BykUserDict *dict;
+    ByakaronComposer *composer;
     GtkWidget *dialog;
     GtkWidget *list;
     GtkWidget *empty;
@@ -26,12 +26,10 @@ byk_dictionary_notify (BykDictionaryView *view)
 }
 
 static void
-byk_dictionary_show_error (BykDictionaryView *view, const gchar *what, GError *error)
+byk_dictionary_show_error (BykDictionaryView *view, const gchar *text)
 {
-    gchar *text = g_strdup_printf ("%s: %s", what, error->message);
     gtk_label_set_text (GTK_LABEL (view->error), text);
     gtk_widget_show (view->error);
-    g_free (text);
 }
 
 static void
@@ -39,11 +37,9 @@ on_remove_clicked (GtkButton *button, gpointer user_data)
 {
     BykDictionaryView *view = user_data;
     const gchar *word = g_object_get_data (G_OBJECT (button), "byk-word");
-    GError *error = NULL;
 
-    if (!byk_userdict_remove (view->dict, word, &error)) {
-        byk_dictionary_show_error (view, "Could not remove the word", error);
-        g_error_free (error);
+    if (byakaron_userdict_remove (view->composer, word) < 0) {
+        byk_dictionary_show_error (view, "Could not remove the word");
         return;
     }
     gtk_widget_hide (view->error);
@@ -58,15 +54,12 @@ on_add_activated (GtkWidget *widget, gpointer user_data)
     (void) widget;
 
     gchar *word = g_strstrip (g_strdup (gtk_entry_get_text (GTK_ENTRY (view->entry))));
-    GError *error = NULL;
 
     if (*word != '\0') {
         if (strchr (word, ' ') != NULL || strchr (word, '\t') != NULL) {
-            gtk_label_set_text (GTK_LABEL (view->error), "One word at a time, without spaces");
-            gtk_widget_show (view->error);
-        } else if (!byk_userdict_add (view->dict, word, &error)) {
-            byk_dictionary_show_error (view, "Could not save the word", error);
-            g_error_free (error);
+            byk_dictionary_show_error (view, "One word at a time, without spaces");
+        } else if (byakaron_userdict_add (view->composer, word) < 0) {
+            byk_dictionary_show_error (view, "Could not save the word");
         } else {
             gtk_widget_hide (view->error);
             gtk_entry_set_text (GTK_ENTRY (view->entry), "");
@@ -106,7 +99,7 @@ byk_dictionary_fill (BykDictionaryView *view)
 {
     byk_container_clear (view->list);
 
-    gchar **words = byk_userdict_words (view->dict);
+    gchar **words = byk_userdict_words (view->composer);
     const guint n = g_strv_length (words);
     for (guint i = 0; i < n; i++)
         gtk_container_add (GTK_CONTAINER (view->list), byk_dictionary_row (view, words[i]));
@@ -122,13 +115,11 @@ byk_dictionary_fill (BykDictionaryView *view)
 }
 
 void
-byk_dictionary_show (GtkWindow *parent, BykUserDict *dict,
+byk_dictionary_show (GtkWindow *parent, ByakaronComposer *composer,
                      GCallback changed, gpointer changed_data)
 {
-    g_return_if_fail (dict != NULL);
-
     BykDictionaryView *view = g_new0 (BykDictionaryView, 1);
-    view->dict = dict;
+    view->composer = composer;
     view->changed = changed;
     view->changed_data = changed_data;
 
@@ -179,9 +170,11 @@ byk_dictionary_show (GtkWindow *parent, BykUserDict *dict,
     GtkWidget *frame = gtk_frame_new (NULL);
     gtk_container_add (GTK_CONTAINER (frame), scroller);
 
-    gchar *where_text = g_strdup_printf ("Saved in %s", byk_userdict_path (dict));
+    gchar *dir = byk_data_dir ();
+    gchar *where_text = g_strdup_printf ("Saved in %s/user-words.txt", dir);
     GtkWidget *where = gtk_label_new (where_text);
     g_free (where_text);
+    g_free (dir);
     gtk_label_set_xalign (GTK_LABEL (where), 0.0);
     gtk_label_set_ellipsize (GTK_LABEL (where), PANGO_ELLIPSIZE_MIDDLE);
     gtk_label_set_selectable (GTK_LABEL (where), TRUE);

@@ -2,11 +2,10 @@
 #define BYAKARON_LINUX_FCITX5_ENGINE_H
 
 #include "composer.h"
-#include "corrector.h"
-#include "userdict.h"
 
+#include <fcitx-utils/eventdispatcher.h>
+#include <fcitx-utils/trackableobject.h>
 #include <fcitx/addonfactory.h>
-#include <fcitx/inputcontextproperty.h>
 #include <fcitx/inputmethodengine.h>
 
 namespace fcitx {
@@ -17,15 +16,6 @@ class InputContextEvent;
 class InputMethodEntry;
 class AddonManager;
 }
-
-class ByakaronEngine;
-
-class ByakaronState : public fcitx::InputContextProperty {
-public:
-    ByakaronState ();
-    ~ByakaronState () override;
-    BykComposer *composer;
-};
 
 class ByakaronEngine : public fcitx::InputMethodEngineV2 {
 public:
@@ -39,20 +29,23 @@ public:
     void deactivate (const fcitx::InputMethodEntry &entry,
                      fcitx::InputContextEvent &event) override;
 
-    void pick (fcitx::InputContext *ic, guint index);
+    void pick (fcitx::InputContext *ic, size_t index);
 
 private:
-    void syncPanel (fcitx::InputContext *ic, ByakaronState *state);
-    void apply (fcitx::InputContext *ic, ByakaronState *state, BykOutcome outcome,
-                fcitx::KeyEvent *keyEvent);
+    static void onUpdate (void *userdata);
+    void redraw (fcitx::InputContext *ic);
+    bool apply (fcitx::InputContext *ic, ByakaronKeyResult result);
+    void flush (fcitx::InputContext *ic);
 
     fcitx::Instance *instance_;
-    /* Shared by every input context's composer. Inline lookups: Fcitx5 does
-     * not run a GLib main loop for the threaded mode's callback. Declared
-     * before factory_, which hands it to each new composer. */
-    BykCorrector *corrector_;
-    BykUserDict *userdict_; /* personal dictionary; the app writes, we re-read */
-    fcitx::FactoryFor<ByakaronState> factory_;
+    /* One composer for the whole addon: only the focused input context types,
+     * and a word is flushed when its context loses focus. NULL if it could not
+     * be created (keys then pass). */
+    ByakaronComposer *composer_;
+    /* The context the pending word belongs to, for redraws after on_update. */
+    fcitx::TrackableObjectReference<fcitx::InputContext> owner_;
+    /* Hops on_update from the composer's worker thread to the event loop. */
+    fcitx::EventDispatcher dispatcher_;
 };
 
 class ByakaronEngineFactory : public fcitx::AddonFactory {

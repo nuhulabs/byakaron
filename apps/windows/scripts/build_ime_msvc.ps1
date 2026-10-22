@@ -12,7 +12,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $msvcRoot "bin\Hostx64\x64\cl.exe"))
 Write-Host "Using MSVC: $msvcRoot"
 $sdkRoot = "C:\Program Files (x86)\Windows Kits\10"
 $sdkVer = "10.0.26100.0"
-$repo = "c:\Users\nurulhudaapon\Projects\byakaron"
+$repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 $outDir = Join-Path (Get-Location) "bin\x64\Release"
 $objDir = Join-Path (Get-Location) "obj\x64\Release"
 New-Item -ItemType Directory -Force -Path $outDir, $objDir | Out-Null
@@ -26,9 +26,8 @@ $srcs = @(
   "DllMain.cpp",
   "KeyHandler.cpp",
   "TextService.cpp",
-  "Transliterator.cpp",
+  "Composer.cpp",
   "Settings.cpp",
-  "Dictionary.cpp",
   "CandidateWindow.cpp"
 )
 $objs = @()
@@ -42,6 +41,7 @@ foreach ($src in $srcs) {
     "/I$(Join-Path $sdkRoot "Include\$sdkVer\um")" `
     "/I$(Join-Path $sdkRoot "Include\$sdkVer\shared")" `
     "/I$(Join-Path $repo 'zig-out\include')" `
+    "/I$(Join-Path $repo 'src\ffi')" `
     /I. `
     /c $src "/Fo$obj"
   if ($LASTEXITCODE -ne 0) { throw "compile failed: $src" }

@@ -1,9 +1,9 @@
 /*
- * GSettings for the few prefs that actually change behaviour.
+ * GSettings, now only for what is Linux-specific: the IBus "Qt click fix".
  *
- * The IBus engine, the Fcitx5 addon, and the GTK app are separate processes.
- * dconf is the Linux analogue of the macOS shared UserDefaults suite: flipping
- * a switch in Setup must reach the engine without a restart.
+ * The keyboard settings every platform shares live in settings.json, through
+ * the composer (Core/composer.h). The old keys below stay in the schema only
+ * so composer.c can carry their values into settings.json once.
  *
  * g_settings_new aborts if the schema is missing, so every caller goes through
  * byk_prefs_try_open and treats NULL as "use the defaults".
@@ -16,11 +16,13 @@
 G_BEGIN_DECLS
 
 #define BYK_PREFS_SCHEMA                 "dev.nuhu.labs.Byakaron"
-#define BYK_PREFS_PHONETIC_ONLY          "phonetic-only"
-#define BYK_PREFS_CANDIDATES_HORIZONTAL  "candidates-horizontal"
-#define BYK_PREFS_SPELLING_SUGGESTIONS   "spelling-suggestions"
-#define BYK_PREFS_BANGLA_DIGITS          "bangla-digits"
 #define BYK_PREFS_QT_CLICK_FIX           "qt-click-fix"
+
+/* Deprecated: read once to migrate into settings.json. */
+#define BYK_PREFS_OLD_PHONETIC_ONLY          "phonetic-only"
+#define BYK_PREFS_OLD_CANDIDATES_HORIZONTAL  "candidates-horizontal"
+#define BYK_PREFS_OLD_SPELLING_SUGGESTIONS   "spelling-suggestions"
+#define BYK_PREFS_OLD_BANGLA_DIGITS          "bangla-digits"
 
 /* Point GSETTINGS_SCHEMA_DIR at the schemas next to an uninstalled binary. */
 void byk_prefs_init_schema_dir (void);

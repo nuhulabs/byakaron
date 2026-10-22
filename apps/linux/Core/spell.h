@@ -3,9 +3,9 @@
  *
  * spell.db is a local SQLite file shipped with the install, not a server.
  * Callers get g_malloc'd strings / gchar ** (g_strfreev), so the Zig ownership
- * rule stops here — same deal as transliterator.h and autocomplete.h.
+ * rule stops here — same deal as composer.h.
  *
- * Shared by Keyboard/ (the IBus engine) and App/ (the GTK settings app).
+ * Used by App/ (the Spelling page); the keyboards only need byk_spell_locate_db.
  */
 #ifndef BYAKARON_LINUX_SPELL_H
 #define BYAKARON_LINUX_SPELL_H

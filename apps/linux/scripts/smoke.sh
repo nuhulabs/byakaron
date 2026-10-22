@@ -13,21 +13,18 @@ bash "$SCRIPT_DIR/build_zig.sh"
 
 mkdir -p "$BUILD_DIR/bin"
 echo ">>> Compiling smoke test..."
-# Core/autocomplete.c is compiled in (not just linked against the .so) because
-# the test covers its JSON parser directly. That pulls in glib, which is a
-# dependency of the Core glue rather than of libbyakaron itself.
+# The Core glue is compiled in (not just linked against the .so) because the
+# test drives the composer through it, as the IME shells do. That pulls in
+# glib/gio, which are dependencies of the glue rather than of libbyakaron.
 cc -O2 -Wall -Wextra -o "$BUILD_DIR/bin/smoke" \
     "$PROJECT_ROOT/tests/smoke.c" \
-    "$PROJECT_ROOT/Core/autocomplete.c" \
-    "$PROJECT_ROOT/Core/spell.c" \
-    "$PROJECT_ROOT/Core/transliterator.c" \
     "$PROJECT_ROOT/Core/composer.c" \
-    "$PROJECT_ROOT/Core/corrector.c" \
-    "$PROJECT_ROOT/Core/userdict.c" \
+    "$PROJECT_ROOT/Core/prefs.c" \
+    "$PROJECT_ROOT/Core/spell.c" \
     -I"$BUILD_DIR/include" -I"$PROJECT_ROOT/Core" \
-    $(pkg-config --cflags glib-2.0) \
+    $(pkg-config --cflags glib-2.0 gio-2.0) \
     -L"$BUILD_DIR/lib" -lbyakaron \
-    $(pkg-config --libs glib-2.0) \
+    $(pkg-config --libs glib-2.0 gio-2.0) \
     -Wl,-rpath,"$BUILD_DIR/lib"
 
 SPELL_DB="${BYAKARON_SPELL_DB:-$PROJECT_ROOT/../../zig-out/db/spell.db}"

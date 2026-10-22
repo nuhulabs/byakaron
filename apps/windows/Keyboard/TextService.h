@@ -1,9 +1,9 @@
 #pragma once
 
 #include "Globals.h"
-#include "Transliterator.h"
-#include "Dictionary.h"
+#include "Composer.h"
 #include "CandidateWindow.h"
+#include <functional>
 #include <string>
 
 class CByakaronTextService :
@@ -51,24 +51,52 @@ public:
     ITfThreadMgr* GetThreadMgr() const { return _pThreadMgr; }
     TfClientId GetClientId() const { return _tfClientId; }
 
+    // Candidate UI -> composer: a click on our window, or a UI-less host's
+    // ITfCandidateListUIElementBehavior (SetSelection picks; Finalize commits
+    // the word, Abort drops it).
+    void OnCandidatePicked(UINT index);
+    void OnCandidateFinalize(bool commit);
+
 private:
-    bool IsAvroInputChar(WCHAR ch) const;
-    void ResetCompositionState();
-    HRESULT EnsureComposition(ITfContext* pic, TfEditCookie ec);
-    HRESULT UpdateCompositionText(ITfContext* pic, TfEditCookie ec, const std::wstring& text);
-    HRESULT TerminateComposition(TfEditCookie ec);
-    HRESULT CommitAndClear(ITfContext* pic);
+    // An OS key event as byakaron_composer_key takes it; send is false for
+    // keys the composer never sees (Shift alone, Caps Lock, ...).
+    struct KeyInput
+    {
+        bool send = false;
+        int kind = BYAKARON_KEY_OTHER;
+        unsigned int ch = 0;
+        unsigned int mods = 0;
+    };
+    static KeyInput MapKey(WPARAM wParam, LPARAM lParam);
+    BOOL WouldEat(const KeyInput& key);
     BOOL HandleKey(ITfContext* pic, WPARAM wParam, LPARAM lParam, BOOL testOnly);
 
-    void HideCandidates();
-    void RefreshCandidates(ITfContext* pic, TfEditCookie ec);
-    bool GetCompositionScreenRect(ITfContext* pic, TfEditCookie ec, RECT* out) const;
-    std::wstring TextToCommit();
-    void CommitBuffer(ITfContext* pic, TfEditCookie ec);
+    // Inside an edit session: insert commit, then draw the composer's state.
+    void Apply(ITfContext* pic, TfEditCookie ec, const std::wstring& commit);
+    void Redraw(ITfContext* pic, TfEditCookie ec);
+    void InsertCommit(ITfContext* pic, TfEditCookie ec, const std::wstring& text);
+    POINT CandidateOrigin(ITfContext* pic, TfEditCookie ec) const;
 
-    // Edit session helpers invoked via ITfEditSession
-    friend class CKeyEditSession;
-    friend class CCommitEditSession;
+    // Run fn in an edit session on the open composition's context, if it is
+    // still the open composition when the session runs.
+    void EditComposition(std::function<void(ITfContext*, TfEditCookie)> fn);
+    // Focus leaving / deactivation: commit the word being typed.
+    void CommitPendingWord();
+    void OnComposerUpdated();
+    IUnknown* Owner() { return static_cast<ITfTextInputProcessorEx*>(this); }
+
+    HRESULT EnsureComposition(ITfContext* pic, TfEditCookie ec);
+    HRESULT SetCompositionText(ITfContext* pic, TfEditCookie ec, const std::wstring& text);
+    void EndComposition(TfEditCookie ec);
+    bool CompositionContext(ITfContext** out) const;
+    bool GetCompositionScreenRect(ITfContext* pic, TfEditCookie ec, RECT* out) const;
+
+    // on_update arrives on the spell worker thread; it posts to this
+    // message-only window, owned by the text service's thread.
+    static void OnComposerUpdate(void* userdata);
+    static LRESULT CALLBACK NotifyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+    bool CreateNotifyWindow();
+    void DestroyNotifyWindow();
 
     LONG _refCount = 1;
     ITfThreadMgr* _pThreadMgr = nullptr;
@@ -78,11 +106,9 @@ private:
     ITfContext* _pTextEditSinkContext = nullptr;
     ITfComposition* _pComposition = nullptr;
 
-    std::wstring _latinBuffer;
-    std::wstring _selectedText;
-    Transliterator _transliterator;
-    PhoneticDictionary _dictionary;
+    Composer _composer;
     CandidateWindow _candidateWindow;
+    HWND _hwndNotify = nullptr;
     BOOL _activated = FALSE;
 };
 

@@ -1,120 +1,127 @@
 #include "Settings.h"
+#include "Composer.h"
+#include "Globals.h"
 
 namespace
 {
-DWORD ReadDword(const wchar_t* name, DWORD defaultValue)
+constexpr wchar_t kLegacyRoot[] = L"Software\\Byakaron";
+
+bool ReadDword(HKEY key, const wchar_t* name, DWORD* out)
 {
-    HKEY key = nullptr;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, ByakaronSettings::kRoot, 0, KEY_READ, &key) != ERROR_SUCCESS)
-    {
-        return defaultValue;
-    }
     DWORD type = 0;
     DWORD data = 0;
     DWORD size = sizeof(data);
-    const LONG err = RegQueryValueExW(key, name, nullptr, &type, reinterpret_cast<LPBYTE>(&data), &size);
-    RegCloseKey(key);
-    if (err != ERROR_SUCCESS || type != REG_DWORD)
+    if (RegQueryValueExW(key, name, nullptr, &type, reinterpret_cast<LPBYTE>(&data), &size) != ERROR_SUCCESS ||
+        type != REG_DWORD)
     {
-        return defaultValue;
+        return false;
     }
-    return data;
+    *out = data;
+    return true;
 }
 
-void WriteDword(const wchar_t* name, DWORD value)
+bool ReadString(HKEY key, const wchar_t* name, std::wstring* out)
 {
-    HKEY key = nullptr;
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, ByakaronSettings::kRoot, 0, nullptr, 0, KEY_WRITE, nullptr, &key, nullptr) != ERROR_SUCCESS)
-    {
-        return;
-    }
-    RegSetValueExW(key, name, 0, REG_DWORD, reinterpret_cast<const BYTE*>(&value), sizeof(value));
-    RegCloseKey(key);
-    ByakaronSettings::NotifyChanged();
-}
-
-std::wstring ReadString(const wchar_t* name, const wchar_t* defaultValue)
-{
-    HKEY key = nullptr;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, ByakaronSettings::kRoot, 0, KEY_READ, &key) != ERROR_SUCCESS)
-    {
-        return defaultValue;
-    }
     WCHAR buf[64] = {};
     DWORD type = 0;
-    DWORD size = sizeof(buf);
-    const LONG err = RegQueryValueExW(key, name, nullptr, &type, reinterpret_cast<LPBYTE>(buf), &size);
-    RegCloseKey(key);
-    if (err != ERROR_SUCCESS || type != REG_SZ || buf[0] == L'\0')
+    DWORD size = sizeof(buf) - sizeof(WCHAR); // keep a NUL even if the value has none
+    if (RegQueryValueExW(key, name, nullptr, &type, reinterpret_cast<LPBYTE>(buf), &size) != ERROR_SUCCESS ||
+        type != REG_SZ || buf[0] == L'\0')
     {
-        return defaultValue;
+        return false;
     }
-    return buf;
+    *out = buf;
+    return true;
 }
 
-void WriteString(const wchar_t* name, const wchar_t* value)
+bool FileExists(const std::wstring& path)
 {
-    HKEY key = nullptr;
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, ByakaronSettings::kRoot, 0, nullptr, 0, KEY_WRITE, nullptr, &key, nullptr) != ERROR_SUCCESS)
-    {
-        return;
-    }
-    RegSetValueExW(key, name, 0, REG_SZ, reinterpret_cast<const BYTE*>(value),
-        (DWORD)((wcslen(value) + 1) * sizeof(WCHAR)));
-    RegCloseKey(key);
-    ByakaronSettings::NotifyChanged();
+    const DWORD attrs = GetFileAttributesW(path.c_str());
+    return attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+// Folder holding ByakaronIME.dll, without a trailing backslash.
+std::wstring ModuleDir()
+{
+    WCHAR path[MAX_PATH] = {};
+    const DWORD n = GetModuleFileNameW(g_hInst, path, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return {};
+    std::wstring dir(path, n);
+    const size_t slash = dir.find_last_of(L'\\');
+    if (slash == std::wstring::npos) return {};
+    dir.resize(slash);
+    return dir;
 }
 } // namespace
 
 namespace ByakaronSettings
 {
-bool PhoneticOnly()
+std::wstring DataDir()
 {
-    return ReadDword(kPhoneticOnly, 0) != 0;
+    WCHAR base[MAX_PATH] = {};
+    const DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", base, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return {};
+    return std::wstring(base) + L"\\Byakaron";
 }
 
-void SetPhoneticOnly(bool value)
+std::wstring SpellDbPath()
 {
-    WriteDword(kPhoneticOnly, value ? 1 : 0);
+    const std::wstring dir = ModuleDir();
+    if (dir.empty()) return {};
+    const std::wstring here = dir + L"\\spell.db";
+    if (FileExists(here)) return here;
+
+    // Installed layout (Byakaron.iss): {app}\ime\ByakaronIME.dll, {app}\native\spell.db.
+    const size_t slash = dir.find_last_of(L'\\');
+    if (slash == std::wstring::npos) return {};
+    const std::wstring shipped = dir.substr(0, slash) + L"\\native\\spell.db";
+    return FileExists(shipped) ? shipped : std::wstring();
 }
 
-bool OrientationVertical()
+void MigrateLegacy(Composer& composer)
 {
-    return ReadString(kOrientation, L"horizontal") == L"vertical";
-}
+    const std::wstring dir = DataDir();
+    if (dir.empty() || FileExists(dir + L"\\settings.json")) return;
 
-void SetOrientationVertical(bool vertical)
-{
-    WriteString(kOrientation, vertical ? L"vertical" : L"horizontal");
-}
+    HKEY key = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, kLegacyRoot, 0, KEY_READ, &key) != ERROR_SUCCESS) return;
 
-int CandidatesPerPage()
-{
-    const int v = (int)ReadDword(kPerPage, 9);
-    if (v < 3) return 3;
-    if (v > 9) return 9;
-    return v;
-}
-
-void SetCandidatesPerPage(int value)
-{
-    if (value < 3) value = 3;
-    if (value > 9) value = 9;
-    WriteDword(kPerPage, (DWORD)value);
-}
-
-void NotifyChanged()
-{
-    HANDLE ev = CreateEventW(nullptr, FALSE, FALSE, L"Local\\ByakaronSettingsChanged");
-    if (ev)
+    // Only the values that were set; the rest take the shared defaults.
+    std::string json;
+    auto add = [&json](const std::string& field)
     {
-        SetEvent(ev);
-        CloseHandle(ev);
+        json += json.empty() ? "{" : ",";
+        json += field;
+    };
+    DWORD dword = 0;
+    std::wstring text;
+    if (ReadDword(key, L"PhoneticOnlyMode", &dword))
+        add(std::string("\"suggestions\":") + (dword ? "false" : "true"));
+    if (ReadString(key, L"CandidateOrientation", &text))
+        add(std::string("\"candidate_orientation\":\"") + (text == L"vertical" ? "vertical" : "horizontal") + "\"");
+    if (ReadDword(key, L"CandidatesPerPage", &dword))
+    {
+        if (dword < 3) dword = 3;
+        if (dword > 9) dword = 9;
+        add("\"candidates_per_page\":" + std::to_string(dword));
     }
+    RegCloseKey(key);
+
+    if (json.empty()) return;
+    json += "}";
+    composer.SetSettingsJson(json);
 }
 
-HANDLE OpenChangeEvent()
+bool JsonBool(const std::string& json, const char* key, bool fallback)
 {
-    return CreateEventW(nullptr, FALSE, FALSE, L"Local\\ByakaronSettingsChanged");
+    const std::string needle = std::string("\"") + key + "\"";
+    size_t at = json.find(needle);
+    if (at == std::string::npos) return fallback;
+    at += needle.size();
+    while (at < json.size() && (json[at] == ' ' || json[at] == '\t' || json[at] == '\r' || json[at] == '\n' || json[at] == ':'))
+        ++at;
+    if (json.compare(at, 4, "true") == 0) return true;
+    if (json.compare(at, 5, "false") == 0) return false;
+    return fallback;
 }
 } // namespace ByakaronSettings

@@ -1,129 +1,78 @@
 /*
- * Display-agnostic word composer: latin buffer, Avro transliteration, candidate
- * list, and the key policy both IME front-ends share.
+ * Linux glue over libbyakaron's Composer (src/Composer.zig, byakaron.h).
  *
- * IBus and Fcitx5 disagree about panels and how text is
- * committed. They agree on what a keystroke *means* — Space commits what was
- * typed, 1–9 pick a candidate while the list is showing, arrows move a
- * highlight through the list and Enter commits it, digits otherwise
- * become Bangla numerals, and printable punctuation stays in the latin buffer
- * so Avro can map it (`.` → `।`, `:` → `ঃ`, `$` → `৳`). That policy lives
- * here so the shells cannot drift.
+ * The keyboard itself — the latin buffer, Avro's candidates, paging, the
+ * highlight, learning, the personal dictionary, spelling corrections and the
+ * shared settings — lives in Zig, identical on every platform. What is left
+ * here is what only Linux knows: where the data directory and spell.db are,
+ * how X11 keysyms (IBus, GDK and Fcitx5 all speak them) map to composer keys,
+ * the one-time move of the old GSettings keys into settings.json, and small
+ * GLib-friendly readers for the JSON the ABI returns.
  *
- * Keyvals are X11 keysyms (IBus, GDK and Fcitx5 all use them). Modifier bits
- * are ours, not IBUS_* / FcitxKeyState, so this file includes no IME header.
+ * Shared by Keyboard/ (IBus), Fcitx5/ and App/ (the GTK app).
  */
 #ifndef BYAKARON_LINUX_COMPOSER_H
 #define BYAKARON_LINUX_COMPOSER_H
 
 #include <glib.h>
 
+#include "byakaron.h"
+
 G_BEGIN_DECLS
 
-#define BYK_COMPOSER_PAGE_SIZE      9
-#define BYK_COMPOSER_CANDIDATE_LIMIT (BYK_COMPOSER_PAGE_SIZE * 4)
+/*
+ * Where settings.json, selections.json and user-words.txt live:
+ * $BYAKARON_DATA_DIR (tests), else $XDG_DATA_HOME/byakaron (normally
+ * ~/.local/share/byakaron). g_free.
+ */
+gchar *byk_data_dir (void);
 
-/* Released keys must never edit the buffer (that would double every character). */
-#define BYK_MOD_RELEASE  (1u << 0)
-/* Ctrl / Alt / Super: commit pending text, then let the shortcut through. */
-#define BYK_MOD_SHORTCUT (1u << 1)
+/*
+ * A composer on byk_data_dir(). With `with_spell`, spelling corrections come
+ * from spell.db (byk_spell_locate_db) and `on_update(userdata)` fires on a
+ * worker thread when they arrive: hop to the main loop, then
+ * byakaron_composer_refresh and redraw. Before the first settings.json exists,
+ * the old GSettings values are written into it once (see composer.c).
+ * NULL if the composer could not be created.
+ */
+ByakaronComposer *byk_composer_open (gboolean with_spell, ByakaronUpdateFn on_update,
+                                     gpointer userdata);
 
-typedef enum {
-    /* Not ours. The front-end returns FALSE / does not filterAndAccept. */
-    BYK_ACT_PASS = 0,
-    /* Consumed. Front-end should refresh preedit + candidates from accessors. */
-    BYK_ACT_EAT,
-    /*
-     * Commit `commit` (may be NULL for a flush of an empty buffer), then hide
-     * the preedit. If `pass_key` is TRUE the original key still goes to the
-     * application (Enter, shortcuts).
-     */
-    BYK_ACT_COMMIT,
-} BykAction;
+/*
+ * Map an X11 keysym to a composer key (BYAKARON_KEY_*, and the ASCII character
+ * for BYAKARON_KEY_CHAR). Keypad digits, Enter, Space, arrows and pages count
+ * as their main-keyboard twins. Returns FALSE for keys that produce nothing by
+ * themselves (Shift, Caps Lock, AltGr, Num Lock, …): those are not sent at
+ * all, or Shift in `bhalO` would end the word before the O.
+ */
+gboolean byk_keysym_to_key (guint keyval, int *kind, unsigned int *ch);
 
+/* The shared settings (src/Composer/Settings.zig), as the app edits them. */
 typedef struct {
-    BykAction action;
-    gchar *commit;     /* owned; caller g_free's. NULL if there is nothing. */
-    gboolean pass_key;
-} BykOutcome;
+    gboolean suggestions;
+    gboolean spelling_corrections;
+    gboolean learn_choices;
+    gboolean bangla_digits;
+    gboolean newline_on_enter;
+    gboolean vertical;        /* candidate_orientation */
+    gint candidates_per_page; /* 3–9 */
+} BykSettings;
 
-typedef struct _BykComposer BykComposer;
+void byk_settings_defaults (BykSettings *out);
+/* Current settings; defaults for anything missing. */
+void byk_settings_load (ByakaronComposer *composer, BykSettings *out);
+/* Save all of them; FALSE if the composer rejected the JSON. */
+gboolean byk_settings_save (ByakaronComposer *composer, const BykSettings *settings);
 
-BykComposer *byk_composer_new (void);
-void byk_composer_free (BykComposer *self);
-
-/* TRUE once the Avro engine opened. Without it every key PASSes. */
-gboolean byk_composer_ready (BykComposer *self);
-
-const gchar *byk_composer_latin (BykComposer *self);
-
-/* Current Bangla preedit (latin run through Avro). Newly allocated; g_free. */
-gchar *byk_composer_preedit (BykComposer *self);
-
-/*
- * Candidates for the current preedit, or NULL if the list should be hidden.
- * Owned by the composer until the next key; do not free.
- */
-gchar **byk_composer_candidates (BykComposer *self);
-gboolean byk_composer_table_visible (BykComposer *self);
-guint byk_composer_page (BykComposer *self);
+/* The personal dictionary, sorted. Never NULL; g_strfreev. */
+gchar **byk_userdict_words (ByakaronComposer *composer);
+gboolean byk_userdict_contains (ByakaronComposer *composer, const gchar *word);
 
 /*
- * Highlighted candidate as an index into the whole list, or -1 when nothing is
- * highlighted (the default). Arrow keys move it; Enter commits it.
+ * Parse a flat JSON array of strings (the ABI's word lists). NULL if it is
+ * malformed or not valid UTF-8; g_strfreev.
  */
-gint byk_composer_cursor (BykComposer *self);
-
-/* Panel cursor up/down: same as Up/Down while the list is showing. */
-BykOutcome byk_composer_cursor_move (BykComposer *self, gboolean forward);
-
-/*
- * When TRUE, the dictionary candidate list is hidden; transliteration is
- * unchanged. 1–9 then type Bangla numerals even after a word like "ami".
- * Live: the GTK prefs toggle this while a word is being composed.
- */
-void byk_composer_set_phonetic_only (BykComposer *self, gboolean phonetic_only);
-gboolean byk_composer_phonetic_only (BykComposer *self);
-
-/*
- * Spelling corrections for words the dictionary does not know (`sonar` →
- * সনার, offering সোনার). The composer borrows `corrector`; the caller frees it
- * after the composer. NULL turns them off, as does set_corrections(FALSE).
- */
-typedef struct _BykCorrector BykCorrector;
-void byk_composer_set_corrector (BykComposer *self, BykCorrector *corrector);
-void byk_composer_set_corrections (BykComposer *self, gboolean enabled);
-
-/*
- * The personal dictionary (borrowed, may be NULL): saved words that start
- * with the typed word are suggested after the first candidate, and a saved
- * word is never offered spelling corrections.
- */
-typedef struct _BykUserDict BykUserDict;
-void byk_composer_set_userdict (BykComposer *self, BykUserDict *userdict);
-
-/* FALSE: 0-9 typed outside the list stay ASCII (the word is committed first).
- * TRUE (default): they become Bangla numerals. 1-9 pick candidates either way. */
-void byk_composer_set_bangla_digits (BykComposer *self, gboolean bangla);
-
-/* Rebuild the candidates for the current word, e.g. when corrections that were
- * still being looked up have arrived. Does nothing with no word pending. */
-void byk_composer_refresh (BykComposer *self);
-
-/*
- * Modifier-only keys (Shift, Caps, AltGr, …) PASS and must not commit. Avro
- * o-kar is capital O, so Shift during `bhalO` / `achO` has to stay in the
- * same word; otherwise the next letter starts a new one (ভালও, আছও).
- */
-BykOutcome byk_composer_key (BykComposer *self, guint keyval, guint mods);
-
-/* Panel click: `index` is within the visible page, same as a number key. */
-BykOutcome byk_composer_select (BykComposer *self, guint index);
-
-BykOutcome byk_composer_page_delta (BykComposer *self, gboolean down);
-
-/* Focus-out / reset / disable: commit whatever is pending so it is not lost. */
-BykOutcome byk_composer_flush (BykComposer *self);
+gchar **byk_parse_json_strings (const gchar *json);
 
 G_END_DECLS
 

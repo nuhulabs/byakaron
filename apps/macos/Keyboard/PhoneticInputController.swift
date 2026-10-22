@@ -1,226 +1,183 @@
 import InputMethodKit
 
+/// The process's one composer (src/Composer.zig): it owns the word being typed,
+/// the candidate list, the highlight, paging, learning and the personal
+/// dictionary. IMK delivers every event on the main thread, so that is the
+/// composer's thread.
+private enum Composer {
+    static let handle: OpaquePointer? = ByakaronSettings.openComposer(
+        spellDB: Bundle.main.url(forResource: "spell", withExtension: "db")?.path,
+        onUpdate: { _ in
+            // Spelling corrections arrived on the composer's worker thread.
+            DispatchQueue.main.async {
+                guard let handle = Composer.handle else { return }
+                byakaron_composer_refresh(handle)
+                ByakaronInputController.active?.redraw()
+            }
+        }
+    )
+}
+
 @objc(ByakaronInputController)
 class ByakaronInputController: IMKInputController {
-    private var latinBuffer = ""
-    private var candidateList: [String] = []
-    private var selectedText = ""
+    /// The controller of the focused client, redrawn when corrections arrive.
+    fileprivate static weak var active: ByakaronInputController?
+
     private var candidatesWindow: IMKCandidates?
-    private var settingsObserver: NSObjectProtocol?
-    private static let panelControlKeyCodes: Set<UInt16> = [
-        123, 124, 125, 126,  // left / right / down / up
-        116, 121,  // page up / page down
-        36, 76,  // Return / numpad Enter
-    ]
+    /// The current page of candidates, as the composer last drew it.
+    private var pageCandidates: [String] = []
+    private var hasMarkedText = false
 
-    override init!(server: IMKServer!, delegate: Any!, client inputClient: Any!) {
-        super.init(server: server, delegate: delegate, client: inputClient)
-        PhoneticDictionary.preload()
-        settingsObserver = ByakaronSettings.observeChanges { [weak self] in
-            self?.reset()
-        }
-    }
-
-    deinit {
-        if let token = settingsObserver {
-            DistributedNotificationCenter.default().removeObserver(token)
-        }
+    override func activateServer(_ sender: Any!) {
+        super.activateServer(sender)
+        Self.active = self
+        // The composer is shared: drop any word left from another client.
+        if let composer = Composer.handle { byakaron_composer_reset(composer) }
+        hasMarkedText = false
     }
 
     override func deactivateServer(_ sender: Any!) {
-        if let client = sender as? (any IMKTextInput) {
-            commit(client: client)
-        }
+        flush(client: sender as? (any IMKTextInput))
         candidatesWindow?.hide()
+        if Self.active === self { Self.active = nil }
         super.deactivateServer(sender)
     }
 
+    override func commitComposition(_ sender: Any!) {
+        flush(client: sender as? (any IMKTextInput))
+    }
+
     override func candidates(_ sender: Any!) -> [Any]! {
-        candidateList
+        pageCandidates
     }
 
-    override func candidateSelectionChanged(_ candidateString: NSAttributedString!) {
-        guard let text = candidateString?.string, !text.isEmpty else { return }
-        selectedText = text
-    }
-
+    /// A candidate was clicked. Keys never reach the panel, so this is the mouse.
     override func candidateSelected(_ candidateString: NSAttributedString!) {
-        guard let text = candidateString?.string,
-            let client = self.client() as (any IMKTextInput)?
+        guard let composer = Composer.handle,
+            let text = candidateString?.string,
+            let index = pageCandidates.firstIndex(of: text)
         else { return }
-        commitText(text, client: client)
+        apply(byakaron_composer_pick(composer, index), client: self.client())
     }
 
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
-        guard let event = event,
-            event.type == .keyDown,
+        guard let event, event.type == .keyDown,
+            let composer = Composer.handle,
             let client = sender as? (any IMKTextInput)
-        else {
-            return false
-        }
-
-        let modifiers = event.modifierFlags
-        if modifiers.contains(.command) || modifiers.contains(.control) {
-            commit(client: client)
-            return false
-        }
-
-        let keyCode = event.keyCode
-
-        if let panel = candidatesWindow, panel.isVisible(), !latinBuffer.isEmpty {
-            switch keyCode {
-            case 53:  // Escape — abandon the word
-                reset()
-                clearMarkedText(client: client)
-                return true
-
-            case 49:  // Space — commit the highlighted candidate, pass the space on
-                commit(client: client)
-                return false
-
-            case 51:  // Backspace — fall through to buffer editing below
-                break
-
-            default:
-                if panelHandles(event, panel: panel) {
-                    forwardToPanel(event, panel: panel)
-                    return true
-                }
-            }
-        }
-
-        switch keyCode {
-        case 36, 76:  // Return / numpad Enter (no panel)
-            if !latinBuffer.isEmpty {
-                commit(client: client)
-                return true
-            }
-            return false
-
-        case 53:  // Escape — drop the buffer, leave host text untouched
-            if !latinBuffer.isEmpty {
-                reset()
-                clearMarkedText(client: client)
-                return true
-            }
-            return false
-
-        case 51:  // Backspace
-            if !latinBuffer.isEmpty {
-                latinBuffer.removeLast()
-                if latinBuffer.isEmpty {
-                    reset()
-                    clearMarkedText(client: client)
-                } else {
-                    updateComposition(client: client)
-                }
-                return true
-            }
-            return false
-
-        case 49:  // Space — commit the word, let the space fall through to the host
-            if !latinBuffer.isEmpty {
-                commit(client: client)
-            }
-            return false
-
-        default:
-            break
-        }
-
-        guard let characters = event.characters,
-            let scalar = characters.unicodeScalars.first
-        else {
-            return false
-        }
-
-        if isAvroInputScalar(scalar) {
-            latinBuffer.append(Character(scalar))
-            updateComposition(client: client)
-            return true
-        }
-
-        commit(client: client)
-        return false
+        else { return false }
+        let (kind, ch) = Self.key(event)
+        let result = byakaron_composer_key(composer, kind, ch, Self.modifiers(event.modifierFlags))
+        return apply(result, client: client)
     }
 
-    private func updateComposition(client: any IMKTextInput) {
-        let bangla = Transliterator.toBangla(latinBuffer)
-        selectedText = bangla
-        showMarkedText(bangla, client: client)
-        refreshCandidates(client: client)
+    // MARK: - Composer glue
+
+    /// Insert the result's commit, redraw, and report whether the key was consumed.
+    @discardableResult
+    private func apply(_ result: ByakaronKeyResult, client: (any IMKTextInput)?) -> Bool {
+        if let commit = result.commit, commit.pointee != 0 {
+            insert(String(cString: commit), client: client)
+        }
+        redraw(client: client)
+        return result.handled != 0
     }
 
-    private func refreshCandidates(client: any IMKTextInput) {
-        guard let dict = PhoneticDictionary.shared, !latinBuffer.isEmpty else {
-            candidateList = []
+    private func flush(client: (any IMKTextInput)?) {
+        guard let composer = Composer.handle else { return }
+        if let text = byakaron_composer_flush(composer), text.pointee != 0 {
+            insert(String(cString: text), client: client)
+        }
+        redraw(client: client)
+    }
+
+    fileprivate func redraw() {
+        redraw(client: self.client())
+    }
+
+    /// Draw the composer's state: the highlighted candidate as marked text, and
+    /// the current page in the candidate panel.
+    private func redraw(client: (any IMKTextInput)?) {
+        guard let composer = Composer.handle else { return }
+        var state = ByakaronComposerState()
+        byakaron_composer_state(composer, &state)
+
+        let preedit = state.preedit.map { String(cString: $0) } ?? ""
+        if let client {
+            if state.composing != 0 {
+                showMarkedText(preedit, client: client)
+            } else if hasMarkedText {
+                clearMarkedText(client: client)
+            }
+        }
+
+        pageCandidates = (0..<state.candidate_count).compactMap { i in
+            state.candidates?[i].map { String(cString: $0) }
+        }
+        guard state.panel_visible != 0, !pageCandidates.isEmpty,
+            let panel = candidatesPanel(vertical: state.vertical != 0)
+        else {
             candidatesWindow?.hide()
             return
         }
-
-        candidateList = dict.suggestions(forLatin: latinBuffer)
-        selectedText = candidateList.first ?? Transliterator.toBangla(latinBuffer)
-
-        guard candidateList.count > 1, let panel = candidatesPanel() else {
-            candidatesWindow?.hide()
-            return
-        }
-
-        panel.setPanelType(panelType())
+        panel.setPanelType(Self.panelType(vertical: state.vertical != 0))
         panel.update()
         panel.show(IMKCandidatesLocationHint(kIMKLocateCandidatesBelowHint))
+        panel.selectCandidate(withIdentifier: panel.candidateIdentifier(atLineNumber: Int(state.highlight)))
     }
 
-    func commit(client: any IMKTextInput) {
-        guard !latinBuffer.isEmpty else { return }
-        let text = selectedText.isEmpty ? Transliterator.toBangla(latinBuffer) : selectedText
-        commitText(text, client: client)
-    }
-
-    func commitText(_ text: String, client: any IMKTextInput) {
-        reset()
-        client.insertText(
-            text as NSString,
-            replacementRange: NSRange(location: NSNotFound, length: NSNotFound)
-        )
-    }
-
-    private func reset() {
-        latinBuffer = ""
-        selectedText = ""
-        candidateList = []
-        candidatesWindow?.hide()
-    }
-
-    private func panelHandles(_ event: NSEvent, panel: IMKCandidates) -> Bool {
-        if Self.panelControlKeyCodes.contains(event.keyCode) { return true }
-        let selectionKeys = (panel.selectionKeys() as? [NSNumber]) ?? []
-        return selectionKeys.contains(NSNumber(value: event.keyCode))
-    }
-
-    private func forwardToPanel(_ event: NSEvent, panel: IMKCandidates) {
-        let selector = Selector(("handleKeyboardEvent:"))
-        if panel.responds(to: selector) {
-            panel.perform(selector, with: event)
-        } else {
-            panel.interpretKeyEvents([event])
+    /// The ABI key for an event: special keys by key code, printable ASCII by
+    /// the characters it types.
+    private static func key(_ event: NSEvent) -> (Int32, UInt32) {
+        switch event.keyCode {
+        case 49: return (Int32(BYAKARON_KEY_SPACE), 0)
+        case 36, 76: return (Int32(BYAKARON_KEY_ENTER), 0)  // Return / numpad Enter
+        case 48: return (Int32(BYAKARON_KEY_TAB), 0)
+        case 51: return (Int32(BYAKARON_KEY_BACKSPACE), 0)  // Delete
+        case 53: return (Int32(BYAKARON_KEY_ESCAPE), 0)
+        case 126: return (Int32(BYAKARON_KEY_UP), 0)
+        case 125: return (Int32(BYAKARON_KEY_DOWN), 0)
+        case 123: return (Int32(BYAKARON_KEY_LEFT), 0)
+        case 124: return (Int32(BYAKARON_KEY_RIGHT), 0)
+        case 116: return (Int32(BYAKARON_KEY_PAGE_UP), 0)
+        case 121: return (Int32(BYAKARON_KEY_PAGE_DOWN), 0)
+        default: break
         }
-    }
-
-    private func panelType() -> IMKCandidatePanelType {
-        switch ByakaronSettings.candidateOrientation {
-        case .vertical:
-            return IMKCandidatePanelType(kIMKSingleColumnScrollingCandidatePanel)
-        case .horizontal:
-            return IMKCandidatePanelType(kIMKSingleRowSteppingCandidatePanel)
+        // Option changes `characters` (⌥a → å); the composer passes shortcuts on
+        // whatever the character, so fall back to the unmodified one.
+        for chars in [event.characters, event.charactersIgnoringModifiers] {
+            if let scalar = chars?.unicodeScalars.first, chars?.unicodeScalars.count == 1,
+                (0x21...0x7e).contains(scalar.value)
+            {
+                return (Int32(BYAKARON_KEY_CHAR), scalar.value)
+            }
         }
+        return (Int32(BYAKARON_KEY_OTHER), 0)
     }
 
-    private func candidatesPanel() -> IMKCandidates? {
+    private static func modifiers(_ flags: NSEvent.ModifierFlags) -> UInt32 {
+        var mods: UInt32 = 0
+        if flags.contains(.shift) { mods |= UInt32(BYAKARON_MOD_SHIFT) }
+        if flags.contains(.control) { mods |= UInt32(BYAKARON_MOD_CTRL) }
+        if flags.contains(.option) { mods |= UInt32(BYAKARON_MOD_ALT) }
+        if flags.contains(.command) { mods |= UInt32(BYAKARON_MOD_META) }
+        return mods
+    }
+
+    // MARK: - Drawing
+
+    private static func panelType(vertical: Bool) -> IMKCandidatePanelType {
+        vertical
+            ? IMKCandidatePanelType(kIMKSingleColumnScrollingCandidatePanel)
+            : IMKCandidatePanelType(kIMKSingleRowSteppingCandidatePanel)
+    }
+
+    private func candidatesPanel(vertical: Bool) -> IMKCandidates? {
         if let panel = candidatesWindow { return panel }
         guard let server = self.server(),
-            let panel = IMKCandidates(server: server, panelType: panelType())
+            let panel = IMKCandidates(server: server, panelType: Self.panelType(vertical: vertical))
         else { return nil }
+        // Keys come to `handle` first and are all consumed there while the panel
+        // shows, so the composer, not the panel, moves the highlight and pages.
         panel.setAttributes([
             IMKCandidatesSendServerKeyEventFirst: NSNumber(value: true),
             NSAttributedString.Key.font.rawValue: NSFont.systemFont(ofSize: 16),
@@ -230,17 +187,25 @@ class ByakaronInputController: IMKInputController {
         return panel
     }
 
+    private func insert(_ text: String, client: (any IMKTextInput)?) {
+        hasMarkedText = false
+        client?.insertText(
+            text as NSString,
+            replacementRange: NSRange(location: NSNotFound, length: NSNotFound)
+        )
+    }
+
     private func showMarkedText(_ bangla: String, client: any IMKTextInput) {
         let attrs: [NSAttributedString.Key: Any] = [
             .underlineStyle: NSUnderlineStyle.single.rawValue,
             .font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
         ]
-        let attrStr = NSAttributedString(string: bangla, attributes: attrs)
         client.setMarkedText(
-            attrStr,
+            NSAttributedString(string: bangla, attributes: attrs),
             selectionRange: NSRange(location: bangla.utf16.count, length: 0),
             replacementRange: NSRange(location: NSNotFound, length: NSNotFound)
         )
+        hasMarkedText = true
     }
 
     private func clearMarkedText(client: any IMKTextInput) {
@@ -249,17 +214,6 @@ class ByakaronInputController: IMKInputController {
             selectionRange: NSRange(location: 0, length: 0),
             replacementRange: NSRange(location: NSNotFound, length: NSNotFound)
         )
-    }
-
-    private func isAvroInputScalar(_ scalar: Unicode.Scalar) -> Bool {
-        let v = scalar.value
-        if (v >= 0x41 && v <= 0x5A) || (v >= 0x61 && v <= 0x7A) { return true }  // A-Z, a-z
-        if v >= 0x30 && v <= 0x39 { return true }  // 0-9 → Bengali digits
-        switch v {
-        case 0x2E, 0x2C, 0x60, 0x3A, 0x5E, 0x24:  // . , ` : ^ $
-            return true
-        default:
-            return false
-        }
+        hasMarkedText = false
     }
 }

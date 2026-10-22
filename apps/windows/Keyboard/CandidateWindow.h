@@ -44,32 +44,21 @@ public:
     STDMETHODIMP Finalize() override;
     STDMETHODIMP Abort() override;
 
-    bool EnsureWindow();
-    void SetCandidates(const std::vector<std::wstring>& items, int selectedIndex, bool vertical);
-    void BeginAt(int x, int y);
+    // Show one page of candidates (labels 1..N) with `highlight` selected, at
+    // screen x, y; End hides it. Both report to TSF for UI-less hosts.
+    void Present(const std::vector<std::wstring>& items, int highlight, bool vertical, int x, int y);
     void End();
-    bool IsActive() const { return _inShowMode; }
-    bool IsVisible() const { return _inShowMode && (_hostAllowsTipUi ? _visible : true); }
-
-    int SelectedIndex() const { return (int)_selection; }
-    void SetSelectedIndex(int index);
-    int Count() const { return (int)_items.size(); }
-    std::wstring SelectedText() const;
-
-    // Called by text service when Behavior::Finalize/Abort need composition action.
-    using FinalizeCallback = void (*)(CByakaronTextService* svc, bool commit);
-    void SetFinalizeCallback(FinalizeCallback cb) { _finalizeCb = cb; }
 
 private:
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+    bool EnsureWindow();
     void OnPaint(HDC hdc);
+    int HitTest(int x, int y) const;
     void Layout();
     void ShowTipWindow(BOOL show);
-    void NotifyUpdate();
     void CallUpdateUIElement();
 
     CByakaronTextService* _svc = nullptr;
-    FinalizeCallback _finalizeCb = nullptr;
 
     LONG _refCount = 1;
     HWND _hwnd = nullptr;
