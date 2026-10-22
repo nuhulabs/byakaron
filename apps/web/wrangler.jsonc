@@ -1,0 +1,38 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "byakaron",
+	"main": "main.ts",
+	"compatibility_date": "2026-03-10",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	// Fill in the ids printed by `wrangler kv namespace create byakaron` and
+	// `wrangler d1 create byakaron` (see README.md → Cloudflare).
+	"kv_namespaces": [
+		{
+			"binding": "KV",
+			"id": "00000000000000000000000000000000",
+		},
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "byakaron",
+			"database_id": "00000000-0000-0000-0000-000000000000"
+		}
+	],
+	"build": {
+		"watch_dir": "./app",
+		"command": "cd ../.. && zig build -Dtarget=wasm32-wasi --release=small",
+	},
+	"assets": {
+		"directory": "../../zig-out/static",
+		"binding": "ASSETS",
+	},
+	"observability": {
+		"logs": {
+			"enabled": false,
+			"invocation_logs": true
+		}
+	}
+}

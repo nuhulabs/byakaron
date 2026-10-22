@@ -1,0 +1,13 @@
+<!-- A one-page bnwiki dump for CI: `-Dwiki-dump=.github/ci/bnwiki-tiny.xml` builds a small
+     smoke spell.db (lexicon only, no n-grams) in seconds instead of the real pipeline. -->
+<mediawiki xmlns="http://www.mediawiki.org/xml/export-0.11/" version="0.11" xml:lang="bn">
+  <page>
+    <title>বাংলা</title>
+    <ns>0</ns>
+    <id>1</id>
+    <revision>
+      <id>1</id>
+      <text bytes="200" xml:space="preserve">বাংলা ভাষা একটি ইন্দো-আর্য ভাষা। আমি বাংলায় কথা বলি। আমরা বাংলা ভাষায় গান গাই। বাংলা ভাষা সুন্দর।</text>
+    </revision>
+  </page>
+</mediawiki>

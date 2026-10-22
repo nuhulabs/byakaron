@@ -4,6 +4,11 @@
 # Linux targets build against the pinned Ubuntu sysroot (`zig build linux`
 # downloads it), so the runner only needs packages for running and for the C
 # test helpers (`setup_deps.sh --test`).
+#
+# Every platform builds here; none of them ships a real spell.db (that is
+# release.yml's job, through cd.yml). The Android APK needs the private
+# nuhulabs/byakaron-android submodule, so that part runs only when the
+# BYAKARON_ANDROID_TOKEN secret is set (see RELEASING.md).
 name: ci
 
 on:
@@ -90,3 +95,189 @@ jobs:
           for f in apps/linux/build/gnome-wayland/*.log; do
             echo "=== $f"; tail -40 "$f"
           done
+
+  # Unit tests of the Zig core on both hosts the apps are built on.
+  test:
+    name: zig build test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      - name: zig build test
+        run: zig build test
+
+  # The macOS app through Xcode (Debug, ad-hoc signed). The build graph also
+  # builds spell.db for the bundle; a tiny bnwiki dump keeps that a smoke run.
+  macos:
+    name: macos app
+    runs-on: macos-14
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      - name: zig build macos
+        run: zig build macos -Dwiki-dump=.github/ci/bnwiki-tiny.xml
+
+      - name: Check the bundle
+        run: |
+          test -d zig-out/macos/Byakaron.app
+          codesign --verify --deep --strict zig-out/macos/Byakaron.app
+
+  # The WinUI app + TSF IME packaged into the Inno Setup installer, as
+  # package_windows.ps1 does on a developer machine (no spell.db staged).
+  windows:
+    name: windows installer
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      # package_windows.ps1 finds ISCC under Program Files; choco is faster and
+      # more reliable on runners than its winget fallback.
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: zig build windows
+        run: zig build windows
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-setup
+          path: zig-out/windows/Byakaron-Setup.exe
+          retention-days: 7
+          if-no-files-found: error
+
+  # libbyakaron.so for every ABI with the NDK, then (when the private keyboard
+  # submodule is reachable) the debug APK with that freshly built library.
+  android:
+    name: android library + debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      - name: Install the Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+          add-to-path: false
+
+      - name: Build libbyakaron.so (arm64-v8a, armeabi-v7a, x86_64)
+        env:
+          ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
+        run: bash apps/android/scripts/build_zig.sh "$RUNNER_TEMP/jniLibs"
+
+      - name: Upload jniLibs
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-jniLibs
+          path: ${{ runner.temp }}/jniLibs
+          retention-days: 7
+          if-no-files-found: error
+
+      # The submodule is private: check it out at the recorded commit with a
+      # token that can read it, or skip the APK when there is none.
+      - name: Find the keyboard submodule
+        id: keyboard
+        env:
+          TOKEN: ${{ secrets.BYAKARON_ANDROID_TOKEN }}
+        run: |
+          sha=$(git ls-tree HEAD apps/android/keyboard | awk '$2 == "commit" { print $3 }')
+          if [[ -z "$sha" ]]; then
+            echo "::notice::apps/android/keyboard is not a submodule here; skipping the APK"
+          elif [[ -z "$TOKEN" ]]; then
+            echo "::notice::BYAKARON_ANDROID_TOKEN is not set; skipping the APK"
+            sha=""
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout nuhulabs/byakaron-android
+        if: steps.keyboard.outputs.sha != ''
+        uses: actions/checkout@v4
+        with:
+          repository: nuhulabs/byakaron-android
+          ref: ${{ steps.keyboard.outputs.sha }}
+          path: apps/android/keyboard
+          token: ${{ secrets.BYAKARON_ANDROID_TOKEN }}
+
+      - name: Set up JDK 17
+        if: steps.keyboard.outputs.sha != ''
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Gradle
+        if: steps.keyboard.outputs.sha != ''
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: gradlew :app:assembleDebug
+        if: steps.keyboard.outputs.sha != ''
+        working-directory: apps/android/keyboard
+        run: |
+          cp -R "$RUNNER_TEMP/jniLibs/." app/src/main/jniLibs/
+          ./gradlew :app:assembleDebug
+
+      - name: Upload debug APK
+        if: steps.keyboard.outputs.sha != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: apps/android/keyboard/app/build/outputs/apk/debug/*.apk
+          retention-days: 7
+          if-no-files-found: error
+
+  # The web app (apps/web, ziex): the default install step compiles the server
+  # and the client wasm without serving or building spell.db (only run-web and
+  # serve-web need it).
+  web:
+    name: web app
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      - name: zig build
+        run: zig build -Doptimize=ReleaseSmall

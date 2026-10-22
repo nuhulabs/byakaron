@@ -102,9 +102,11 @@ jobs:
       - name: Install it and type through the installed engine
         run: |
           source apps/linux/scripts/compat.sh
+          # shellcheck disable=SC2046 # the flag is empty or one word
           zig build linux-test -Doptimize=ReleaseFast $(byk_compat_target_flag)
           deb=$(ls apps/linux/build/byakaron_*_${{ matrix.arch }}.deb)
           sudo apt-get install -y "./$deb"
+          # shellcheck disable=SC2016 # matches the literal ${VERSION:-...}
           version=$(sed -n 's/^VERSION="\${VERSION:-\(.*\)}"$/\1/p' apps/linux/scripts/package_deb.sh)
           bash apps/linux/scripts/test_installed.sh zig-out/bin/byakaron-ime-test "$version"
 
@@ -150,6 +152,7 @@ jobs:
       - name: IME test binary (glibc 2.31)
         run: |
           source apps/linux/scripts/compat.sh
+          # shellcheck disable=SC2046 # the flag is empty or one word
           zig build linux-test -Doptimize=ReleaseFast $(byk_compat_target_flag)
 
       - name: Install and test in clean containers

@@ -1,0 +1,72 @@
+# Replace the web app's D1 database (binding `DB`, apps/web/wrangler.jsonc) with
+# spell.db, by hand. Drops and recreates every table, so spell check on the
+# deployed worker is unavailable until the import finishes.
+#
+# spell.db comes from the latest nuhulabs/Byakaron-Assets release (default) or
+# is built here with `zig build db`. A failed run can resume from a chunk.
+name: d1-import
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: Where spell.db comes from
+        type: choice
+        options: [release, build]
+        default: release
+      from:
+        description: Resume from chunk N (0 = full import)
+        type: string
+        default: '0'
+
+concurrency:
+  group: d1-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    environment:
+      name: byakaron-web
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download spell.db (latest Byakaron-Assets release)
+        if: inputs.source == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p zig-out/db
+          gh release download --repo nuhulabs/Byakaron-Assets --pattern spell.db --dir zig-out/db
+          ls -lh zig-out/db/spell.db
+
+      - name: Cache spell.db
+        if: inputs.source == 'build'
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: zig-out/db/spell.db
+          key: spell-db-${{ hashFiles('build.zig', 'build.zig.zon', 'src/data/**', 'src/build/**') }}
+
+      - name: Setup Zig
+        if: inputs.source == 'build' && steps.cache.outputs.cache-hit != 'true'
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      # The pipeline's intermediate files are several GB; /mnt has the room.
+      - name: zig build db
+        if: inputs.source == 'build' && steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo mkdir -p /mnt/zig-cache
+          sudo chown "$USER" /mnt/zig-cache
+          zig build db --cache-dir /mnt/zig-cache
+          ls -lh zig-out/db/spell.db
+
+      - name: Import into D1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: apps/web/scripts/d1_import.sh --remote --from "${{ inputs.from }}"
