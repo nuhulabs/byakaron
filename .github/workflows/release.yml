@@ -5,8 +5,8 @@
 # run and attaches them to a *public* GitHub Release on nuhulabs/Byakaron-Assets
 # (nuhulabs/byakaron is private, so curl cannot download from it), e.g.:
 #
-#   gh release create linux-0.2.0 apps/linux/build/byakaron_*_amd64.deb \
-#     --repo nuhulabs/Byakaron-Assets --title "Linux 0.2.0"
+#   gh release create linux-0.2.1 apps/linux/build/byakaron_*_amd64.deb \
+#     --repo nuhulabs/Byakaron-Assets --title "Linux 0.2.1"
 #
 # Then: curl -fsSL https://nuhulabs.com/byakaron/install.sh | sudo bash
 #
