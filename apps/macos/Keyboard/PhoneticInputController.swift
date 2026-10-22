@@ -65,9 +65,7 @@ class ByakaronInputController: IMKInputController {
             let composer = Composer.handle,
             let client = sender as? (any IMKTextInput)
         else { return false }
-        let (kind, ch) = Self.key(event)
-        let result = byakaron_composer_key(composer, kind, ch, Self.modifiers(event.modifierFlags))
-        return apply(result, client: client)
+        return apply(ComposerKeys.send(event, to: composer), client: client)
     }
 
     // MARK: - Composer glue
@@ -75,9 +73,7 @@ class ByakaronInputController: IMKInputController {
     /// Insert the result's commit, redraw, and report whether the key was consumed.
     @discardableResult
     private func apply(_ result: ByakaronKeyResult, client: (any IMKTextInput)?) -> Bool {
-        if let commit = result.commit, commit.pointee != 0 {
-            insert(String(cString: commit), client: client)
-        }
+        if let commit = result.commitText { insert(commit, client: client) }
         redraw(client: client)
         return result.handled != 0
     }
@@ -98,69 +94,27 @@ class ByakaronInputController: IMKInputController {
     /// the current page in the candidate panel.
     private func redraw(client: (any IMKTextInput)?) {
         guard let composer = Composer.handle else { return }
-        var state = ByakaronComposerState()
-        byakaron_composer_state(composer, &state)
+        let state = ComposerSnapshot(composer)
 
-        let preedit = state.preedit.map { String(cString: $0) } ?? ""
         if let client {
-            if state.composing != 0 {
-                showMarkedText(preedit, client: client)
+            if state.composing {
+                showMarkedText(state.preedit, client: client)
             } else if hasMarkedText {
                 clearMarkedText(client: client)
             }
         }
 
-        pageCandidates = (0..<state.candidate_count).compactMap { i in
-            state.candidates?[i].map { String(cString: $0) }
-        }
-        guard state.panel_visible != 0, !pageCandidates.isEmpty,
-            let panel = candidatesPanel(vertical: state.vertical != 0)
+        pageCandidates = state.candidates
+        guard state.panelVisible, !pageCandidates.isEmpty,
+            let panel = candidatesPanel(vertical: state.vertical)
         else {
             candidatesWindow?.hide()
             return
         }
-        panel.setPanelType(Self.panelType(vertical: state.vertical != 0))
+        panel.setPanelType(Self.panelType(vertical: state.vertical))
         panel.update()
         panel.show(IMKCandidatesLocationHint(kIMKLocateCandidatesBelowHint))
-        panel.selectCandidate(withIdentifier: panel.candidateIdentifier(atLineNumber: Int(state.highlight)))
-    }
-
-    /// The ABI key for an event: special keys by key code, printable ASCII by
-    /// the characters it types.
-    private static func key(_ event: NSEvent) -> (Int32, UInt32) {
-        switch event.keyCode {
-        case 49: return (Int32(BYAKARON_KEY_SPACE), 0)
-        case 36, 76: return (Int32(BYAKARON_KEY_ENTER), 0)  // Return / numpad Enter
-        case 48: return (Int32(BYAKARON_KEY_TAB), 0)
-        case 51: return (Int32(BYAKARON_KEY_BACKSPACE), 0)  // Delete
-        case 53: return (Int32(BYAKARON_KEY_ESCAPE), 0)
-        case 126: return (Int32(BYAKARON_KEY_UP), 0)
-        case 125: return (Int32(BYAKARON_KEY_DOWN), 0)
-        case 123: return (Int32(BYAKARON_KEY_LEFT), 0)
-        case 124: return (Int32(BYAKARON_KEY_RIGHT), 0)
-        case 116: return (Int32(BYAKARON_KEY_PAGE_UP), 0)
-        case 121: return (Int32(BYAKARON_KEY_PAGE_DOWN), 0)
-        default: break
-        }
-        // Option changes `characters` (⌥a → å); the composer passes shortcuts on
-        // whatever the character, so fall back to the unmodified one.
-        for chars in [event.characters, event.charactersIgnoringModifiers] {
-            if let scalar = chars?.unicodeScalars.first, chars?.unicodeScalars.count == 1,
-                (0x21...0x7e).contains(scalar.value)
-            {
-                return (Int32(BYAKARON_KEY_CHAR), scalar.value)
-            }
-        }
-        return (Int32(BYAKARON_KEY_OTHER), 0)
-    }
-
-    private static func modifiers(_ flags: NSEvent.ModifierFlags) -> UInt32 {
-        var mods: UInt32 = 0
-        if flags.contains(.shift) { mods |= UInt32(BYAKARON_MOD_SHIFT) }
-        if flags.contains(.control) { mods |= UInt32(BYAKARON_MOD_CTRL) }
-        if flags.contains(.option) { mods |= UInt32(BYAKARON_MOD_ALT) }
-        if flags.contains(.command) { mods |= UInt32(BYAKARON_MOD_META) }
-        return mods
+        panel.selectCandidate(withIdentifier: panel.candidateIdentifier(atLineNumber: state.highlight))
     }
 
     // MARK: - Drawing

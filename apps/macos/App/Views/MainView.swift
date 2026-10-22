@@ -22,6 +22,9 @@ struct MainView: View {
     @Environment(\.openSettings) private var openSettings
     /// Guard so we only nudge the user toward setup once per launch.
     @State private var didCheckSetup = false
+    /// "Avro typing": type through the keyboard's composer in the editor, to try
+    /// the keyboard without installing it. Off by default.
+    @AppStorage("avroTyping") private var avroTyping = false
     #endif
 
     var body: some View {
@@ -118,6 +121,13 @@ struct MainView: View {
             .navigationTitle("Byakaron")
             .navigationSubtitle(checker.text.isEmpty ? "বাংলা বানান পরীক্ষক" : statusSummary)
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Toggle(isOn: $avroTyping) {
+                        Label("Avro Typing", systemImage: "keyboard")
+                    }
+                    .toggleStyle(.button)
+                    .help("Type with the Byakaron keyboard here (its suggestions, settings and learned choices) without installing it")
+                }
                 ToolbarItemGroup(placement: .primaryAction) {
                     EditorToolbarActions(
                         isEmpty: checker.text.isEmpty,
@@ -158,11 +168,12 @@ struct MainView: View {
                     onApplied: { nsRange, replacementUTF16 in
                         handleEditorApply(nsRange: nsRange, replacementUTF16: replacementUTF16)
                         checker.runCheckNow()
-                    }
+                    },
+                    avroTyping: avroTyping
                 )
 
                 if checker.text.isEmpty {
-                    Text("এখানে বাংলা লিখুন বা পেস্ট করুন…")
+                    Text(avroTyping ? "ইংরেজিতে লিখুন: ami banglay gan gai…" : "এখানে বাংলা লিখুন বা পেস্ট করুন…")
                         .font(.system(size: 18))
                         .foregroundStyle(.tertiary)
                         .padding(.horizontal, 18)
