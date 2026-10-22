@@ -1,86 +1,86 @@
 import Foundation
 
-/// Shared settings store for Byakaron, compiled into BOTH the SwiftUI app and the
-/// IME helper. Pure Foundation — no AppKit and no engine/IMKit dependency — so the
-/// SwiftUI preference views can bind to it directly and the IME can read it.
+/// Where Byakaron keeps the user's data, compiled into BOTH the SwiftUI app and the
+/// IME helper. Pure Foundation — no AppKit and no IMKit dependency.
 ///
-/// The two products run as separate processes with different bundle IDs, so
-/// `UserDefaults.standard` would give each its own private domain and never agree.
-/// We therefore route everything through an explicit shared suite (`suiteName`)
-/// that both processes open, and broadcast changes over
-/// `DistributedNotificationCenter` so a setting flipped in the app's Settings
-/// window reaches the already-running IME immediately.
+/// The keyboard's behaviour and its settings live in the Zig composer
+/// (src/Composer.zig, settings in src/Composer/Settings.zig). Each process opens
+/// its own composer on the same data directory —
+/// `~/Library/Application Support/Byakaron` (settings.json, selections.json,
+/// user-words.txt) — and a running keyboard picks up changes the app saved at its
+/// next word, so no cross-process notification is needed.
 enum ByakaronSettings {
 
-    /// Shared preferences domain opened by both the app and the IME. Not a real
-    /// sandboxed app group (the IME isn't sandboxed — see Byakaron.entitlements);
-    /// it's a named `UserDefaults` suite, which on an unsandboxed Mac is a plain
-    /// `~/Library/Preferences/<suite>.plist` both processes can read and write.
+    /// Named `UserDefaults` suite for UI-only state (the selected Settings tab).
+    /// It also held the settings before settings.json; `openComposer` migrates them
+    /// once.
     static let suiteName = "dev.nuhu.labs.Byakaron.shared"
 
-    /// The shared defaults both processes talk to.
     static let defaults = UserDefaults(suiteName: suiteName) ?? .standard
 
-    // MARK: - Keys
+    /// `~/Library/Application Support/Byakaron`. The keyboard and the default app
+    /// build run unsandboxed, so this is the user's real Application Support folder.
+    static var dataDirectory: URL {
+        let base =
+            FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
+        return base.appendingPathComponent("Byakaron", isDirectory: true)
+    }
 
-    /// UserDefaults key for the phonetic-only toggle. When true, riti returns a
-    /// single phonetic transliteration with no dictionary/autocorrect/emoji
-    /// candidates — committed inline via the lonely-suggestion path.
-    static let phoneticOnlyModeKey = "ByakaronPhoneticOnlyMode"
+    /// Open a composer on `dataDirectory`, after the one-time migrations from the
+    /// pre-composer builds. `spellDB` (the bundled spell.db) enables spelling
+    /// corrections; `onUpdate(userdata)` is then called on a worker thread when
+    /// they arrive.
+    static func openComposer(
+        spellDB: String? = nil,
+        onUpdate: ByakaronUpdateFn? = nil,
+        userdata: UnsafeMutableRawPointer? = nil
+    ) -> OpaquePointer? {
+        let dir = dataDirectory
+        let fm = FileManager.default
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
 
-    /// Orientation of the candidate list shown by the IME.
-    static let candidateOrientationKey = "ByakaronCandidateOrientation"
+        // Learned choices used to be ac-selections.json.
+        let oldSelections = dir.appendingPathComponent("ac-selections.json")
+        let selections = dir.appendingPathComponent("selections.json")
+        if fm.fileExists(atPath: oldSelections.path), !fm.fileExists(atPath: selections.path) {
+            try? fm.moveItem(at: oldSelections, to: selections)
+        }
 
-    /// Max candidates shown per page in the candidate list.
-    static let candidatesPerPageKey = "ByakaronCandidatesPerPage"
+        let needsMigration = !fm.fileExists(atPath: dir.appendingPathComponent("settings.json").path)
+        guard let composer = byakaron_composer_create(dir.path, spellDB, onUpdate, userdata) else {
+            NSLog("Byakaron: failed to open the composer on %@", dir.path)
+            return nil
+        }
+        if needsMigration { migrateLegacySettings(composer) }
+        return composer
+    }
 
-    /// Font size (points) for candidate text in the IME candidate list.
-    static let candidateFontSizeKey = "ByakaronCandidateFontSize"
+    // MARK: - Shared settings
 
-    /// EXPERIMENTAL: route transliteration through the Zig libbyakaron engine
-    /// instead of riti. When on, the IME runs in an inline phonetic mode (no
-    /// candidate panel) driven by `Transliterator`. Off by default.
-    static let useZigTransliterationKey = "ByakaronUseZigTransliteration"
+    /// The settings every Byakaron keyboard shares (JSON field names from
+    /// src/Composer/Settings.zig).
+    struct Values: Codable, Equatable {
+        var suggestions = true
+        var spellingCorrections = true
+        var learnChoices = true
+        var banglaDigits = true
+        var newlineOnEnter = false
+        var candidateOrientation = Orientation.horizontal
+        var candidatesPerPage = 9
 
-    // MARK: - Real settings (read by the IME)
-
-    /// Whether phonetic-only mode is on, read from the shared suite.
-    static var phoneticOnlyMode: Bool {
-        get { defaults.bool(forKey: phoneticOnlyModeKey) }
-        set {
-            defaults.set(newValue, forKey: phoneticOnlyModeKey)
-            broadcastChange()
+        enum CodingKeys: String, CodingKey {
+            case suggestions
+            case spellingCorrections = "spelling_corrections"
+            case learnChoices = "learn_choices"
+            case banglaDigits = "bangla_digits"
+            case newlineOnEnter = "newline_on_enter"
+            case candidateOrientation = "candidate_orientation"
+            case candidatesPerPage = "candidates_per_page"
         }
     }
 
-    /// EXPERIMENTAL: whether the Zig transliteration engine is enabled, read
-    /// from the shared suite. The IME rebuilds when this flips.
-    static var useZigTransliteration: Bool {
-        get { defaults.bool(forKey: useZigTransliterationKey) }
-        set {
-            defaults.set(newValue, forKey: useZigTransliterationKey)
-            broadcastChange()
-        }
-    }
-
-    /// Candidate-list orientation. Defaults to horizontal (the historical layout).
-    static var candidateOrientation: CandidateOrientation {
-        get {
-            guard let raw = defaults.string(forKey: candidateOrientationKey),
-                let value = CandidateOrientation(rawValue: raw)
-            else {
-                return .horizontal
-            }
-            return value
-        }
-        set {
-            defaults.set(newValue.rawValue, forKey: candidateOrientationKey)
-            broadcastChange()
-        }
-    }
-
-    /// How the candidate list is laid out on screen.
-    enum CandidateOrientation: String, CaseIterable, Identifiable {
+    enum Orientation: String, Codable, CaseIterable, Identifiable {
         case horizontal
         case vertical
         var id: String { rawValue }
@@ -92,31 +92,60 @@ enum ByakaronSettings {
         }
     }
 
-    // MARK: - Cross-process change notification
+    static let candidatesPerPageRange = 3...9
 
-    /// Name broadcast over `DistributedNotificationCenter` whenever a setting the
-    /// IME cares about changes. The IME observes this to rebuild its engine; a
-    /// plain `NotificationCenter` would stay inside one process and never arrive.
-    static let didChangeNotification = Notification.Name("dev.nuhu.labs.Byakaron.settingsDidChange")
-
-    /// Tell every Byakaron process that a shared setting changed.
-    static func broadcastChange() {
-        DistributedNotificationCenter.default().postNotificationName(
-            didChangeNotification,
-            object: nil,
-            userInfo: nil,
-            deliverImmediately: true
-        )
+    static func get(_ composer: OpaquePointer) -> Values {
+        guard let cstr = byakaron_settings_get(composer) else { return Values() }
+        defer { byakaron_string_free(cstr) }
+        return (try? JSONDecoder().decode(Values.self, from: Data(String(cString: cstr).utf8))) ?? Values()
     }
 
-    /// Subscribe to cross-process setting changes. The handler runs on the main
-    /// thread. Returns the observer token so the caller can remove it.
-    @discardableResult
-    static func observeChanges(_ handler: @escaping () -> Void) -> NSObjectProtocol {
-        DistributedNotificationCenter.default().addObserver(
-            forName: didChangeNotification,
-            object: nil,
-            queue: .main
-        ) { _ in handler() }
+    static func set(_ values: Values, _ composer: OpaquePointer) {
+        guard let data = try? JSONEncoder().encode(values),
+            let json = String(data: data, encoding: .utf8)
+        else { return }
+        if byakaron_settings_set(composer, json) != 0 {
+            NSLog("Byakaron: failed to save settings")
+        }
+    }
+
+    // MARK: - Personal dictionary
+
+    static func userWords(_ composer: OpaquePointer) -> [String] {
+        guard let cstr = byakaron_userdict_get(composer) else { return [] }
+        defer { byakaron_string_free(cstr) }
+        return (try? JSONDecoder().decode([String].self, from: Data(String(cString: cstr).utf8))) ?? []
+    }
+
+    // MARK: - Migration
+
+    /// Carry the settings the old builds kept in the shared suite over to
+    /// settings.json, then drop every key those builds wrote (most were never read).
+    private static func migrateLegacySettings(_ composer: OpaquePointer) {
+        let d = defaults
+        var v = Values()
+        if d.object(forKey: "ByakaronPhoneticOnlyMode") != nil {
+            v.suggestions = !d.bool(forKey: "ByakaronPhoneticOnlyMode")
+        }
+        if let raw = d.string(forKey: "ByakaronCandidateOrientation"), let o = Orientation(rawValue: raw) {
+            v.candidateOrientation = o
+        }
+        if d.object(forKey: "ByakaronCandidatesPerPage") != nil {
+            v.candidatesPerPage = d.integer(forKey: "ByakaronCandidatesPerPage")
+        }
+        if d.object(forKey: "ByakaronSmartDigits") != nil {
+            v.banglaDigits = d.bool(forKey: "ByakaronSmartDigits")
+        }
+        set(v, composer)
+
+        for key in [
+            "ByakaronPhoneticOnlyMode", "ByakaronCandidateOrientation", "ByakaronCandidatesPerPage",
+            "ByakaronSmartDigits", "ByakaronCandidateFontSize", "ByakaronUseZigTransliteration",
+            "ByakaronStartAtLogin", "ByakaronShowInMenuBar", "ByakaronUpdateChannel", "ByakaronAutoUpdate",
+            "ByakaronAutoCorrect", "ByakaronAutoVowel", "ByakaronLearnWords", "ByakaronKeyboardLayout",
+            "ByakaronShowEnglish", "ByakaronShowEmoji",
+        ] {
+            d.removeObject(forKey: key)
+        }
     }
 }

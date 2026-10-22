@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		894A7D712FF273890032AE26 /* Byakaron.icon in Resources */ = {isa = PBXBuildFile; fileRef = 894A7D702FF273890032AE26 /* Byakaron.icon */; };
 		894A7D722FF273890032AE26 /* Byakaron.icon in Resources */ = {isa = PBXBuildFile; fileRef = 894A7D702FF273890032AE26 /* Byakaron.icon */; };
-		894ACE122FF1A4970042A597 /* Suffix.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDFC2FF1A4970042A597 /* Suffix.json */; };
 		894ACE142FF1A4970042A597 /* Dictionary.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF62FF1A4970042A597 /* Dictionary.json */; };
 		894ACE162FF1A4970042A597 /* Autocorrect.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF42FF1A4970042A597 /* Autocorrect.json */; };
 		894ACE4A2FF1B24F0042A597 /* libbyakaron.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 894ACE492FF1B24F0042A597 /* libbyakaron.a */; };
@@ -18,7 +17,6 @@
 		894ACEB32FF1C6000042A597 /* Dictionary.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDF62FF1A4970042A597 /* Dictionary.json */; };
 		894ACF022FF1D0000042A597 /* spell.db in Resources */ = {isa = PBXBuildFile; fileRef = 894ACF012FF1D0000042A597 /* spell.db */; };
 		894ACF032FF1D0000042A597 /* spell.db in Resources */ = {isa = PBXBuildFile; fileRef = 894ACF012FF1D0000042A597 /* spell.db */; };
-		894ACEB42FF1C6000042A597 /* Suffix.json in Resources */ = {isa = PBXBuildFile; fileRef = 894ACDFC2FF1A4970042A597 /* Suffix.json */; };
 		899FBAA82FF2975C002BEA94 /* MenuIcon.pdf in Resources */ = {isa = PBXBuildFile; fileRef = 899FBAA62FF2975C002BEA94 /* MenuIcon.pdf */; };
 		899FBAA92FF2975C002BEA94 /* MenuIcon.tiff in Resources */ = {isa = PBXBuildFile; fileRef = 899FBAA72FF2975C002BEA94 /* MenuIcon.tiff */; };
 		899FBAAA2FF2975C002BEA94 /* MenuIcon.pdf in Resources */ = {isa = PBXBuildFile; fileRef = 899FBAA62FF2975C002BEA94 /* MenuIcon.pdf */; };
@@ -54,7 +52,6 @@
 		894ACDF62FF1A4970042A597 /* Dictionary.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = Dictionary.json; path = ../../zig-out/db/Dictionary.json; sourceTree = SOURCE_ROOT; };
 		894ACF012FF1D0000042A597 /* spell.db */ = {isa = PBXFileReference; lastKnownFileType = file; name = spell.db; path = ../../zig-out/db/spell.db; sourceTree = SOURCE_ROOT; };
 		894ACDFA2FF1A4970042A597 /* Info-keyboard.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info-keyboard.plist"; sourceTree = "<group>"; };
-		894ACDFC2FF1A4970042A597 /* Suffix.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Suffix.json; sourceTree = "<group>"; };
 		894ACE1D2FF1A5AA0042A597 /* Byakaron Keyboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Byakaron Keyboard.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		894ACE492FF1B24F0042A597 /* libbyakaron.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libbyakaron.a; path = ../../zig-out/macos/lib/libbyakaron.a; sourceTree = SOURCE_ROOT; };
 		899FBAA62FF2975C002BEA94 /* MenuIcon.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = MenuIcon.pdf; sourceTree = "<group>"; };
@@ -67,7 +64,6 @@
 			membershipExceptions = (
 				AppDelegate.swift,
 				main.swift,
-				PhoneticDictionary.swift,
 				PhoneticInputController.swift,
 				SpellServer.swift,
 			);
@@ -78,7 +74,6 @@
 			membershipExceptions = (
 				AppDelegate.swift,
 				main.swift,
-				PhoneticDictionary.swift,
 				PhoneticInputController.swift,
 				SpellServer.swift,
 			);
@@ -169,7 +164,6 @@
 				894ACDF62FF1A4970042A597 /* Dictionary.json */,
 				894ACF012FF1D0000042A597 /* spell.db */,
 				894ACDFA2FF1A4970042A597 /* Info-keyboard.plist */,
-				894ACDFC2FF1A4970042A597 /* Suffix.json */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -269,7 +263,6 @@
 		894ACDCB2FF1A45F0042A597 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
-				894ACE122FF1A4970042A597 /* Suffix.json in Resources */,
 				894ACE142FF1A4970042A597 /* Dictionary.json in Resources */,
 				894ACF022FF1D0000042A597 /* spell.db in Resources */,
 				899FBAAA2FF2975C002BEA94 /* MenuIcon.pdf in Resources */,
@@ -283,7 +276,6 @@
 			files = (
 				894ACEB32FF1C6000042A597 /* Dictionary.json in Resources */,
 				894ACF032FF1D0000042A597 /* spell.db in Resources */,
-				894ACEB42FF1C6000042A597 /* Suffix.json in Resources */,
 				894A7D712FF273890032AE26 /* Byakaron.icon in Resources */,
 				899FBAA82FF2975C002BEA94 /* MenuIcon.pdf in Resources */,
 				899FBAA92FF2975C002BEA94 /* MenuIcon.tiff in Resources */,

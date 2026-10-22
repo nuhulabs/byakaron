@@ -34,7 +34,7 @@ IBus is also the default on GNOME (Ubuntu, Fedora, Debian) and reaches
 applications through the GTK and Qt im-modules, XIM, and Wayland's
 `text-input-v3`.
 
-Fcitx5 is a possible second front-end; `Core/composer.c` is what it wraps.
+Fcitx5 is a possible second front-end over the same Zig composer.
 IBus remains the GNOME/Ubuntu default.
 
 ## Why C
@@ -50,9 +50,9 @@ build system and no extra language runtime on the per-keystroke path.
 ```
 apps/linux/
 ├── App/         GTK3 app (main, window, spelling, layout, setup)
-├── Core/        Shared C glue over byakaron.h (composer, transliterator,
-│                autocomplete, spell, prefs) — IBus, Fcitx5, and the app all use this
-├── Keyboard/    The IBus engine (thin shell over Core/composer)
+├── Core/        Shared C glue over byakaron.h (composer glue, spell, prefs)
+│                — IBus, Fcitx5, and the app all use this
+├── Keyboard/    The IBus engine (thin shell over the Zig composer)
 ├── Fcitx5/      Optional Fcitx5 addon (same composer; needs libfcitx5core-dev)
 ├── Resources/   IBus component XML, GSettings schema, .desktop, icons, Flatpak manifest
 ├── scripts/     setup_deps.sh, build_zig.sh, smoke.sh,
@@ -61,14 +61,16 @@ apps/linux/
 └── tests/       C ABI + Core smoke test, IBus integration test, Wayland probes
 ```
 
-`Core/` holds the glue that every Linux front-end needs: `transliterator.c` for
-latin → Bangla, `autocomplete.c` for candidates, `spell.c` for spell.db,
-`composer.c` for the key policy (what Space, 1–9, digits, punctuation, Escape
-mean), and `prefs.c` for the GSettings schema both the engine and the app
-read. IBus and Fcitx5 are thin shells over that composer
-so they cannot drift. All four hand back plain `g_malloc`'d memory, so the Zig
-ownership rule (`byakaron_string_free`) and the JSON the ABI returns stop there
-and nothing above them has to know.
+The keyboard itself — latin buffer, Avro's candidates, highlight, paging,
+learning, the personal dictionary, spelling corrections and settings — is the
+Zig `Composer` (`src/Composer.zig`) behind the `byakaron_composer_*` ABI, the
+same on every platform. `Core/` holds only what Linux adds: `composer.c` maps
+X11 keysyms to composer keys, finds the data directory and spell.db, migrates
+the old GSettings keys into `settings.json` once, and reads the JSON word lists
+the ABI returns; `spell.c` wraps spell.db for the app's Spelling page; `prefs.c`
+opens the GSettings schema (now only the Qt click fix). IBus and Fcitx5 are
+thin shells over the composer, so they cannot drift from each other or from
+macOS, Windows, Android and the web.
 
 The two binaries share `Core/` as source and each links its own static copy of
 the Zig core. A single `libbyakaron.so` would save ~7 MB of the download, at the
@@ -116,10 +118,12 @@ bash apps/linux/scripts/smoke.sh
 ```
 
 This builds `libbyakaron.so` and calls it from C. Expect `ami → আমি`,
-`bangla → বাংলা`, and autocomplete candidates. It also covers the candidate JSON
-parser in `Core/autocomplete.c`, including the inputs it must *reject* — those
-paths are unreachable through the engine, because the only producer of that JSON
-is in this repository and never emits malformed output.
+`bangla → বাংলা`, the keysym mapping (keypad keys, modifier-only keys not
+sent), a few keystrokes through the composer exactly as the IME shells send
+them (preedit = highlighted candidate, Space commits it, arrows wrap, Enter
+commits only), settings and personal-dictionary round trips, and the JSON
+word-list parser including the inputs it must *reject*. The keyboard's
+behaviour itself is tested in Zig (`zig build test`, `src/Composer.zig`).
 
 ## Building and running the input method
 
@@ -162,7 +166,9 @@ shuts it down. Because the context is private, the desktop's own input source is
 never touched. It asserts the preedit while typing, that Backspace
 re-transliterates from the latin buffer, that Space commits, that Escape
 discards, that a multi-word sentence commits correctly, and that the candidate
-list appears, selects by number, and pages.
+list appears, selects by number, wraps with the arrows, and pages. It runs the
+engine on a throwaway `BYAKARON_DATA_DIR`, so the user's settings, learned
+choices and personal words are never touched.
 
 The test claims `IBUS_CAP_LOOKUP_TABLE` so the daemon routes candidates to it;
 without that capability the table goes to the desktop panel and a client never
@@ -170,101 +176,89 @@ sees it.
 
 ## How the engine works
 
-The **latin text the user typed is the single source of truth**. Every keystroke
-re-transliterates the whole buffer and replaces the preedit wholesale.
+Every keystroke goes to the Zig composer (`byakaron_composer_key`), which owns
+all of the behaviour below; the IBus engine and the Fcitx5 addon map the X11
+keysym to a composer key (keypad digits, Enter, Space, arrows and pages count
+as their main-keyboard twins), insert the text it commits, and redraw its
+state. Modifier-only keys (Shift, Caps Lock, AltGr, Num Lock) are never sent,
+so Shift in `bhalO` stays in the word.
 
-That matters because transliteration is contextual: a later keystroke can change
-a glyph already on screen, and one Bangla conjunct can span several latin
-characters. Editing the Bangla directly — deleting one Bangla character on
-Backspace, say — would split conjuncts and desynchronise the two buffers.
-Backspace therefore drops one *latin* character and re-runs the whole word. The
-engine handle is built once per input context, so re-running is cheap.
+The **latin text the user typed is the single source of truth**: every
+keystroke re-runs Avro on the whole buffer. Transliteration is contextual — a
+later keystroke can change a glyph already on screen, and one conjunct can span
+several latin characters — so Backspace drops one *latin* character and re-runs
+the word rather than editing the Bangla.
 
-Key handling:
+The inline (preedit) text is the **highlighted candidate**, as in OmicronLab
+Avro / iAvro, and the list opens on Avro's preselected one (the one chosen last
+time for that input, else the first).
 
 | Key | Behaviour |
 | --- | --- |
-| `a`–`z`, `A`–`Z` | Appended to the latin buffer; preedit updates |
-| `0`–`9` | Bangla numerals (`1` → `১`, `2024` → `২০২৪`), except `1`–`9` pick a candidate while the list is on screen |
+| `a`–`z`, `A`–`Z` | Appended to the latin buffer; candidates and preedit update |
+| `0`–`9` | Bangla numerals (`1` → `১`, `2024` → `২০২৪`) with **Bangla digits** on, else 0–9 typed by the app; `1`–`9` pick a candidate while the list is on screen |
 | `.` `,` `:` `$` `^` backtick and other printable ASCII | Appended; Avro maps `.` → `।`, `:` → `ঃ`, `$` → `৳`, `^` → `ঁ` |
 | Backspace | Drops one latin character and re-transliterates |
-| Space | Commits the Bangla plus the space, in one commit |
-| Enter | Commits the highlighted candidate if an arrow key chose one (Enter is consumed); otherwise commits the word, then lets the application see the Enter |
+| Space | Commits the highlighted candidate plus the space, in one commit |
+| Enter | Commits the highlighted candidate only (Enter consumed); with **New line on Enter** it also reaches the app |
 | Escape | Discards the pending word and its candidates |
-| `1`–`9` | Picks that candidate — but only while the list is on screen |
-| Down / Right, Up / Left | Moves a highlight through the candidates, across pages, while the list is on screen. Nothing is highlighted until the first arrow; Up from the first candidate removes it. Without a list the arrows commit the word and move the caret as usual |
-| Page Up / Page Down | Turns the candidate page, while the list is on screen |
-| Ctrl/Alt/Super + key | Commits the word, then passes the shortcut through |
-| Anything else | Commits the word and is handled by the application |
+| `1`–`9` | Picks that candidate on the current page |
+| Down / Right, Up / Left | Moves the highlight, wrapping from the last candidate to the first and back, across pages. With **Remember my choices** every move is learned, in `~/.local/share/byakaron/selections.json`. Without a list the arrows commit the word and move the caret as usual |
+| Page Up / Page Down | Turns the candidate page (wrapping) while the list is on screen |
+| Tab, Ctrl/Alt/Super + key, anything else | Commits the highlighted candidate, then the key reaches the application |
 
-Space and Enter commit the terminator themselves rather than letting the key
-fall through, because `commit_text` travels over D-Bus and a forwarded key is
-not guaranteed to arrive after it.
+Space commits its own space rather than letting the key fall through, because
+`commit_text` travels over D-Bus and a forwarded key is not guaranteed to
+arrive after it. The engine always commits before hiding the preedit:
+Electron/Monaco treats HidePreeditText as cancel.
 
 ## Candidates
 
-While a word is being typed, the panel lists dictionary words that start with it
-and the number keys pick one. Candidates come from `byakaron_ac_prefix`, whose
-lexicon is compiled into the binary, so they work with nothing installed — no
-`spell.db`, no database at all. Building the word index costs ~7ms once per
-process and each lookup ~10µs, both measured, so this sits comfortably on the
-per-keystroke path.
+Avro's own list for the latin typed so far (autocorrect, dictionary words,
+suffix forms, the plain transliteration), then personal-dictionary words that
+start with the transliteration, then spelling corrections when Avro found no
+dictionary word. The lexicon is compiled into the binary, so candidates work
+with nothing installed. **Word suggestions** off is phonetic mode: the word is
+transliterated exactly and no list is shown.
 
-The list is kept out of the way like this:
-
-- **Only the number keys select, and only while the list is visible.** Space
-  and Enter always commit what was *typed*, never a candidate. Off-screen,
-  `0`–`9` become Bangla numerals (`1` → `১`). `0` is never a candidate key, so
-  it always types `০`. The list is drawn without a selection highlight until an
-  arrow key moves one (then Enter takes it); Space never does.
+The lookup table only ever holds the **current page** (`candidates_per_page`,
+3–9, default 9); the composer pages, wraps and remembers. The panel's own
+paging arrows, cursor buttons and mouse clicks are forwarded to the composer as
+Page Up/Down, Up/Down and `byakaron_composer_pick`.
 
 Escape drops the word and the list together rather than dismissing the list
 first: a two-stage Escape would mean two different things depending on state the
 user can no longer see once the list is gone.
 
-The panel's own paging arrows and mouse clicks work too — the engine implements
-the `page_up`, `page_down`, `cursor_up`, `cursor_down` and `candidate_clicked`
-handlers the panel drives.
-
 ### Spelling corrections
 
-When nothing in the dictionary starts with the word Avro produced, it is
-probably misspelled (`sonar` → সনার, `shundor` → শুন্দর, `jibon` → জিবন), and
-there used to be no list at all. `Core/corrector.c` now asks spell.db for up to
-three corrections and lists them *after* the typed word, which stays first so
-Space and `1` keep meaning "as typed": `sonar` then `2` types সোনার. Correctly
-spelled words keep their normal list. Single letters are skipped.
+When Avro's list is just the plain transliteration, the word is probably
+misspelled (`sonar` → সনার, `jibon` → জিবন), so up to three corrections from
+spell.db follow it. A lookup can take ~150 ms on a cold disk cache, so the
+composer does it on a worker thread; when the results arrive it calls back, and
+the engine hops to its main loop (`g_idle_add` in IBus, the Fcitx5 event
+dispatcher), refreshes the composer and redraws.
 
-A correction lookup is 0.2–10 ms warm but up to ~150 ms on a cold disk cache,
-too slow for the keystroke path. In the IBus engine it runs on one worker
-thread with its own spell.db connection; when a word's corrections arrive and
-it is still the word on screen, the list updates by itself. Results are
-cached. The Fcitx5 addon has no GLib main loop for that callback, so it looks
-up inline (cached too): a new misspelled word can stall that keystroke once.
-
-Needs spell.db; without it nothing changes. GSettings key
-`spelling-suggestions` (default on) turns it off, live.
+spell.db is `$BYAKARON_SPELL_DB` or `/usr/share/byakaron/spell.db`; without it
+nothing changes. **Spelling corrections** turns it off.
 
 ### Personal dictionary
 
 Words the user marks as correct live in
-`~/.local/share/byakaron/user-words.txt` (one per line, NFC, sorted, written
-atomically; `BYAKARON_USER_DICT` overrides the path for tests).
-`Core/userdict.c` is shared by both sides:
+`~/.local/share/byakaron/user-words.txt`, next to `settings.json` and
+`selections.json` (the data directory is `$XDG_DATA_HOME/byakaron`;
+`BYAKARON_DATA_DIR` overrides it for tests). Everything goes through the
+composer's `byakaron_userdict_*`:
 
 - **App:** "Add to Dictionary" next to Ignore in the Spelling page (Ignore
   still lasts only until the app closes), and *Personal Dictionary…* in the
-  main menu to add a word by hand or remove one. Saved words are never flagged.
+  main menu (or Settings → **Manage…**) to add a word by hand or remove one.
+  Saved words are never flagged.
 - **Keyboard:** saved words that start with what is being typed are suggested
-  right after the first candidate, and a saved word is never offered spelling
-  corrections. The engine re-reads the file at most once a second on a
-  keystroke and compares contents, so a word added in the app works in the
-  keyboard without restarting either.
+  after Avro's candidates, and a saved word is never offered corrections. The
+  composer re-reads the data directory when a word starts, so a word added in
+  the app works in the keyboard without restarting either.
 
-Changes are detected by comparing contents rather than `stat()`: built by Zig
-against its bundled glibc headers, `struct stat` was smaller than what the
-system's `stat()` writes, and the overflow crashed the app at start once the
-file existed. GIO was ruled out too: it can load GVfs and block on D-Bus.
 The app-only Flatpak has its own data directory, so its dictionary is not the
 keyboard's.
 
@@ -311,26 +305,38 @@ from "click **+** in Settings". The GSettings schema is looked up before use,
 since `g_settings_new` aborts the process on an unknown schema and that schema
 does not exist outside GNOME.
 
-**Preferences that change behaviour live in GSettings**
-(`dev.nuhu.labs.Byakaron`). The Settings page binds a switch to each key; the
-IBus engine and the Fcitx5 addon read them:
+**Settings live in `settings.json`**, shared with every Byakaron platform
+(`src/Composer/Settings.zig`). The app opens its own composer on the keyboard's
+data directory and writes them with `byakaron_settings_set`; the IBus engine
+and the Fcitx5 addon pick them up at their next word, with no restart and no
+IPC.
+
+| Setting | `settings.json` field | Default |
+| --- | --- | --- |
+| **Word suggestions** — off is phonetic mode: exact transliteration, no list | `suggestions` | on |
+| **Spelling corrections** (see [Spelling corrections](#spelling-corrections)) | `spelling_corrections` | on |
+| **Remember my choices** — the candidate picked for an input is highlighted first next time | `learn_choices` | on |
+| **Bangla digits** — off keeps 0–9 outside a word | `bangla_digits` | on |
+| **New line on Enter** — Enter commits the word and also starts a new line | `newline_on_enter` | off |
+| **Suggestion list** — Horizontal / Vertical | `candidate_orientation` | horizontal |
+| **Suggestions per page** — 3–9 | `candidates_per_page` | 9 |
+
+The Settings page also shows the saved-word count with **Manage…** for the
+personal dictionary.
+
+One Linux-only switch stays in GSettings (`dev.nuhu.labs.Byakaron`), shown
+under **Compatibility** when the schema is installed:
 
 | Switch | Key | Default |
 | --- | --- | --- |
-| **Suggest words** — off is phonetic-only: transliteration stays, the candidate list is hidden, so 1–9 type Bangla numerals | `phonetic-only` (inverted) | on |
-| **Spelling corrections** — corrections for words the dictionary does not know (see [Spelling corrections](#spelling-corrections)) | `spelling-suggestions` | on |
-| **Bangla digits** — off keeps 0–9 as typed outside the list (the word is committed first); 1–9 still pick a candidate | `bangla-digits` | on |
-| **Horizontal suggestion list** — the IME panel's layout | `candidates-horizontal` | on |
 | **Qt apps: type a word once on click** — older IBus only (Ubuntu 20.04/22.04): IBus never commits the pending word itself, so Qt types it once; GTK apps and browsers then drop a word still being typed if you click away before Space. Ignored on IBus 1.5.27+ | `qt-click-fix` | off |
 
-The Settings page also shows the saved-word count with **Manage…** for the
-personal dictionary. Without the schema installed it says so instead of
-showing switches that would do nothing.
-
-Flipping a switch updates the engine without a restart: the GNOME Wayland test
-turns Bangla digits off and on with `gsettings` while it types. There are no
-macOS-style "Coming soon" toggles. Candidates-per-page stays at 9 because
-1–9 are the selection keys.
+**Migration.** The first composer to start without a `settings.json` (the
+keyboard or the app) copies the old GSettings keys into it once:
+`suggestions = !phonetic-only`, `spelling_corrections = spelling-suggestions`,
+`bangla_digits = bangla-digits`, `candidate_orientation` from
+`candidates-horizontal`. Those keys stay in the schema, marked deprecated, only
+so they can still be read for that; nothing else reads them.
 
 ## Installing permanently
 
@@ -483,8 +489,10 @@ fetch the latest release.
 ## Fcitx5 (optional)
 
 A second IME framework, not a skin over IBus. `apps/linux/Fcitx5/` is a
-C++ `InputMethodEngineV2` that applies the same `Core/composer.c` outcomes as
-`Keyboard/engine.c`. Build with `zig build linux-fcitx5` when
+C++ `InputMethodEngineV2` over the same Zig composer as `Keyboard/engine.c`
+(one composer for the addon; a pending word is committed when its input
+context is reset or loses focus, since Fcitx5 does not commit the preedit by
+itself). Build with `zig build linux-fcitx5` when
 `libfcitx5core-dev` is installed (or `PKG_CONFIG_PATH` points at those
 headers). That does **not** switch the session to Fcitx5.
 

@@ -4,14 +4,13 @@
 <dict>
     <!-- The keyboard is installed manually into ~/Library/Input Methods and runs
          as a standalone input method, NOT inside the app's sandbox. Keep it
-         unsandboxed so it can read the shared settings suite the app writes and
-         operate as a system-wide IME.
+         unsandboxed so it can read the settings the app saves in
+         ~/Library/Application Support/Byakaron and operate as a system-wide IME.
 
-         NOTE: with the app sandboxed and the keyboard unsandboxed, the named
-         UserDefaults suite no longer resolves to the same plist for both
-         processes. To keep Settings syncing to the keyboard, move both to an App
-         Group (com.apple.security.application-groups) and point
-         ByakaronSettings.suiteName at the group id. -->
+         NOTE: a sandboxed app sees its container's Application Support instead,
+         so its Settings would not reach the keyboard. To keep them in sync, move
+         both to an App Group (com.apple.security.application-groups) and point
+         ByakaronSettings.dataDirectory at the group container. -->
     <key>com.apple.security.app-sandbox</key>
     <false/>
 </dict>

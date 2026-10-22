@@ -1,12 +1,14 @@
 //! Interactive Bangla spell checker — client-side UI with `zx.fetch` to `/api/spell`.
 //! Typing, issue selection, and applying suggestions do not full-page refresh.
-//! Avro transliteration and the word-completion menu run in the browser (wasm)
-//! with the same `Transliteration` and `AutoComplete.Mem` the native apps use.
+//! Avro typing runs in the browser (wasm) through the same `Composer` every
+//! native keyboard drives, so keys, candidates, settings and learned choices
+//! behave exactly as on Linux, macOS, Windows and Android. Its user data lives
+//! in `zx.kv` (the browser's storage) under the same names as the native data
+//! files.
 
 const std = @import("std");
 const zx = @import("zx");
-const Transliteration = @import("transliteration").Transliteration;
-const AutoCompleteMem = @import("autocomplete_mem");
+const Composer = @import("composer");
 
 // —— Client-side model (WASM module globals) ——
 
@@ -43,41 +45,34 @@ const check_throttle_ms: u32 = 400;
 var check_dirty: bool = false;
 var check_timer_armed: bool = false;
 
-/// Avro typing: English keystrokes are kept as the Latin source of the word being
-/// typed and re-transliterated on every key, replacing `compose_len` bytes of
-/// `draft_text` at `compose_start`.
+/// Avro typing on/off for this page (switching between Bangla and English
+/// input, like changing the keyboard layout); the keyboard's own settings are
+/// `Composer.Settings`.
 var transliterate_on: bool = true;
-var compose_latin: std.ArrayList(u8) = .empty;
+/// The word being composed occupies `compose_len` bytes of `draft_text` at
+/// `compose_start`: the composer's preedit.
+var composer: ?Composer = null;
 var compose_start: usize = 0;
 var compose_len: usize = 0;
+var settings_open: bool = false;
 
-/// Completion menu for the word at the caret, spanning bytes `word_start..word_end`.
-const menu_limit: i64 = 6;
-var menu_items: []const []const u8 = &.{};
-var menu_sel: usize = 0;
-var word_start: usize = 0;
-var word_end: usize = 0;
-var menu_arena: std.heap.ArenaAllocator = undefined;
-var menu_arena_ready: bool = false;
-
-var avro: ?Transliteration = null;
-var ac_mem: ?*AutoCompleteMem = null;
-
-/// Persisted in the browser through `zx.kv` (localStorage on the client): the
-/// draft as raw text under `draft_key`, preferences as `Settings` under `settings_key`.
-const Settings = struct {
+/// Persisted in the browser through `zx.kv`: the draft as raw text, the caret,
+/// the last spell-check results (so a reload comes back exactly as it was
+/// left), and this page's Avro on/off toggle. The composer keeps its own blobs
+/// (`Composer.Store` names) in the same kv.
+const WebPrefs = struct {
     transliterate: bool = true,
 };
-/// The caret, as byte offsets into the draft, and the last spell-check results
-/// (JSON) are saved too, so a reload comes back exactly as it was left.
 const Caret = struct {
     start: usize = 0,
     end: usize = 0,
 };
 const draft_key = "draft";
-const settings_key = "settings";
+const prefs_key = "settings";
 const caret_key = "caret";
 const results_key = "results";
+/// Where earlier versions of this page kept Avro's learned choices.
+const legacy_selections_key = "avro_selections";
 var store_loaded: bool = false;
 var saved_caret: ?Caret = null;
 /// False until the saved state is in place. The server cannot read the browser's
@@ -109,6 +104,7 @@ pub fn SpellApp(ctx: *zx.ComponentContext) zx.Component {
     const word_count = results.len;
     const char_count = utf8Codepoints(draft_text);
     if (zx.platform.role == .client and !store_loaded) loadStore();
+    const menu = currentMenu(ctx.allocator);
     const meta = std.fmt.allocPrint(
         ctx.allocator,
         "{d} words · {d} issues",
@@ -158,6 +154,14 @@ pub fn SpellApp(ctx: *zx.ComponentContext) zx.Component {
                             aria-pressed={if (transliterate_on) "true" else "false"}
                             onclick={onToggleTransliterate}
                         >{if (transliterate_on) "অ" else "A"}</button>
+                        <button
+                            class={if (settings_open) "tool-btn tool-toggle is-on" else "tool-btn tool-toggle"}
+                            type="button"
+                            title="Keyboard settings"
+                            aria-label="Keyboard settings"
+                            aria-pressed={if (settings_open) "true" else "false"}
+                            onclick={onToggleSettingsPanel}
+                        ><span class="icon-gear" aria-hidden="true"></span></button>
                         <button class="tool-btn" type="button" title="Check spelling" aria-label="Check spelling" onclick={onCheckNow}>
                             <span class="icon-wand" aria-hidden="true"></span>
                         </button>
@@ -189,19 +193,26 @@ pub fn SpellApp(ctx: *zx.ComponentContext) zx.Component {
                         onmouseup={onCaretMoved}
                         onblur={onEditorBlur}
                     >{draft_text}</textarea>
-                    {if (menu_items.len > 0) (
-                        <ul class="suggest-menu" role="listbox">
-                            {for (menu_items, 0..) |item, mi| (
+                    {if (menu.items.len > 0) (
+                        <ul class={if (menu.vertical) "suggest-menu" else "suggest-menu is-horizontal"} role="listbox">
+                            {for (menu.items, 0..) |item, mi| (
                                 <li
-                                    class={if (mi == menu_sel) "suggest-item is-active" else "suggest-item"}
+                                    class={if (mi == menu.highlight) "suggest-item is-active" else "suggest-item"}
                                     role="option"
                                     value={mi}
                                     onmousedown={onPickSuggestion}
-                                >{item}</li>
+                                ><span class="suggest-num">{mi + 1}</span>{item}</li>
+                            )}
+                            {if (menu.page_count > 1) (
+                                <li class="suggest-page" aria-hidden="true">{menu.page_label}</li>
                             )}
                         </ul>
                     )}
                 </div>
+
+                {if (settings_open) (
+                    <SettingsPanel />
+                )}
 
                 <div class="fix-slot">
                 {if (selected) |sel| (
@@ -301,225 +312,370 @@ fn utf8Codepoints(text: []const u8) usize {
 fn onTextInput(e: zx.client.Event) void {
     const v = e.value() orelse "";
     draft_text = zx.allocator.dupe(u8, v) catch return;
-    // Avro keys are handled in keydown and never reach here: this is a paste, an
-    // OS input method, a deletion, or typing with transliteration off.
-    endComposition();
-    refreshMenu();
+    // Composer keys are handled in keydown and never reach here: this is a
+    // paste, an OS input method, a deletion, or typing with Avro off. Whatever
+    // was being composed is now just text.
+    if (composer) |*c| c.reset();
+    compose_len = 0;
     zx.client.rerender();
     draftChanged();
 }
 
 fn onToggleTransliterate(_: zx.client.Event) void {
+    finishWord();
     transliterate_on = !transliterate_on;
-    saveSettings();
-    endComposition();
-    closeMenu();
+    saveWebPrefs();
     zx.client.rerender();
     focusTextarea();
 }
 
 fn onEditorBlur(_: zx.client.Event) void {
-    if (compose_latin.items.len > 0) scheduleCheck();
-    endComposition();
-    if (menu_items.len == 0) return;
-    closeMenu();
-    zx.client.rerender();
+    finishWord();
+}
+
+/// Commit the word being composed where it stands (focus or caret leaving it).
+fn finishWord() void {
+    const c = ensureComposer() orelse return;
+    if (!c.composing()) return;
+    const text = c.flush() catch return;
+    apply(.{ .handled = true, .commit = text }, null, true);
 }
 
 fn onEditorKeyDown(e: zx.client.Event) void {
+    if (!transliterate_on) return;
     const ke = e.as(zx.client.events.KeyboardEvent, zx.allocator);
-    const k = ke.key;
-    if (ke.is_composing) return;
+    if (ke.is_composing) return; // an OS input method is active
+    const k = keyFor(ke.key) orelse return; // modifier keys alone
+    const c = ensureComposer() orelse return;
+    const mods: Composer.Modifiers = .{ .shift = ke.shift_key, .ctrl = ke.ctrl_key, .alt = ke.alt_key, .meta = ke.meta_key };
 
-    if (menu_items.len > 0) {
-        if (std.mem.eql(u8, k, "ArrowDown") or std.mem.eql(u8, k, "ArrowUp")) {
-            e.preventDefault();
-            const n = menu_items.len;
-            menu_sel = if (k[5] == 'D') (menu_sel + 1) % n else (menu_sel + n - 1) % n;
-            zx.client.rerender();
-            return;
-        }
-        if (std.mem.eql(u8, k, "Enter") or std.mem.eql(u8, k, "Tab")) {
-            e.preventDefault();
-            acceptSuggestion(menu_sel);
-            return;
-        }
-        if (std.mem.eql(u8, k, "Escape")) {
-            e.preventDefault();
-            endComposition();
-            closeMenu();
-            zx.client.rerender();
-            return;
-        }
-    }
-
-    if (!transliterate_on or ke.ctrl_key or ke.meta_key or ke.alt_key) return;
-
-    if (k.len == 1 and isAvroKey(k[0])) {
-        e.preventDefault();
-        composeKey(k[0]);
-        return;
-    }
-    if (std.mem.eql(u8, k, "Backspace") and compose_latin.items.len > 0) {
+    const was_composing = c.composing();
+    if (!was_composing and k == .char) {
+        // A new word replaces whatever is selected.
+        syncDraftFromDom();
         const sel = readSelection() orelse return;
-        if (sel.start == sel.end and sel.start == compose_start + compose_len) {
-            e.preventDefault();
-            _ = compose_latin.pop();
-            applyComposition();
-            return;
-        }
+        compose_start = sel.start;
+        compose_len = sel.end - sel.start;
+    } else if (was_composing) {
+        // The caret left the word (click, programmatic move): commit it first.
+        const sel = readSelection() orelse return;
+        if (sel.start != sel.end or sel.start != compose_start + compose_len) finishWord();
     }
-    // Anything else (space, punctuation, arrows, Enter) commits the word as typed
-    // and keeps its default action. Modifier keydowns arrive mid-word (Shift for
-    // `O`), so they must not.
-    if (compose_latin.items.len > 0 and !isModifierKey(k)) {
-        endComposition();
-        closeMenu();
-        zx.client.rerender();
-        scheduleCheck();
+
+    const outcome = c.key(k, mods) catch return;
+    apply(outcome, e, c.composing() or was_composing);
+}
+
+/// The composer key for a DOM `KeyboardEvent.key`, or null for keys the
+/// composer never sees (Shift, CapsLock, …).
+fn keyFor(name: []const u8) ?Composer.Key {
+    if (name.len == 1) return if (name[0] == ' ') .space else if (name[0] >= 0x21 and name[0] <= 0x7e) .{ .char = name[0] } else .other;
+    const named = [_]struct { []const u8, Composer.Key }{
+        .{ "Enter", .enter },         .{ "Tab", .tab },           .{ "Backspace", .backspace },
+        .{ "Escape", .escape },       .{ "ArrowUp", .up },        .{ "ArrowDown", .down },
+        .{ "ArrowLeft", .left },      .{ "ArrowRight", .right },  .{ "PageUp", .page_up },
+        .{ "PageDown", .page_down },
+    };
+    for (named) |n| if (std.mem.eql(u8, name, n[0])) return n[1];
+    for ([_][]const u8{ "Shift", "Control", "Alt", "Meta", "CapsLock", "AltGraph", "Fn", "Dead", "Unidentified" }) |m| {
+        if (std.mem.eql(u8, name, m)) return null;
     }
+    return .other;
 }
 
 fn onPickSuggestion(e: zx.client.Event) void {
     // mousedown + preventDefault keeps focus (and the caret) in the textarea.
     e.preventDefault();
     const raw = e.value() orelse return;
-    acceptSuggestion(std.fmt.parseInt(usize, raw, 10) catch return);
+    const c = ensureComposer() orelse return;
+    const outcome = c.pick(std.fmt.parseInt(usize, raw, 10) catch return) catch return;
+    apply(outcome, null, true);
 }
 
-/// Letters, digits and the Avro symbols (`.` → ।, `` ` `` breaks a conjunct,
-/// `^` → ঁ, `:` → ঃ, `$` → ৳).
-fn isAvroKey(c: u8) bool {
-    return std.ascii.isAlphanumeric(c) or switch (c) {
-        '.', '`', '^', ':', '$' => true,
-        else => false,
+/// Put a composer result into the textarea: `commit` replaces the word slot,
+/// then the new preedit (if still composing) takes it.
+fn apply(outcome: Composer.Outcome, e: ?zx.client.Event, touched: bool) void {
+    const c = ensureComposer() orelse return;
+    if (outcome.handled) if (e) |ev| ev.preventDefault();
+    if (!touched) return;
+    if (outcome.commit.len > 0 or !c.composing()) {
+        replaceWord(outcome.commit);
+        compose_start += compose_len;
+        compose_len = 0;
+    }
+    if (c.composing()) {
+        replaceWord(c.preedit());
+        positionMenu();
+    }
+    zx.client.rerender();
+    draftChanged();
+}
+
+fn replaceWord(text: []const u8) void {
+    const end = @min(compose_start + compose_len, draft_text.len);
+    const next = std.mem.concat(zx.allocator, u8, &.{ draft_text[0..compose_start], text, draft_text[end..] }) catch return;
+    compose_len = text.len;
+    draft_text = next;
+    setTextareaValue(draft_text, compose_start + compose_len);
+}
+
+/// The candidate page as the menu draws it.
+const Menu = struct {
+    items: []const []const u8 = &.{},
+    highlight: usize = 0,
+    vertical: bool = false,
+    page_count: usize = 0,
+    page_label: []const u8 = "",
+};
+
+fn currentMenu(allocator: std.mem.Allocator) Menu {
+    const c = if (composer) |*c| c else return .{};
+    if (!c.panelVisible()) return .{};
+    return .{
+        .items = c.pageItems(),
+        .highlight = c.pageHighlight(),
+        .vertical = c.settings.candidate_orientation == .vertical,
+        .page_count = c.pageCount(),
+        .page_label = std.fmt.allocPrint(allocator, "{d}/{d}", .{ c.page() + 1, c.pageCount() }) catch "",
     };
 }
 
-fn isModifierKey(k: []const u8) bool {
-    for ([_][]const u8{ "Shift", "Control", "Alt", "Meta", "CapsLock", "AltGraph", "Fn" }) |m| {
-        if (std.mem.eql(u8, k, m)) return true;
+fn ensureComposer() ?*Composer {
+    if (zx.platform.role != .client) return null;
+    if (composer == null) composer = Composer.init(zx.allocator, kv_store, web_corrector.corrector()) catch return null;
+    return &composer.?;
+}
+
+// —— Composer user data in zx.kv ——
+//
+// zx.kv is the browser's IndexedDB, which is asynchronous: a key handler that
+// touched it would suspend before it could `preventDefault`, and the browser
+// would type the raw key. So the composer's blobs are mirrored in memory —
+// read from kv once at startup (`loadStore`) — and written back from a timer.
+
+const blob_names = [_][]const u8{ Composer.Store.settings, Composer.Store.selections, Composer.Store.user_words };
+var blobs: [blob_names.len]?[]u8 = .{ null, null, null };
+var blobs_dirty: [blob_names.len]bool = .{ false, false, false };
+var blob_flush_armed: bool = false;
+
+var kv_ctx: u8 = 0;
+const kv_store: Composer.Store = .{ .ctx = &kv_ctx, .vtable = &.{ .load = blobLoad, .save = blobSave } };
+
+fn blobSlot(name: []const u8) ?usize {
+    for (blob_names, 0..) |n, i| if (std.mem.eql(u8, n, name)) return i;
+    return null;
+}
+
+fn blobLoad(_: *anyopaque, allocator: std.mem.Allocator, name: []const u8) ?[]u8 {
+    const bytes = blobs[blobSlot(name) orelse return null] orelse return null;
+    return allocator.dupe(u8, bytes) catch null;
+}
+
+fn blobSave(_: *anyopaque, name: []const u8, bytes: []const u8) void {
+    const slot = blobSlot(name) orelse return;
+    const copy = zx.allocator.dupe(u8, bytes) catch return;
+    if (blobs[slot]) |old| zx.allocator.free(old);
+    blobs[slot] = copy;
+    blobs_dirty[slot] = true;
+    if (blob_flush_armed) return;
+    blob_flush_armed = true;
+    _ = zx.client.setTimeout(&flushBlobs, 0);
+}
+
+fn flushBlobs() void {
+    blob_flush_armed = false;
+    for (blob_names, 0..) |name, i| {
+        if (!blobs_dirty[i]) continue;
+        blobs_dirty[i] = false;
+        if (blobs[i]) |bytes| zx.kv.put(name, bytes, .{}) catch {};
     }
-    return false;
 }
 
-fn composeKey(c: u8) void {
-    syncDraftFromDom();
-    const sel = readSelection() orelse return;
-    if (compose_latin.items.len == 0 or sel.start != sel.end or sel.start != compose_start + compose_len) {
-        // New word: it replaces whatever is selected.
-        compose_latin.clearRetainingCapacity();
-        compose_start = sel.start;
-        compose_len = sel.end - sel.start;
+// —— Spelling corrections from /api/spell ——
+
+/// `Composer.Corrector` over `/api/spell`: one request at a time, answers
+/// cached; when one lands the composer refreshes its list.
+const WebCorrector = struct {
+    cache: std.StringHashMapUnmanaged([]const []const u8) = .empty,
+    pending: ?[]const u8 = null,
+
+    fn corrector(self: *WebCorrector) Composer.Corrector {
+        return .{ .ctx = self, .vtable = &.{ .get = get } };
     }
-    compose_latin.append(zx.allocator, c) catch return;
-    applyComposition();
-}
 
-/// Re-transliterate the Latin buffer into its slot in `draft_text`.
-fn applyComposition() void {
-    const out: []const u8 = if (compose_latin.items.len > 0) avroEngine().transliterate(compose_latin.items) else "";
-    const end = @min(compose_start + compose_len, draft_text.len);
-    const next = std.mem.concat(zx.allocator, u8, &.{ draft_text[0..compose_start], out, draft_text[end..] }) catch return;
-    compose_len = out.len;
-    if (out.len > 0) zx.allocator.free(out);
-    draft_text = next;
-    setTextareaValue(draft_text, compose_start + compose_len);
-    if (compose_latin.items.len == 0) endComposition();
-    refreshMenu();
+    fn get(ctx: *anyopaque, word: []const u8) ?[]const []const u8 {
+        const self: *WebCorrector = @ptrCast(@alignCast(ctx));
+        if (self.cache.get(word)) |fixes| return fixes;
+        if (self.pending != null) return null;
+        const owned = zx.allocator.dupe(u8, word) catch return null;
+        const body = std.json.Stringify.valueAlloc(zx.allocator, .{ .text = owned }, .{}) catch return null;
+        self.pending = owned;
+        _ = zx.fetch(.wasm(&onCorrections), zx.allocator, "/api/spell", .{
+            .method = .POST,
+            .headers = &.{.{ .name = "content-type", .value = "application/json" }},
+            .body = body,
+        }) catch {
+            self.pending = null;
+        };
+        return null;
+    }
+};
+var web_corrector: WebCorrector = .{};
+
+fn onCorrections(res: ?*zx.Fetch.Response, err: ?zx.Fetch.FetchError) void {
+    const word = web_corrector.pending orelse return;
+    web_corrector.pending = null;
+    var fixes: std.ArrayList([]const u8) = .empty;
+    if (err == null) if (res) |r| {
+        defer r.deinit();
+        if (r.json(CheckPayload)) |parsed| {
+            if (parsed.value.results.len == 1) {
+                for (parsed.value.results[0].suggestions) |sg| fixes.append(zx.allocator, sg.word) catch break;
+            }
+        } else |_| {}
+    };
+    web_corrector.cache.put(zx.allocator, word, fixes.items) catch return;
+    const c = ensureComposer() orelse return;
+    if (!c.composing()) return;
+    c.refresh() catch return;
+    replaceWord(c.preedit());
     zx.client.rerender();
-    draftChanged();
 }
 
-fn endComposition() void {
-    compose_latin.clearRetainingCapacity();
-    compose_len = 0;
-}
+// —— Settings panel (the settings every Byakaron keyboard shares) ——
 
-fn closeMenu() void {
-    menu_items = &.{};
-    menu_sel = 0;
-}
-
-fn acceptSuggestion(i: usize) void {
-    if (i >= menu_items.len) return;
-    const replacement = menu_items[i];
-    const end = @min(word_end, draft_text.len);
-    const next = std.mem.concat(zx.allocator, u8, &.{ draft_text[0..word_start], replacement, " ", draft_text[end..] }) catch return;
-    const caret = word_start + replacement.len + 1;
-    draft_text = next;
-    endComposition();
-    closeMenu();
-    setTextareaValue(draft_text, caret);
+fn onToggleSettingsPanel(_: zx.client.Event) void {
+    finishWord();
+    settings_open = !settings_open;
+    if (ensureComposer()) |c| c.sync();
     zx.client.rerender();
-    draftChanged();
 }
 
-/// Completions for the word ending at the caret. While composing, the first item
-/// is the transliteration itself, so Enter/Tab keep the word as typed.
-fn refreshMenu() void {
-    closeMenu();
+pub fn SettingsPanel(ctx: *zx.ComponentContext) zx.Component {
+    const c = ensureComposer();
+    const s: Composer.Settings = if (c) |cc| cc.settings else .{};
+    const words: []const []u8 = if (c) |cc| cc.user_words.words.items else &.{};
+    const per_page = std.fmt.allocPrint(ctx.allocator, "{d}", .{s.candidates_per_page}) catch "";
+    return (
+        <section @allocator={ctx.allocator} class="settings-panel" aria-label="Keyboard settings">
+            <h2 class="settings-title">Keyboard</h2>
+            <SettingRow name="suggestions" label="Word suggestions" hint="Avro dictionary mode. Off: phonetic only — type every word exactly." on={s.suggestions} />
+            <SettingRow name="spelling_corrections" label="Spelling corrections" hint="Suggest corrections when Avro finds no dictionary word." on={s.spelling_corrections} />
+            <SettingRow name="learn_choices" label="Remember my choices" hint="Highlight the candidate you picked last time." on={s.learn_choices} />
+            <SettingRow name="bangla_digits" label="Bangla digits" hint="Digits typed on their own become ০–৯." on={s.bangla_digits} />
+            <SettingRow name="newline_on_enter" label="New line on Enter" hint="Enter commits the word and starts a new line." on={s.newline_on_enter} />
+            <div class="setting-row">
+                <div class="setting-text">
+                    <span class="setting-label">Candidate list</span>
+                </div>
+                <div class="segmented">
+                    <button type="button" class={if (s.candidate_orientation == .horizontal) "seg is-on" else "seg"} value="horizontal" onclick={onSetOrientation}>Horizontal</button>
+                    <button type="button" class={if (s.candidate_orientation == .vertical) "seg is-on" else "seg"} value="vertical" onclick={onSetOrientation}>Vertical</button>
+                </div>
+            </div>
+            <div class="setting-row">
+                <div class="setting-text">
+                    <span class="setting-label">Candidates per page</span>
+                </div>
+                <div class="stepper">
+                    <button type="button" class="seg" value="-1" onclick={onStepPerPage}>−</button>
+                    <span class="stepper-value">{per_page}</span>
+                    <button type="button" class="seg" value="1" onclick={onStepPerPage}>+</button>
+                </div>
+            </div>
+            <h2 class="settings-title">Personal dictionary</h2>
+            <div class="userdict-add">
+                <input id="userdict-word" class="userdict-input" type="text" placeholder="নতুন শব্দ" autocomplete="off" spellcheck="false" />
+                <button type="button" class="seg is-on" onclick={onAddUserWord}>Add</button>
+            </div>
+            <ul class="userdict-list">
+                {if (words.len == 0) (
+                    <li class="userdict-empty">No words yet</li>
+                )}
+                {for (words) |w| (
+                    <li class="userdict-item">
+                        <span>{w}</span>
+                        <button type="button" class="userdict-remove" value={w} onclick={onRemoveUserWord} aria-label="Remove">×</button>
+                    </li>
+                )}
+            </ul>
+        </section>
+    );
+}
+
+const SettingRowProps = struct {
+    name: []const u8,
+    label: []const u8,
+    hint: []const u8,
+    on: bool,
+};
+
+pub fn SettingRow(allocator: std.mem.Allocator, props: SettingRowProps) zx.Component {
+    return (
+        <div @allocator={allocator} class="setting-row">
+            <div class="setting-text">
+                <span class="setting-label">{props.label}</span>
+                <span class="setting-hint">{props.hint}</span>
+            </div>
+            <button
+                type="button"
+                class={if (props.on) "switch is-on" else "switch"}
+                role="switch"
+                aria-checked={if (props.on) "true" else "false"}
+                value={props.name}
+                onclick={onToggleSetting}
+            ><span class="switch-knob"></span></button>
+        </div>
+    );
+}
+
+fn updateSettings(s: Composer.Settings) void {
+    const c = ensureComposer() orelse return;
+    c.setSettings(s) catch {};
+    zx.client.rerender();
+}
+
+fn onToggleSetting(e: zx.client.Event) void {
+    const c = ensureComposer() orelse return;
+    const name = e.value() orelse return;
+    var s = c.settings;
+    inline for (.{ "suggestions", "spelling_corrections", "learn_choices", "bangla_digits", "newline_on_enter" }) |field| {
+        if (std.mem.eql(u8, name, field)) @field(s, field) = !@field(s, field);
+    }
+    updateSettings(s);
+}
+
+fn onSetOrientation(e: zx.client.Event) void {
+    const c = ensureComposer() orelse return;
+    var s = c.settings;
+    s.candidate_orientation = std.meta.stringToEnum(Composer.Settings.Orientation, e.value() orelse return) orelse return;
+    updateSettings(s);
+}
+
+fn onStepPerPage(e: zx.client.Event) void {
+    const c = ensureComposer() orelse return;
+    var s = c.settings;
+    const step = std.fmt.parseInt(i8, e.value() orelse return, 10) catch return;
+    s.candidates_per_page = @intCast(std.math.clamp(@as(i16, s.candidates_per_page) + step, Composer.Settings.min_candidates_per_page, Composer.Settings.max_candidates_per_page));
+    updateSettings(s);
+}
+
+fn onAddUserWord(_: zx.client.Event) void {
     if (zx.platform.role != .client) return;
-    if (!menu_arena_ready) {
-        menu_arena = .init(zx.allocator);
-        menu_arena_ready = true;
-    } else {
-        _ = menu_arena.reset(.retain_capacity);
-    }
-    const arena = menu_arena.allocator();
-
-    var typed = false;
-    if (compose_latin.items.len > 0) {
-        word_start = compose_start;
-        word_end = compose_start + compose_len;
-        typed = true;
-    } else {
-        const sel = readSelection() orelse return;
-        if (sel.start != sel.end) return;
-        word_end = sel.start;
-        word_start = wordStartBefore(draft_text, word_end);
-    }
-    const word = draft_text[word_start..word_end];
-    // Only Bangla words: the lexicon has nothing for Latin text.
-    if (word.len == 0 or std.ascii.isAscii(word[0])) return;
-
-    var items: std.ArrayList([]const u8) = .empty;
-    if (typed) items.append(arena, arena.dupe(u8, word) catch return) catch return;
-    for (suggest(arena, word)) |s| {
-        if (std.mem.eql(u8, s, word)) continue;
-        items.append(arena, s) catch break;
-    }
-    // A lone non-typed word that is already complete needs no menu.
-    if (items.items.len == 0 or (typed and items.items.len == 1)) return;
-    menu_items = items.items;
-    positionMenu();
+    const c = ensureComposer() orelse return;
+    const document = zx.client.Document.init(zx.allocator);
+    defer document.deinit();
+    const el = document.getElementById("userdict-word") catch return;
+    defer el.deinit();
+    const word = el.ref.getAlloc(zx.client.js.String, zx.allocator, "value") catch return;
+    if (c.addUserWord(word) catch false) el.setProperty("value", zx.client.js.string(""));
+    zx.client.rerender();
 }
 
-fn suggest(arena: std.mem.Allocator, prefix: []const u8) []const []const u8 {
-    if (ac_mem == null) ac_mem = AutoCompleteMem.create(zx.allocator) catch return &.{};
-    const rows = ac_mem.?.autoComplete().prefixSuggest(arena, prefix, menu_limit) catch return &.{};
-    const out = arena.alloc([]const u8, rows.len) catch return &.{};
-    for (rows, out) |r, *o| o.* = r.word;
-    return out;
-}
-
-fn avroEngine() *Transliteration {
-    if (avro == null) avro = Transliteration.init(zx.allocator, .avro);
-    return &avro.?;
-}
-
-/// Byte offset where the word ending at `end` begins (after whitespace or ASCII
-/// punctuation).
-fn wordStartBefore(text: []const u8, end: usize) usize {
-    var i = end;
-    while (i > 0) {
-        const c = text[i - 1];
-        if (c < 0x80 and !std.ascii.isAlphanumeric(c)) break;
-        i -= 1;
-    }
-    // Bangla danda (।) also ends a word.
-    if (std.mem.lastIndexOf(u8, text[i..end], "।")) |d| i += d + "।".len;
-    return i;
+fn onRemoveUserWord(e: zx.client.Event) void {
+    const c = ensureComposer() orelse return;
+    _ = c.removeUserWord(e.value() orelse return) catch {};
+    zx.client.rerender();
 }
 
 const Selection = struct { start: usize, end: usize };
@@ -663,8 +819,8 @@ fn syncTextarea(text: []const u8) void {
 }
 
 fn onClear(_: zx.client.Event) void {
-    endComposition();
-    closeMenu();
+    if (composer) |*c| c.reset();
+    compose_len = 0;
     draft_text = "";
     results = &.{};
     selected_issue = 0;
@@ -696,14 +852,19 @@ fn onIgnore(_: zx.client.Event) void {
 /// key. The check runs when the word is committed instead.
 fn draftChanged() void {
     saveDraft();
-    if (compose_latin.items.len == 0) scheduleCheck();
+    const composing = if (composer) |*c| c.composing() else false;
+    if (!composing) scheduleCheck();
 }
 
 fn loadStore() void {
     store_loaded = true;
-    if (zx.kv.as(zx.allocator, settings_key, Settings) catch null) |settings| {
-        transliterate_on = settings.transliterate;
+    if (zx.kv.as(zx.allocator, prefs_key, WebPrefs) catch null) |prefs| {
+        transliterate_on = prefs.transliterate;
     }
+    for (blob_names, 0..) |name, i| blobs[i] = zx.kv.get(zx.allocator, name) catch null;
+    // Learned choices from before the composer kept them under its own name.
+    if (blobs[1] == null) blobs[1] = zx.kv.get(zx.allocator, legacy_selections_key) catch null;
+    _ = ensureComposer();
     // A shared ?q= link wins over the saved draft.
     if (draft_text.len == 0) {
         if (zx.kv.get(zx.allocator, draft_key) catch null) |saved| {
@@ -766,9 +927,9 @@ fn saveDraft() void {
     saveCaret();
 }
 
-fn saveSettings() void {
+fn saveWebPrefs() void {
     if (zx.platform.role != .client) return;
-    zx.kv.putAs(settings_key, Settings{ .transliterate = transliterate_on }, .{}) catch {};
+    zx.kv.putAs(prefs_key, WebPrefs{ .transliterate = transliterate_on }, .{}) catch {};
 }
 
 fn scheduleCheck() void {

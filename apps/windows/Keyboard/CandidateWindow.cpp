@@ -1,6 +1,7 @@
 #include "CandidateWindow.h"
 #include "TextService.h"
 #include <strsafe.h>
+#include <windowsx.h>
 
 namespace
 {
@@ -157,22 +158,25 @@ STDMETHODIMP CandidateWindow::GetCurrentPage(UINT* puPage)
     return S_OK;
 }
 
+// A UI-less host chose a candidate of the page it was given: the composer
+// commits it (it owns highlighting and paging).
 STDMETHODIMP CandidateWindow::SetSelection(UINT nIndex)
 {
-    SetSelectedIndex((int)nIndex);
+    if (nIndex >= _items.size()) return E_INVALIDARG;
+    if (_svc) _svc->OnCandidatePicked(nIndex);
     return S_OK;
 }
 
 STDMETHODIMP CandidateWindow::Finalize()
 {
-    if (_finalizeCb && _svc) _finalizeCb(_svc, true);
+    if (_svc) _svc->OnCandidateFinalize(true);
     End();
     return S_OK;
 }
 
 STDMETHODIMP CandidateWindow::Abort()
 {
-    if (_finalizeCb && _svc) _finalizeCb(_svc, false);
+    if (_svc) _svc->OnCandidateFinalize(false);
     End();
     return S_OK;
 }
@@ -207,17 +211,19 @@ bool CandidateWindow::EnsureWindow()
     return _hwnd != nullptr;
 }
 
-void CandidateWindow::SetCandidates(const std::vector<std::wstring>& items, int selectedIndex, bool vertical)
+void CandidateWindow::Present(const std::vector<std::wstring>& items, int highlight, bool vertical, int x, int y)
 {
+    if (items.empty())
+    {
+        End();
+        return;
+    }
+
     _items = items;
     _vertical = vertical;
-    _selection = 0;
-    if (!_items.empty())
-    {
-        if (selectedIndex < 0) selectedIndex = 0;
-        if (selectedIndex >= (int)_items.size()) selectedIndex = (int)_items.size() - 1;
-        _selection = (UINT)selectedIndex;
-    }
+    if (highlight < 0) highlight = 0;
+    if (highlight >= (int)_items.size()) highlight = (int)_items.size() - 1;
+    _selection = (UINT)highlight;
     _pageIndex[0] = 0;
     _pageCount = 1;
     _updatedFlags =
@@ -228,46 +234,9 @@ void CandidateWindow::SetCandidates(const std::vector<std::wstring>& items, int 
         TF_CLUIE_PAGEINDEX |
         TF_CLUIE_CURRENTPAGE;
 
-    if (_inShowMode)
-    {
-        CallUpdateUIElement();
-        if (_hostAllowsTipUi && _hwnd)
-        {
-            Layout();
-            InvalidateRect(_hwnd, nullptr, TRUE);
-        }
-    }
-}
-
-void CandidateWindow::SetSelectedIndex(int index)
-{
-    if (_items.empty()) return;
-    if (index < 0) index = 0;
-    if (index >= (int)_items.size()) index = (int)_items.size() - 1;
-    if ((UINT)index == _selection) return;
-    _selection = (UINT)index;
-    _updatedFlags = TF_CLUIE_SELECTION;
-    CallUpdateUIElement();
-    if (_hwnd && _visible) InvalidateRect(_hwnd, nullptr, TRUE);
-}
-
-std::wstring CandidateWindow::SelectedText() const
-{
-    if (_selection >= _items.size()) return {};
-    return _items[_selection];
-}
-
-void CandidateWindow::BeginAt(int x, int y)
-{
-    if (_items.empty())
-    {
-        End();
-        return;
-    }
-
-    BOOL bShow = TRUE;
     if (!_inShowMode)
     {
+        BOOL bShow = TRUE;
         ITfUIElementMgr* mgr = nullptr;
         if (_svc && _svc->GetThreadMgr() &&
             SUCCEEDED(_svc->GetThreadMgr()->QueryInterface(IID_ITfUIElementMgr, (void**)&mgr)) && mgr)
@@ -446,6 +415,21 @@ void CandidateWindow::OnPaint(HDC hdc)
     SelectObject(hdc, old);
 }
 
+int CandidateWindow::HitTest(int x, int y) const
+{
+    if (x < 0 || y < 0) return -1;
+    int index = -1;
+    if (_vertical)
+    {
+        if (_itemH > 0) index = y / _itemH;
+    }
+    else
+    {
+        if (_itemW > 0) index = x / _itemW;
+    }
+    return (index >= 0 && index < (int)_items.size()) ? index : -1;
+}
+
 LRESULT CALLBACK CandidateWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     CandidateWindow* self = nullptr;
@@ -475,6 +459,13 @@ LRESULT CALLBACK CandidateWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
     }
     case WM_MOUSEACTIVATE:
         return MA_NOACTIVATE;
+    case WM_LBUTTONDOWN:
+    {
+        // A click picks that row (the composer commits it).
+        const int index = self->HitTest(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+        if (index >= 0 && self->_svc) self->_svc->OnCandidatePicked((UINT)index);
+        return 0;
+    }
     case WM_DESTROY:
         self->_hwnd = nullptr;
         self->_visible = false;

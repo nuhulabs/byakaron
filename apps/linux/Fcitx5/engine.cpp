@@ -1,10 +1,9 @@
 /*
- * Byakaron Fcitx5 addon — a thin InputMethodEngineV2 around Core/composer.c.
- *
- * IBus (Keyboard/engine.c) and this file must not duplicate key policy. Space,
- * 1–9, digits, Escape, shortcuts all mean whatever the composer says; this
- * file only turns those outcomes into commitString / client preedit / panel
- * candidates.
+ * Byakaron Fcitx5 addon — a thin InputMethodEngineV2 around libbyakaron's
+ * Composer (Core/composer.h), the same keyboard IBus and every other platform
+ * drive. Space, 1–9, arrows, paging, Escape and shortcuts all mean whatever the
+ * composer says; this file maps keysyms to composer keys and turns its results
+ * and state into commitString / client preedit / panel candidates.
  *
  * Optional: `zig build linux-fcitx5` (needs libfcitx5core-dev). IBus stays the
  * GNOME/Ubuntu default; this exists so a KDE box can load the same composer.
@@ -17,15 +16,11 @@
 #include <fcitx/addonmanager.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx/inputcontext.h>
-#include <fcitx/inputcontextmanager.h>
 #include <fcitx/inputpanel.h>
 #include <fcitx/instance.h>
 #include <fcitx/userinterface.h>
 
 #include <glib.h>
-#include <gio/gio.h>
-
-#include "prefs.h"
 
 #include <memory>
 #include <string>
@@ -37,25 +32,27 @@ using fcitx::KeyState;
 using fcitx::KeyStates;
 using fcitx::TextFormatFlag;
 
-static guint
+static unsigned int
 byk_fcitx_mods (const fcitx::KeyEvent &event)
 {
-    guint mods = 0;
-    if (event.isRelease ())
-        mods |= BYK_MOD_RELEASE;
-
+    unsigned int mods = 0;
     const KeyStates st = event.rawKey ().states ();
-    if (st.test (KeyState::Ctrl) || st.test (KeyState::Alt) ||
-        st.test (KeyState::Super) || st.test (KeyState::Super2) ||
+    if (st.test (KeyState::Shift))
+        mods |= BYAKARON_MOD_SHIFT;
+    if (st.test (KeyState::Ctrl))
+        mods |= BYAKARON_MOD_CTRL;
+    if (st.test (KeyState::Alt))
+        mods |= BYAKARON_MOD_ALT;
+    if (st.test (KeyState::Super) || st.test (KeyState::Super2) ||
         st.test (KeyState::Hyper) || st.test (KeyState::Hyper2) ||
         st.test (KeyState::Meta))
-        mods |= BYK_MOD_SHORTCUT;
+        mods |= BYAKARON_MOD_META;
     return mods;
 }
 
 class BykCandidateWord : public fcitx::CandidateWord {
 public:
-    BykCandidateWord (ByakaronEngine *engine, guint index, std::string text)
+    BykCandidateWord (ByakaronEngine *engine, size_t index, std::string text)
         : fcitx::CandidateWord (fcitx::Text (std::move (text))),
           engine_ (engine),
           index_ (index)
@@ -69,151 +66,103 @@ public:
 
 private:
     ByakaronEngine *engine_;
-    guint index_;
+    size_t index_;
 };
-
-static GSettings *
-byk_fcitx_prefs (void)
-{
-    static GSettings *prefs = nullptr;
-    static gboolean tried = FALSE;
-    if (!tried) {
-        tried = TRUE;
-        prefs = byk_prefs_try_open ();
-    }
-    return prefs;
-}
 
 } // namespace
 
-ByakaronState::ByakaronState ()
-    : composer (byk_composer_new ())
-{
-}
-
-ByakaronState::~ByakaronState ()
-{
-    byk_composer_free (composer);
-    composer = nullptr;
-}
-
 ByakaronEngine::ByakaronEngine (fcitx::Instance *instance)
-    : instance_ (instance),
-      corrector_ (byk_corrector_new (FALSE, nullptr, nullptr)),
-      userdict_ (byk_userdict_new ()),
-      factory_ ([this] (fcitx::InputContext &) {
-          auto *state = new ByakaronState;
-          byk_composer_set_corrector (state->composer, corrector_);
-          byk_composer_set_userdict (state->composer, userdict_);
-          return state;
-      })
+    : instance_ (instance)
 {
-    instance_->inputContextManager ().registerProperty ("byakaronState",
-                                                        &factory_);
+    dispatcher_.attach (&instance_->eventLoop ());
+    composer_ = byk_composer_open (TRUE, &ByakaronEngine::onUpdate, this);
 }
 
 ByakaronEngine::~ByakaronEngine ()
 {
-    byk_corrector_free (corrector_);
-    corrector_ = nullptr;
-    byk_userdict_free (userdict_);
-    userdict_ = nullptr;
+    /* First: it stops the worker that calls onUpdate. */
+    byakaron_composer_destroy (composer_);
+    composer_ = nullptr;
+    dispatcher_.detach ();
 }
 
+/* The composer's worker thread: corrections arrived. Refresh on the event
+ * loop, where the composer lives. */
 void
-ByakaronEngine::syncPanel (fcitx::InputContext *ic, ByakaronState *state)
+ByakaronEngine::onUpdate (void *userdata)
 {
-    const gchar *latin = byk_composer_latin (state->composer);
-    if (latin == nullptr || *latin == '\0') {
-        ic->inputPanel ().reset ();
-        ic->updatePreedit ();
-        ic->updateUserInterface (fcitx::UserInterfaceComponent::InputPanel);
-        return;
+    auto *self = static_cast<ByakaronEngine *> (userdata);
+    self->dispatcher_.schedule ([self] () {
+        if (self->composer_ == nullptr)
+            return;
+        byakaron_composer_refresh (self->composer_);
+        if (auto *ic = self->owner_.get ())
+            self->redraw (ic);
+    });
+}
+
+/* Draw the composer's state: the highlighted candidate inline, the current
+ * page in the panel. */
+void
+ByakaronEngine::redraw (fcitx::InputContext *ic)
+{
+    ByakaronComposerState st;
+    byakaron_composer_state (composer_, &st);
+
+    ic->inputPanel ().reset ();
+    if (st.composing && st.preedit[0] != '\0') {
+        fcitx::Text preedit (st.preedit, TextFormatFlag::Underline);
+        preedit.setCursor (static_cast<int> (g_utf8_strlen (st.preedit, -1)));
+        ic->inputPanel ().setClientPreedit (preedit);
+        ic->inputPanel ().setPreedit (preedit);
     }
 
-    gchar *bangla = byk_composer_preedit (state->composer);
-    fcitx::Text preedit (bangla ? bangla : "", TextFormatFlag::Underline);
-    const int cursor = bangla ? static_cast<int> (g_utf8_strlen (bangla, -1)) : 0;
-    preedit.setCursor (cursor);
-    ic->inputPanel ().setClientPreedit (preedit);
-    ic->inputPanel ().setPreedit (preedit);
-    g_free (bangla);
-
-    auto list = std::make_unique<fcitx::CommonCandidateList> ();
-    list->setPageSize (BYK_COMPOSER_PAGE_SIZE);
-    /* Number keys are handled in the composer so Fcitx must not steal 1–9. */
-    list->setSelectionKey ({});
-    const gboolean horiz =
-        byk_prefs_boolean (byk_fcitx_prefs (), BYK_PREFS_CANDIDATES_HORIZONTAL, TRUE);
-    list->setLayoutHint (horiz ? fcitx::CandidateLayoutHint::Horizontal
-                               : fcitx::CandidateLayoutHint::Vertical);
-
-    gchar **words = byk_composer_candidates (state->composer);
-    if (words != nullptr) {
-        const guint page = byk_composer_page (state->composer);
-        const guint start = page * BYK_COMPOSER_PAGE_SIZE;
-        for (guint i = 0; i < BYK_COMPOSER_PAGE_SIZE; i++) {
-            if (words[start + i] == nullptr)
-                break;
+    if (st.panel_visible && st.candidate_count > 0) {
+        auto list = std::make_unique<fcitx::CommonCandidateList> ();
+        list->setPageSize (static_cast<int> (st.candidate_count));
+        /* 1–9 are composer keys: Fcitx must not steal them. */
+        list->setSelectionKey ({});
+        list->setLayoutHint (st.vertical ? fcitx::CandidateLayoutHint::Vertical
+                                         : fcitx::CandidateLayoutHint::Horizontal);
+        for (size_t i = 0; i < st.candidate_count; i++)
             list->append (std::make_unique<BykCandidateWord> (
-                this, i, std::string (words[start + i])));
-        }
-    }
-
-    /* Highlight only after an arrow key moved it (see byk_composer_cursor). */
-    const gint highlight = byk_composer_cursor (state->composer);
-    const gint first = static_cast<gint> (byk_composer_page (state->composer) * BYK_COMPOSER_PAGE_SIZE);
-    if (highlight >= first && highlight - first < list->size ())
-        list->setGlobalCursorIndex (highlight - first);
-    else
-        list->setGlobalCursorIndex (-1);
-
-    if (list->size () == 0)
-        ic->inputPanel ().setCandidateList (nullptr);
-    else
+                this, i, std::string (st.candidates[i])));
+        list->setGlobalCursorIndex (static_cast<int> (st.highlight));
         ic->inputPanel ().setCandidateList (std::move (list));
+    }
 
     ic->updatePreedit ();
     ic->updateUserInterface (fcitx::UserInterfaceComponent::InputPanel);
 }
 
-void
-ByakaronEngine::apply (fcitx::InputContext *ic, ByakaronState *state,
-                       BykOutcome outcome, fcitx::KeyEvent *keyEvent)
+/* Insert the commit, then redraw (which clears the preedit): the same
+ * Electron/Monaco order as IBus. Returns whether the key was consumed. */
+bool
+ByakaronEngine::apply (fcitx::InputContext *ic, ByakaronKeyResult result)
 {
-    switch (outcome.action) {
-    case BYK_ACT_PASS:
-        g_free (outcome.commit);
-        return;
+    if (result.commit != nullptr && result.commit[0] != '\0')
+        ic->commitString (result.commit);
+    redraw (ic);
+    return result.handled != 0;
+}
 
-    case BYK_ACT_EAT:
-        syncPanel (ic, state);
-        g_free (outcome.commit);
-        if (keyEvent != nullptr)
-            keyEvent->filterAndAccept ();
+/* Focus left `ic` (or it was reset): insert the pending word there. */
+void
+ByakaronEngine::flush (fcitx::InputContext *ic)
+{
+    if (composer_ == nullptr)
         return;
-
-    case BYK_ACT_COMMIT:
-        /* Commit first, then clear preedit: same Electron/Monaco order as IBus. */
-        if (outcome.commit != nullptr && outcome.commit[0] != '\0')
-            ic->commitString (outcome.commit);
-        ic->inputPanel ().reset ();
-        ic->updatePreedit ();
-        ic->updateUserInterface (fcitx::UserInterfaceComponent::InputPanel);
-        g_free (outcome.commit);
-        if (keyEvent != nullptr && !outcome.pass_key)
-            keyEvent->filterAndAccept ();
-        return;
-    }
-
-    g_free (outcome.commit);
+    const char *text = byakaron_composer_flush (composer_);
+    if (text != nullptr && text[0] != '\0')
+        ic->commitString (text);
+    redraw (ic);
 }
 
 void
-ByakaronEngine::pick (fcitx::InputContext *ic, guint index)
+ByakaronEngine::pick (fcitx::InputContext *ic, size_t index)
 {
-    auto *state = ic->propertyFor (&factory_);
-    apply (ic, state, byk_composer_select (state->composer, index), nullptr);
+    if (composer_ != nullptr)
+        apply (ic, byakaron_composer_pick (composer_, index));
 }
 
 void
@@ -222,22 +171,21 @@ ByakaronEngine::keyEvent (const fcitx::InputMethodEntry &entry,
 {
     FCITX_UNUSED (entry);
     auto *ic = keyEvent.inputContext ();
-    auto *state = ic->propertyFor (&factory_);
-    byk_composer_set_phonetic_only (
-        state->composer,
-        byk_prefs_boolean (byk_fcitx_prefs (), BYK_PREFS_PHONETIC_ONLY, FALSE));
-    byk_composer_set_corrections (
-        state->composer,
-        byk_prefs_boolean (byk_fcitx_prefs (), BYK_PREFS_SPELLING_SUGGESTIONS, TRUE));
-    byk_composer_set_bangla_digits (
-        state->composer,
-        byk_prefs_boolean (byk_fcitx_prefs (), BYK_PREFS_BANGLA_DIGITS, TRUE));
-    if (byk_userdict_reload_if_changed (userdict_))
-        byk_composer_refresh (state->composer);
-    const guint keyval = static_cast<guint> (keyEvent.key ().sym ());
-    apply (ic, state,
-           byk_composer_key (state->composer, keyval, byk_fcitx_mods (keyEvent)),
-           &keyEvent);
+    int kind;
+    unsigned int ch;
+    /* Releases never reach the composer; pure modifier keys are not sent. */
+    if (composer_ == nullptr || keyEvent.isRelease () ||
+        !byk_keysym_to_key (static_cast<guint> (keyEvent.key ().sym ()), &kind, &ch))
+        return;
+
+    /* A word left pending in another context belongs there, not here. */
+    auto *owner = owner_.get ();
+    if (owner != nullptr && owner != ic)
+        flush (owner);
+    owner_ = ic->watch ();
+
+    if (apply (ic, byakaron_composer_key (composer_, kind, ch, byk_fcitx_mods (keyEvent))))
+        keyEvent.filterAndAccept ();
 }
 
 void
@@ -246,8 +194,10 @@ ByakaronEngine::reset (const fcitx::InputMethodEntry &entry,
 {
     FCITX_UNUSED (entry);
     auto *ic = event.inputContext ();
-    auto *state = ic->propertyFor (&factory_);
-    apply (ic, state, byk_composer_flush (state->composer), nullptr);
+    /* Fcitx5 does not commit the preedit by itself (unlike IBus's
+     * PREEDIT_COMMIT), so the composer's flush text is inserted here. */
+    if (owner_.get () == ic)
+        flush (ic);
 }
 
 void

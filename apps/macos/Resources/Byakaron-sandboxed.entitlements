@@ -9,11 +9,11 @@
          it via the Setup guide's "Reveal Keyboard" button and drag it into
          ~/Library/Input Methods.
 
-         NOTE: with the app sandboxed and the keyboard unsandboxed, the named
-         UserDefaults suite no longer resolves to the same plist for both
-         processes. To keep Settings syncing to the keyboard, move both to an App
-         Group (com.apple.security.application-groups) and point
-         ByakaronSettings.suiteName at the group id. -->
+         NOTE: sandboxed, the app sees its container's Application Support, not
+         the ~/Library/Application Support/Byakaron the keyboard reads, so
+         Settings would not reach the keyboard. To keep them in sync, move both to
+         an App Group (com.apple.security.application-groups) and point
+         ByakaronSettings.dataDirectory at the group container. -->
     <key>com.apple.security.app-sandbox</key>
     <true/>
     <!-- UpdateChecker reaches GitHub's releases API. -->

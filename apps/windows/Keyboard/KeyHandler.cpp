@@ -1,7 +1,54 @@
 #include "TextService.h"
 #include "EditSessions.h"
 #include "Settings.h"
+#include <memory>
 #include <new>
+
+namespace
+{
+constexpr UINT WM_BYAKARON_UPDATE = WM_APP + 1;
+constexpr wchar_t kNotifyClassName[] = L"ByakaronNotifyWindow";
+
+bool IsShortcut(unsigned int mods)
+{
+    return (mods & (BYAKARON_MOD_CTRL | BYAKARON_MOD_ALT | BYAKARON_MOD_META)) != 0;
+}
+
+// COM identity: TSF need not hand back the same interface pointer.
+bool SameObject(IUnknown* a, IUnknown* b)
+{
+    if (!a || !b) return false;
+    if (a == b) return true;
+    IUnknown* ua = nullptr;
+    IUnknown* ub = nullptr;
+    a->QueryInterface(IID_IUnknown, (void**)&ua);
+    b->QueryInterface(IID_IUnknown, (void**)&ub);
+    const bool same = ua && ua == ub;
+    if (ua) ua->Release();
+    if (ub) ub->Release();
+    return same;
+}
+
+// Put the caret after range.
+void CaretAfter(ITfContext* pic, TfEditCookie ec, ITfRange* range)
+{
+    ITfRange* end = nullptr;
+    if (FAILED(range->Clone(&end)) || !end) return;
+    end->Collapse(ec, TF_ANCHOR_END);
+    TF_SELECTION sel = {};
+    sel.range = end;
+    sel.style.ase = TF_AE_NONE;
+    sel.style.fInterimChar = FALSE;
+    pic->SetSelection(ec, 1, &sel);
+    end->Release();
+}
+
+void SetTextAndCaret(ITfContext* pic, TfEditCookie ec, ITfRange* range, const std::wstring& text)
+{
+    range->SetText(ec, 0, text.c_str(), (LONG)text.size());
+    CaretAfter(pic, ec, range);
+}
+} // namespace
 
 // ── Thread mgr / text edit sinks ────────────────────────────────────────────
 
@@ -17,6 +64,9 @@ STDMETHODIMP CByakaronTextService::OnUninitDocumentMgr(ITfDocumentMgr* /*pdim*/)
 
 STDMETHODIMP CByakaronTextService::OnSetFocus(ITfDocumentMgr* pdimFocus, ITfDocumentMgr* /*pdimPrevFocus*/)
 {
+    // Focus moved to another document: the word typed so far is committed where it was.
+    CommitPendingWord();
+
     if (_pTextEditSinkContext)
     {
         ITfSource* src = nullptr;
@@ -31,11 +81,7 @@ STDMETHODIMP CByakaronTextService::OnSetFocus(ITfDocumentMgr* pdimFocus, ITfDocu
     }
     _dwTextEditSinkCookie = TF_INVALID_COOKIE;
 
-    if (!pdimFocus)
-    {
-        HideCandidates();
-        return S_OK;
-    }
+    if (!pdimFocus) return S_OK;
 
     ITfContext* ctx = nullptr;
     if (FAILED(pdimFocus->GetTop(&ctx)) || !ctx) return S_OK;
@@ -62,23 +108,24 @@ STDMETHODIMP CByakaronTextService::OnEndEdit(ITfContext* /*pic*/, TfEditCookie /
     return S_OK;
 }
 
-STDMETHODIMP CByakaronTextService::OnCompositionTerminated(TfEditCookie /*ecWrite*/, ITfComposition* /*pComposition*/)
+STDMETHODIMP CByakaronTextService::OnCompositionTerminated(TfEditCookie /*ecWrite*/, ITfComposition* pComposition)
 {
-    if (_pComposition)
-    {
-        _pComposition->Release();
-        _pComposition = nullptr;
-    }
-    _latinBuffer.clear();
-    _selectedText.clear();
-    HideCandidates();
+    // The application ended our composition (a click elsewhere, ...). Its text
+    // (the preedit) stays in the document; commit the same word in the
+    // composer so it is learned and the next key starts a new one.
+    if (!_pComposition || !SameObject(pComposition, _pComposition)) return S_OK;
+    _pComposition->Release();
+    _pComposition = nullptr;
+    _composer.Flush();
+    _candidateWindow.End();
     return S_OK;
 }
 
 // ── Key event sink ──────────────────────────────────────────────────────────
 
-STDMETHODIMP CByakaronTextService::OnSetFocus(BOOL /*fForeground*/)
+STDMETHODIMP CByakaronTextService::OnSetFocus(BOOL fForeground)
 {
+    if (!fForeground) CommitPendingWord();
     return S_OK;
 }
 
@@ -117,240 +164,163 @@ STDMETHODIMP CByakaronTextService::OnPreservedKey(ITfContext* /*pic*/, REFGUID /
     return S_OK;
 }
 
+CByakaronTextService::KeyInput CByakaronTextService::MapKey(WPARAM wParam, LPARAM lParam)
+{
+    KeyInput key;
+    const UINT vk = (UINT)wParam;
+    switch (vk)
+    {
+    // Pure modifier / lock keys never reach the composer.
+    case VK_SHIFT: case VK_LSHIFT: case VK_RSHIFT:
+    case VK_CONTROL: case VK_LCONTROL: case VK_RCONTROL:
+    case VK_MENU: case VK_LMENU: case VK_RMENU:
+    case VK_LWIN: case VK_RWIN:
+    case VK_CAPITAL: case VK_NUMLOCK: case VK_SCROLL:
+    case VK_PROCESSKEY:
+        return key;
+    default:
+        break;
+    }
+
+    key.send = true;
+    if (GetKeyState(VK_SHIFT) & 0x8000) key.mods |= BYAKARON_MOD_SHIFT;
+    if (GetKeyState(VK_CONTROL) & 0x8000) key.mods |= BYAKARON_MOD_CTRL;
+    if (GetKeyState(VK_MENU) & 0x8000) key.mods |= BYAKARON_MOD_ALT;
+    if ((GetKeyState(VK_LWIN) & 0x8000) || (GetKeyState(VK_RWIN) & 0x8000)) key.mods |= BYAKARON_MOD_META;
+
+    switch (vk)
+    {
+    case VK_SPACE: key.kind = BYAKARON_KEY_SPACE; return key;
+    case VK_RETURN: key.kind = BYAKARON_KEY_ENTER; return key;
+    case VK_TAB: key.kind = BYAKARON_KEY_TAB; return key;
+    case VK_BACK: key.kind = BYAKARON_KEY_BACKSPACE; return key;
+    case VK_ESCAPE: key.kind = BYAKARON_KEY_ESCAPE; return key;
+    case VK_UP: key.kind = BYAKARON_KEY_UP; return key;
+    case VK_DOWN: key.kind = BYAKARON_KEY_DOWN; return key;
+    case VK_LEFT: key.kind = BYAKARON_KEY_LEFT; return key;
+    case VK_RIGHT: key.kind = BYAKARON_KEY_RIGHT; return key;
+    case VK_PRIOR: key.kind = BYAKARON_KEY_PAGE_UP; return key;
+    case VK_NEXT: key.kind = BYAKARON_KEY_PAGE_DOWN; return key;
+    default:
+        break;
+    }
+
+    // Printable ASCII from the active layout (Shift / Caps Lock applied);
+    // anything else is BYAKARON_KEY_OTHER.
+    BYTE state[256] = {};
+    if (!GetKeyboardState(state)) return key;
+    WCHAR chars[4] = {};
+    // 0x4: leave the keyboard state (dead keys) alone — this also runs for OnTestKeyDown.
+    const int n = ToUnicode(vk, (UINT)((lParam >> 16) & 0xFF), state, chars, 4, 0x4);
+    if (n == 1 && chars[0] >= 0x21 && chars[0] <= 0x7e)
+    {
+        key.kind = BYAKARON_KEY_CHAR;
+        key.ch = chars[0];
+    }
+    return key;
+}
+
+// Whether byakaron_composer_key would consume the key or commit text for it,
+// worked out without calling it (OnTestKeyDown must not change state; OnKeyDown
+// follows only when this says yes).
+BOOL CByakaronTextService::WouldEat(const KeyInput& key)
+{
+    // While composing every key edits, moves, commits or drops the word.
+    if (_composer.Composing()) return TRUE;
+    if (key.kind != BYAKARON_KEY_CHAR || IsShortcut(key.mods)) return FALSE;
+    // Outside a word, digits pass through unless they become Bangla digits.
+    if (key.ch >= '0' && key.ch <= '9')
+        return ByakaronSettings::JsonBool(_composer.SettingsJson(), "bangla_digits", true) ? TRUE : FALSE;
+    return TRUE;
+}
+
 BOOL CByakaronTextService::HandleKey(ITfContext* pic, WPARAM wParam, LPARAM lParam, BOOL testOnly)
 {
-    if (!pic) return FALSE;
+    if (!pic || !_composer.Ready()) return FALSE;
+    const KeyInput key = MapKey(wParam, lParam);
+    if (!key.send) return FALSE;
+    if (testOnly) return WouldEat(key);
 
-    CKeyEditSession* session = new (std::nothrow) CKeyEditSession(this, pic, wParam, lParam, testOnly);
-    if (!session) return FALSE;
-
-    HRESULT hr = S_OK;
-    HRESULT hrSession = E_FAIL;
-    hr = pic->RequestEditSession(_tfClientId, session, TF_ES_SYNC | TF_ES_READWRITE, &hrSession);
-    BOOL eaten = SUCCEEDED(hr) && SUCCEEDED(hrSession) && session->Eaten();
-    session->Release();
-    return eaten;
+    auto handled = std::make_shared<bool>(false);
+    RunEditSession(pic, _tfClientId, Owner(), [this, pic, key, handled](TfEditCookie ec)
+    {
+        const Composer::Result r = _composer.Key(key.kind, key.ch, key.mods);
+        Apply(pic, ec, r.commit);
+        *handled = r.handled;
+    }, TF_ES_SYNC);
+    // Not handled: the application gets the key too (after the commit).
+    return *handled ? TRUE : FALSE;
 }
 
-STDMETHODIMP CKeyEditSession::DoEditSession(TfEditCookie ec)
+// ── Composer state -> document and candidate UI ─────────────────────────────
+
+void CByakaronTextService::Apply(ITfContext* pic, TfEditCookie ec, const std::wstring& commit)
 {
-    _eaten = FALSE;
-    const UINT vk = (UINT)_wParam;
-    const bool candidatesOpen = _svc->_candidateWindow.IsVisible() && !_svc->_latinBuffer.empty();
-
-    // Ctrl/Alt/Win — never eat (let shortcuts through); commit any buffer first.
-    const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
-    const bool alt = (GetKeyState(VK_MENU) & 0x8000) != 0;
-    const bool win = (GetKeyState(VK_LWIN) & 0x8000) != 0 || (GetKeyState(VK_RWIN) & 0x8000) != 0;
-    if (ctrl || alt || win)
-    {
-        if (!_svc->_latinBuffer.empty() && !_testOnly)
-        {
-            _svc->CommitBuffer(_ctx, ec);
-        }
-        return S_OK;
-    }
-
-    // Candidate navigation / numbered pick (macOS IMKCandidates behaviour).
-    if (candidatesOpen)
-    {
-        if (vk == VK_ESCAPE)
-        {
-            _eaten = TRUE;
-            if (!_testOnly)
-            {
-                _svc->TerminateComposition(ec);
-                _svc->ResetCompositionState();
-            }
-            return S_OK;
-        }
-
-        if (vk == VK_LEFT || vk == VK_UP || vk == VK_RIGHT || vk == VK_DOWN ||
-            vk == VK_PRIOR || vk == VK_NEXT)
-        {
-            _eaten = TRUE;
-            if (!_testOnly)
-            {
-                const bool vertical = ByakaronSettings::OrientationVertical();
-                int sel = _svc->_candidateWindow.SelectedIndex();
-                const int count = _svc->_candidateWindow.Count();
-                if (vk == VK_LEFT || (vertical && vk == VK_UP) || vk == VK_PRIOR)
-                    sel = (sel <= 0) ? count - 1 : sel - 1;
-                else if (vk == VK_RIGHT || (vertical && vk == VK_DOWN) || vk == VK_NEXT)
-                    sel = (sel >= count - 1) ? 0 : sel + 1;
-                else if (!vertical && vk == VK_UP)
-                    sel = (sel <= 0) ? count - 1 : sel - 1;
-                else if (!vertical && vk == VK_DOWN)
-                    sel = (sel >= count - 1) ? 0 : sel + 1;
-                _svc->_candidateWindow.SetSelectedIndex(sel);
-                _svc->_selectedText = _svc->_candidateWindow.SelectedText();
-            }
-            return S_OK;
-        }
-
-        // Digits 1–9 pick a candidate (while the panel is open).
-        int pick = -1;
-        if (vk >= '1' && vk <= '9') pick = (int)(vk - '1');
-        else if (vk >= VK_NUMPAD1 && vk <= VK_NUMPAD9) pick = (int)(vk - VK_NUMPAD1);
-        if (pick >= 0 && pick < _svc->_candidateWindow.Count())
-        {
-            _eaten = TRUE;
-            if (!_testOnly)
-            {
-                _svc->_candidateWindow.SetSelectedIndex(pick);
-                _svc->_selectedText = _svc->_candidateWindow.SelectedText();
-                _svc->CommitBuffer(_ctx, ec);
-            }
-            return S_OK;
-        }
-
-        if (vk == VK_SPACE)
-        {
-            // Commit highlighted candidate; let Space fall through (macOS).
-            _eaten = FALSE;
-            if (!_testOnly)
-            {
-                _svc->CommitBuffer(_ctx, ec);
-            }
-            return S_OK;
-        }
-
-        if (vk == VK_RETURN)
-        {
-            _eaten = TRUE;
-            if (!_testOnly)
-            {
-                _svc->CommitBuffer(_ctx, ec);
-            }
-            return S_OK;
-        }
-
-        // Backspace falls through to buffer editing below.
-    }
-
-    if (vk == VK_ESCAPE)
-    {
-        if (_svc->_latinBuffer.empty()) return S_OK;
-        _eaten = TRUE;
-        if (!_testOnly)
-        {
-            _svc->TerminateComposition(ec);
-            _svc->ResetCompositionState();
-        }
-        return S_OK;
-    }
-
-    if (vk == VK_BACK)
-    {
-        if (_svc->_latinBuffer.empty()) return S_OK;
-        _eaten = TRUE;
-        if (!_testOnly)
-        {
-            _svc->_latinBuffer.pop_back();
-            if (_svc->_latinBuffer.empty())
-            {
-                _svc->TerminateComposition(ec);
-                _svc->ResetCompositionState();
-            }
-            else
-            {
-                std::wstring bangla = _svc->_transliterator.ToBangla(_svc->_latinBuffer);
-                _svc->_selectedText = bangla;
-                _svc->EnsureComposition(_ctx, ec);
-                _svc->UpdateCompositionText(_ctx, ec, bangla);
-                _svc->RefreshCandidates(_ctx, ec);
-            }
-        }
-        return S_OK;
-    }
-
-    if (vk == VK_RETURN || vk == VK_SPACE)
-    {
-        if (_svc->_latinBuffer.empty()) return S_OK;
-        _eaten = (vk == VK_RETURN) ? TRUE : FALSE;
-        if (!_testOnly)
-        {
-            _svc->CommitBuffer(_ctx, ec);
-        }
-        return S_OK;
-    }
-
-    // Map VK to character (Latin Avro alphabet).
-    BYTE state[256] = {};
-    GetKeyboardState(state);
-    WCHAR chars[4] = {};
-    int n = ToUnicode((UINT)vk, (UINT)((_lParam >> 16) & 0xFF), state, chars, 4, 0);
-    if (n <= 0) return S_OK;
-
-    WCHAR ch = chars[0];
-    if (!_svc->IsAvroInputChar(ch))
-    {
-        if (!_svc->_latinBuffer.empty() && !_testOnly)
-        {
-            _svc->CommitBuffer(_ctx, ec);
-        }
-        return S_OK; // not eaten — insert the punctuation/etc. normally
-    }
-
-    _eaten = TRUE;
-    if (!_testOnly)
-    {
-        _svc->_latinBuffer.push_back(ch);
-        std::wstring bangla = _svc->_transliterator.ToBangla(_svc->_latinBuffer);
-        _svc->_selectedText = bangla;
-        _svc->EnsureComposition(_ctx, ec);
-        _svc->UpdateCompositionText(_ctx, ec, bangla);
-        _svc->RefreshCandidates(_ctx, ec);
-    }
-    return S_OK;
+    if (!commit.empty()) InsertCommit(pic, ec, commit);
+    Redraw(pic, ec);
 }
 
-STDMETHODIMP CCommitEditSession::DoEditSession(TfEditCookie ec)
+void CByakaronTextService::InsertCommit(ITfContext* pic, TfEditCookie ec, const std::wstring& text)
 {
-    if (_svc->_latinBuffer.empty()) return S_OK;
-    _svc->CommitBuffer(_ctx, ec);
-    return S_OK;
-}
-
-// ── Composition helpers ─────────────────────────────────────────────────────
-
-bool CByakaronTextService::IsAvroInputChar(WCHAR ch) const
-{
-    if ((ch >= L'a' && ch <= L'z') || (ch >= L'A' && ch <= L'Z')) return true;
-    if (ch >= L'0' && ch <= L'9') return true;
-    switch (ch)
+    if (_pComposition)
     {
-    case L'.': case L',': case L'`': case L':': case L'^': case L'$':
-        return true;
-    default:
-        return false;
+        // The committed word replaces the inline preedit.
+        SetCompositionText(pic, ec, text);
+        EndComposition(ec);
+        return;
     }
-}
 
-void CByakaronTextService::HideCandidates()
-{
-    _candidateWindow.End();
-}
-
-std::wstring CByakaronTextService::TextToCommit()
-{
-    if (!_selectedText.empty()) return _selectedText;
-    if (_candidateWindow.IsVisible())
+    ITfInsertAtSelection* insert = nullptr;
+    if (FAILED(pic->QueryInterface(IID_ITfInsertAtSelection, (void**)&insert)) || !insert) return;
+    ITfRange* range = nullptr;
+    if (SUCCEEDED(insert->InsertTextAtSelection(ec, 0, text.c_str(), (LONG)text.size(), &range)) && range)
     {
-        auto sel = _candidateWindow.SelectedText();
-        if (!sel.empty()) return sel;
+        CaretAfter(pic, ec, range);
+        range->Release();
     }
-    return _transliterator.ToBangla(_latinBuffer);
+    insert->Release();
 }
 
-void CByakaronTextService::CommitBuffer(ITfContext* pic, TfEditCookie ec)
+void CByakaronTextService::Redraw(ITfContext* pic, TfEditCookie ec)
 {
-    if (_latinBuffer.empty()) return;
-    std::wstring text = TextToCommit();
-    EnsureComposition(pic, ec);
-    UpdateCompositionText(pic, ec, text);
-    TerminateComposition(ec);
-    ResetCompositionState();
+    const Composer::State st = _composer.GetState();
+    if (st.composing)
+    {
+        if (SUCCEEDED(EnsureComposition(pic, ec))) SetCompositionText(pic, ec, st.preedit);
+    }
+    else if (_pComposition)
+    {
+        // The word was dropped (Esc, Backspace to empty): clear the inline text
+        // first, or ending the composition would leave it in the document.
+        SetCompositionText(pic, ec, std::wstring());
+        EndComposition(ec);
+    }
+
+    if (!st.composing || !st.panelVisible || st.candidates.empty())
+    {
+        _candidateWindow.End();
+        return;
+    }
+    const POINT at = CandidateOrigin(pic, ec);
+    // Negotiates with ITfUIElementMgr; the host may draw it (UI-less) or let us.
+    _candidateWindow.Present(st.candidates, (int)st.highlight, st.vertical, at.x, at.y);
+}
+
+POINT CByakaronTextService::CandidateOrigin(ITfContext* pic, TfEditCookie ec) const
+{
+    POINT at = {};
+    RECT rc = {};
+    if (GetCompositionScreenRect(pic, ec, &rc))
+    {
+        at.x = rc.left;
+        at.y = rc.bottom + 2;
+        return at;
+    }
+    GetCaretPos(&at);
+    HWND fg = GetForegroundWindow();
+    if (fg) ClientToScreen(fg, &at);
+    at.y += 24;
+    return at;
 }
 
 bool CByakaronTextService::GetCompositionScreenRect(ITfContext* pic, TfEditCookie ec, RECT* out) const
@@ -374,60 +344,153 @@ bool CByakaronTextService::GetCompositionScreenRect(ITfContext* pic, TfEditCooki
     return SUCCEEDED(hr) && (out->right > out->left || out->bottom > out->top);
 }
 
-void CByakaronTextService::RefreshCandidates(ITfContext* pic, TfEditCookie ec)
+// ── Work that arrives outside a key event ───────────────────────────────────
+
+void CByakaronTextService::EditComposition(std::function<void(ITfContext*, TfEditCookie)> fn)
 {
-    if (ByakaronSettings::PhoneticOnly() || _latinBuffer.empty())
+    ITfContext* ctx = nullptr;
+    if (!CompositionContext(&ctx)) return;
+    RunEditSession(ctx, _tfClientId, Owner(), [this, ctx, fn](TfEditCookie ec)
     {
-        HideCandidates();
-        return;
-    }
-
-    const std::wstring bangla = _transliterator.ToBangla(_latinBuffer);
-    const int limit = ByakaronSettings::CandidatesPerPage();
-    auto list = _dictionary.Suggestions(_latinBuffer, bangla, limit);
-
-    // Only surface the TSF candidate UI when there is more than one choice.
-    if (list.size() <= 1)
-    {
-        HideCandidates();
-        _selectedText = bangla;
-        return;
-    }
-
-    _candidateWindow.SetCandidates(list, 0, ByakaronSettings::OrientationVertical());
-    _selectedText = list[0];
-
-    int x = 0, y = 0;
-    RECT rc = {};
-    if (GetCompositionScreenRect(pic, ec, &rc))
-    {
-        x = rc.left;
-        y = rc.bottom + 2;
-    }
-    else
-    {
-        POINT pt = {};
-        GetCaretPos(&pt);
-        HWND fg = GetForegroundWindow();
-        if (fg) ClientToScreen(fg, &pt);
-        x = pt.x;
-        y = pt.y + 24;
-    }
-
-    // Negotiates with ITfUIElementMgr; host may draw (UI-less) or allow our tip UI.
-    _candidateWindow.BeginAt(x, y);
+        // Possibly deferred: skip if that composition has ended meanwhile.
+        ITfContext* now = nullptr;
+        if (!CompositionContext(&now)) return;
+        const bool same = SameObject(now, ctx);
+        now->Release();
+        if (same) fn(ctx, ec);
+    }, TF_ES_ASYNCDONTCARE);
+    ctx->Release();
 }
 
-void CByakaronTextService::ResetCompositionState()
+void CByakaronTextService::OnCandidatePicked(UINT index)
 {
-    _latinBuffer.clear();
-    _selectedText.clear();
-    HideCandidates();
-    if (_pComposition)
+    EditComposition([this, index](ITfContext* ctx, TfEditCookie ec)
     {
-        _pComposition->Release();
-        _pComposition = nullptr;
+        Apply(ctx, ec, _composer.Pick(index).commit);
+    });
+}
+
+void CByakaronTextService::OnCandidateFinalize(bool commit)
+{
+    EditComposition([this, commit](ITfContext* ctx, TfEditCookie ec)
+    {
+        if (commit)
+        {
+            Apply(ctx, ec, _composer.Flush());
+            return;
+        }
+        _composer.Reset();
+        Apply(ctx, ec, std::wstring());
+    });
+}
+
+void CByakaronTextService::OnComposerUpdated()
+{
+    if (!_composer.Ready()) return;
+    if (!_pComposition)
+    {
+        _composer.Refresh();
+        return;
     }
+    EditComposition([this](ITfContext* ctx, TfEditCookie ec)
+    {
+        _composer.Refresh();
+        Redraw(ctx, ec);
+    });
+}
+
+void CByakaronTextService::CommitPendingWord()
+{
+    _candidateWindow.End();
+    const std::wstring text = _composer.Flush();
+    if (!_pComposition) return;
+
+    ITfContext* ctx = nullptr;
+    const bool haveCtx = CompositionContext(&ctx);
+    // The session owns the composition from here, so a key arriving before it
+    // runs starts a fresh word instead of editing this one.
+    std::shared_ptr<ITfComposition> comp(_pComposition, [](ITfComposition* c) { c->Release(); });
+    _pComposition = nullptr;
+    if (!haveCtx) return;
+
+    RunEditSession(ctx, _tfClientId, nullptr, [comp, ctx, text](TfEditCookie ec)
+    {
+        ITfRange* range = nullptr;
+        if (SUCCEEDED(comp->GetRange(&range)) && range)
+        {
+            SetTextAndCaret(ctx, ec, range, text);
+            range->Release();
+        }
+        comp->EndComposition(ec);
+    }, TF_ES_ASYNCDONTCARE);
+    ctx->Release();
+}
+
+// ── on_update hop: spell worker thread -> this thread ───────────────────────
+
+void CByakaronTextService::OnComposerUpdate(void* userdata)
+{
+    // Spell worker thread: touch nothing but the window handle.
+    HWND hwnd = static_cast<HWND>(userdata);
+    if (hwnd) PostMessageW(hwnd, WM_BYAKARON_UPDATE, 0, 0);
+}
+
+LRESULT CALLBACK CByakaronTextService::NotifyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    if (msg == WM_NCCREATE)
+    {
+        auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)cs->lpCreateParams);
+    }
+    else if (msg == WM_BYAKARON_UPDATE)
+    {
+        auto* self = reinterpret_cast<CByakaronTextService*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+        if (self) self->OnComposerUpdated();
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+bool CByakaronTextService::CreateNotifyWindow()
+{
+    if (_hwndNotify) return true;
+
+    WNDCLASSEXW wc = {};
+    wc.cbSize = sizeof(wc);
+    if (!GetClassInfoExW(g_hInst, kNotifyClassName, &wc))
+    {
+        wc = {};
+        wc.cbSize = sizeof(wc);
+        wc.lpfnWndProc = NotifyWndProc;
+        wc.hInstance = g_hInst;
+        wc.lpszClassName = kNotifyClassName;
+        if (!RegisterClassExW(&wc)) return false;
+    }
+
+    _hwndNotify = CreateWindowExW(0, kNotifyClassName, L"", 0, 0, 0, 0, 0,
+        HWND_MESSAGE, nullptr, g_hInst, this);
+    return _hwndNotify != nullptr;
+}
+
+void CByakaronTextService::DestroyNotifyWindow()
+{
+    if (!_hwndNotify) return;
+    SetWindowLongPtrW(_hwndNotify, GWLP_USERDATA, 0);
+    DestroyWindow(_hwndNotify);
+    _hwndNotify = nullptr;
+}
+
+// ── Composition helpers ─────────────────────────────────────────────────────
+
+bool CByakaronTextService::CompositionContext(ITfContext** out) const
+{
+    *out = nullptr;
+    if (!_pComposition) return false;
+    ITfRange* range = nullptr;
+    if (FAILED(_pComposition->GetRange(&range)) || !range) return false;
+    const HRESULT hr = range->GetContext(out);
+    range->Release();
+    return SUCCEEDED(hr) && *out;
 }
 
 HRESULT CByakaronTextService::EnsureComposition(ITfContext* pic, TfEditCookie ec)
@@ -454,43 +517,25 @@ HRESULT CByakaronTextService::EnsureComposition(ITfContext* pic, TfEditCookie ec
     hr = ctxComp->StartComposition(ec, range, (ITfCompositionSink*)this, &_pComposition);
     ctxComp->Release();
     range->Release();
+    if (SUCCEEDED(hr) && !_pComposition) hr = E_FAIL; // S_OK with NULL: the app refused
     return hr;
 }
 
-HRESULT CByakaronTextService::UpdateCompositionText(ITfContext* /*pic*/, TfEditCookie ec, const std::wstring& text)
+HRESULT CByakaronTextService::SetCompositionText(ITfContext* pic, TfEditCookie ec, const std::wstring& text)
 {
     if (!_pComposition) return E_FAIL;
 
     ITfRange* range = nullptr;
     if (FAILED(_pComposition->GetRange(&range)) || !range) return E_FAIL;
-
-    range->SetText(ec, 0, text.c_str(), (LONG)text.size());
-
-    // Place caret at end.
-    ITfRange* clone = nullptr;
-    if (SUCCEEDED(range->Clone(&clone)) && clone)
-    {
-        clone->Collapse(ec, TF_ANCHOR_END);
-        if (_pTextEditSinkContext)
-        {
-            TF_SELECTION sel = {};
-            sel.range = clone;
-            sel.style.ase = TF_AE_NONE;
-            sel.style.fInterimChar = FALSE;
-            _pTextEditSinkContext->SetSelection(ec, 1, &sel);
-        }
-        clone->Release();
-    }
-
+    SetTextAndCaret(pic, ec, range, text);
     range->Release();
     return S_OK;
 }
 
-HRESULT CByakaronTextService::TerminateComposition(TfEditCookie ec)
+void CByakaronTextService::EndComposition(TfEditCookie ec)
 {
-    if (!_pComposition) return S_OK;
+    if (!_pComposition) return;
     _pComposition->EndComposition(ec);
     _pComposition->Release();
     _pComposition = nullptr;
-    return S_OK;
 }

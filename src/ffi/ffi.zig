@@ -9,8 +9,8 @@
 //! `byakaron_string_free`. Returning `null` signals allocation/transliteration
 //! failure.
 const std = @import("std");
-const Transliteration = @import("../transliteration/transliteration.zig").Transliteration;
-const Mode = @import("../transliteration/transliteration.zig").Mode;
+const Transliteration = @import("transliteration");
+const Mode = Transliteration.Mode;
 
 /// Transliteration mode selector for the C ABI. Mirrors `Mode` but as a stable
 /// integer so the value is meaningful from C/Swift.
@@ -436,8 +436,11 @@ pub export fn byakaron_spell_is_correct(spell: ?*SpellHandle, word: [*:0]const u
     defer arena.deinit();
     const a = arena.allocator();
 
-    const w = std.mem.span(word);
-    if (w.len == 0) return 1;
+    const raw = std.mem.span(word);
+    if (raw.len == 0) return 1;
+    // spell.db spells ড় ঢ় য় as single code points; text from elsewhere often
+    // has letter + nukta. Compare in that canonical form.
+    const w = (Composer.UserWords.normalize(a, raw) catch return -1) orelse return -1;
 
     const engine = handle.backend.engine();
     const rows = engine.vtable.lookup_words(engine.ctx, a, &.{w}) catch return -1;
@@ -590,4 +593,345 @@ pub export fn byakaron_ac_prefix_list(
         }
     }
     return count;
+}
+
+// ── Avro suggestions (iAvro's candidate list from the Latin buffer) ─────────
+
+/// Avro candidates for the composed Latin `latin` (see `AutoComplete.suggest`).
+/// Returns JSON `{"candidates":["…"],"selected":N}`, N being the candidate to
+/// highlight (free with byakaron_string_free), or NULL on failure.
+pub export fn byakaron_ac_suggest(ac: ?*AutoCompleteHandle, latin: [*:0]const u8) ?[*:0]u8 {
+    const handle = ac orelse return null;
+    const allocator = std.heap.c_allocator;
+    var c = handle.backend.autoComplete().suggest(allocator, std.mem.span(latin)) catch return null;
+    defer c.deinit();
+    const json = std.json.Stringify.valueAlloc(allocator, .{ .candidates = c.items, .selected = c.selected }, .{}) catch return null;
+    defer allocator.free(json);
+    return dupeCString(allocator, json);
+}
+
+/// List variant of `byakaron_ac_suggest`. Fills `out_ptrs` (free each with
+/// `byakaron_string_free`), sets `*selected` (if non-NULL) to the index to
+/// highlight, and returns the count written.
+pub export fn byakaron_ac_suggest_list(
+    ac: ?*AutoCompleteHandle,
+    latin: [*:0]const u8,
+    out_ptrs: [*][*:0]u8,
+    max_out: usize,
+    selected: ?*c_int,
+) usize {
+    const handle = ac orelse return 0;
+    const allocator = std.heap.c_allocator;
+    var c = handle.backend.autoComplete().suggest(allocator, std.mem.span(latin)) catch return 0;
+    defer c.deinit();
+    var count: usize = 0;
+    for (c.items) |item| {
+        if (count >= max_out) break;
+        out_ptrs[count] = dupeCString(allocator, item) orelse break;
+        count += 1;
+    }
+    if (selected) |s| s.* = if (c.selected < count) @intCast(c.selected) else 0;
+    return count;
+}
+
+/// Remember `candidate` (as shown) as the user's choice for `latin`, so the next
+/// `byakaron_ac_suggest` highlights it. Call it when the highlighted candidate
+/// changes, as iAvro does. Returns 0, or -1 on failure.
+pub export fn byakaron_ac_select(ac: ?*AutoCompleteHandle, latin: [*:0]const u8, candidate: [*:0]const u8) c_int {
+    const handle = ac orelse return -1;
+    handle.backend.autoComplete().select(std.heap.c_allocator, std.mem.span(latin), std.mem.span(candidate)) catch return -1;
+    return 0;
+}
+
+/// The learned choices as a JSON object (`{"<latin>":"<Bangla>"}`) to persist
+/// (free with byakaron_string_free), or NULL on failure.
+pub export fn byakaron_ac_export_selections(ac: ?*AutoCompleteHandle) ?[*:0]u8 {
+    const handle = ac orelse return null;
+    const allocator = std.heap.c_allocator;
+    const json = handle.backend.autoComplete().exportSelections(allocator) catch return null;
+    defer allocator.free(json);
+    return dupeCString(allocator, json);
+}
+
+/// Merge choices saved with `byakaron_ac_export_selections`. Returns 0, or -1
+/// on failure (invalid JSON).
+pub export fn byakaron_ac_import_selections(ac: ?*AutoCompleteHandle, json: [*:0]const u8) c_int {
+    const handle = ac orelse return -1;
+    handle.backend.autoComplete().importSelections(std.heap.c_allocator, std.mem.span(json)) catch return -1;
+    return 0;
+}
+
+// ── Composer: the whole keyboard behind one handle ──────────────────────────
+//
+// Every native keyboard drives this: it maps OS key events to
+// `byakaron_composer_key`, applies the result (insert `commit`, consume the key
+// or not) and draws `byakaron_composer_state`. See src/Composer.zig.
+
+const Composer = @import("composer");
+const SpellCorrector = @import("SpellCorrector.zig");
+
+pub const ComposerHandle = struct {
+    composer: Composer,
+    files: Composer.FileStore,
+    spell: ?*SpellSqlite = null,
+    corrector: ?*SpellCorrector = null,
+    /// C strings handed out by the last call (state, commit, …).
+    out: std.heap.ArenaAllocator,
+    out_ptrs: std.ArrayList([*:0]const u8) = .empty,
+};
+
+pub const ByakaronKeyResult = extern struct {
+    handled: c_int,
+    /// NUL-terminated, valid until the next call on the composer.
+    commit: [*:0]const u8,
+};
+
+pub const ByakaronComposerState = extern struct {
+    composing: c_int,
+    preedit: [*:0]const u8,
+    panel_visible: c_int,
+    vertical: c_int,
+    candidates: [*]const [*:0]const u8,
+    candidate_count: usize,
+    highlight: usize,
+    page: usize,
+    page_count: usize,
+};
+
+pub const BYAKARON_MOD_SHIFT: c_uint = 1;
+pub const BYAKARON_MOD_CTRL: c_uint = 2;
+pub const BYAKARON_MOD_ALT: c_uint = 4;
+pub const BYAKARON_MOD_META: c_uint = 8;
+
+const UpdateFn = *const fn (?*anyopaque) callconv(.c) void;
+
+fn noUpdate(_: ?*anyopaque) callconv(.c) void {}
+
+/// Create a composer keeping its settings and learned data in `data_dir`. With
+/// `spell_db`, spelling corrections come from it on a worker thread, and
+/// `on_update(userdata)` is called — from that thread — when they arrive; call
+/// `byakaron_composer_refresh` on the composer's own thread then. Returns NULL
+/// on failure.
+pub export fn byakaron_composer_create(
+    data_dir: [*:0]const u8,
+    spell_db: ?[*:0]const u8,
+    on_update: ?UpdateFn,
+    userdata: ?*anyopaque,
+) ?*ComposerHandle {
+    const allocator = std.heap.c_allocator;
+    const h = allocator.create(ComposerHandle) catch return null;
+    h.* = .{ .composer = undefined, .files = undefined, .out = .init(allocator) };
+    h.files = Composer.FileStore.init(allocator, spell_io_backend.io(), std.mem.span(data_dir)) catch {
+        allocator.destroy(h);
+        return null;
+    };
+    var corrector: ?Composer.Corrector = null;
+    if (spell_db) |path| if (SpellSqlite.init(allocator, spell_io_backend.io(), std.mem.span(path))) |backend| {
+        h.spell = backend;
+        if (SpellCorrector.create(allocator, spell_io_backend.io(), backend.engine(), on_update orelse noUpdate, userdata)) |c| {
+            h.corrector = c;
+            corrector = c.corrector();
+        } else |_| {}
+    } else |_| {};
+    h.composer = Composer.init(allocator, h.files.store(), corrector) catch {
+        destroyParts(h);
+        return null;
+    };
+    return h;
+}
+
+fn destroyParts(h: *ComposerHandle) void {
+    if (h.corrector) |c| c.destroy();
+    if (h.spell) |s| s.deinit();
+    h.files.deinit();
+    h.out_ptrs.deinit(std.heap.c_allocator);
+    h.out.deinit();
+    std.heap.c_allocator.destroy(h);
+}
+
+pub export fn byakaron_composer_destroy(composer: ?*ComposerHandle) void {
+    const h = composer orelse return;
+    h.composer.deinit();
+    destroyParts(h);
+}
+
+fn resetOut(h: *ComposerHandle) void {
+    _ = h.out.reset(.retain_capacity);
+    h.out_ptrs.clearRetainingCapacity();
+}
+
+fn outString(h: *ComposerHandle, s: []const u8) [*:0]const u8 {
+    return (h.out.allocator().dupeSentinel(u8, s, 0) catch return "").ptr;
+}
+
+fn keyResult(h: *ComposerHandle, outcome: anyerror!Composer.Outcome) ByakaronKeyResult {
+    const o = outcome catch return .{ .handled = 0, .commit = "" };
+    return .{ .handled = @intFromBool(o.handled), .commit = outString(h, o.commit) };
+}
+
+/// One key. `kind` is a BYAKARON_KEY_* value, `ch` the ASCII character for
+/// BYAKARON_KEY_CHAR, `modifiers` BYAKARON_MOD_* bits.
+pub export fn byakaron_composer_key(composer: ?*ComposerHandle, kind: c_int, ch: c_uint, modifiers: c_uint) ByakaronKeyResult {
+    const h = composer orelse return .{ .handled = 0, .commit = "" };
+    resetOut(h);
+    const k: Composer.Key = switch (kind) {
+        0 => if (ch >= 0x21 and ch <= 0x7e) .{ .char = @intCast(ch) } else .other,
+        1 => .space,
+        2 => .enter,
+        3 => .tab,
+        4 => .backspace,
+        5 => .escape,
+        6 => .up,
+        7 => .down,
+        8 => .left,
+        9 => .right,
+        10 => .page_up,
+        11 => .page_down,
+        else => .other,
+    };
+    const mods: Composer.Modifiers = .{
+        .shift = modifiers & BYAKARON_MOD_SHIFT != 0,
+        .ctrl = modifiers & BYAKARON_MOD_CTRL != 0,
+        .alt = modifiers & BYAKARON_MOD_ALT != 0,
+        .meta = modifiers & BYAKARON_MOD_META != 0,
+    };
+    return keyResult(h, h.composer.key(k, mods));
+}
+
+/// Choose the `index`th candidate of the current page (a click) and commit it.
+pub export fn byakaron_composer_pick(composer: ?*ComposerHandle, index: usize) ByakaronKeyResult {
+    const h = composer orelse return .{ .handled = 0, .commit = "" };
+    resetOut(h);
+    return keyResult(h, h.composer.pick(index));
+}
+
+/// Commit the word being typed (focus leaving). Returns the text to insert
+/// ("" if none), valid until the next call.
+pub export fn byakaron_composer_flush(composer: ?*ComposerHandle) [*:0]const u8 {
+    const h = composer orelse return "";
+    resetOut(h);
+    const text = h.composer.flush() catch return "";
+    return outString(h, text);
+}
+
+/// Drop the word being typed without committing it.
+pub export fn byakaron_composer_reset(composer: ?*ComposerHandle) void {
+    const h = composer orelse return;
+    h.composer.reset();
+}
+
+/// Rebuild the candidates (after `on_update`), on the composer's thread.
+pub export fn byakaron_composer_refresh(composer: ?*ComposerHandle) void {
+    const h = composer orelse return;
+    h.composer.refresh() catch {};
+}
+
+/// What to draw. Pointers stay valid until the next call on the composer.
+pub export fn byakaron_composer_state(composer: ?*ComposerHandle, out: ?*ByakaronComposerState) void {
+    const h = composer orelse return;
+    const o = out orelse return;
+    resetOut(h);
+    const c = &h.composer;
+    for (c.pageItems()) |item| h.out_ptrs.append(std.heap.c_allocator, outString(h, item)) catch break;
+    o.* = .{
+        .composing = @intFromBool(c.composing()),
+        .preedit = outString(h, c.preedit()),
+        .panel_visible = @intFromBool(c.panelVisible()),
+        .vertical = @intFromBool(c.settings.candidate_orientation == .vertical),
+        .candidates = h.out_ptrs.items.ptr,
+        .candidate_count = h.out_ptrs.items.len,
+        .highlight = c.pageHighlight(),
+        .page = c.page(),
+        .page_count = c.pageCount(),
+    };
+}
+
+/// The settings as JSON (see src/Composer/Settings.zig); free with
+/// byakaron_string_free.
+pub export fn byakaron_settings_get(composer: ?*ComposerHandle) ?[*:0]u8 {
+    const h = composer orelse return null;
+    h.composer.sync();
+    const json = h.composer.settings.stringify(std.heap.c_allocator) catch return null;
+    defer std.heap.c_allocator.free(json);
+    return dupeCString(std.heap.c_allocator, json);
+}
+
+/// Apply and save settings JSON (missing fields keep their defaults). Returns
+/// 0, or -1 if the JSON is invalid.
+pub export fn byakaron_settings_set(composer: ?*ComposerHandle, json: [*:0]const u8) c_int {
+    const h = composer orelse return -1;
+    const s = Composer.Settings.parse(std.heap.c_allocator, std.mem.span(json)) catch return -1;
+    h.composer.setSettings(s) catch return -1;
+    return 0;
+}
+
+/// The personal dictionary as a JSON array of words; free with
+/// byakaron_string_free.
+pub export fn byakaron_userdict_get(composer: ?*ComposerHandle) ?[*:0]u8 {
+    const h = composer orelse return null;
+    h.composer.sync();
+    const json = std.json.Stringify.valueAlloc(std.heap.c_allocator, h.composer.user_words.words.items, .{}) catch return null;
+    defer std.heap.c_allocator.free(json);
+    return dupeCString(std.heap.c_allocator, json);
+}
+
+/// Add a word to the personal dictionary. 1 if added, 0 if already there or
+/// not a word, -1 on error.
+pub export fn byakaron_userdict_add(composer: ?*ComposerHandle, word: [*:0]const u8) c_int {
+    const h = composer orelse return -1;
+    h.composer.sync();
+    return if (h.composer.addUserWord(std.mem.span(word))) |added| @intFromBool(added) else |_| -1;
+}
+
+/// Remove a word. 1 if removed, 0 if absent, -1 on error.
+pub export fn byakaron_userdict_remove(composer: ?*ComposerHandle, word: [*:0]const u8) c_int {
+    const h = composer orelse return -1;
+    h.composer.sync();
+    return if (h.composer.removeUserWord(std.mem.span(word))) |removed| @intFromBool(removed) else |_| -1;
+}
+
+// ------------ TESTING ------------
+
+test "composer ABI: type, draw, commit, settings, personal words" {
+    const testing = std.testing;
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir = try tmp.dir.realPathFileAlloc(testing.io, ".", testing.allocator);
+    defer testing.allocator.free(dir);
+
+    const c = byakaron_composer_create(dir.ptr, null, null, null) orelse return error.CreateFailed;
+    defer byakaron_composer_destroy(c);
+
+    for ("bhalo") |ch| try testing.expectEqual(@as(c_int, 1), byakaron_composer_key(c, 0, ch, 0).handled);
+    var st: ByakaronComposerState = undefined;
+    byakaron_composer_state(c, &st);
+    try testing.expectEqual(@as(c_int, 1), st.composing);
+    try testing.expectEqual(@as(c_int, 1), st.panel_visible);
+    try testing.expectEqualStrings("ভাল", std.mem.span(st.preedit));
+    try testing.expect(st.candidate_count > 1);
+    try testing.expectEqualStrings("ভাল", std.mem.span(st.candidates[0]));
+
+    const r = byakaron_composer_key(c, 1, 0, 0); // space
+    try testing.expectEqual(@as(c_int, 1), r.handled);
+    try testing.expectEqualStrings("ভাল ", std.mem.span(r.commit));
+
+    try testing.expectEqual(@as(c_int, 0), byakaron_settings_set(c, "{\"suggestions\":false}"));
+    const json = byakaron_settings_get(c).?;
+    defer byakaron_string_free(json);
+    try testing.expect(std.mem.indexOf(u8, std.mem.span(json), "\"suggestions\": false") != null);
+    try testing.expectEqual(@as(c_int, -1), byakaron_settings_set(c, "{"));
+
+    try testing.expectEqual(@as(c_int, 1), byakaron_userdict_add(c, "বাংলাভাষী"));
+    try testing.expectEqual(@as(c_int, 0), byakaron_userdict_add(c, "বাংলাভাষী"));
+    const words = byakaron_userdict_get(c).?;
+    defer byakaron_string_free(words);
+    try testing.expectEqualStrings("[\"বাংলাভাষী\"]", std.mem.span(words));
+    try testing.expectEqual(@as(c_int, 1), byakaron_userdict_remove(c, "বাংলাভাষী"));
+
+    // A second composer on the same directory sees the saved settings.
+    const d = byakaron_composer_create(dir.ptr, null, null, null) orelse return error.CreateFailed;
+    defer byakaron_composer_destroy(d);
+    for ("bhalo") |ch| _ = byakaron_composer_key(d, 0, ch, 0);
+    byakaron_composer_state(d, &st);
+    try testing.expectEqual(@as(c_int, 0), st.panel_visible);
 }

@@ -62,13 +62,24 @@ if os.environ.get("BYK_SPELL_DB_PRESENT") == "1":
     # The correction arrives from the engine's worker thread after the keystroke.
     t("sonar + 2 (spelling fix)", "সোনার", lambda: (typ("sonar"), time.sleep(1.0), key(ord('2'))))
 if os.environ.get("BYK_SETTINGS_TEST") == "1":
-    # Settings apply live: flip one with gsettings while the keyboard runs.
-    def gset(key, value):
-        subprocess.run(["gsettings", "set", "dev.nuhu.labs.Byakaron", key, value], check=True)
+    # Settings apply from the next word: flip one in settings.json (what the app
+    # writes through its composer) while the keyboard runs.
+    import json
+    data = os.environ.get("BYAKARON_DATA_DIR") or os.path.join(
+        os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "byakaron")
+    def setting(key, value):
+        path = os.path.join(data, "settings.json")
+        try:
+            with open(path) as f: s = json.load(f)
+        except (OSError, ValueError):
+            s = {}
+        s[key] = value
+        os.makedirs(data, exist_ok=True)
+        with open(path, "w") as f: json.dump(s, f)
         time.sleep(0.5)
-    gset("bangla-digits", "false")
+    setting("bangla_digits", False)
     t("Bangla digits off: 2026", "2026 ", lambda: typ("2026 "))
-    gset("bangla-digits", "true")
+    setting("bangla_digits", True)
     t("Bangla digits on: 2026", "২০২৬ ", lambda: typ("2026 "))
 call(sess, RD + '.Session', 'Stop')
 sys.exit(1 if fails else 0)

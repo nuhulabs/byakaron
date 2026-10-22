@@ -1,39 +1,46 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
+  <!--
+    Byakaron's keyboard settings live in settings.json (shared with every
+    platform; see src/Composer/Settings.zig). Only qt-click-fix, which is
+    Linux/IBus-specific, is still a GSettings key; the others are read once
+    to migrate them (apps/linux/Core/composer.c).
+  -->
   <schema id="dev.nuhu.labs.Byakaron" path="/dev/nuhu/labs/Byakaron/">
     <key name="phonetic-only" type="b">
       <default>false</default>
-      <summary>Hide word suggestions</summary>
+      <summary>Deprecated: Hide word suggestions</summary>
       <description>
-        When true, only the phonetic transliteration is shown. The dictionary
-        candidate list is hidden, so 1–9 type Bangla numerals instead of
-        picking a completion. Transliteration itself is unchanged.
+        Deprecated, kept only so it can still be read: the first time Byakaron
+        starts without a settings.json in ~/.local/share/byakaron, it copies
+        this value there (suggestions = !phonetic-only) and never reads it again.
       </description>
     </key>
     <key name="candidates-horizontal" type="b">
       <default>true</default>
-      <summary>Horizontal candidate list</summary>
+      <summary>Deprecated: Horizontal candidate list</summary>
       <description>
-        When true, the input method panel lays candidates out in a row
-        (matching the macOS default). When false, in a column.
+        Deprecated, kept only so it can still be read: the first time Byakaron
+        starts without a settings.json in ~/.local/share/byakaron, it copies
+        this value there (candidate_orientation) and never reads it again.
       </description>
     </key>
     <key name="spelling-suggestions" type="b">
       <default>true</default>
-      <summary>Offer spelling corrections</summary>
+      <summary>Deprecated: Offer spelling corrections</summary>
       <description>
-        When a word comes out spelled in a way the dictionary does not know
-        (sonar gives সনার), list the dictionary's corrections (সোনার) after the
-        typed word. Needs spell.db; without it nothing changes.
+        Deprecated, kept only so it can still be read: the first time Byakaron
+        starts without a settings.json in ~/.local/share/byakaron, it copies
+        this value there (spelling_corrections) and never reads it again.
       </description>
     </key>
     <key name="bangla-digits" type="b">
       <default>true</default>
-      <summary>Type Bangla digits</summary>
+      <summary>Deprecated: Type Bangla digits</summary>
       <description>
-        When true, 0–9 typed outside the candidate list become Bangla numerals
-        (1 gives ১). When false they stay 0–9. While the list is showing, 1–9
-        still pick a candidate either way.
+        Deprecated, kept only so it can still be read: the first time Byakaron
+        starts without a settings.json in ~/.local/share/byakaron, it copies
+        this value there (bangla_digits) and never reads it again.
       </description>
     </key>
     <key name="qt-click-fix" type="b">

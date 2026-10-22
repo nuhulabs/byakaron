@@ -58,9 +58,17 @@ regsvr32 /u /s "%LOCALAPPDATA%\Byakaron\IME\ByakaronIME.dll"
 
 ## Typing
 
-Avro phonetic Latin → Bangla (Zig engine):
+The keyboard is a thin TSF shell over the shared composer in `byakaron.dll`
+(`byakaron_composer_*`, see `src/Composer.zig`), so it types exactly like the
+other Byakaron keyboards (OmicronLab Avro behaviour):
 
-- `ami` → আমি
-- Space / Enter commits the composition
-- Escape clears
-- Backspace edits the Latin buffer
+- `ami` → আমি; the highlighted candidate is shown inline
+- Space commits it and a space, Enter commits it (plus a new line with
+  "New line on Enter"), Tab and other keys commit it and pass through
+- Arrows move the highlight, Page Up/Down change page, 1–9 or a click pick
+- Escape drops the word, Backspace edits it
+
+Settings, learned choices and the personal dictionary live in
+`%LOCALAPPDATA%\Byakaron` (`settings.json`, `selections.json`,
+`user-words.txt`), edited from the Byakaron app's Settings. Spelling
+corrections use the installed `native\spell.db` when present.

@@ -96,12 +96,14 @@ pub fn build(b: *std.Build) !void {
     b.step("db-debug", "Build the text-keyed spell_debug.db (large) → zig-out/db/")
         .dependOn(&b.addInstallFile(spell.debug_db, "db/spell_debug.db").step);
 
-    const engine = addEngine(b, target, optimize, avro.words, true);
+    const engine = addEngine(b, target, optimize, avro, true);
     const zx_mod = engine.zx;
     const tokenization_mod = engine.tokenization;
     const spell_mod = engine.spell;
     const autocomplete_mod = engine.autocomplete;
     const autocomplete_mem_mod = engine.autocomplete_mem;
+    const transliteration_mod = engine.transliteration;
+    const composer_mod = engine.composer;
     const mod = engine.root;
 
     // Static lib (macOS Xcode links extracted objects). Shared lib (Windows C#
@@ -110,6 +112,9 @@ pub fn build(b: *std.Build) !void {
     // `zig build lib` installs only this (+ the lexicon): what the native platform
     // scripts need, without the web app the default install also builds.
     const is_android = target.result.os.tag == .linux and target.result.abi.isAndroid();
+    // wasm32-wasi is the web app's Cloudflare Workers build (apps/web/wrangler.jsonc):
+    // the default install is just the web server there.
+    const is_wasi = target.result.os.tag == .wasi;
     const shared = b.option(bool, "shared", "Build shared library (DLL/dylib/so) for FFI") orelse is_android;
     {
         const lib = b.addLibrary(.{
@@ -120,7 +125,7 @@ pub fn build(b: *std.Build) !void {
         // Install the FFI header alongside the lib so consumers can find it.
         lib.installHeader(b.path("src/ffi/byakaron.h"), "byakaron.h");
         const install_lib = b.addInstallArtifact(lib, .{});
-        b.getInstallStep().dependOn(&install_lib.step);
+        if (!is_wasi) b.getInstallStep().dependOn(&install_lib.step);
         const lib_step = b.step("lib", "Build libbyakaron + byakaron.h + lexicon (for platform builds)");
         lib_step.dependOn(&install_lib.step);
         lib_step.dependOn(install_lexicon);
@@ -128,10 +133,10 @@ pub fn build(b: *std.Build) !void {
 
     // Linux: IBus engine, GTK app, optional Fcitx5, against a pinned Ubuntu
     // sysroot on every host (see `addLinux`).
-    addLinux(b, target, optimize, mod, avro.words);
+    addLinux(b, target, optimize, mod, avro);
 
-    // Executable (only built for non-Android targets)
-    if (!is_android) {
+    // Executable (only built for non-Android, non-wasm targets)
+    if (!is_android and !is_wasi) {
         const exe = b.addExecutable(.{
             .name = "repl",
             .root_module = b.createModule(.{
@@ -144,6 +149,8 @@ pub fn build(b: *std.Build) !void {
                     .{ .name = "spell", .module = spell_mod },
                     .{ .name = "autocomplete", .module = autocomplete_mod },
                     .{ .name = "autocomplete_mem", .module = autocomplete_mem_mod },
+                    .{ .name = "transliteration", .module = transliteration_mod },
+                    .{ .name = "composer", .module = composer_mod },
                 },
             }),
         });
@@ -171,8 +178,11 @@ pub fn build(b: *std.Build) !void {
 
         // ReleaseFast always: a Debug build compiles sqlite3.c with UBSan, whose
         // runtime Xcode's linker does not provide.
-        const engine_mac = addEngine(b, b.resolveTargetQuery(.{ .cpu_arch = .aarch64, .os_tag = .macos }), .ReleaseFast, avro.words, false);
+        const engine_mac = addEngine(b, b.resolveTargetQuery(.{ .cpu_arch = .aarch64, .os_tag = .macos }), .ReleaseFast, avro, false);
         const mac_lib = b.addLibrary(.{ .linkage = .static, .name = "byakaron", .root_module = engine_mac.root });
+        // The composer's settings JSON parsing needs f128 helpers (__divtf3, ...)
+        // that Xcode's linker has no runtime for.
+        mac_lib.bundle_compiler_rt = true;
         const inputs = [_]*std.Build.Step{
             &b.addInstallFileWithDir(mac_lib.getEmittedBin(), .{ .custom = "macos/lib" }, "libbyakaron.a").step,
             &b.addInstallFileWithDir(b.path("src/ffi/byakaron.h"), .{ .custom = "macos/include" }, "byakaron.h").step,
@@ -253,6 +263,11 @@ pub fn build(b: *std.Build) !void {
         b.step("macos-icons", "Regenerate apps/macos/Resources/MenuIcon.{pdf,tiff}").dependOn(&icons.step);
     }
 
+    // Android: libbyakaron.so (core + JNI bridge) for every ABI the keyboard
+    // ships, against the NDK's bionic, copied into the keyboard submodule.
+    //   zig build android [-Dandroid-ndk=<ndk>] [-Dandroid-api=21]
+    addAndroid(b, avro);
+
     // Web app (apps/web): a ziex app in this build graph, so it shares the cache.
     //   zig build run-web    dev server (hot reload)
     //   zig build serve-web  production-mode server
@@ -261,13 +276,23 @@ pub fn build(b: *std.Build) !void {
         // Engine pieces the page also runs in the browser (autocomplete +
         // Avro transliteration). No target of their own, so the server exe and
         // ziex's client wasm each build them for their own target.
-        const web_autocomplete = b.createModule(.{ .root_source_file = b.path("src/AutoComplete.zig") });
+        const web_transliteration = b.createModule(.{ .root_source_file = b.path("src/transliteration/Transliteration.zig") });
+        const web_autocomplete = b.createModule(.{
+            .root_source_file = b.path("src/AutoComplete.zig"),
+            .imports = &.{.{ .name = "transliteration", .module = web_transliteration }},
+        });
         const web_autocomplete_mem = b.createModule(.{
             .root_source_file = b.path("src/AutoComplete/Mem.zig"),
             .imports = &.{.{ .name = "autocomplete", .module = web_autocomplete }},
         });
-        web_autocomplete_mem.addAnonymousImport("avro_dictionary", .{ .root_source_file = avro.words });
-        const web_transliteration = b.createModule(.{ .root_source_file = b.path("src/transliteration/transliteration.zig") });
+        web_autocomplete_mem.addAnonymousImport("lexicon", .{ .root_source_file = avro.lexicon });
+        const web_composer = b.createModule(.{
+            .root_source_file = b.path("src/Composer.zig"),
+            .imports = &.{
+                .{ .name = "autocomplete", .module = web_autocomplete },
+                .{ .name = "autocomplete_mem", .module = web_autocomplete_mem },
+            },
+        });
 
         const web_exe = b.addExecutable(.{
             .name = "web",
@@ -283,17 +308,25 @@ pub fn build(b: *std.Build) !void {
                     // to the client wasm (imports added later stay server-only).
                     .{ .name = "autocomplete_mem", .module = web_autocomplete_mem },
                     .{ .name = "transliteration", .module = web_transliteration },
+                    .{ .name = "composer", .module = web_composer },
                 },
             }),
         });
-        // SQLite as a library only: the app opens zig-out/db/spell.db itself
-        // (apps/web/app/pages/spell.zig) instead of ziex's data/db/default.db.
+        // `zx.db` is spell.db. Natively SQLite is a library only and the app
+        // opens zig-out/db/spell.db read-only itself (apps/web/app/pages/spell.zig)
+        // instead of ziex's data/db/default.db; on wasm32-wasi (Cloudflare
+        // Workers, apps/web/wrangler.jsonc) ziex binds it to the D1 database.
         // Client-side `zx.kv` (browser localStorage) keeps the draft and settings.
         const web = try ziex.init(b, web_exe, .{
-            .app = .{ .path = b.path("apps/web/app"), .features = .{
-                .sqlite = .{},
-                .kv = .{ .client = .enabled },
-            } },
+            .app = .{
+                .path = b.path("apps/web/app"),
+                .server = .{ .backend = .std },
+                .features = .{
+                    .sqlite = if (is_wasi) .enabled else .{},
+                    .kv = .{ .client = .enabled },
+                },
+                .client = .{ .bindings = .{ .build = .enabled, .install_subdir = "bindings" } },
+            },
             .cli = .{ .steps = .{ .dev = "run-web", .serve = "serve-web" } },
         });
         // SQLite backends bound to the app's `zx` module so they share its `zx.Db` type.
@@ -349,17 +382,21 @@ pub fn build(b: *std.Build) !void {
         run_win_step.dependOn(&win_run.step);
     }
 
-    // Rewrite the transliteration grammars in canonical std.zon form (plain UTF-8
-    // Bangla, one field per line): `zig build rules`.
+    // Regenerate the committed grammars from the pinned iAvro sources:
+    // `zig build grammars` (see src/build/grammars.zig).
     {
-        const fmt = hostExe(b, "rules", "src/transliteration/rules.zig");
+        const gen = hostExe(b, "grammars", "src/build/grammars.zig");
+        gen.root_module.addImport("transliteration", b.createModule(.{ .root_source_file = b.path("src/transliteration/Transliteration.zig") }));
+        const iavro = b.dependency("iavro", .{});
+        const run = b.addRunArtifact(gen);
+        run.addFileArg(iavro.path("data.json"));
+        run.addFileArg(iavro.path("regex.json"));
+        run.addFileArg(b.path("src/transliteration/orva.zon"));
         const update = b.addUpdateSourceFiles();
-        for ([_][]const u8{ "src/transliteration/rules.zon", "src/transliteration/orva.zon" }) |path| {
-            const run = b.addRunArtifact(fmt);
-            run.addFileArg(b.path(path));
+        for ([_][]const u8{ "src/transliteration/rules.zon", "src/AutoComplete/search.zon", "src/transliteration/orva.zon" }) |path| {
             update.addCopyFileToSource(run.addOutputFileArg(std.fs.path.basename(path)), path);
         }
-        b.step("rules", "Rewrite src/transliteration/{rules,orva}.zon in canonical form").dependOn(&update.step);
+        b.step("grammars", "Regenerate rules.zon / search.zon from iAvro, canonicalize orva.zon").dependOn(&update.step);
     }
 
     // Testing
@@ -377,6 +414,8 @@ pub fn build(b: *std.Build) !void {
                 .{ .name = "spell", .module = spell_mod },
                 .{ .name = "autocomplete", .module = autocomplete_mod },
                 .{ .name = "autocomplete_mem", .module = autocomplete_mem_mod },
+                .{ .name = "transliteration", .module = transliteration_mod },
+                .{ .name = "composer", .module = composer_mod },
             },
         });
         const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
@@ -391,6 +430,23 @@ pub fn build(b: *std.Build) !void {
         const test_step = b.step("test", "Run unit tests");
         test_step.dependOn(&run_lib_unit_tests.step);
         test_step.dependOn(&run_exe_unit_tests.step);
+        // Tests in other modules are not part of root.zig's test build.
+        for ([_]*std.Build.Module{ transliteration_mod, autocomplete_mod, autocomplete_mem_mod, composer_mod }) |m| {
+            test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = m })).step);
+        }
+        // Transliteration vs iAvro's AvroParser over every dictionary word.
+        {
+            const iavro = b.dependency("iavro", .{});
+            const parity = b.createModule(.{
+                .root_source_file = b.path("src/transliteration/reference.zig"),
+                .target = target,
+                .optimize = optimize,
+            });
+            parity.addAnonymousImport("iavro_data", .{ .root_source_file = iavro.path("data.json") });
+            parity.addAnonymousImport("autodict", .{ .root_source_file = iavro.path("autodict.dct") });
+            parity.addAnonymousImport("avro_words", .{ .root_source_file = avro.words });
+            test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = parity })).step);
+        }
     }
 }
 
@@ -403,6 +459,8 @@ const Engine = struct {
     spell: *std.Build.Module,
     autocomplete: *std.Build.Module,
     autocomplete_mem: *std.Build.Module,
+    transliteration: *std.Build.Module,
+    composer: *std.Build.Module,
     jni: ?*std.Build.Module,
     root: *std.Build.Module,
 };
@@ -411,7 +469,7 @@ fn addEngine(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    avro_words: std.Build.LazyPath,
+    avro: AvroData,
     exported: bool,
 ) Engine {
     // zx (ziex) with SQLite — used by Spell/Sqlite.zig. `app_opts` is required by
@@ -478,10 +536,19 @@ fn addEngine(
         },
     });
 
+    const transliteration_mod = module(b, exported, "transliteration", .{
+        .root_source_file = b.path("src/transliteration/Transliteration.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const autocomplete_mod = module(b, exported, "autocomplete", .{
         .root_source_file = b.path("src/AutoComplete.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{
+            .{ .name = "transliteration", .module = transliteration_mod },
+        },
     });
 
     const autocomplete_mem_mod = module(b, exported, "autocomplete_mem", .{
@@ -492,7 +559,17 @@ fn addEngine(
             .{ .name = "autocomplete", .module = autocomplete_mod },
         },
     });
-    autocomplete_mem_mod.addAnonymousImport("avro_dictionary", .{ .root_source_file = avro_words });
+    autocomplete_mem_mod.addAnonymousImport("lexicon", .{ .root_source_file = avro.lexicon });
+
+    const composer_mod = module(b, exported, "composer", .{
+        .root_source_file = b.path("src/Composer.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "autocomplete", .module = autocomplete_mod },
+            .{ .name = "autocomplete_mem", .module = autocomplete_mem_mod },
+        },
+    });
 
     const mod = module(b, exported, "byakaron", .{
         .root_source_file = b.path("src/root.zig"),
@@ -507,6 +584,8 @@ fn addEngine(
             .{ .name = "spell", .module = spell_mod },
             .{ .name = "autocomplete", .module = autocomplete_mod },
             .{ .name = "autocomplete_mem", .module = autocomplete_mem_mod },
+            .{ .name = "transliteration", .module = transliteration_mod },
+            .{ .name = "composer", .module = composer_mod },
         },
     });
     if (jni_mod) |m| mod.addImport("jni", m);
@@ -517,6 +596,8 @@ fn addEngine(
         .spell = spell_mod,
         .autocomplete = autocomplete_mod,
         .autocomplete_mem = autocomplete_mem_mod,
+        .transliteration = transliteration_mod,
+        .composer = composer_mod,
         .jni = jni_mod,
         .root = mod,
     };
@@ -539,7 +620,7 @@ fn addLinux(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     mod: *std.Build.Module,
-    avro_words: std.Build.LazyPath,
+    avro: AvroData,
 ) void {
     const host_linux = builtin.os.tag == .linux;
     const system_libs = b.option(bool, "linux-system-libs", "Link the Linux targets against system IBus/GTK via pkg-config (Linux host)") orelse false;
@@ -559,7 +640,7 @@ fn addLinux(
         .abi = .gnu,
         .glibc_version = .{ .major = 2, .minor = 31, .patch = 0 },
     });
-    const core = if (native) mod else addEngine(b, linux_target, optimize, avro_words, false).root;
+    const core = if (native) mod else addEngine(b, linux_target, optimize, avro, false).root;
     const sysroot: ?Sysroot = if (native) null else linuxSysroot(b, arch);
 
     // Its own static copy of the core rather than the artifact above, so
@@ -583,11 +664,7 @@ fn addLinux(
         .files = &.{
             "apps/linux/Keyboard/main.c",
             "apps/linux/Keyboard/engine.c",
-            "apps/linux/Core/transliterator.c",
-            "apps/linux/Core/autocomplete.c",
             "apps/linux/Core/spell.c",
-            "apps/linux/Core/corrector.c",
-            "apps/linux/Core/userdict.c",
             "apps/linux/Core/composer.c",
             "apps/linux/Core/prefs.c",
         },
@@ -660,11 +737,7 @@ fn addLinux(
             "apps/linux/App/uiutil.c",
             "apps/linux/App/dictionary.c",
             "apps/linux/App/settings.c",
-            "apps/linux/Core/transliterator.c",
-            "apps/linux/Core/autocomplete.c",
             "apps/linux/Core/spell.c",
-            "apps/linux/Core/corrector.c",
-            "apps/linux/Core/userdict.c",
             "apps/linux/Core/composer.c",
             "apps/linux/Core/prefs.c",
         },
@@ -756,11 +829,7 @@ fn addLinux(
         fcitx.root_module.addCSourceFiles(.{
             .files = &.{
                 "apps/linux/Core/composer.c",
-                "apps/linux/Core/corrector.c",
-                "apps/linux/Core/userdict.c",
                 "apps/linux/Core/spell.c",
-                "apps/linux/Core/transliterator.c",
-                "apps/linux/Core/autocomplete.c",
                 "apps/linux/Core/prefs.c",
             },
             .flags = fcitx_cflags,
@@ -905,14 +974,110 @@ fn hostExe(b: *std.Build, name: []const u8, root: []const u8) *std.Build.Step.Co
     });
 }
 
-fn avroDictionary(b: *std.Build, sqlite_lib: *std.Build.Step.Compile) struct { words: std.Build.LazyPath, json: std.Build.LazyPath } {
-    const gen = hostExe(b, "avro_dictionary", "src/build/avro_dictionary.zig");
+/// The NDK: `-Dandroid-ndk`, else $ANDROID_NDK_ROOT / $ANDROID_NDK_HOME, else the
+/// newest version under $ANDROID_HOME/ndk (or the SDK's default location).
+fn androidNdk(b: *std.Build) ?[]const u8 {
+    if (b.option([]const u8, "android-ndk", "Android NDK directory for `android`")) |p| return p;
+    const env = &b.graph.environ_map;
+    for ([_][]const u8{ "ANDROID_NDK_ROOT", "ANDROID_NDK_HOME" }) |name| {
+        if (env.get(name)) |p| if (p.len > 0) return p;
+    }
+    const home = env.get("HOME") orelse "";
+    const sdks = [_][]const u8{
+        env.get("ANDROID_HOME") orelse "",
+        env.get("ANDROID_SDK_ROOT") orelse "",
+        b.pathJoin(&.{ home, "Library/Android/sdk" }),
+        b.pathJoin(&.{ home, "Android/Sdk" }),
+    };
+    const io = b.graph.io;
+    for (sdks) |sdk| {
+        if (sdk.len == 0) continue;
+        const ndk_root = b.pathJoin(&.{ sdk, "ndk" });
+        var dir = std.Io.Dir.cwd().openDir(io, ndk_root, .{ .iterate = true }) catch continue;
+        defer dir.close(io);
+        var newest: ?[]const u8 = null;
+        var it = dir.iterate();
+        while (it.next(io) catch null) |entry| {
+            if (entry.kind != .directory) continue;
+            const v = std.SemanticVersion.parse(entry.name) catch continue;
+            if (newest) |n| if (std.SemanticVersion.parse(n) catch null) |nv| if (v.order(nv) != .gt) continue;
+            newest = b.dupe(entry.name);
+        }
+        if (newest) |n| return b.pathJoin(&.{ ndk_root, n });
+    }
+    return null;
+}
+
+fn addAndroid(b: *std.Build, avro: AvroData) void {
+    const step = b.step("android", "Build libbyakaron.so for every Android ABI → apps/android/keyboard jniLibs");
+    const api = b.option(u32, "android-api", "Minimum Android API level for `android` (default 21)") orelse 21;
+    const ndk = androidNdk(b) orelse {
+        step.dependOn(&b.addFail("Android NDK not found: pass -Dandroid-ndk=<dir> or set ANDROID_NDK_ROOT").step);
+        return;
+    };
+    const host_tag = switch (builtin.os.tag) {
+        .macos => "darwin-x86_64", // the NDK ships one universal darwin toolchain
+        .windows => "windows-x86_64",
+        else => "linux-x86_64",
+    };
+    const sysroot = b.pathJoin(&.{ ndk, "toolchains/llvm/prebuilt", host_tag, "sysroot" });
+
+    const abis = [_]struct { abi: []const u8, arch: std.Target.Cpu.Arch, abi_tag: std.Target.Abi, triple: []const u8 }{
+        .{ .abi = "arm64-v8a", .arch = .aarch64, .abi_tag = .android, .triple = "aarch64-linux-android" },
+        .{ .abi = "armeabi-v7a", .arch = .arm, .abi_tag = .androideabi, .triple = "arm-linux-androideabi" },
+        .{ .abi = "x86_64", .arch = .x86_64, .abi_tag = .android, .triple = "x86_64-linux-android" },
+    };
+    const update = b.addUpdateSourceFiles();
+    for (abis) |a| {
+        const target = b.resolveTargetQuery(.{
+            .cpu_arch = a.arch,
+            .os_tag = .linux,
+            .abi = a.abi_tag,
+            .android_api_level = api,
+        });
+        const crt = b.fmt("{s}/usr/lib/{s}/{d}", .{ sysroot, a.triple, api });
+        const libc = b.addWriteFiles().add(b.fmt("libc-{s}.txt", .{a.abi}), b.fmt(
+            \\include_dir={s}/usr/include
+            \\sys_include_dir={s}/usr/include/{s}
+            \\crt_dir={s}
+            \\msvc_lib_dir=
+            \\kernel32_lib_dir=
+            \\cc_dir={s}
+            \\darwin_sdk_dir=
+            \\
+        , .{ sysroot, sysroot, a.triple, crt, crt }));
+
+        const engine = addEngine(b, target, .ReleaseFast, avro, false);
+        engine.root.strip = true;
+        const lib = b.addLibrary(.{ .linkage = .dynamic, .name = "byakaron", .root_module = engine.root });
+        lib.setLibCFile(libc);
+        const out = b.fmt("android/jniLibs/{s}/libbyakaron.so", .{a.abi});
+        step.dependOn(&b.addInstallFileWithDir(lib.getEmittedBin(), .prefix, out).step);
+        update.addCopyFileToSource(lib.getEmittedBin(), b.fmt("apps/android/keyboard/app/src/main/jniLibs/{s}/libbyakaron.so", .{a.abi}));
+    }
+    step.dependOn(&update.step);
+}
+
+/// iAvro's data, generated by src/build/lexicon.zig (see there).
+const AvroData = struct {
+    words: std.Build.LazyPath,
+    json: std.Build.LazyPath,
+    /// AutoComplete/Mem.zig's compiled-in dictionary, suffix and autocorrect tables.
+    lexicon: std.Build.LazyPath,
+};
+
+fn avroDictionary(b: *std.Build, sqlite_lib: *std.Build.Step.Compile) AvroData {
+    const gen = hostExe(b, "lexicon", "src/build/lexicon.zig");
     gen.root_module.linkLibrary(sqlite_lib);
+    gen.root_module.addImport("lexicon_type", b.createModule(.{ .root_source_file = b.path("src/AutoComplete/Lexicon.zig") }));
+    const iavro = b.dependency("iavro", .{});
     const run = b.addRunArtifact(gen);
-    run.addFileArg(b.dependency("iavro", .{}).path("database.db3"));
+    run.addFileArg(iavro.path("database.db3"));
+    run.addFileArg(iavro.path("autodict.dct"));
     return .{
         .words = run.addOutputFileArg("avro_dictionary.txt"),
         .json = run.addOutputFileArg("Dictionary.json"),
+        .lexicon = run.addOutputFileArg("lexicon.zon"),
     };
 }
 

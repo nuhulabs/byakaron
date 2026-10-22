@@ -391,7 +391,7 @@ byk_spell_page_check (BykSpellPage *self)
             if (verdict == 0) {
                 const gboolean wrong = !g_hash_table_contains (self->ignored, word) &&
                                        byk_spell_is_correct (self->engines->spell, word) == 0 &&
-                                       !byk_userdict_contains (self->engines->userdict, word);
+                                       !byk_userdict_contains (self->engines->composer, word);
                 verdict = wrong ? 1 : 2;
                 g_hash_table_insert (verdicts, g_strdup (word), GINT_TO_POINTER (verdict));
             }
@@ -586,18 +586,14 @@ on_add_word_clicked (GtkButton *button, gpointer user_data)
 {
     BykSpellPage *self = BYK_SPELL_PAGE (user_data);
     const BykIssue *issue = byk_spell_page_issue (self, self->selected);
-    GError *error = NULL;
     (void) button;
 
     if (issue == NULL)
         return;
 
     gchar *word = g_strdup (issue->word);
-    if (!byk_userdict_add (self->engines->userdict, word, &error)) {
-        gchar *msg = g_strdup_printf ("Could not save: %s", error->message);
-        byk_toast_show (GTK_LABEL (self->toast), msg);
-        g_free (msg);
-        g_error_free (error);
+    if (byakaron_userdict_add (self->engines->composer, word) < 0) {
+        byk_toast_show (GTK_LABEL (self->toast), "Could not save the word");
     } else {
         gchar *msg = g_strdup_printf ("Added “%s” to your dictionary", word);
         byk_toast_show (GTK_LABEL (self->toast), msg);

@@ -3,29 +3,25 @@
 #include <windows.h>
 #include <string>
 
-// Shared HKCU settings — WinUI app and ByakaronIME.dll both read/write these.
-// Mirrors macOS ByakaronSettings suite (dev.nuhu.labs.Byakaron.shared).
+class Composer;
+
+// Where the keyboard keeps and finds its data. The settings themselves live in
+// settings.json (read and written by the composer), shared with the WinUI app.
 namespace ByakaronSettings
 {
-    inline constexpr wchar_t kRoot[] = L"Software\\Byakaron";
+    // %LOCALAPPDATA%\Byakaron: settings.json, selections.json, user-words.txt.
+    // Empty on failure.
+    std::wstring DataDir();
 
-    // When true, commit phonetic only — no candidate panel (macOS phoneticOnly).
-    inline constexpr wchar_t kPhoneticOnly[] = L"PhoneticOnlyMode";
-    // "horizontal" | "vertical"
-    inline constexpr wchar_t kOrientation[] = L"CandidateOrientation";
-    // 3..9
-    inline constexpr wchar_t kPerPage[] = L"CandidatesPerPage";
+    // spell.db shipped with the install ({app}\native\spell.db beside {app}\ime\,
+    // or next to ByakaronIME.dll); empty when there is none.
+    std::wstring SpellDbPath();
 
-    bool PhoneticOnly();
-    void SetPhoneticOnly(bool value);
+    // One-time: while settings.json does not exist, carry the old
+    // HKCU\Software\Byakaron values (PhoneticOnlyMode, CandidateOrientation,
+    // CandidatesPerPage) over into it. The registry is not read otherwise.
+    void MigrateLegacy(Composer& composer);
 
-    bool OrientationVertical();
-    void SetOrientationVertical(bool vertical);
-
-    int CandidatesPerPage();
-    void SetCandidatesPerPage(int value);
-
-    // Named event so a running IME can refresh without polling heavily.
-    void NotifyChanged();
-    HANDLE OpenChangeEvent();
+    // A boolean field of a settings JSON object, or fallback.
+    bool JsonBool(const std::string& json, const char* key, bool fallback);
 }

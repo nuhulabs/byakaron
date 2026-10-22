@@ -157,7 +157,8 @@ body {
 }
 
 .tool-btn .icon-wand,
-.tool-btn .icon-trash {
+.tool-btn .icon-trash,
+.tool-btn .icon-gear {
     pointer-events: none;
 }
 .main-pane {
@@ -233,6 +234,7 @@ body {
 
 .icon-wand,
 .icon-trash,
+.icon-gear,
 .icon-list,
 .icon-char,
 .icon-warn {
@@ -256,6 +258,11 @@ body {
 .icon-trash {
     mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='1.8' viewBox='0 0 24 24'%3E%3Cpath d='M4 7h16M10 11v6m4-6v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2'/%3E%3C/svg%3E");
     -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='1.8' viewBox='0 0 24 24'%3E%3Cpath d='M4 7h16M10 11v6m4-6v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2'/%3E%3C/svg%3E");
+}
+
+.icon-gear {
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='1.8' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z'/%3E%3C/svg%3E");
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='black' stroke-width='1.8' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z'/%3E%3C/svg%3E");
 }
 
 .icon-list {
@@ -380,6 +387,37 @@ body {
 
 .suggest-item:hover {
     background: var(--sidebar);
+}
+
+.suggest-num {
+    display: inline-block;
+    min-width: 1.1rem;
+    margin-right: 0.35rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+
+.suggest-item.is-active .suggest-num {
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.suggest-page {
+    padding: 0.1rem 0.6rem 0;
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-align: right;
+}
+
+.suggest-menu.is-horizontal {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.15rem;
+    max-width: min(36rem, calc(100% - 1rem));
+    left: min(var(--caret-x, 1rem), calc(100% - 36rem));
+}
+
+.suggest-menu.is-horizontal .suggest-page {
+    align-self: center;
 }
 
 .suggest-item.is-active {
@@ -554,4 +592,155 @@ body {
         grid-template-columns: 1fr;
         gap: 0.55rem;
     }
+}
+/* —— Keyboard settings (the settings every Byakaron keyboard shares) —— */
+.settings-panel {
+    margin: 0 1rem 0.65rem;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    max-height: 55vh;
+    overflow: auto;
+}
+
+.settings-title {
+    margin: 0.2rem 0 0.4rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.setting-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+}
+
+.setting-label {
+    font-weight: 600;
+}
+
+.setting-hint {
+    font-size: 0.82rem;
+    color: var(--muted-2);
+}
+
+.switch {
+    flex: none;
+    position: relative;
+    width: 38px;
+    height: 22px;
+    border: 0;
+    border-radius: 11px;
+    background: var(--line);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.switch.is-on {
+    background: var(--accent);
+}
+
+.switch-knob {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform 0.15s;
+    pointer-events: none;
+}
+
+.switch.is-on .switch-knob {
+    transform: translateX(16px);
+}
+
+.segmented,
+.stepper,
+.userdict-add {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.seg {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 8px;
+    padding: 0.25rem 0.65rem;
+    font: inherit;
+    cursor: pointer;
+}
+
+.seg.is-on {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.stepper-value {
+    min-width: 1.5rem;
+    text-align: center;
+    font-weight: 600;
+}
+
+.userdict-add {
+    margin-bottom: 0.4rem;
+}
+
+.userdict-input {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.3rem 0.6rem;
+    font: inherit;
+}
+
+.userdict-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.userdict-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.3rem 0.15rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+}
+
+.userdict-remove {
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    color: var(--muted-2);
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.userdict-empty {
+    color: var(--muted);
+    font-size: 0.9rem;
 }

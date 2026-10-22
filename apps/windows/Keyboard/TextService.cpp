@@ -1,5 +1,6 @@
 #include "TextService.h"
 #include "EditSessions.h"
+#include "Settings.h"
 #include <msctf.h>
 #include <new>
 
@@ -112,8 +113,17 @@ STDMETHODIMP CByakaronTextService::ActivateEx(ITfThreadMgr* ptim, TfClientId tid
     if (_pThreadMgr) _pThreadMgr->AddRef();
     _tfClientId = tid;
     _activated = TRUE;
-    _transliterator.EnsureReady();
-    _dictionary.EnsureReady();
+
+    // Spelling corrections need the on_update hop to this thread; without the
+    // window the composer runs without them.
+    const bool canNotify = CreateNotifyWindow();
+    if (!_composer.Ready() &&
+        _composer.Create(ByakaronSettings::DataDir(),
+            canNotify ? ByakaronSettings::SpellDbPath() : std::wstring(),
+            &CByakaronTextService::OnComposerUpdate, _hwndNotify))
+    {
+        ByakaronSettings::MigrateLegacy(_composer);
+    }
 
     ITfSource* source = nullptr;
     if (SUCCEEDED(_pThreadMgr->QueryInterface(IID_ITfSource, (void**)&source)) && source)
@@ -143,7 +153,8 @@ STDMETHODIMP CByakaronTextService::Deactivate()
 {
     if (!_activated) return S_OK;
 
-    ResetCompositionState();
+    // Needs the client id: before the sinks go.
+    CommitPendingWord();
     _candidateWindow.End();
 
     ITfKeystrokeMgr* keyMgr = nullptr;
@@ -175,6 +186,10 @@ STDMETHODIMP CByakaronTextService::Deactivate()
         source->Release();
     }
     _dwThreadMgrEventSinkCookie = TF_INVALID_COOKIE;
+
+    // Joins the spell worker, so no on_update is posted after the window goes.
+    _composer.Destroy();
+    DestroyNotifyWindow();
 
     if (_pThreadMgr)
     {
