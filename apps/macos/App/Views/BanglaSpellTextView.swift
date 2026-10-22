@@ -27,12 +27,28 @@ struct BanglaSpellTextView: NSViewRepresentable {
     /// UTF-16 range being replaced and the replacement's UTF-16 length — so the
     /// parent can jump the issue list to the next misspelling.
     var onApplied: ((NSRange, Int) -> Void)? = nil
+    /// Type through the Byakaron keyboard's composer here ("Avro typing"), to
+    /// try the keyboard without installing it. See `ComposingTextView`.
+    var avroTyping = false
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSTextView.scrollableTextView()
-        let textView = scroll.documentView as! NSTextView
+        // `NSTextView.scrollableTextView()`, but with our composing subclass.
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.borderType = .noBorder
+        let textView = ComposingTextView(frame: .zero)
+        textView.minSize = .zero
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        scroll.documentView = textView
+        textView.avroTyping = avroTyping
 
         textView.delegate = context.coordinator
         textView.string = text
@@ -55,13 +71,14 @@ struct BanglaSpellTextView: NSViewRepresentable {
     }
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
-        guard let textView = scroll.documentView as? NSTextView else { return }
+        guard let textView = scroll.documentView as? ComposingTextView else { return }
         context.coordinator.parent = self
+        textView.avroTyping = avroTyping
         // Sync text in when it changed from outside (e.g. a correction applied
         // from the sidebar), then always re-underline: a SwiftUI update can also
         // reach us with the *same* text but changed correctness — e.g. "Ignore"
         // in the sidebar — and the ignored word must stop squiggling.
-        if textView.string != text {
+        if textView.string != text, !textView.hasMarkedText() {
             textView.string = text
         }
         context.coordinator.recheck()
