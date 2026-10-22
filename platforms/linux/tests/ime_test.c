@@ -518,6 +518,25 @@ main (void)
     send_key (ctx, IBUS_KEY_space);
     check ("space commits dari", g_committed, "আমি। ");
 
+    /* Last, because it changes the order every check above relies on. */
+    g_print ("picked words move up next time:\n");
+    if (g_getenv ("BYAKARON_LEARNED") == NULL) {
+        g_print ("  skip (BYAKARON_LEARNED not set; run via test_ime.sh)\n");
+    } else {
+        reset_state (ctx);
+        send_string (ctx, "bangla");
+        gchar *typed_first = g_strdup (candidate_at (0));
+        send_key (ctx, '5');
+        gchar *picked = g_strdup (g_committed);
+        reset_state (ctx);
+        send_string (ctx, "bangla");
+        check ("typed word still first", candidate_at (0), typed_first);
+        check ("picked word now second", candidate_at (1), picked);
+        send_key (ctx, IBUS_KEY_Escape);
+        g_free (typed_first);
+        g_free (picked);
+    }
+
     ibus_input_context_focus_out (ctx);
     g_object_unref (ctx);
 

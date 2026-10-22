@@ -4,6 +4,7 @@
 #include "composer.h"
 #include "corrector.h"
 #include "userdict.h"
+#include "learned.h"
 
 #include <fcitx/addonfactory.h>
 #include <fcitx/inputcontextproperty.h>
@@ -52,6 +53,7 @@ private:
      * before factory_, which hands it to each new composer. */
     BykCorrector *corrector_;
     BykUserDict *userdict_; /* personal dictionary; the app writes, we re-read */
+    BykLearned *learned_;   /* picked-word counts, shared by every input context */
     fcitx::FactoryFor<ByakaronState> factory_;
 };
 

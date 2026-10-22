@@ -11,6 +11,7 @@
 
 #include "composer.h"
 #include "corrector.h"
+#include "learned.h"
 #include "prefs.h"
 #include "userdict.h"
 
@@ -21,6 +22,7 @@ struct _BykEngine {
     BykComposer *composer;
     BykCorrector *corrector; /* spelling corrections; NULL without spell.db */
     BykUserDict *userdict;   /* personal dictionary, shared with the app via its file */
+    BykLearned *learned;     /* how often each word was picked; the app can clear it */
     IBusLookupTable *table;
     GSettings *prefs; /* NULL when the schema is not installed */
     gboolean table_visible;
@@ -145,6 +147,8 @@ byk_engine_reload_prefs (BykEngine *self)
         byk_prefs_boolean (self->prefs, BYK_PREFS_SPELLING_SUGGESTIONS, TRUE));
     byk_composer_set_bangla_digits (self->composer,
         byk_prefs_boolean (self->prefs, BYK_PREFS_BANGLA_DIGITS, TRUE));
+    byk_composer_set_learning (self->composer,
+        byk_prefs_boolean (self->prefs, BYK_PREFS_LEARN_WORDS, TRUE));
 
     /*
      * Older IBus (Ubuntu 20.04 / 22.04) cannot say which app is focused, so
@@ -198,7 +202,8 @@ byk_engine_process_key_event (IBusEngine *engine,
 {
     (void) keycode;
     /* Words added in the app reach the keyboard without a restart. */
-    if (byk_userdict_reload_if_changed (BYK_ENGINE (engine)->userdict))
+    if (byk_userdict_reload_if_changed (BYK_ENGINE (engine)->userdict) |
+        byk_learned_reload_if_changed (BYK_ENGINE (engine)->learned))
         byk_composer_refresh (BYK_ENGINE (engine)->composer);
     return byk_engine_apply (BYK_ENGINE (engine),
                              byk_composer_key (BYK_ENGINE (engine)->composer,
@@ -347,6 +352,9 @@ byk_engine_init (BykEngine *self)
     self->userdict = byk_userdict_new ();
     byk_composer_set_userdict (self->composer, self->userdict);
 
+    self->learned = byk_learned_new ();
+    byk_composer_set_learned (self->composer, self->learned);
+
     self->preedit_mode = IBUS_ENGINE_PREEDIT_COMMIT;
     self->table = ibus_lookup_table_new (BYK_PAGE_SIZE, 0, FALSE, FALSE);
     g_object_ref_sink (self->table);
@@ -368,6 +376,7 @@ byk_engine_destroy (IBusObject *object)
     /* After the composer, which borrows them. */
     g_clear_pointer (&self->corrector, byk_corrector_free);
     g_clear_pointer (&self->userdict, byk_userdict_free);
+    g_clear_pointer (&self->learned, byk_learned_free);
     g_clear_object (&self->table);
     g_clear_object (&self->prefs);
 

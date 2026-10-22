@@ -47,5 +47,15 @@
         before Space. Ignored on newer IBus, which handles Qt automatically.
       </description>
     </key>
+    <key name="learn-words" type="b">
+      <default>true</default>
+      <summary>Learn from the words you pick</summary>
+      <description>
+        Suggestions you choose (number key, arrows and Enter, or a click) are
+        counted, and words you pick often move up the list next time. The typed
+        word stays first. Kept only on this computer, in
+        ~/.local/share/byakaron/learned-words.txt; Settings can clear it.
+      </description>
+    </key>
   </schema>
 </schemalist>

@@ -101,10 +101,12 @@ ByakaronEngine::ByakaronEngine (fcitx::Instance *instance)
     : instance_ (instance),
       corrector_ (byk_corrector_new (FALSE, nullptr, nullptr)),
       userdict_ (byk_userdict_new ()),
+      learned_ (byk_learned_new ()),
       factory_ ([this] (fcitx::InputContext &) {
           auto *state = new ByakaronState;
           byk_composer_set_corrector (state->composer, corrector_);
           byk_composer_set_userdict (state->composer, userdict_);
+          byk_composer_set_learned (state->composer, learned_);
           return state;
       })
 {
@@ -118,6 +120,8 @@ ByakaronEngine::~ByakaronEngine ()
     corrector_ = nullptr;
     byk_userdict_free (userdict_);
     userdict_ = nullptr;
+    byk_learned_free (learned_);
+    learned_ = nullptr;
 }
 
 void
@@ -232,7 +236,10 @@ ByakaronEngine::keyEvent (const fcitx::InputMethodEntry &entry,
     byk_composer_set_bangla_digits (
         state->composer,
         byk_prefs_boolean (byk_fcitx_prefs (), BYK_PREFS_BANGLA_DIGITS, TRUE));
-    if (byk_userdict_reload_if_changed (userdict_))
+    byk_composer_set_learning (
+        state->composer,
+        byk_prefs_boolean (byk_fcitx_prefs (), BYK_PREFS_LEARN_WORDS, TRUE));
+    if (byk_userdict_reload_if_changed (userdict_) | byk_learned_reload_if_changed (learned_))
         byk_composer_refresh (state->composer);
     const guint keyval = static_cast<guint> (keyEvent.key ().sym ());
     apply (ic, state,
