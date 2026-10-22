@@ -1,6 +1,7 @@
 #include "settings.h"
 
 #include "dictionary.h"
+#include "learned.h"
 #include "prefs.h"
 #include "uiutil.h"
 
@@ -10,6 +11,8 @@ struct _BykSettingsPage {
     BykEngines *engines;
     GSettings *prefs;          /* NULL when the schema is not installed */
     GtkWidget *dict_count;
+    GtkWidget *learned_count;
+    GtkWidget *learned_clear;
     GCallback dictionary_changed;
     gpointer dictionary_changed_data;
 };
@@ -84,6 +87,16 @@ byk_settings_page_refresh (BykSettingsPage *self)
     gchar *text = g_strdup_printf (n == 1 ? "%u saved word" : "%u saved words", n);
     gtk_label_set_text (GTK_LABEL (self->dict_count), text);
     g_free (text);
+
+    /* The keyboard writes this file as it learns: read it fresh each time
+     * the page is shown rather than keep a copy that goes stale. */
+    BykLearned *learned = byk_learned_new ();
+    const guint learned_n = byk_learned_size (learned);
+    byk_learned_free (learned);
+    text = g_strdup_printf (learned_n == 1 ? "%u learned word" : "%u learned words", learned_n);
+    gtk_label_set_text (GTK_LABEL (self->learned_count), text);
+    g_free (text);
+    gtk_widget_set_sensitive (self->learned_clear, learned_n > 0);
 }
 
 static void
@@ -118,7 +131,50 @@ byk_settings_build_dictionary (BykSettingsPage *self)
     GtkWidget *row = byk_row (NULL, "", NULL, manage);
     self->dict_count = g_object_get_data (G_OBJECT (row), "byk-title");
     byk_box_add (list, row);
-    byk_settings_page_refresh (self);
+    return group;
+}
+
+static void
+on_clear_learned_clicked (GtkButton *button, gpointer user_data)
+{
+    BykSettingsPage *self = BYK_SETTINGS_PAGE (user_data);
+    BykLearned *learned = byk_learned_new ();
+    GError *error = NULL;
+    (void) button;
+
+    if (!byk_learned_clear (learned, &error)) {
+        gchar *text = g_strdup_printf ("Could not clear: %s", error->message);
+        gtk_label_set_text (GTK_LABEL (self->learned_count), text);
+        g_free (text);
+        g_error_free (error);
+    } else {
+        byk_settings_page_refresh (self);
+    }
+    byk_learned_free (learned);
+}
+
+static GtkWidget *
+byk_settings_build_learning (BykSettingsPage *self)
+{
+    GtkWidget *list = NULL;
+    GtkWidget *group = byk_framed_list (
+        "Learning",
+        "Words you pick from the suggestions move up the list next time. Kept only on this computer.",
+        &list);
+
+    if (self->prefs != NULL)
+        byk_settings_switch (self, list, BYK_PREFS_LEARN_WORDS, FALSE,
+                             "Learn from the words you pick",
+                             "The typed word always stays first.");
+
+    self->learned_clear = gtk_button_new_with_label ("Clear");
+    gtk_widget_set_tooltip_text (self->learned_clear, "Forget the words learned so far");
+    g_signal_connect (self->learned_clear, "clicked", G_CALLBACK (on_clear_learned_clicked), self);
+    if (self->prefs != NULL)
+        byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
+    GtkWidget *row = byk_row (NULL, "", NULL, self->learned_clear);
+    self->learned_count = g_object_get_data (G_OBJECT (row), "byk-title");
+    byk_box_add (list, row);
     return group;
 }
 
@@ -157,6 +213,8 @@ byk_settings_page_new (BykEngines *engines, GCallback on_dictionary_changed_cb, 
     gtk_widget_set_margin_bottom (column, 24);
     byk_box_add (column, byk_settings_build_typing (self));
     byk_box_add (column, byk_settings_build_dictionary (self));
+    byk_box_add (column, byk_settings_build_learning (self));
+    byk_settings_page_refresh (self);
 
     GtkWidget *scroller = byk_scroller (column, GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_widget_set_vexpand (scroller, TRUE);

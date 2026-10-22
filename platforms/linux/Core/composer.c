@@ -2,6 +2,7 @@
 
 #include "autocomplete.h"
 #include "corrector.h"
+#include "learned.h"
 #include "transliterator.h"
 #include "userdict.h"
 
@@ -49,6 +50,8 @@ struct _BykComposer {
     gboolean corrections;    /* the "spelling suggestions" setting */
     BykUserDict *userdict;   /* borrowed; the personal dictionary, or NULL */
     gboolean bangla_digits;  /* the "Bangla digits" setting */
+    BykLearned *learned;     /* borrowed; how often each word was picked, or NULL */
+    gboolean learning;       /* the "learn from words you pick" setting */
 };
 
 static BykOutcome
@@ -66,8 +69,52 @@ byk_composer_drop_candidates (BykComposer *self)
     self->cursor = -1;
 }
 
+static void byk_composer_fill (BykComposer *self, const gchar *bangla);
+
+/*
+ * Words the user picked before move up, most picked first. Stable, so words
+ * never picked keep the dictionary's order, and the first entry (the typed
+ * word) stays first so Space and 1 keep meaning "as typed". Lists are at most
+ * BYK_COMPOSER_CANDIDATE_LIMIT long, so an insertion sort is plenty.
+ */
+static void
+byk_composer_rank_learned (BykComposer *self)
+{
+    if (self->learned == NULL || !self->learning || self->candidates == NULL ||
+        byk_learned_size (self->learned) == 0)
+        return;
+
+    const guint n = g_strv_length (self->candidates);
+    if (n < 3)
+        return;
+    guint *counts = g_new0 (guint, n);
+    for (guint i = 1; i < n; i++)
+        counts[i] = byk_learned_count (self->learned, self->candidates[i]);
+
+    for (guint i = 2; i < n; i++) {
+        gchar *word = self->candidates[i];
+        const guint count = counts[i];
+        guint j = i;
+        while (j > 1 && counts[j - 1] < count) {
+            self->candidates[j] = self->candidates[j - 1];
+            counts[j] = counts[j - 1];
+            j--;
+        }
+        self->candidates[j] = word;
+        counts[j] = count;
+    }
+    g_free (counts);
+}
+
 static void
 byk_composer_refill_candidates (BykComposer *self, const gchar *bangla)
+{
+    byk_composer_fill (self, bangla);
+    byk_composer_rank_learned (self);
+}
+
+static void
+byk_composer_fill (BykComposer *self, const gchar *bangla)
 {
     byk_composer_drop_candidates (self);
 
@@ -184,6 +231,10 @@ byk_composer_commit_at (BykComposer *self, guint pos)
         return byk_outcome (BYK_ACT_PASS, NULL, FALSE);
 
     gchar *word = g_strdup (self->candidates[pos]);
+    /* A chosen candidate is what learning counts; Space (the word as typed)
+     * is not a choice from the list. */
+    if (self->learned != NULL && self->learning)
+        byk_learned_pick (self->learned, word);
     g_string_truncate (self->latin, 0);
     byk_composer_drop_candidates (self);
     return byk_outcome (BYK_ACT_COMMIT, word, FALSE);
@@ -292,6 +343,7 @@ byk_composer_new (void)
     self->latin = g_string_sized_new (32);
     self->corrections = TRUE;
     self->bangla_digits = TRUE;
+    self->learning = TRUE;
     self->transliterator = byk_transliterator_new ();
     self->autocomplete = byk_autocomplete_new ();
 
@@ -402,6 +454,23 @@ byk_composer_set_bangla_digits (BykComposer *self, gboolean bangla)
 {
     g_return_if_fail (self != NULL);
     self->bangla_digits = !!bangla;
+}
+
+void
+byk_composer_set_learned (BykComposer *self, BykLearned *learned)
+{
+    g_return_if_fail (self != NULL);
+    self->learned = learned;
+}
+
+void
+byk_composer_set_learning (BykComposer *self, gboolean enabled)
+{
+    g_return_if_fail (self != NULL);
+    if (self->learning == !!enabled)
+        return;
+    self->learning = !!enabled;
+    byk_composer_refresh (self);
 }
 
 void

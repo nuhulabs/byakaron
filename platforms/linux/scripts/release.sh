@@ -44,7 +44,7 @@ say() { echo ">>> $*"; }
 die() { echo "error: $*" >&2; exit 1; }
 
 check_version() {
-    [[ "${1:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "version must look like 0.2.0, got '${1:-}'"
+    [[ "${1:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "version must look like 1.2.3, got '${1:-}'"
 }
 
 current_version() {

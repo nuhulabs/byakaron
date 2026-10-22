@@ -102,6 +102,15 @@ void byk_composer_set_corrections (BykComposer *self, gboolean enabled);
 typedef struct _BykUserDict BykUserDict;
 void byk_composer_set_userdict (BykComposer *self, BykUserDict *userdict);
 
+/*
+ * Learning (borrowed, may be NULL): candidates the user picks are counted and
+ * ranked higher next time, after the first entry. set_learning(FALSE) stops
+ * both counting and ranking (the "learn from words you pick" setting).
+ */
+typedef struct _BykLearned BykLearned;
+void byk_composer_set_learned (BykComposer *self, BykLearned *learned);
+void byk_composer_set_learning (BykComposer *self, gboolean enabled);
+
 /* FALSE: 0-9 typed outside the list stay ASCII (the word is committed first).
  * TRUE (default): they become Bangla numerals. 1-9 pick candidates either way. */
 void byk_composer_set_bangla_digits (BykComposer *self, gboolean bangla);

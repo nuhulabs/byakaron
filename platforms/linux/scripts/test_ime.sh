@@ -33,6 +33,9 @@ export BYAKARON_USER_DICT="$PROJECT_ROOT/build/ime-test-user-words.txt"
 # Not empty at start: reading an existing file at engine start is what once
 # crashed (a stat() struct mismatch under Zig's libc headers).
 printf 'আমায়\n' > "$BYAKARON_USER_DICT"
+# And a throwaway learned-words file, empty at start.
+export BYAKARON_LEARNED="$PROJECT_ROOT/build/ime-test-learned-words.txt"
+rm -f "$BYAKARON_LEARNED"
 
 if ! pgrep -x ibus-daemon >/dev/null; then
     echo "error: ibus-daemon is not running — start it with 'ibus-daemon -drx'" >&2

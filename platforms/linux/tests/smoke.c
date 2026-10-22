@@ -18,6 +18,7 @@
 #include "spell.h"
 #include "corrector.h"
 #include "userdict.h"
+#include "learned.h"
 #include <glib/gstdio.h>
 
 /* Expected outputs are pinned so a regression in the engine is visible here. */
@@ -568,6 +569,69 @@ int main(void)
         g_free(path);
         g_free(dir);
         if (err) g_error_free(err);
+    }
+
+    puts("learning from picked words:");
+    {
+        gchar *dir = g_dir_make_tmp("byk-learned-XXXXXX", NULL);
+        gchar *path = g_build_filename(dir, "learned-words.txt", NULL);
+        g_setenv("BYAKARON_LEARNED", path, TRUE);
+
+        BykLearned *l = byk_learned_new();
+        byk_learned_pick(l, "আমিন");
+        byk_learned_pick(l, "আমিন");
+        byk_learned_pick(l, "বাংলাদেশ");
+        BykLearned *again = byk_learned_new();
+        const int saved = byk_learned_count(again, "আমিন") == 2 &&
+                          byk_learned_count(again, "বাংলাদেশ") == 1 && byk_learned_size(again) == 2;
+        printf("  %-4s %-28s -> %u words\n", saved ? "ok" : "FAIL", "picks counted, saved, read back",
+               byk_learned_size(again));
+        if (!saved) failures++;
+
+        byk_learned_clear(l, NULL);
+        const int throttled = !byk_learned_reload_if_changed(again);
+        g_usleep(1100 * 1000);
+        const int cleared = byk_learned_reload_if_changed(again) && byk_learned_size(again) == 0;
+        printf("  %-4s %-28s -> %s\n", throttled && cleared ? "ok" : "FAIL", "clear seen by the keyboard",
+               cleared ? "0 words" : "still there");
+        if (!(throttled && cleared)) failures++;
+
+        /* Composer: pick #5 in "bangla"; next time it is second, typed word first. */
+        BykComposer *c = byk_composer_new();
+        byk_composer_set_learned(c, again);
+        BykOutcome o;
+        for (const char *p = "bangla"; *p; p++) { o = byk_composer_key(c, (guint) *p, 0); g_free(o.commit); }
+        gchar **cands = byk_composer_candidates(c);
+        gchar *first = cands && cands[0] ? g_strdup(cands[0]) : NULL;
+        gchar *second = cands && cands[1] ? g_strdup(cands[1]) : NULL;
+        o = byk_composer_key(c, 0x0035, 0); /* '5' */
+        gchar *picked = o.commit ? g_strdup(o.commit) : NULL;
+        g_free(o.commit);
+        for (const char *p = "bangla"; *p; p++) { o = byk_composer_key(c, (guint) *p, 0); g_free(o.commit); }
+        cands = byk_composer_candidates(c);
+        const int ranked = picked && cands && cands[0] && cands[1] &&
+                           g_strcmp0(cands[0], first) == 0 && g_strcmp0(cands[1], picked) == 0;
+        printf("  %-4s %-28s -> %s, %s\n", ranked ? "ok" : "FAIL", "picked word moves up",
+               cands && cands[0] ? cands[0] : "(none)", cands && cands[1] ? cands[1] : "(none)");
+        if (!ranked) failures++;
+
+        byk_composer_set_learning(c, FALSE);
+        cands = byk_composer_candidates(c);
+        const int off = cands && cands[1] && g_strcmp0(cands[1], second) == 0;
+        printf("  %-4s %-28s -> %s\n", off ? "ok" : "FAIL", "learning off: dictionary order",
+               cands && cands[1] ? cands[1] : "(none)");
+        if (!off) failures++;
+        o = byk_composer_key(c, 0xff1b, 0); g_free(o.commit);
+        byk_composer_free(c);
+
+        g_free(first); g_free(second); g_free(picked);
+        byk_learned_free(again);
+        byk_learned_free(l);
+        g_unsetenv("BYAKARON_LEARNED");
+        g_remove(path);
+        g_rmdir(dir);
+        g_free(path);
+        g_free(dir);
     }
 
     /*

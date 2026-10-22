@@ -274,6 +274,24 @@ file existed. GIO was ruled out too: it can load GVfs and block on D-Bus.
 The app-only Flatpak has its own data directory, so its dictionary is not the
 keyboard's.
 
+### Learned words
+
+Every candidate the user picks — a number key, arrows + Enter, or a click in
+the panel — is counted in `~/.local/share/byakaron/learned-words.txt`
+(`count<TAB>word` lines, most picked first, written atomically;
+`BYAKARON_LEARNED` overrides the path for tests). `Core/learned.c` is shared by
+the IBus engine, the Fcitx5 addon and the app. The composer then reorders the
+list after the first entry by those counts (a stable sort, so words never
+picked keep the dictionary's order): `bangla` + `5` picks বাংলানাম, and the
+next `bangla` shows it second. The first entry never moves, so Space and `1`
+keep meaning "as typed".
+
+The file is capped at 2000 words; the least picked are dropped. Settings has a
+switch (`learn-words`, live; off goes back to the plain dictionary order and
+stops counting) and **Clear**, which empties the file; the keyboard notices on
+its next keystroke after a second, the same way it notices the personal
+dictionary. Nothing leaves the computer.
+
 ## The app
 
 A separate process (`byakaron`) from the engine, sharing only `Core/` and the
@@ -289,7 +307,7 @@ saved-word list.
 | **Spelling** | Editor with an issue list, red squiggles, and Fix All |
 | **Layout** | The Avro key map, as a lookup table |
 | **Setup** | Keyboard status, the steps to add it, a typing cheat-sheet |
-| **Settings** | The keyboard's switches and the personal dictionary |
+| **Settings** | The keyboard's switches, the personal dictionary, learned words |
 
 **Spelling checks per word, not with `byakaron_spell_check`.** The bulk call
 returns a JSON array of tokens with nested suggestion objects; the app already
@@ -327,10 +345,11 @@ IBus engine and the Fcitx5 addon read them:
 | **Spelling corrections** — corrections for words the dictionary does not know (see [Spelling corrections](#spelling-corrections)) | `spelling-suggestions` | on |
 | **Bangla digits** — off keeps 0–9 as typed outside the list (the word is committed first); 1–9 still pick a candidate | `bangla-digits` | on |
 | **Horizontal suggestion list** — the IME panel's layout | `candidates-horizontal` | on |
+| **Learn from the words you pick** — often-picked suggestions move up; the typed word stays first (see [Learned words](#learned-words)) | `learn-words` | on |
 | **Qt apps: type a word once on click** — older IBus only (Ubuntu 20.04/22.04): IBus never commits the pending word itself, so Qt types it once; GTK apps and browsers then drop a word still being typed if you click away before Space. Ignored on IBus 1.5.27+ | `qt-click-fix` | off |
 
 The Settings page also shows the saved-word count with **Manage…** for the
-personal dictionary. Without the schema installed it says so instead of
+personal dictionary, and the learned-word count with **Clear**. Without the schema installed it says so instead of
 showing switches that would do nothing.
 
 Flipping a switch updates the engine without a restart: the GNOME Wayland test
@@ -469,10 +488,10 @@ failure:
 
 ```bash
 S=platforms/linux/scripts
-bash $S/release.sh prepare 0.2.0 "One-line summary for AppStream"  # bump everywhere, commit, tag
-bash $S/release.sh verify  0.2.0                                    # amd64 .deb in clean 20.04/22.04/24.04
-bash $S/release.sh publish 0.2.0 notes.md                           # push, CI builds+tests both CPUs, GitHub release
-bash $S/release.sh website 0.2.0                                    # site installers, deploy, live check
+bash $S/release.sh prepare X.Y.Z "One-line summary for AppStream"  # bump everywhere, commit, tag
+bash $S/release.sh verify  X.Y.Z                                    # amd64 .deb in clean 20.04/22.04/24.04
+bash $S/release.sh publish X.Y.Z notes.md                           # push, CI builds+tests both CPUs, GitHub release
+bash $S/release.sh website X.Y.Z                                    # site installers, deploy, live check
 ```
 
 `prepare` refuses a dirty tree, an existing tag, or a version string it could
