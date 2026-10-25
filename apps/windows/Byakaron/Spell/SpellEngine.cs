@@ -34,7 +34,7 @@ public sealed class SpellEngine : IDisposable
     }
 
     /// <summary>
-    /// Open bundled <c>native/spell.db</c> next to the app (staged by build_zig.ps1).
+    /// Open bundled <c>native/spell.db</c> next to the app (staged by <c>zig build windows</c> / <c>run-win</c>).
     /// Returns null if the file is missing or the engine fails to open.
     /// </summary>
     public static SpellEngine? LoadFromAppDirectory()

@@ -182,8 +182,10 @@ pub fn key(self: *Composer, k: Key, mods: Modifiers) !Outcome {
                 if (i < self.pageItems().len) return self.pick(i);
             }
             if (!word) {
-                if (std.ascii.isDigit(c) and !self.settings.bangla_digits) return .{ .handled = false };
+                // Sync first: a digit is the first key of a word, so a
+                // bangla_digits change saved since the last word applies to it.
                 self.sync();
+                if (std.ascii.isDigit(c) and !self.settings.bangla_digits) return .{ .handled = false };
             }
             try self.latin.append(self.gpa, c);
             try self.refresh();

@@ -41,7 +41,7 @@
     <TargetName>ByakaronIME</TargetName>
     <OutDir>$(ProjectDir)bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(ProjectDir)obj\$(Platform)\$(Configuration)\</IntDir>
-    <!-- Zig shared lib staged by build_zig.ps1 as byakaron.dll / byakaron.lib -->
+    <!-- Zig shared lib: `zig build lib -Dshared` (byakaron.dll / byakaron.lib) -->
     <ByakaronNativeDir>$(ProjectDir)..\Byakaron\native</ByakaronNativeDir>
     <ByakaronZigOut>$(ProjectDir)..\..\..\zig-out</ByakaronZigOut>
   </PropertyGroup>

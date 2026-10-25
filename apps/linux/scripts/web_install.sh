@@ -10,7 +10,7 @@
 set -euo pipefail
 
 REPO="${BYAKARON_REPO:-nuhulabs/Byakaron-Assets}"
-VERSION_FALLBACK="0.2.0"
+VERSION_FALLBACK="0.2.1"
 
 die() { echo "error: $*" >&2; exit 1; }
 

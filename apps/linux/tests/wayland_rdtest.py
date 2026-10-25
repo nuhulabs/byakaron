@@ -21,12 +21,26 @@ def click():
         call(sess, RD + '.Session', 'NotifyPointerButton', GLib.Variant('(ib)', (272, down))); time.sleep(0.05)
     time.sleep(0.3)
 def text(): return subprocess.run(reader, capture_output=True, text=True).stdout
+# The keyboard's data directory (settings.json, selections.json), as the engine
+# finds it.
+data = os.environ.get("BYAKARON_DATA_DIR") or os.path.join(
+    os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "byakaron")
+def forget():
+    # Avro remembers each pick and opens the word on it next time; start every
+    # check from Avro's own order. The engine re-reads the file when a word starts.
+    os.makedirs(data, exist_ok=True)
+    with open(os.path.join(data, "selections.json"), "w") as f: f.write("{}")
+def run(action):
+    forget(); ctrl('a'); key(0xff08); time.sleep(0.4); action(); time.sleep(1.2)
+    return text()
 fails = 0
-def t(name, exp, action):
+def report(name, got, ok, exp):
     global fails
-    ctrl('a'); key(0xff08); time.sleep(0.4); action(); time.sleep(1.2); got = text()
-    ok = got == exp; fails += not ok
+    fails += not ok
     print(f"  {'ok  ' if ok else 'FAIL'} {label} {name} -> [{got}]" + ('' if ok else f" expected [{exp}]"), flush=True)
+def t(name, exp, action):
+    got = run(action)
+    report(name, got, got == exp, exp)
 # A new window does not always get keyboard focus: on GitHub's runner GNOME
 # Shell left it unfocused, so keys went nowhere until the first click (the
 # click-commit check). Click into it, the way a user clicks into a text box,
@@ -34,6 +48,7 @@ def t(name, exp, action):
 def warm_up(limit=60.0):
     start = time.time()
     seen = []
+    forget()
     while time.time() - start < limit:
         click()
         ctrl('a'); key(0xff08); time.sleep(0.3)
@@ -54,10 +69,13 @@ if not warm_up():
 t("ami bangla + space", "আমি বাংলা ", lambda: typ("ami bangla "))
 t("bhalO. (Shift)", "ভালো। ", lambda: typ("bhalO. "))
 t("2026 numerals", "২০২৬ ", lambda: typ("2026 "))
-t("pick candidate 2", "আমিন", lambda: (typ("ami"), time.sleep(0.4), key(ord('2'))))
+# Only Avro's first candidate for "ami" is pinned (as in ime_test.c); the others
+# are checked against each other, so a dictionary change does not break them.
+second = run(lambda: (typ("ami"), time.sleep(0.4), key(ord('2'))))
+report("pick candidate 2", second, second not in ("", "আমি") and not second.endswith(" "), "a word other than আমি")
 t("click commits once", "আমি", lambda: (typ("ami"), time.sleep(0.4), click()))
-t("Down Down Enter", "আমিন", lambda: (typ("ami"), time.sleep(0.4), key(0xff54), key(0xff54), time.sleep(0.2), key(0xff0d)))
-import os
+third = run(lambda: (typ("ami"), time.sleep(0.4), key(ord('3'))))
+t("Down Down Enter", third, lambda: (typ("ami"), time.sleep(0.4), key(0xff54), key(0xff54), time.sleep(0.2), key(0xff0d)))
 if os.environ.get("BYK_SPELL_DB_PRESENT") == "1":
     # The correction arrives from the engine's worker thread after the keystroke.
     t("sonar + 2 (spelling fix)", "সোনার", lambda: (typ("sonar"), time.sleep(1.0), key(ord('2'))))
@@ -65,8 +83,6 @@ if os.environ.get("BYK_SETTINGS_TEST") == "1":
     # Settings apply from the next word: flip one in settings.json (what the app
     # writes through its composer) while the keyboard runs.
     import json
-    data = os.environ.get("BYAKARON_DATA_DIR") or os.path.join(
-        os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "byakaron")
     def setting(key, value):
         path = os.path.join(data, "settings.json")
         try:

@@ -2,7 +2,9 @@
 
 #include <windows.h>
 #include <msctf.h>
-#include <ctffunc.h>
+#ifdef __MINGW32__
+#include "MsctfMingw.h"
+#endif
 
 // Byakaron Bangla phonetic IME (Avro) — TSF TIP, NOT InScript.
 // InScript is a physical key layout; Byakaron is Latin→Bangla composition.

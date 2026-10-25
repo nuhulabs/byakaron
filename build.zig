@@ -89,12 +89,38 @@ pub fn build(b: *std.Build) !void {
 
     // Spell DB: `zig build db` downloads the bnwiki dump and builds spell.db, every
     // stage cached by the build system. See `addSpellDb`.
+    // `-Ddb-words=N` (or $BYAKARON_DB_WORDS) keeps only the N most frequent
+    // words; `-Dspell-db=<path>` uses a prebuilt spell.db (e.g. a release's).
     const spell = addSpellDb(b, sqlite_lib, avro.words);
-    b.addNamedLazyPath("spell_db", spell.db);
-    const install_spell_db = b.addInstallFile(spell.db, "db/spell.db");
+    const spell_db_tool = hostExe(b, "spell_db", "src/build/spell_db.zig");
+    spell_db_tool.root_module.linkLibrary(sqlite_lib);
+    const db_words = b.option(u32, "db-words", "Keep only the N most frequent words in spell.db (default: $BYAKARON_DB_WORDS, else all; `d1`: 150000)") orelse
+        if (b.graph.environ_map.get("BYAKARON_DB_WORDS")) |s| std.fmt.parseInt(u32, s, 10) catch @panic("BYAKARON_DB_WORDS is not a number") else null;
+    const full_db = b.option(std.Build.LazyPath, "spell-db", "Use this spell.db instead of building it") orelse spell.db;
+    const spell_db = if (db_words) |n| trimSpellDb(b, spell_db_tool, full_db, n) else full_db;
+    b.addNamedLazyPath("spell_db", spell_db);
+    const install_spell_db = b.addInstallFile(spell_db, "db/spell.db");
     b.step("db", "Download bnwiki + build spell.db → zig-out/db/").dependOn(&install_spell_db.step);
     b.step("db-debug", "Build the text-keyed spell_debug.db (large) → zig-out/db/")
         .dependOn(&b.addInstallFile(spell.debug_db, "db/spell_debug.db").step);
+
+    // spell.db as D1 migrations for the web app's database (binding `DB`,
+    // apps/web/wrangler.jsonc), applied with `wrangler d1 migrations apply DB`.
+    // 150 000 words by default, which stays under D1's 500 MB Free-plan database
+    // size. See src/build/spell_db.zig.
+    {
+        const d1_db = if (db_words != null) spell_db else trimSpellDb(b, spell_db_tool, full_db, 150_000);
+        const gen = b.addRunArtifact(spell_db_tool);
+        gen.addArg("d1");
+        gen.addFileArg(d1_db);
+        const migrations = gen.addOutputDirectoryArg("d1");
+        const sync = b.addRunArtifact(spell_db_tool);
+        sync.addArg("sync");
+        sync.addDirectoryArg(migrations);
+        sync.addDirectoryArg(b.graph.path(.install_prefix, "d1"));
+        sync.has_side_effects = true;
+        b.step("d1", "spell.db as D1 migrations → zig-out/d1/ (-Ddb-words, -Dspell-db)").dependOn(&sync.step);
+    }
 
     const engine = addEngine(b, target, optimize, avro, true);
     const zx_mod = engine.zx;
@@ -264,9 +290,14 @@ pub fn build(b: *std.Build) !void {
     }
 
     // Android: libbyakaron.so (core + JNI bridge) for every ABI the keyboard
-    // ships, against the NDK's bionic, copied into the keyboard submodule.
-    //   zig build android [-Dandroid-ndk=<ndk>] [-Dandroid-api=21]
-    addAndroid(b, avro);
+    // ships, against the NDK's bionic, copied into the keyboard submodule, and
+    // the keyboard app through Gradle (src/build/gradle.zig).
+    //   zig build android-libs     → zig-out/android/jniLibs/<abi>/libbyakaron.so
+    //   zig build android          → zig-out/android/Byakaron-debug.apk
+    //   zig build install-android  → debug build onto the connected device (adb)
+    //   zig build release-android  → zig-out/android/Byakaron.apk, with spell.db
+    // Options: -Dandroid-ndk=<ndk> -Dandroid-api=21
+    addAndroid(b, avro, spell_db);
 
     // Web app (apps/web): a ziex app in this build graph, so it shares the cache.
     //   zig build run-web    dev server (hot reload)
@@ -325,7 +356,9 @@ pub fn build(b: *std.Build) !void {
                     .sqlite = if (is_wasi) .enabled else .{},
                     .kv = .{ .client = .enabled },
                 },
-                .client = .{ .bindings = .{ .build = .enabled, .install_subdir = "bindings" } },
+                // Workers import the platform bindings from zig-out/bindings
+                // (apps/web/main.ts); native servers get them injected.
+                .client = if (is_wasi) .{ .bindings = .{ .build = .enabled, .install_subdir = "bindings" } } else .{},
             },
             .cli = .{ .steps = .{ .dev = "run-web", .serve = "serve-web" } },
         });
@@ -349,38 +382,13 @@ pub fn build(b: *std.Build) !void {
         }
     }
 
-    // Windows WinUI app — mirrors macos / run-macos.
-    //   zig build windows   → zig-out/windows/Byakaron-Setup.exe (Inno)
-    //   zig build run-win   → stage natives + Debug run
-    if (builtin.os.tag == .windows) {
-        const zig_dir = std.fs.path.dirname(b.graph.zig_exe) orelse "C:\\Windows\\System32";
-
-        const package_script = rootPath(b, "apps/windows/scripts/package_windows.ps1");
-        const win_package = b.addSystemCommand(&.{ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", package_script });
-        win_package.setCwd(b.path("."));
-        win_package.has_side_effects = true;
-        {
-            const prev_path = win_package.getEnvMap().get("PATH") orelse "";
-            win_package.setEnvironmentVariable("PATH", b.fmt("{s};{s}", .{ zig_dir, prev_path }));
-            win_package.setEnvironmentVariable("ZIG_EXE", b.graph.zig_exe);
-        }
-
-        const windows_step = b.step("windows", "Build Byakaron-Setup.exe (zig-out/windows/)");
-        windows_step.dependOn(&win_package.step);
-
-        const run_script = rootPath(b, "apps/windows/scripts/run_windows.ps1");
-        const win_run = b.addSystemCommand(&.{ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", run_script });
-        win_run.setCwd(b.path("."));
-        win_run.has_side_effects = true;
-        {
-            const prev_path = win_run.getEnvMap().get("PATH") orelse "";
-            win_run.setEnvironmentVariable("PATH", b.fmt("{s};{s}", .{ zig_dir, prev_path }));
-            win_run.setEnvironmentVariable("ZIG_EXE", b.graph.zig_exe);
-        }
-
-        const run_win_step = b.step("run-win", "Build (Debug) and run the Windows WinUI app");
-        run_win_step.dependOn(&win_run.step);
-    }
+    // Windows: byakaron.dll + the TSF keyboard (ByakaronIME.dll), cross-compiled
+    // from any host; the WinUI app and its Inno Setup installer need the .NET
+    // SDK and Inno Setup 6, so only a Windows host gets those (see `addWindows`).
+    //   zig build windows-ime  → zig-out/windows/ime/{ByakaronIME,byakaron}.dll
+    //   zig build windows      → zig-out/windows/Byakaron-Setup.exe (-Dwindows-version)
+    //   zig build run-win      → stage the natives + spell.db, `dotnet run` (Debug)
+    addWindows(b, avro, spell_db);
 
     // Regenerate the committed grammars from the pinned iAvro sources:
     // `zig build grammars` (see src/build/grammars.zig).
@@ -448,6 +456,90 @@ pub fn build(b: *std.Build) !void {
             test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = parity })).step);
         }
     }
+}
+
+/// byakaron.dll (the WinUI app P/Invokes it as byakaron_ffi.dll, the IME loads
+/// it from its own folder) and ByakaronIME.dll (apps/windows/Keyboard) for
+/// x86_64-windows-gnu, so any host builds them against Zig's MinGW headers. On a
+/// Windows host they are staged into the WinUI project (Native/, ime/) with
+/// spell.db, where Byakaron.csproj's CopyNativeFfi target picks them up, then
+/// `dotnet publish` and ISCC (apps/windows/installer/Byakaron.iss) make the
+/// installer.
+fn addWindows(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void {
+    const target = b.resolveTargetQuery(.{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu });
+    const engine = addEngine(b, target, .ReleaseFast, avro, false);
+    const ffi = b.addLibrary(.{ .linkage = .dynamic, .name = "byakaron", .root_module = engine.root });
+
+    // The IME resolves byakaron_* with GetProcAddress (Composer.cpp), so it
+    // needs byakaron.h but does not link byakaron.dll.
+    const ime_mod = b.createModule(.{ .target = target, .optimize = .ReleaseFast, .link_libcpp = true });
+    ime_mod.addCSourceFiles(.{
+        .root = b.path("apps/windows/Keyboard"),
+        .files = &.{ "DllMain.cpp", "KeyHandler.cpp", "TextService.cpp", "Composer.cpp", "Settings.cpp", "CandidateWindow.cpp" },
+        .flags = &.{ "-std=c++17", "-DUNICODE", "-D_UNICODE", "-D_WINDOWS", "-D_USRDLL" },
+    });
+    ime_mod.addIncludePath(b.path("apps/windows/Keyboard"));
+    ime_mod.addIncludePath(b.path("src/ffi"));
+    for ([_][]const u8{ "ole32", "oleaut32", "uuid", "advapi32", "user32", "gdi32" }) |lib| {
+        ime_mod.linkSystemLibrary(lib, .{});
+    }
+    const ime = b.addLibrary(.{
+        .linkage = .dynamic,
+        .name = "ByakaronIME",
+        .root_module = ime_mod,
+        // DllRegisterServer & co. for regsvr32 and COM.
+        .win32_module_definition = b.path("apps/windows/Keyboard/ByakaronIME.def"),
+    });
+
+    const ime_step = b.step("windows-ime", "Build ByakaronIME.dll + byakaron.dll → zig-out/windows/ime/");
+    ime_step.dependOn(&b.addInstallFileWithDir(ime.getEmittedBin(), .{ .custom = "windows/ime" }, "ByakaronIME.dll").step);
+    ime_step.dependOn(&b.addInstallFileWithDir(ffi.getEmittedBin(), .{ .custom = "windows/ime" }, "byakaron.dll").step);
+
+    if (builtin.os.tag != .windows) return;
+
+    // Without -Dwindows-version, Byakaron.iss reads $BYAKARON_VERSION (else 1.0.0).
+    const version = b.option([]const u8, "windows-version", "Installer version for `windows` (default: $BYAKARON_VERSION, else 1.0.0)");
+    const iscc_exe = b.option(std.Build.LazyPath, "windows-iscc", "Inno Setup's ISCC.exe for `windows` (default: Program Files, then PATH)") orelse
+        b.findProgramLazy(.{ .names = &.{
+            "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe",
+            "C:\\Program Files\\Inno Setup 6\\ISCC.exe",
+            "ISCC",
+        } });
+    const proj = b.path("apps/windows/Byakaron/Byakaron.csproj");
+
+    // The git-ignored folders Byakaron.csproj copies into its build and publish output.
+    const stage = b.addUpdateSourceFiles();
+    stage.addCopyFileToSource(ffi.getEmittedBin(), "apps/windows/Byakaron/Native/byakaron.dll");
+    stage.addCopyFileToSource(spell_db, "apps/windows/Byakaron/Native/spell.db");
+    stage.addCopyFileToSource(ime.getEmittedBin(), "apps/windows/Byakaron/ime/ByakaronIME.dll");
+    stage.addCopyFileToSource(ffi.getEmittedBin(), "apps/windows/Byakaron/ime/byakaron.dll");
+
+    // MSBuild and ISCC track their own inputs; always let them run.
+    const publish = b.addSystemCommand(&.{ "dotnet", "publish" });
+    publish.addFileArg(proj);
+    publish.addArgs(&.{ "-c", "Release", "-r", "win-x64", "-p:Platform=x64", "--self-contained", "true" });
+    publish.addArgs(&.{ "-p:WindowsAppSDKSelfContained=true", "-p:PublishTrimmed=false", "-p:PublishReadyToRun=true", "-o" });
+    const payload = publish.addOutputDirectoryArg("Byakaron");
+    publish.has_side_effects = true;
+    publish.step.dependOn(&stage.step);
+
+    const iscc = std.Build.Step.Run.create(b, "run ISCC");
+    iscc.addFileArg(iscc_exe);
+    iscc.addPrefixedDirectoryArg("/DPublishDir=", payload);
+    const setup_dir = iscc.addPrefixedOutputDirectoryArg("/DOutputDir=", "setup");
+    if (version) |v| iscc.addArg(b.fmt("/DAppVersion={s}", .{v}));
+    iscc.addFileArg(b.path("apps/windows/installer/Byakaron.iss"));
+    iscc.has_side_effects = true;
+    const windows_step = b.step("windows", "Build the installer → zig-out/windows/Byakaron-Setup.exe");
+    windows_step.dependOn(&b.addInstallFileWithDir(setup_dir.path(b, "Byakaron-Setup.exe"), .{ .custom = "windows" }, "Byakaron-Setup.exe").step);
+    windows_step.dependOn(&b.addInstallDirectory(.{ .source_dir = payload, .install_dir = .{ .custom = "windows" }, .install_subdir = "Byakaron" }).step);
+
+    const run = b.addSystemCommand(&.{ "dotnet", "run", "--project" });
+    run.addFileArg(proj);
+    run.addArgs(&.{ "-c", "Debug", "-p:Platform=x64", "--no-launch-profile" });
+    run.has_side_effects = true;
+    run.step.dependOn(&stage.step);
+    b.step("run-win", "Build (Debug) and run the Windows WinUI app").dependOn(&run.step);
 }
 
 /// The engine's Zig modules for one target: the FFI root (`byakaron`) and what
@@ -975,42 +1067,74 @@ fn hostExe(b: *std.Build, name: []const u8, root: []const u8) *std.Build.Step.Co
 }
 
 /// The NDK: `-Dandroid-ndk`, else $ANDROID_NDK_ROOT / $ANDROID_NDK_HOME, else the
-/// newest version under $ANDROID_HOME/ndk (or the SDK's default location).
+/// newest version under the SDK's ndk/ (see `androidSdk`).
 fn androidNdk(b: *std.Build) ?[]const u8 {
-    if (b.option([]const u8, "android-ndk", "Android NDK directory for `android`")) |p| return p;
+    if (b.option([]const u8, "android-ndk", "Android NDK directory for the Android steps")) |p| return p;
     const env = &b.graph.environ_map;
     for ([_][]const u8{ "ANDROID_NDK_ROOT", "ANDROID_NDK_HOME" }) |name| {
         if (env.get(name)) |p| if (p.len > 0) return p;
     }
-    const home = env.get("HOME") orelse "";
-    const sdks = [_][]const u8{
-        env.get("ANDROID_HOME") orelse "",
-        env.get("ANDROID_SDK_ROOT") orelse "",
-        b.pathJoin(&.{ home, "Library/Android/sdk" }),
-        b.pathJoin(&.{ home, "Android/Sdk" }),
-    };
     const io = b.graph.io;
-    for (sdks) |sdk| {
-        if (sdk.len == 0) continue;
-        const ndk_root = b.pathJoin(&.{ sdk, "ndk" });
-        var dir = std.Io.Dir.cwd().openDir(io, ndk_root, .{ .iterate = true }) catch continue;
-        defer dir.close(io);
-        var newest: ?[]const u8 = null;
-        var it = dir.iterate();
-        while (it.next(io) catch null) |entry| {
-            if (entry.kind != .directory) continue;
-            const v = std.SemanticVersion.parse(entry.name) catch continue;
-            if (newest) |n| if (std.SemanticVersion.parse(n) catch null) |nv| if (v.order(nv) != .gt) continue;
-            newest = b.dupe(entry.name);
-        }
-        if (newest) |n| return b.pathJoin(&.{ ndk_root, n });
+    const ndk_root = b.pathJoin(&.{ androidSdk(b) orelse return null, "ndk" });
+    var dir = std.Io.Dir.cwd().openDir(io, ndk_root, .{ .iterate = true }) catch return null;
+    defer dir.close(io);
+    var newest: ?[]const u8 = null;
+    var it = dir.iterate();
+    while (it.next(io) catch null) |entry| {
+        if (entry.kind != .directory) continue;
+        const v = std.SemanticVersion.parse(entry.name) catch continue;
+        if (newest) |n| if (std.SemanticVersion.parse(n) catch null) |nv| if (v.order(nv) != .gt) continue;
+        newest = b.dupe(entry.name);
+    }
+    return if (newest) |n| b.pathJoin(&.{ ndk_root, n }) else null;
+}
+
+/// The Android SDK: $ANDROID_HOME / $ANDROID_SDK_ROOT, else where Android
+/// Studio installs it.
+fn androidSdk(b: *std.Build) ?[]const u8 {
+    const env = &b.graph.environ_map;
+    var candidates: std.ArrayList([]const u8) = .empty;
+    for ([_][]const u8{ "ANDROID_HOME", "ANDROID_SDK_ROOT" }) |name| {
+        if (env.get(name)) |p| candidates.append(b.allocator, p) catch @panic("OOM");
+    }
+    if (env.get("HOME")) |home| {
+        candidates.append(b.allocator, b.pathJoin(&.{ home, "Library/Android/sdk" })) catch @panic("OOM");
+        candidates.append(b.allocator, b.pathJoin(&.{ home, "Android/Sdk" })) catch @panic("OOM");
+    }
+    if (env.get("LOCALAPPDATA")) |p| candidates.append(b.allocator, b.pathJoin(&.{ p, "Android/Sdk" })) catch @panic("OOM");
+    return firstDir(b, candidates.items);
+}
+
+/// The JDK Android Studio bundles, for Gradle when $JAVA_HOME is unset.
+fn androidStudioJdk(b: *std.Build) ?[]const u8 {
+    const env = &b.graph.environ_map;
+    var candidates: std.ArrayList([]const u8) = .empty;
+    candidates.append(b.allocator, "/Applications/Android Studio.app/Contents/jbr/Contents/Home") catch @panic("OOM");
+    if (env.get("HOME")) |home| candidates.append(b.allocator, b.pathJoin(&.{ home, "android-studio/jbr" })) catch @panic("OOM");
+    candidates.append(b.allocator, "/opt/android-studio/jbr") catch @panic("OOM");
+    if (env.get("ProgramFiles")) |p| candidates.append(b.allocator, b.pathJoin(&.{ p, "Android/Android Studio/jbr" })) catch @panic("OOM");
+    return firstDir(b, candidates.items);
+}
+
+fn firstDir(b: *std.Build, paths: []const []const u8) ?[]const u8 {
+    for (paths) |p| {
+        if (p.len == 0) continue;
+        var dir = std.Io.Dir.cwd().openDir(b.graph.io, p, .{}) catch continue;
+        dir.close(b.graph.io);
+        return p;
     }
     return null;
 }
 
-fn addAndroid(b: *std.Build, avro: AvroData) void {
-    const step = b.step("android", "Build libbyakaron.so for every Android ABI → apps/android/keyboard jniLibs");
-    const api = b.option(u32, "android-api", "Minimum Android API level for `android` (default 21)") orelse 21;
+fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void {
+    const step = b.step("android-libs", "Build libbyakaron.so for every Android ABI → apps/android/keyboard jniLibs");
+    const app_steps = [_]*std.Build.Step{
+        b.step("android", "Build the Android keyboard (debug) → zig-out/android/Byakaron-debug.apk"),
+        b.step("install-android", "Build the Android keyboard (debug) and install it on the connected device"),
+        b.step("release-android", "Release build with spell.db → zig-out/android/Byakaron.apk"),
+    };
+    for (app_steps) |s| s.dependOn(step);
+    const api = b.option(u32, "android-api", "Minimum Android API level for the Android steps (default 21)") orelse 21;
     const ndk = androidNdk(b) orelse {
         step.dependOn(&b.addFail("Android NDK not found: pass -Dandroid-ndk=<dir> or set ANDROID_NDK_ROOT").step);
         return;
@@ -1056,6 +1180,47 @@ fn addAndroid(b: *std.Build, avro: AvroData) void {
         update.addCopyFileToSource(lib.getEmittedBin(), b.fmt("apps/android/keyboard/app/src/main/jniLibs/{s}/libbyakaron.so", .{a.abi}));
     }
     step.dependOn(&update.step);
+
+    // The keyboard app: Gradle in the private apps/android/keyboard submodule
+    // (src/build/gradle.zig), which packs the jniLibs above. Gradle tracks its
+    // own inputs, so it always runs and decides what to rebuild.
+    const keyboard = rootPath(b, "apps/android/keyboard");
+    std.Io.Dir.cwd().access(b.graph.io, b.pathJoin(&.{ keyboard, "gradlew" }), .{}) catch {
+        const fail = b.addFail("apps/android/keyboard is not checked out: git submodule update --init apps/android/keyboard");
+        for (app_steps) |s| s.dependOn(&fail.step);
+        return;
+    };
+    const gradle_exe = hostExe(b, "gradle", "src/build/gradle.zig");
+    const gradle = struct {
+        fn run(bb: *std.Build, exe: *std.Build.Step.Compile, project: []const u8, task: []const u8, libs: *std.Build.Step) *std.Build.Step.Run {
+            const r = bb.addRunArtifact(exe);
+            r.addArgs(&.{ project, task });
+            r.has_side_effects = true;
+            r.step.dependOn(libs);
+            // The SDK the NDK came from, and Android Studio's JDK, unless set.
+            const env = &bb.graph.environ_map;
+            if (env.get("ANDROID_HOME") == null) if (androidSdk(bb)) |sdk| r.setEnvironmentVariable("ANDROID_HOME", sdk);
+            if (env.get("JAVA_HOME") == null) if (androidStudioJdk(bb)) |jdk| r.setEnvironmentVariable("JAVA_HOME", jdk);
+            return r;
+        }
+    }.run;
+
+    const debug = gradle(b, gradle_exe, keyboard, ":app:assembleDebug", step);
+    debug.addArg(b.pathJoin(&.{ keyboard, "app/build/outputs/apk/debug" }));
+    const debug_apk = debug.addOutputFileArg("Byakaron-debug.apk");
+    app_steps[0].dependOn(&b.addInstallFileWithDir(debug_apk, .prefix, "android/Byakaron-debug.apk").step);
+
+    app_steps[1].dependOn(&gradle(b, gradle_exe, keyboard, ":app:installDebug", step).step);
+
+    // The release APK ships spell.db, which the app extracts on first run.
+    // app/build.gradle.kts signs it when RELEASE_STORE_FILE etc. are set.
+    const assets = b.addUpdateSourceFiles();
+    assets.addCopyFileToSource(spell_db, "apps/android/keyboard/app/src/main/assets/byakaron/spell.db");
+    const release = gradle(b, gradle_exe, keyboard, ":app:assembleRelease", step);
+    release.step.dependOn(&assets.step);
+    release.addArg(b.pathJoin(&.{ keyboard, "app/build/outputs/apk/release" }));
+    const release_apk = release.addOutputFileArg("Byakaron.apk");
+    app_steps[2].dependOn(&b.addInstallFileWithDir(release_apk, .prefix, "android/Byakaron.apk").step);
 }
 
 /// iAvro's data, generated by src/build/lexicon.zig (see there).
@@ -1183,6 +1348,15 @@ fn addSpellDb(
         .db = assemble(b, prepare, data, sqlite3_shell, "src/data/queries/10_sqlite_schema_id.sql", exported.id, avro_words, false, "spell.db"),
         .debug_db = assemble(b, prepare, data, sqlite3_shell, "src/data/queries/07_sqlite_schema.sql", exported.debug, avro_words, true, "spell_debug.db"),
     };
+}
+
+/// spell.db with only the `words` most frequent words (src/build/spell_db.zig).
+fn trimSpellDb(b: *std.Build, tool: *std.Build.Step.Compile, db: std.Build.LazyPath, words: u32) std.Build.LazyPath {
+    const run = b.addRunArtifact(tool);
+    run.addArg("trim");
+    run.addFileArg(db);
+    run.addArg(b.fmt("{d}", .{words}));
+    return run.addOutputFileArg("spell.db");
 }
 
 /// Absolute path to a file/dir relative to the build root (dir with build.zig).

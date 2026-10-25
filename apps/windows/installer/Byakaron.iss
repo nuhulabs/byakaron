@@ -1,10 +1,10 @@
 ; Byakaron Windows installer (Inno Setup 6)
-; Built by apps/windows/scripts/package_windows.ps1 via `zig build windows`.
+; Built by `zig build windows` (addWindows in build.zig).
 ;
-; Defines (passed by the package script):
+; Defines (passed by the build):
 ;   PublishDir  - published app folder (Byakaron.exe, ime\, native\, …)
 ;   OutputDir   - where Byakaron-Setup.exe is written
-;   AppVersion  - e.g. 1.0.0
+;   AppVersion  - e.g. 1.0.0 (-Dwindows-version; else $BYAKARON_VERSION, else 1.0.0)
 
 #ifndef PublishDir
   #error "PublishDir must be defined (/DPublishDir=...)"
@@ -13,7 +13,11 @@
   #define OutputDir ".."
 #endif
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion GetEnv("BYAKARON_VERSION")
+  #if AppVersion == ""
+    #undef AppVersion
+    #define AppVersion "1.0.0"
+  #endif
 #endif
 
 #define MyAppName "Byakaron"
