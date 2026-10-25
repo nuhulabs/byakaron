@@ -33,6 +33,10 @@ pub fn openLocalDb() !void {
     const allocator = std.heap.page_allocator;
     const root: []const u8 = if (std.c.getenv("ZIEX_ROOT_DIR")) |r| std.mem.span(r) else "zig-out";
     const path = try std.fs.path.join(allocator, &.{ root, "db", "spell.db" });
+    std.Io.Dir.cwd().access(zx.io(), path, .{}) catch {
+        std.log.warn("byakaron: no {s}; spell check is off (run `zig build db`)", .{path});
+        return;
+    };
     zx.db = zx.Db.Sqlite.open(allocator, zx.io(), path, .{
         .readonly = true,
         .create = false,
@@ -46,7 +50,9 @@ pub fn openLocalDb() !void {
     };
 }
 
-fn spellEngine() *Spell {
+fn spellEngine() !*Spell {
+    // Asked of zx.db: main.zig and the routes each compile their own copy of this file.
+    if (zx.db.vtable == zx.Db.failing.vtable) return error.NoSpellDb;
     if (!spell_ready) {
         SpellSqlite.initBorrowedInto(&spell_backend, &zx.db);
         spell_ready = true;
@@ -73,16 +79,20 @@ fn autoCompleteMem() *AutoComplete {
 }
 
 pub fn checkText(allocator: std.mem.Allocator, text: []const u8) ![]const TokenResult {
-    return try spellEngine().checkText(allocator, text);
+    return try (try spellEngine()).checkText(allocator, text);
+}
+
+pub fn checkWords(allocator: std.mem.Allocator, words: []const []const u8) ![]const TokenResult {
+    return try (try spellEngine()).checkWords(allocator, words);
 }
 
 /// Lexicon prefix suggestions via spell.db `dictionary` (Spell engine API).
 pub fn prefixSuggest(allocator: std.mem.Allocator, prefix: []const u8, limit: i64) ![]const Suggestion {
-    return try spellEngine().prefixSuggest(allocator, prefix, limit);
+    return try (try spellEngine()).prefixSuggest(allocator, prefix, limit);
 }
 
 pub fn nextWordSuggest(allocator: std.mem.Allocator, prev: []const u8, limit: i64) ![]const Suggestion {
-    return try spellEngine().nextWordSuggest(allocator, prev, limit);
+    return try (try spellEngine()).nextWordSuggest(allocator, prev, limit);
 }
 
 /// Prefix autocomplete ranked by the AutoComplete engine over spell.db.

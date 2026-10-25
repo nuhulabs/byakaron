@@ -89,8 +89,6 @@ pub fn build(b: *std.Build) !void {
 
     // Spell DB: `zig build db` downloads the bnwiki dump and builds spell.db, every
     // stage cached by the build system. See `addSpellDb`.
-    // `-Ddb-words=N` (or $BYAKARON_DB_WORDS) keeps only the N most frequent
-    // words; `-Dspell-db=<path>` uses a prebuilt spell.db (e.g. a release's).
     const spell = addSpellDb(b, sqlite_lib, avro.words);
     const spell_db_tool = hostExe(b, "spell_db", "src/build/spell_db.zig");
     spell_db_tool.root_module.linkLibrary(sqlite_lib);
@@ -104,10 +102,7 @@ pub fn build(b: *std.Build) !void {
     b.step("db-debug", "Build the text-keyed spell_debug.db (large) → zig-out/db/")
         .dependOn(&b.addInstallFile(spell.debug_db, "db/spell_debug.db").step);
 
-    // spell.db as D1 migrations for the web app's database (binding `DB`,
-    // apps/web/wrangler.jsonc), applied with `wrangler d1 migrations apply DB`.
-    // 150 000 words by default, which stays under D1's 500 MB Free-plan database
-    // size. See src/build/spell_db.zig.
+    // 150 000 words stay under D1's 500 MB Free-plan database size.
     {
         const d1_db = if (db_words != null) spell_db else trimSpellDb(b, spell_db_tool, full_db, 150_000);
         const gen = b.addRunArtifact(spell_db_tool);
@@ -289,14 +284,6 @@ pub fn build(b: *std.Build) !void {
         b.step("macos-icons", "Regenerate apps/macos/Resources/MenuIcon.{pdf,tiff}").dependOn(&icons.step);
     }
 
-    // Android: libbyakaron.so (core + JNI bridge) for every ABI the keyboard
-    // ships, against the NDK's bionic, copied into the keyboard submodule, and
-    // the keyboard app through Gradle (src/build/gradle.zig).
-    //   zig build android-libs     → zig-out/android/jniLibs/<abi>/libbyakaron.so
-    //   zig build android          → zig-out/android/Byakaron-debug.apk
-    //   zig build install-android  → debug build onto the connected device (adb)
-    //   zig build release-android  → zig-out/android/Byakaron.apk, with spell.db
-    // Options: -Dandroid-ndk=<ndk> -Dandroid-api=21
     addAndroid(b, avro, spell_db);
 
     // Web app (apps/web): a ziex app in this build graph, so it shares the cache.
@@ -356,9 +343,7 @@ pub fn build(b: *std.Build) !void {
                     .sqlite = if (is_wasi) .enabled else .{},
                     .kv = .{ .client = .enabled },
                 },
-                // Workers import the platform bindings from zig-out/bindings
-                // (apps/web/main.ts); native servers get them injected.
-                .client = if (is_wasi) .{ .bindings = .{ .build = .enabled, .install_subdir = "bindings" } } else .{},
+                .client = .{ .bindings = .{ .build = .enabled, .install_subdir = if (is_wasi) "bindings" else null } },
             },
             .cli = .{ .steps = .{ .dev = "run-web", .serve = "serve-web" } },
         });
@@ -382,12 +367,6 @@ pub fn build(b: *std.Build) !void {
         }
     }
 
-    // Windows: byakaron.dll + the TSF keyboard (ByakaronIME.dll), cross-compiled
-    // from any host; the WinUI app and its Inno Setup installer need the .NET
-    // SDK and Inno Setup 6, so only a Windows host gets those (see `addWindows`).
-    //   zig build windows-ime  → zig-out/windows/ime/{ByakaronIME,byakaron}.dll
-    //   zig build windows      → zig-out/windows/Byakaron-Setup.exe (-Dwindows-version)
-    //   zig build run-win      → stage the natives + spell.db, `dotnet run` (Debug)
     addWindows(b, avro, spell_db);
 
     // Regenerate the committed grammars from the pinned iAvro sources:
@@ -458,20 +437,12 @@ pub fn build(b: *std.Build) !void {
     }
 }
 
-/// byakaron.dll (the WinUI app P/Invokes it as byakaron_ffi.dll, the IME loads
-/// it from its own folder) and ByakaronIME.dll (apps/windows/Keyboard) for
-/// x86_64-windows-gnu, so any host builds them against Zig's MinGW headers. On a
-/// Windows host they are staged into the WinUI project (Native/, ime/) with
-/// spell.db, where Byakaron.csproj's CopyNativeFfi target picks them up, then
-/// `dotnet publish` and ISCC (apps/windows/installer/Byakaron.iss) make the
-/// installer.
 fn addWindows(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void {
     const target = b.resolveTargetQuery(.{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu });
     const engine = addEngine(b, target, .ReleaseFast, avro, false);
     const ffi = b.addLibrary(.{ .linkage = .dynamic, .name = "byakaron", .root_module = engine.root });
 
-    // The IME resolves byakaron_* with GetProcAddress (Composer.cpp), so it
-    // needs byakaron.h but does not link byakaron.dll.
+    // The IME loads byakaron.dll at runtime, so it only needs the header.
     const ime_mod = b.createModule(.{ .target = target, .optimize = .ReleaseFast, .link_libcpp = true });
     ime_mod.addCSourceFiles(.{
         .root = b.path("apps/windows/Keyboard"),
@@ -487,7 +458,6 @@ fn addWindows(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
         .linkage = .dynamic,
         .name = "ByakaronIME",
         .root_module = ime_mod,
-        // DllRegisterServer & co. for regsvr32 and COM.
         .win32_module_definition = b.path("apps/windows/Keyboard/ByakaronIME.def"),
     });
 
@@ -497,7 +467,6 @@ fn addWindows(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
 
     if (builtin.os.tag != .windows) return;
 
-    // Without -Dwindows-version, Byakaron.iss reads $BYAKARON_VERSION (else 1.0.0).
     const version = b.option([]const u8, "windows-version", "Installer version for `windows` (default: $BYAKARON_VERSION, else 1.0.0)");
     const iscc_exe = b.option(std.Build.LazyPath, "windows-iscc", "Inno Setup's ISCC.exe for `windows` (default: Program Files, then PATH)") orelse
         b.findProgramLazy(.{ .names = &.{
@@ -507,7 +476,6 @@ fn addWindows(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
         } });
     const proj = b.path("apps/windows/Byakaron/Byakaron.csproj");
 
-    // The git-ignored folders Byakaron.csproj copies into its build and publish output.
     const stage = b.addUpdateSourceFiles();
     stage.addCopyFileToSource(ffi.getEmittedBin(), "apps/windows/Byakaron/Native/byakaron.dll");
     stage.addCopyFileToSource(spell_db, "apps/windows/Byakaron/Native/spell.db");
@@ -1066,8 +1034,6 @@ fn hostExe(b: *std.Build, name: []const u8, root: []const u8) *std.Build.Step.Co
     });
 }
 
-/// The NDK: `-Dandroid-ndk`, else $ANDROID_NDK_ROOT / $ANDROID_NDK_HOME, else the
-/// newest version under the SDK's ndk/ (see `androidSdk`).
 fn androidNdk(b: *std.Build) ?[]const u8 {
     if (b.option([]const u8, "android-ndk", "Android NDK directory for the Android steps")) |p| return p;
     const env = &b.graph.environ_map;
@@ -1089,35 +1055,33 @@ fn androidNdk(b: *std.Build) ?[]const u8 {
     return if (newest) |n| b.pathJoin(&.{ ndk_root, n }) else null;
 }
 
-/// The Android SDK: $ANDROID_HOME / $ANDROID_SDK_ROOT, else where Android
-/// Studio installs it.
 fn androidSdk(b: *std.Build) ?[]const u8 {
     const env = &b.graph.environ_map;
-    var candidates: std.ArrayList([]const u8) = .empty;
-    for ([_][]const u8{ "ANDROID_HOME", "ANDROID_SDK_ROOT" }) |name| {
-        if (env.get(name)) |p| candidates.append(b.allocator, p) catch @panic("OOM");
-    }
-    if (env.get("HOME")) |home| {
-        candidates.append(b.allocator, b.pathJoin(&.{ home, "Library/Android/sdk" })) catch @panic("OOM");
-        candidates.append(b.allocator, b.pathJoin(&.{ home, "Android/Sdk" })) catch @panic("OOM");
-    }
-    if (env.get("LOCALAPPDATA")) |p| candidates.append(b.allocator, b.pathJoin(&.{ p, "Android/Sdk" })) catch @panic("OOM");
-    return firstDir(b, candidates.items);
+    return firstDir(b, &.{
+        env.get("ANDROID_HOME"),
+        env.get("ANDROID_SDK_ROOT"),
+        envPath(b, "HOME", "Library/Android/sdk"),
+        envPath(b, "HOME", "Android/Sdk"),
+        envPath(b, "LOCALAPPDATA", "Android/Sdk"),
+    });
 }
 
-/// The JDK Android Studio bundles, for Gradle when $JAVA_HOME is unset.
 fn androidStudioJdk(b: *std.Build) ?[]const u8 {
-    const env = &b.graph.environ_map;
-    var candidates: std.ArrayList([]const u8) = .empty;
-    candidates.append(b.allocator, "/Applications/Android Studio.app/Contents/jbr/Contents/Home") catch @panic("OOM");
-    if (env.get("HOME")) |home| candidates.append(b.allocator, b.pathJoin(&.{ home, "android-studio/jbr" })) catch @panic("OOM");
-    candidates.append(b.allocator, "/opt/android-studio/jbr") catch @panic("OOM");
-    if (env.get("ProgramFiles")) |p| candidates.append(b.allocator, b.pathJoin(&.{ p, "Android/Android Studio/jbr" })) catch @panic("OOM");
-    return firstDir(b, candidates.items);
+    return firstDir(b, &.{
+        "/Applications/Android Studio.app/Contents/jbr/Contents/Home",
+        envPath(b, "HOME", "android-studio/jbr"),
+        "/opt/android-studio/jbr",
+        envPath(b, "ProgramFiles", "Android/Android Studio/jbr"),
+    });
 }
 
-fn firstDir(b: *std.Build, paths: []const []const u8) ?[]const u8 {
-    for (paths) |p| {
+fn envPath(b: *std.Build, name: []const u8, sub: []const u8) ?[]const u8 {
+    return b.pathJoin(&.{ b.graph.environ_map.get(name) orelse return null, sub });
+}
+
+fn firstDir(b: *std.Build, paths: []const ?[]const u8) ?[]const u8 {
+    for (paths) |path| {
+        const p = path orelse continue;
         if (p.len == 0) continue;
         var dir = std.Io.Dir.cwd().openDir(b.graph.io, p, .{}) catch continue;
         dir.close(b.graph.io);
@@ -1181,9 +1145,7 @@ fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
     }
     step.dependOn(&update.step);
 
-    // The keyboard app: Gradle in the private apps/android/keyboard submodule
-    // (src/build/gradle.zig), which packs the jniLibs above. Gradle tracks its
-    // own inputs, so it always runs and decides what to rebuild.
+    // Gradle tracks its own inputs, so it always runs.
     const keyboard = rootPath(b, "apps/android/keyboard");
     std.Io.Dir.cwd().access(b.graph.io, b.pathJoin(&.{ keyboard, "gradlew" }), .{}) catch {
         const fail = b.addFail("apps/android/keyboard is not checked out: git submodule update --init apps/android/keyboard");
@@ -1197,7 +1159,6 @@ fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
             r.addArgs(&.{ project, task });
             r.has_side_effects = true;
             r.step.dependOn(libs);
-            // The SDK the NDK came from, and Android Studio's JDK, unless set.
             const env = &bb.graph.environ_map;
             if (env.get("ANDROID_HOME") == null) if (androidSdk(bb)) |sdk| r.setEnvironmentVariable("ANDROID_HOME", sdk);
             if (env.get("JAVA_HOME") == null) if (androidStudioJdk(bb)) |jdk| r.setEnvironmentVariable("JAVA_HOME", jdk);
@@ -1212,8 +1173,6 @@ fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
 
     app_steps[1].dependOn(&gradle(b, gradle_exe, keyboard, ":app:installDebug", step).step);
 
-    // The release APK ships spell.db, which the app extracts on first run.
-    // app/build.gradle.kts signs it when RELEASE_STORE_FILE etc. are set.
     const assets = b.addUpdateSourceFiles();
     assets.addCopyFileToSource(spell_db, "apps/android/keyboard/app/src/main/assets/byakaron/spell.db");
     const release = gradle(b, gradle_exe, keyboard, ":app:assembleRelease", step);
@@ -1350,7 +1309,6 @@ fn addSpellDb(
     };
 }
 
-/// spell.db with only the `words` most frequent words (src/build/spell_db.zig).
 fn trimSpellDb(b: *std.Build, tool: *std.Build.Step.Compile, db: std.Build.LazyPath, words: u32) std.Build.LazyPath {
     const run = b.addRunArtifact(tool);
     run.addArg("trim");

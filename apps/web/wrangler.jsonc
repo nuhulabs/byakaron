@@ -25,8 +25,12 @@
 	],
 	"build": {
 		"watch_dir": "./app",
-		"command": "cd ../.. && zig build -Dtarget=wasm32-wasi --release=small",
+		// The Worker (zig-out/bin/web.wasm, it serves /api/*) plus the page,
+		// prerendered into zig-out/static/index.html.
+		"command": "cd ../.. && zig build -Dtarget=wasm32-wasi --release=small -Dziex-config=.{.prerender=true}",
 	},
+	// Static files, the prerendered page included, are served from Cloudflare's
+	// CDN without running the Worker; only other paths (/api/spell) reach it.
 	"assets": {
 		"directory": "../../zig-out/static",
 		"binding": "ASSETS",

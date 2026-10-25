@@ -9,34 +9,21 @@
 const std = @import("std");
 const zx = @import("zx");
 const Composer = @import("composer");
+const AutoComplete = @import("autocomplete");
+const Tokenizer = @import("tokenization").Tokenizer;
+const schema = @import("api/spell/schema.zig");
 
 // —— Client-side model (WASM module globals) ——
 
-const Suggestion = struct {
-    word: []const u8 = "",
-    frequency: i64 = 0,
-    distance: usize = 0,
-    score: i64 = 0,
-};
-
-const TokenResult = struct {
-    token: []const u8 = "",
-    known: bool = true,
-    suggestions: []const Suggestion = &.{},
-};
-
-const CheckPayload = struct {
-    results: []const TokenResult = &.{},
-    word_count: usize = 0,
-    issue_count: usize = 0,
-};
+const Suggestion = schema.Suggestion;
+const TokenResult = schema.TokenResult;
 
 var draft_text: []const u8 = "";
 var results: []const TokenResult = &.{};
 var selected_issue: usize = 0;
 var checking: bool = false;
 var check_seq: u32 = 0;
-var fetch_seq: u32 = 0;
+var check_in_flight: bool = false;
 var ignored: std.StringHashMapUnmanaged(void) = .empty;
 
 /// Trailing throttle: at most one `/api/spell` per `check_throttle_ms` while typing.
@@ -81,14 +68,6 @@ var saved_caret: ?Caret = null;
 var restored: bool = false;
 
 pub fn Page(ctx: zx.PageContext) !zx.Component {
-    // Seed from ?q= for shareable links; client takes over after hydrate.
-    if (ctx.request.queries.get("q")) |q| {
-        const trimmed = std.mem.trim(u8, q, " \t\r\n");
-        if (trimmed.len > 0 and draft_text.len == 0) {
-            draft_text = try ctx.arena.dupe(u8, trimmed);
-        }
-    }
-
     return (
         <main @allocator={ctx.arena} class="app-shell">
             <SpellApp @client />
@@ -459,7 +438,43 @@ var blobs_dirty: [blob_names.len]bool = .{ false, false, false };
 var blob_flush_armed: bool = false;
 
 var kv_ctx: u8 = 0;
-const kv_store: Composer.Store = .{ .ctx = &kv_ctx, .vtable = &.{ .load = blobLoad, .save = blobSave } };
+const kv_store: Composer.Store = .{ .ctx = &kv_ctx, .vtable = &.{ .load = blobLoad, .save = blobSave }, .codec = &kv_codec };
+
+// Typed zxon like zx.kv.putAs, not the native JSON, to keep std.json out of the client.
+const kv_codec: Composer.Store.Codec = .{
+    .encodeSettings = encodeSettings,
+    .decodeSettings = decodeSettings,
+    .encodeSelections = encodeSelections,
+    .decodeSelections = decodeSelections,
+};
+
+fn encodeTyped(allocator: std.mem.Allocator, value: anytype) anyerror![]u8 {
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try zx.Kv.encodeTyped(&out.writer, value);
+    return out.toOwnedSlice();
+}
+
+fn encodeSettings(allocator: std.mem.Allocator, s: Composer.Settings) anyerror![]u8 {
+    return encodeTyped(allocator, s);
+}
+
+fn decodeSettings(allocator: std.mem.Allocator, bytes: []const u8) anyerror!Composer.Settings {
+    return zx.Kv.decodeTyped(Composer.Settings, allocator, bytes);
+}
+
+fn encodeSelections(allocator: std.mem.Allocator, ac: *const AutoComplete) anyerror![]u8 {
+    const list = try ac.selectionList(allocator);
+    defer allocator.free(list);
+    return encodeTyped(allocator, list);
+}
+
+fn decodeSelections(gpa: std.mem.Allocator, ac: *AutoComplete, bytes: []const u8) anyerror!void {
+    var arena: std.heap.ArenaAllocator = .init(gpa);
+    defer arena.deinit();
+    const list = try zx.Kv.decodeTyped([]const AutoComplete.Selection, arena.allocator(), bytes);
+    try ac.importSelectionList(gpa, list);
+}
 
 fn blobSlot(name: []const u8) ?usize {
     for (blob_names, 0..) |n, i| if (std.mem.eql(u8, n, name)) return i;
@@ -493,11 +508,8 @@ fn flushBlobs() void {
 
 // —— Spelling corrections from /api/spell ——
 
-/// `Composer.Corrector` over `/api/spell`: one request at a time, answers
-/// cached; when one lands the composer refreshes its list.
 const WebCorrector = struct {
-    cache: std.StringHashMapUnmanaged([]const []const u8) = .empty,
-    pending: ?[]const u8 = null,
+    pending: bool = false,
 
     fn corrector(self: *WebCorrector) Composer.Corrector {
         return .{ .ctx = self, .vtable = &.{ .get = get } };
@@ -505,41 +517,116 @@ const WebCorrector = struct {
 
     fn get(ctx: *anyopaque, word: []const u8) ?[]const []const u8 {
         const self: *WebCorrector = @ptrCast(@alignCast(ctx));
-        if (self.cache.get(word)) |fixes| return fixes;
-        if (self.pending != null) return null;
-        const owned = zx.allocator.dupe(u8, word) catch return null;
-        const body = std.json.Stringify.valueAlloc(zx.allocator, .{ .text = owned }, .{}) catch return null;
-        self.pending = owned;
-        _ = zx.fetch(.wasm(&onCorrections), zx.allocator, "/api/spell", .{
-            .method = .POST,
-            .headers = &.{.{ .name = "content-type", .value = "application/json" }},
-            .body = body,
-        }) catch {
-            self.pending = null;
-        };
+        if (spell_cache.lookup(word)) |r| {
+            const fixes = zx.allocator.alloc([]const u8, r.suggestions.len) catch return null;
+            for (r.suggestions, fixes) |sg, *f| f.* = sg.word;
+            return fixes;
+        }
+        if (self.pending) return null;
+        self.pending = requestWords(&.{word}, &onCorrections);
         return null;
     }
 };
 var web_corrector: WebCorrector = .{};
 
 fn onCorrections(res: ?*zx.Fetch.Response, err: ?zx.Fetch.FetchError) void {
-    const word = web_corrector.pending orelse return;
-    web_corrector.pending = null;
-    var fixes: std.ArrayList([]const u8) = .empty;
-    if (err == null) if (res) |r| {
-        defer r.deinit();
-        if (r.json(CheckPayload)) |parsed| {
-            if (parsed.value.results.len == 1) {
-                for (parsed.value.results[0].suggestions) |sg| fixes.append(zx.allocator, sg.word) catch break;
-            }
-        } else |_| {}
-    };
-    web_corrector.cache.put(zx.allocator, word, fixes.items) catch return;
+    web_corrector.pending = false;
+    if (!storeResponse(res, err)) return;
     const c = ensureComposer() orelse return;
     if (!c.composing()) return;
     c.refresh() catch return;
     replaceWord(c.preedit());
     zx.client.rerender();
+}
+
+// —— Spell results, cached per word ——
+
+const SpellCache = struct {
+    // Bump when the server's answers change to drop every browser's cache.
+    const version = 1;
+    const key = std.fmt.comptimePrint("spell_cache_v{d}", .{version});
+    const ttl_ms: i64 = 7 * std.time.ms_per_day;
+    const max_entries = 20_000;
+
+    const Entry = struct {
+        expires_at: i64 = 0,
+        result: TokenResult = .{},
+    };
+
+    map: std.StringArrayHashMapUnmanaged(Entry) = .empty,
+    dirty: bool = false,
+    save_armed: bool = false,
+
+    fn lookup(self: *SpellCache, word: []const u8) ?TokenResult {
+        const e = self.map.get(word) orelse return null;
+        if (e.expires_at <= nowMs()) return null;
+        return e.result;
+    }
+
+    fn put(self: *SpellCache, result: TokenResult) void {
+        self.map.put(zx.allocator, result.token, .{ .expires_at = nowMs() + ttl_ms, .result = result }) catch return;
+        self.dirty = true;
+        if (self.save_armed) return;
+        self.save_armed = true;
+        _ = zx.client.setTimeout(&saveSpellCache, 1000);
+    }
+
+    fn load(self: *SpellCache) void {
+        for (1..version) |v| zx.kv.delete(std.fmt.allocPrint(zx.allocator, "spell_cache_v{d}", .{v}) catch continue) catch {};
+        const entries = zx.kv.as(zx.allocator, key, []const Entry) catch null orelse return;
+        const now = nowMs();
+        for (entries) |e| {
+            if (e.expires_at <= now) continue;
+            self.map.put(zx.allocator, e.result.token, e) catch return;
+        }
+    }
+
+    fn save(self: *SpellCache) void {
+        self.save_armed = false;
+        if (!self.dirty) return;
+        self.dirty = false;
+        const values = self.map.values();
+        const keep = values[values.len -| max_entries..];
+        zx.kv.putAs(key, keep, .{}) catch {};
+    }
+};
+var spell_cache: SpellCache = .{};
+
+fn saveSpellCache() void {
+    spell_cache.save();
+}
+
+fn nowMs() i64 {
+    if (comptime zx.platform.role != .client) return 0;
+    const date = zx.client.js.global.get(zx.client.js.Object, "Date") catch return 0;
+    defer date.deinit();
+    const ms = date.call(f64, "now", .{}) catch return 0;
+    return @intFromFloat(ms);
+}
+
+fn requestWords(words: []const []const u8, callback: zx.Fetch.ResponseCallback) bool {
+    var body: std.Io.Writer.Allocating = .init(zx.allocator);
+    zx.util.zxon.serialize(schema.Request{ .words = words }, &body.writer, .{}) catch return false;
+    _ = zx.fetch(.wasm(callback), zx.allocator, "/api/spell", .{
+        .method = .POST,
+        .headers = &.{
+            .{ .name = "content-type", .value = schema.content_type },
+            .{ .name = "accept", .value = schema.content_type },
+        },
+        .body = body.written(),
+    }) catch return false;
+    return true;
+}
+
+fn storeResponse(res: ?*zx.Fetch.Response, err: ?zx.Fetch.FetchError) bool {
+    if (err != null) return false;
+    const r = res orelse return false;
+    defer r.deinit();
+    if (!r.ok()) return false;
+    const body = r.text() catch return false;
+    const parsed = zx.util.zxon.parse(schema.Response, zx.allocator, body, .{}) catch return false;
+    for (parsed.results) |result| spell_cache.put(result);
+    return true;
 }
 
 // —— Settings panel (the settings every Byakaron keyboard shares) ——
@@ -865,20 +952,35 @@ fn loadStore() void {
     // Learned choices from before the composer kept them under its own name.
     if (blobs[1] == null) blobs[1] = zx.kv.get(zx.allocator, legacy_selections_key) catch null;
     _ = ensureComposer();
+    spell_cache.load();
     // A shared ?q= link wins over the saved draft.
+    if (sharedQuery(zx.allocator)) |q| draft_text = q;
     if (draft_text.len == 0) {
         if (zx.kv.get(zx.allocator, draft_key) catch null) |saved| {
             draft_text = saved;
             saved_caret = zx.kv.as(zx.allocator, caret_key, Caret) catch null;
-            if (zx.kv.get(zx.allocator, results_key) catch null) |raw| {
-                results = std.json.parseFromSliceLeaky([]const TokenResult, zx.allocator, raw, .{
-                    .ignore_unknown_fields = true,
-                }) catch &.{};
-            }
+            results = zx.kv.as(zx.allocator, results_key, []const TokenResult) catch null orelse &.{};
         }
     }
     // The textarea is not in the DOM yet during this first render.
     _ = zx.client.setTimeout(&onStoreLoaded, 0);
+}
+
+fn sharedQuery(allocator: std.mem.Allocator) ?[]const u8 {
+    if (comptime zx.platform.role != .client) return null;
+    const location = zx.client.js.global.get(zx.client.js.Object, "location") catch return null;
+    defer location.deinit();
+    const search = location.getAlloc(zx.client.js.String, allocator, "search") catch return null;
+    var params = std.mem.splitScalar(u8, std.mem.trimStart(u8, search, "?"), '&');
+    while (params.next()) |param| {
+        const eq = std.mem.indexOfScalar(u8, param, '=') orelse continue;
+        if (!std.mem.eql(u8, param[0..eq], "q")) continue;
+        const value = allocator.dupe(u8, param[eq + 1 ..]) catch return null;
+        std.mem.replaceScalar(u8, value, '+', ' ');
+        const q = std.mem.trim(u8, std.Uri.percentDecodeInPlace(value), " \t\r\n");
+        return if (q.len > 0) q else null;
+    }
+    return null;
 }
 
 fn onStoreLoaded() void {
@@ -916,9 +1018,7 @@ fn saveCaret() void {
 
 fn saveResults() void {
     if (zx.platform.role != .client) return;
-    const json = std.json.Stringify.valueAlloc(zx.allocator, results, .{}) catch return;
-    defer zx.allocator.free(json);
-    zx.kv.put(results_key, json, .{}) catch {};
+    zx.kv.putAs(results_key, results, .{}) catch {};
 }
 
 fn saveDraft() void {
@@ -950,45 +1050,48 @@ fn onThrottleFire() void {
 }
 
 fn startFetch() void {
-    if (draft_text.len == 0) {
-        results = &.{};
-        checking = false;
-        zx.client.rerender();
-        saveResults();
+    if (check_in_flight) {
+        check_dirty = true;
         return;
     }
+    const tokens = draftWords() orelse return;
 
-    const body = std.json.Stringify.valueAlloc(zx.allocator, .{ .text = draft_text }, .{}) catch return;
+    var missing: std.ArrayList([]const u8) = .empty;
+    var seen: std.StringHashMapUnmanaged(void) = .empty;
+    for (tokens) |t| {
+        if (t.len == 0 or spell_cache.lookup(t) != null) continue;
+        const gop = seen.getOrPut(zx.allocator, t) catch return;
+        if (!gop.found_existing) missing.append(zx.allocator, t) catch return;
+    }
+    if (missing.items.len == 0) return showResults(tokens);
 
-    fetch_seq += 1;
-    checking = true;
+    check_in_flight = requestWords(missing.items, &onCheckResponse);
+    checking = check_in_flight;
     zx.client.rerender();
-
-    _ = zx.fetch(.wasm(&onCheckResponse), zx.allocator, "/api/spell", .{
-        .method = .POST,
-        .headers = &.{
-            .{ .name = "content-type", .value = "application/json" },
-            .{ .name = "accept", .value = "application/json" },
-        },
-        .body = body,
-    }) catch {
-        checking = false;
-        zx.client.rerender();
-    };
 }
 
 fn onCheckResponse(res: ?*zx.Fetch.Response, err: ?zx.Fetch.FetchError) void {
+    check_in_flight = false;
     checking = false;
     defer zx.client.rerender();
+    if (!storeResponse(res, err)) return;
+    showResults(draftWords() orelse return);
+    if (check_dirty) scheduleCheck();
+}
 
-    if (err != null) return;
-    const r = res orelse return;
-    defer r.deinit();
+fn draftWords() ?[]const []const u8 {
+    return Tokenizer.wordsFromText(zx.allocator, draft_text, .{ .normalize = true }) catch null;
+}
 
-    const parsed = r.json(CheckPayload) catch return;
-    // Keep parsed memory alive for the UI model (wasm allocator).
-    results = parsed.value.results;
+fn showResults(tokens: []const []const u8) void {
+    var out: std.ArrayList(TokenResult) = .empty;
+    for (tokens) |t| {
+        if (t.len == 0) continue;
+        out.append(zx.allocator, spell_cache.lookup(t) orelse .{ .token = t }) catch return;
+    }
+    results = out.items;
     selected_issue = clampIndex(selected_issue, countIssues(results));
+    zx.client.rerender();
     saveResults();
 }
 
@@ -1034,6 +1137,5 @@ fn replaceNthUnknown(
 }
 
 pub const options: zx.PageOptions = .{
-    .methods = &.{ .GET, .POST },
-    .rendering = .request,
+    .rendering = .prerendered,
 };

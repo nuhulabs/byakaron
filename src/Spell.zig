@@ -113,9 +113,17 @@ pub fn init(vtable: *const VTable, ctx: *anyopaque) Spell {
 }
 
 pub fn checkText(self: *Spell, allocator: std.mem.Allocator, text: []const u8) ![]const TokenResult {
-    try self.ensureConfusions();
-
     const tokens = try Tokenizer.wordsFromText(allocator, text, .{ .normalize = true });
+    return self.checkTokens(allocator, tokens, true);
+}
+
+// Without n-gram context, so a word's result can be cached on its own.
+pub fn checkWords(self: *Spell, allocator: std.mem.Allocator, words: []const []const u8) ![]const TokenResult {
+    return self.checkTokens(allocator, words, false);
+}
+
+fn checkTokens(self: *Spell, allocator: std.mem.Allocator, tokens: []const []const u8, context: bool) ![]const TokenResult {
+    try self.ensureConfusions();
     if (tokens.len == 0) return &.{};
 
     var order: std.ArrayList([]const u8) = .empty;
@@ -231,10 +239,12 @@ pub fn checkText(self: *Spell, allocator: std.mem.Allocator, text: []const u8) !
         };
 
         var ranked = try cloneRanked(allocator, base.*);
-        const prev2: []const u8 = if (i >= 2) order.items[i - 2] else "";
-        const prev1: []const u8 = if (i >= 1) order.items[i - 1] else "";
-        const next: []const u8 = if (i + 1 < order.items.len) order.items[i + 1] else "";
-        try applyNgramContext(self, allocator, &ranked, prev2, prev1, next);
+        if (context) {
+            const prev2: []const u8 = if (i >= 2) order.items[i - 2] else "";
+            const prev1: []const u8 = if (i >= 1) order.items[i - 1] else "";
+            const next: []const u8 = if (i + 1 < order.items.len) order.items[i + 1] else "";
+            try applyNgramContext(self, allocator, &ranked, prev2, prev1, next);
+        }
 
         try out.append(allocator, .{
             .token = tok,

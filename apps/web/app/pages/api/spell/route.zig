@@ -1,77 +1,44 @@
-//! POST /api/spell — check Bangla text; returns token results + suggestions.
-
 const std = @import("std");
 const zx = @import("zx");
 const spell = @import("../../spell.zig");
+const schema = @import("schema.zig");
 
-const RequestBody = struct {
-    text: []const u8 = "",
-};
-
-const SuggestionOut = struct {
-    word: []const u8,
-    frequency: i64 = 0,
-    distance: usize = 0,
-    score: i64 = 0,
-};
-
-const TokenOut = struct {
-    token: []const u8,
-    known: bool,
-    suggestions: []const SuggestionOut,
-};
-
-const ResponseBody = struct {
-    results: []const TokenOut,
-    word_count: usize,
-    issue_count: usize,
-};
+const max_words = 512;
 
 pub fn POST(ctx: zx.RouteContext) !void {
-    const body = try ctx.request.json(RequestBody, .{ .ignore_unknown_fields = true });
-    const text = if (body) |b| std.mem.trim(u8, b.text, " \t\r\n") else "";
-
-    if (text.len == 0) {
-        try ctx.response.json(ResponseBody{
-            .results = &.{},
-            .word_count = 0,
-            .issue_count = 0,
-        }, .{});
-        return;
+    const req = zx.util.zxon.parse(schema.Request, ctx.arena, ctx.request.text() orelse "", .{}) catch {
+        ctx.response.setStatus(.bad_request);
+        return ctx.response.text("expected a zxon schema.Request");
+    };
+    if (req.words.len > max_words) {
+        ctx.response.setStatus(.payload_too_large);
+        return ctx.response.text("too many words");
     }
 
-    const results = try spell.checkText(ctx.arena, text);
-    var out: std.ArrayList(TokenOut) = .empty;
-    var issue_count: usize = 0;
-
-    for (results) |r| {
-        var suggs: std.ArrayList(SuggestionOut) = .empty;
-        for (r.suggestions) |s| {
-            try suggs.append(ctx.arena, .{
-                .word = s.word,
-                .frequency = s.frequency,
-                .distance = s.distance,
-                .score = s.score,
-            });
-        }
-        if (!r.known) issue_count += 1;
-        try out.append(ctx.arena, .{
-            .token = r.token,
-            .known = r.known,
-            .suggestions = try suggs.toOwnedSlice(ctx.arena),
-        });
+    const results = spell.checkWords(ctx.arena, req.words) catch |err| switch (err) {
+        error.NoSpellDb => {
+            ctx.response.setStatus(.service_unavailable);
+            return ctx.response.text("spell database not loaded");
+        },
+        else => return err,
+    };
+    const out = try ctx.arena.alloc(schema.TokenResult, results.len);
+    for (results, out) |r, *o| {
+        const suggestions = try ctx.arena.alloc(schema.Suggestion, r.suggestions.len);
+        for (r.suggestions, suggestions) |s, *d| d.* = .{ .word = s.word, .frequency = s.frequency, .distance = s.distance, .score = s.score };
+        o.* = .{ .token = r.token, .known = r.known, .suggestions = suggestions };
     }
 
-    try ctx.response.json(ResponseBody{
-        .results = try out.toOwnedSlice(ctx.arena),
-        .word_count = results.len,
-        .issue_count = issue_count,
-    }, .{});
+    var w: std.Io.Writer.Allocating = .init(ctx.arena);
+    try zx.util.zxon.serialize(schema.Response{ .results = out }, &w.writer, .{});
+    ctx.response.setHeader("content-type", schema.content_type);
+    ctx.response.text(w.written());
 }
 
 pub fn GET(ctx: zx.RouteContext) !void {
-    try ctx.response.json(.{
-        .ok = true,
-        .usage = "POST {\"text\":\"...\"}",
-    }, .{});
+    ctx.response.text("POST a zxon schema.Request");
 }
+
+pub const options: zx.RouteOptions = .{
+    .rendering = .request,
+};

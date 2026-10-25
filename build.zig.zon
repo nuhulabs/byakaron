@@ -5,8 +5,8 @@
     .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .ziex = .{
-            .url = "git+https://github.com/ziex-dev/ziex#d654002a4d575ec7aa4abe40a3e9d7a5fa467d0c",
-            .hash = "ziex-0.1.0-dev-Z3YcvZHxnAHohIvfE0jxQsyzeK7CZQAjOVfhksd_Kivo",
+            .url = "git+https://github.com/ziex-dev/ziex#c9eac7391f944e1603b31c707f25714cd50bf368",
+            .hash = "ziex-0.1.0-dev-Z3YcvXUMnQGf7EsVuHl-XCNJCepvWfz_OgUEVy-Z9rJF",
         },
         .iavro = .{
             .url = "git+https://github.com/omicronlab/iAvro#107a73283ac34a33faf7f6799c2e9dbfa97e6643",

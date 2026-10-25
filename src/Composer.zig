@@ -348,10 +348,10 @@ pub fn setSettings(self: *Composer, settings: Settings) !void {
     var s = settings;
     s.clamp();
     self.settings = s;
-    const json = try s.stringify(self.gpa);
-    defer self.gpa.free(json);
-    self.store.save(Store.settings, json);
-    self.remember(0, json);
+    const bytes = try self.store.codec.encodeSettings(self.gpa, s);
+    defer self.gpa.free(bytes);
+    self.store.save(Store.settings, bytes);
+    self.remember(0, bytes);
     try self.refresh();
 }
 
@@ -376,10 +376,10 @@ fn saveUserWords(self: *Composer) !void {
 
 fn saveSelections(self: *Composer) void {
     if (!self.selections_dirty) return;
-    const json = self.ac().exportSelections(self.gpa) catch return;
-    defer self.gpa.free(json);
-    self.store.save(Store.selections, json);
-    self.remember(1, json);
+    const bytes = self.store.codec.encodeSelections(self.gpa, self.ac()) catch return;
+    defer self.gpa.free(bytes);
+    self.store.save(Store.selections, bytes);
+    self.remember(1, bytes);
     self.selections_dirty = false;
 }
 
@@ -400,12 +400,14 @@ pub fn sync(self: *Composer) void {
             continue;
         };
         switch (slot) {
-            0 => if (Settings.parse(self.gpa, bytes)) |s| {
+            0 => if (self.store.codec.decodeSettings(self.gpa, bytes)) |s| {
                 self.settings = s;
+                self.settings.version = Settings.current_version;
+                self.settings.clamp();
             } else |_| {},
             1 => {
                 self.ac().clearSelections(self.gpa);
-                self.ac().importSelections(self.gpa, bytes) catch {};
+                self.store.codec.decodeSelections(self.gpa, self.ac(), bytes) catch {};
             },
             else => self.user_words.load(bytes) catch {},
         }

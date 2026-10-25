@@ -1,27 +1,12 @@
-//! Build-time spell.db tools, run by `zig build db` / `zig build d1`.
-//!
-//!   spell_db trim <spell.db> <words> <out.db>
-//!   spell_db d1 <spell.db> <out-dir>
-//!   spell_db sync <from-dir> <to-dir>
-//!
-//! - `trim`: a copy of spell.db with only the `words` most frequent dictionary
-//!   words, their delete keys, and the bigrams/trigrams between them. Same
-//!   schema, so src/Spell/Sqlite.zig reads it as is.
-//! - `d1`: spell.db as Cloudflare D1 migrations (`wrangler d1 migrations apply`):
-//!   `0000` drops and recreates every table, the data files insert the rows in
-//!   statements under D1's 100 KB limit, and the last file creates the indexes.
-//!   Every name carries a hash of the contents, so a changed spell.db is a new
-//!   set of migrations that wrangler applies from scratch. Each data file first
-//!   deletes the rows it inserts, so a failed migration can simply be rerun.
-//! - `sync`: make `to-dir` hold exactly the `.sql` files of `from-dir`, so an
-//!   older set never lingers next to the current one in zig-out/d1/.
+// spell_db trim <spell.db> <words> <out.db>   keep the most frequent words
+// spell_db d1 <spell.db> <out-dir>            write D1 migrations
+// spell_db sync <from-dir> <to-dir>           mirror the .sql files
 
 const std = @import("std");
 const Io = std.Io;
 
-/// D1 rejects statements over 100 KB.
+// D1 limits a statement to 100 KB, and runs each migration as one query.
 const max_statement = 64 * 1024;
-/// One migration is one D1 query request; keep each well inside its time limit.
 const max_file = 4 * 1024 * 1024;
 
 pub fn main(init: std.process.Init) !void {
@@ -86,8 +71,6 @@ fn d1(arena: std.mem.Allocator, io: Io, src: []const u8, out_dir: []const u8) !v
     defer dir.close(io);
 
     var files: Files = .{ .arena = arena, .io = io, .dir = dir };
-
-    // Application tables only; sqlite_* (e.g. sqlite_stat1) are SQLite internals D1 manages.
     const tables = try column(arena, db, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name");
     for (tables) |t| try files.print("DROP TABLE IF EXISTS {f};\n", .{quoted(t)});
     for (try column(arena, db, "SELECT sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")) |sql| {
@@ -96,8 +79,8 @@ fn d1(arena: std.mem.Allocator, io: Io, src: []const u8, out_dir: []const u8) !v
     try files.next();
 
     for (tables) |t| {
-        // The rowid (or its INTEGER PRIMARY KEY alias) is inserted explicitly, so
-        // `DELETE … WHERE rowid >= first` undoes a partly applied file.
+        // Explicit rowids let each file start with `DELETE ... >= first row`,
+        // so a migration that failed halfway can be rerun.
         const pk = try column(arena, db, try std.fmt.allocPrint(arena,
             \\SELECT name FROM pragma_table_info({f}) WHERE pk = 1 AND upper(type) = 'INTEGER'
             \\    AND (SELECT count(*) FROM pragma_table_info({f}) WHERE pk > 0) = 1
@@ -121,8 +104,8 @@ fn d1(arena: std.mem.Allocator, io: Io, src: []const u8, out_dir: []const u8) !v
 
         const stmt = try prepare(db, select.written());
         defer _ = sqlite3_finalize(stmt);
-        var in_statement: usize = 0; // bytes of the open INSERT, 0 = none
-        var started = false; // this table has rows in the current file
+        var in_statement: usize = 0;
+        var started = false;
         while (try step(db, stmt)) {
             const id = sqlite3_column_int64(stmt, 0);
             const row = text(stmt, 1);
@@ -158,7 +141,6 @@ fn d1(arena: std.mem.Allocator, io: Io, src: []const u8, out_dir: []const u8) !v
     try files.writeAll("PRAGMA optimize;\n");
     try files.next();
 
-    // Name every file after the whole set's hash.
     const hash = files.hash.final();
     for (0..files.count) |i| {
         const tmp = try std.fmt.allocPrint(arena, "{d:0>4}.tmp", .{i});
@@ -167,7 +149,6 @@ fn d1(arena: std.mem.Allocator, io: Io, src: []const u8, out_dir: []const u8) !v
     }
 }
 
-/// The migration files being written, `NNNN.tmp` until the set is complete.
 const Files = struct {
     arena: std.mem.Allocator,
     io: Io,
@@ -198,7 +179,6 @@ const Files = struct {
         try f.writeAll(try std.fmt.allocPrint(f.arena, fmt, args));
     }
 
-    /// Close the current file; the next write starts a new one.
     fn next(f: *Files) !void {
         const file = f.file orelse return;
         try f.writer.interface.flush();
@@ -234,7 +214,6 @@ fn sync(arena: std.mem.Allocator, io: Io, from: []const u8, to: []const u8) !voi
     }
     for (stale.items) |name| try dst.deleteFile(io, name);
 
-    // Names carry the content hash, so a file already there is up to date.
     var wit = want.keyIterator();
     while (wit.next()) |name| {
         if (have.contains(name.*)) continue;
@@ -242,12 +221,10 @@ fn sync(arena: std.mem.Allocator, io: Io, from: []const u8, to: []const u8) !voi
     }
 }
 
-/// A string as an SQL literal.
 fn quoted(s: []const u8) Quoted {
     return .{ .s = s, .q = '\'' };
 }
 
-/// A name as an SQL identifier.
 fn quotedIdent(s: []const u8) Quoted {
     return .{ .s = s, .q = '"' };
 }
@@ -292,7 +269,6 @@ fn prepare(db: *sqlite3, sql: []const u8) !*sqlite3_stmt {
     return stmt.?;
 }
 
-/// Advance `stmt`: true while there is a row.
 fn step(db: *sqlite3, stmt: *sqlite3_stmt) !bool {
     return switch (sqlite3_step(stmt)) {
         SQLITE_ROW => true,
@@ -309,7 +285,6 @@ fn text(stmt: *sqlite3_stmt, col: c_int) []const u8 {
     return ptr[0..@intCast(sqlite3_column_bytes(stmt, col))];
 }
 
-/// All values of the first column of `sql`, as text.
 fn column(arena: std.mem.Allocator, db: *sqlite3, sql: []const u8) ![]const []const u8 {
     const stmt = try prepare(db, sql);
     defer _ = sqlite3_finalize(stmt);
@@ -317,8 +292,6 @@ fn column(arena: std.mem.Allocator, db: *sqlite3, sql: []const u8) ![]const []co
     while (try step(db, stmt)) try out.append(arena, try arena.dupe(u8, text(stmt, 0)));
     return out.items;
 }
-
-// ── sqlite3.h (amalgamation compiled in by build.zig) ───────────────────────
 
 const sqlite3 = opaque {};
 const sqlite3_stmt = opaque {};

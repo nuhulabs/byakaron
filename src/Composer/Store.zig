@@ -11,6 +11,8 @@
 const Store = @This();
 
 const std = @import("std");
+const AutoComplete = @import("autocomplete");
+const Settings = @import("Settings.zig");
 
 pub const settings = "settings.json";
 pub const selections = "selections.json";
@@ -18,12 +20,44 @@ pub const user_words = "user-words.txt";
 
 ctx: *anyopaque,
 vtable: *const VTable,
+// No default, so only the codec a platform picks is compiled in (the web's
+// client wasm must not pull in std.json).
+codec: *const Codec,
 
 pub const VTable = struct {
     /// The blob's bytes (allocated with `allocator`), or null if absent.
     load: *const fn (ctx: *anyopaque, allocator: std.mem.Allocator, name: []const u8) ?[]u8,
     /// Replace the blob, atomically where the medium allows. Best effort.
     save: *const fn (ctx: *anyopaque, name: []const u8, bytes: []const u8) void,
+};
+
+pub const Codec = struct {
+    encodeSettings: *const fn (allocator: std.mem.Allocator, s: Settings) anyerror![]u8,
+    decodeSettings: *const fn (allocator: std.mem.Allocator, bytes: []const u8) anyerror!Settings,
+    encodeSelections: *const fn (allocator: std.mem.Allocator, ac: *const AutoComplete) anyerror![]u8,
+    decodeSelections: *const fn (gpa: std.mem.Allocator, ac: *AutoComplete, bytes: []const u8) anyerror!void,
+
+    pub const json: Codec = .{
+        .encodeSettings = Json.encodeSettings,
+        .decodeSettings = Json.decodeSettings,
+        .encodeSelections = Json.encodeSelections,
+        .decodeSelections = Json.decodeSelections,
+    };
+
+    const Json = struct {
+        fn encodeSettings(allocator: std.mem.Allocator, s: Settings) anyerror![]u8 {
+            return s.stringify(allocator);
+        }
+        fn decodeSettings(allocator: std.mem.Allocator, bytes: []const u8) anyerror!Settings {
+            return Settings.parse(allocator, bytes);
+        }
+        fn encodeSelections(allocator: std.mem.Allocator, ac: *const AutoComplete) anyerror![]u8 {
+            return ac.exportSelections(allocator);
+        }
+        fn decodeSelections(gpa: std.mem.Allocator, ac: *AutoComplete, bytes: []const u8) anyerror!void {
+            return ac.importSelections(gpa, bytes);
+        }
+    };
 };
 
 pub fn load(self: Store, allocator: std.mem.Allocator, name: []const u8) ?[]u8 {
@@ -53,7 +87,7 @@ pub const Memory = struct {
     }
 
     pub fn store(self: *Memory) Store {
-        return .{ .ctx = self, .vtable = &.{ .load = memLoad, .save = memSave } };
+        return .{ .ctx = self, .vtable = &.{ .load = memLoad, .save = memSave }, .codec = &Codec.json };
     }
 
     fn memLoad(ctx: *anyopaque, allocator: std.mem.Allocator, name: []const u8) ?[]u8 {

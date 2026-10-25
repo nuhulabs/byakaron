@@ -21,7 +21,7 @@ pub fn deinit(self: *FileStore) void {
 }
 
 pub fn store(self: *FileStore) Store {
-    return .{ .ctx = self, .vtable = &.{ .load = load, .save = save } };
+    return .{ .ctx = self, .vtable = &.{ .load = load, .save = save }, .codec = &Store.Codec.json };
 }
 
 fn load(ctx: *anyopaque, allocator: std.mem.Allocator, name: []const u8) ?[]u8 {
