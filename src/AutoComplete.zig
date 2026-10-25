@@ -190,6 +190,23 @@ pub fn select(self: *AutoComplete, gpa: std.mem.Allocator, buffer: []const u8, c
     if (run.bases.get(candidate)) |b| try self.remember(gpa, b.base, b.item);
 }
 
+pub const Selection = struct {
+    term: []const u8 = "",
+    word: []const u8 = "",
+};
+
+pub fn selectionList(self: *const AutoComplete, allocator: std.mem.Allocator) ![]Selection {
+    const list = try allocator.alloc(Selection, self.selections.count());
+    var it = self.selections.iterator();
+    var i: usize = 0;
+    while (it.next()) |e| : (i += 1) list[i] = .{ .term = e.key_ptr.*, .word = e.value_ptr.* };
+    return list;
+}
+
+pub fn importSelectionList(self: *AutoComplete, gpa: std.mem.Allocator, list: []const Selection) !void {
+    for (list) |sel| try self.remember(gpa, sel.term, sel.word);
+}
+
 /// The learned selections as a JSON object `{ "<term>": "<Bangla>" }` (iAvro
 /// keeps them in weight.plist), for the caller to persist.
 pub fn exportSelections(self: *const AutoComplete, allocator: std.mem.Allocator) ![]u8 {

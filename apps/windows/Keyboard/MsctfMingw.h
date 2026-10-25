@@ -1,8 +1,6 @@
 #pragma once
 
-// The TSF declarations this TIP uses that MinGW-w64's msctf.h lacks (`zig build
-// windows-ime` compiles against it; MSVC's Windows SDK has them all). Values
-// and IIDs from the Windows SDK's msctf.h.
+// TSF declarations missing from MinGW-w64's msctf.h, as in the Windows SDK.
 
 #include <msctf.h>
 

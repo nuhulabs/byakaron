@@ -410,10 +410,15 @@ body {
 
 .suggest-menu.is-horizontal {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 0.15rem;
-    max-width: min(36rem, calc(100% - 1rem));
-    left: min(var(--caret-x, 1rem), calc(100% - 36rem));
+    width: max-content;
+    max-width: calc(100% - 1rem);
+    left: max(0.5rem, min(var(--caret-x, 1rem), calc(100% - 40rem)));
+}
+
+.suggest-menu.is-horizontal .suggest-item {
+    flex: none;
 }
 
 .suggest-menu.is-horizontal .suggest-page {
