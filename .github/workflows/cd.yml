@@ -77,7 +77,7 @@ jobs:
 
       - name: placeholder
         if: ${{ matrix.placeholder }}
-        run: echo "placeholder: ${{ matrix.os }} packages are built in release"
+        run: echo "placeholder — ${{ matrix.os }} packages are built in release"
 
       - uses: mlugg/setup-zig@v2
         if: ${{ !matrix.placeholder }}

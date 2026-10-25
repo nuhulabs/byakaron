@@ -51,7 +51,7 @@ jobs:
 
       - name: placeholder
         if: ${{ matrix.placeholder }}
-        run: echo "placeholder: no ${{ matrix.os }} unit tests yet"
+        run: echo "placeholder — no ${{ matrix.os }} unit tests yet"
 
   integration:
     name: integration (${{ matrix.os }})
@@ -228,7 +228,7 @@ jobs:
 
       - name: placeholder
         if: ${{ matrix.placeholder }}
-        run: echo "placeholder: no ${{ matrix.os }} e2e yet"
+        run: echo "placeholder — no ${{ matrix.os }} e2e yet"
 
       - uses: mlugg/setup-zig@v2
         if: ${{ !matrix.placeholder }}
