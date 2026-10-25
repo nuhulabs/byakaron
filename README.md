@@ -44,7 +44,8 @@ zig build run-macos  # build, quit the running copy, launch it
 zig build install-macos    # into /Applications and launch; uninstall-macos removes it
 zig build release-macos    # Release build → zig-out/macos/Byakaron-<version>.dmg
 zig build run-web    # apps/web dev server (builds spell.db first); serve-web for prod mode
-zig build windows    # Byakaron-Setup.exe (on Windows)
+zig build windows    # Byakaron-Setup.exe (on Windows); run-win runs the app
+zig build windows-ime     # ByakaronIME.dll + byakaron.dll, cross-compiled from any host
 zig build linux      # Linux IBus engine; linux-app for the GTK app. Cross-compiles from
                      # macOS/Windows against a pinned Ubuntu sysroot (-Dlinux-arch=aarch64)
 ```

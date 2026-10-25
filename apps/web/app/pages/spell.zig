@@ -1,7 +1,7 @@
 //! Thin web façade over byakaron `src/` spell + autocomplete backends.
 //!
 //! Storage is the app database `zx.db`: Cloudflare D1 on the Workers build
-//! (imported from spell.db by apps/web/scripts/d1_import.sh), and natively
+//! (spell.db as migrations from `zig build d1`), and natively
 //! `<install prefix>/db/spell.db` (built by `zig build db`) opened read-only by
 //! main.zig. Backends are process-static (no heap) so hot-reload doesn't trip
 //! leak checks.

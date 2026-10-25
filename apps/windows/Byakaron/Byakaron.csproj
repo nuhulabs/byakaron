@@ -58,9 +58,10 @@
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
   </PropertyGroup>
 
-  <!-- Zig FFI DLL + spell.db staged by apps/windows/scripts/build_zig.ps1.
-       Named byakaron_ffi.dll so it does not overwrite the managed Byakaron.dll.
-       IME payload (ByakaronIME.dll + byakaron.dll) from build_ime / package scripts. -->
+  <!-- Zig FFI DLL + spell.db (native\) and the IME payload (ime\ByakaronIME.dll +
+       byakaron.dll), staged by `zig build windows` / `zig build run-win`.
+       byakaron.dll is copied as byakaron_ffi.dll so it does not overwrite the
+       managed Byakaron.dll. -->
   <Target Name="CopyNativeFfi" AfterTargets="Build;Publish">
     <PropertyGroup>
       <_NativeDest Condition="'$(PublishDir)' != '' and Exists('$(PublishDir)')">$(PublishDir)</_NativeDest>

@@ -11,14 +11,16 @@
 	"kv_namespaces": [
 		{
 			"binding": "KV",
-			"id": "00000000000000000000000000000000",
+			"id": "746e11ca0575404aa194c723c7b664d5",
 		},
 	],
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "byakaron",
-			"database_id": "00000000-0000-0000-0000-000000000000"
+			// spell.db as migrations, written by `zig build d1`.
+			"migrations_dir": "../../zig-out/d1",
+			"database_id": "8ccbd65d-60a1-43d8-b01a-ddba1431cfa1",
 		}
 	],
 	"build": {

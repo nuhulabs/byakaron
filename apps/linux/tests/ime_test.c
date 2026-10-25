@@ -398,22 +398,25 @@ main (void)
         g_free (second);
     }
 
+    /* "amar" opens on the candidate Avro remembers from above, so the moves
+     * are checked relative to where the highlight starts. */
     g_print ("arrow keys move the highlight (wrapping), Enter picks it:\n");
     reset_state (ctx);
     send_string (ctx, "amar");
     {
-        gchar *first = g_strdup (candidate_at (0));
+        const guint start = g_cursor_pos;
+        gchar *first = g_strdup (candidate_at (start));
         send_key (ctx, IBUS_KEY_Up);
-        check ("Up from the first wraps to the last", g_preedit,
+        check ("Up moves the highlight back (wrapping)", g_preedit,
                candidate_at (g_cursor_pos));
-        check_flag ("…which is not the first", g_strcmp0 (g_preedit, first) != 0, TRUE);
+        check_flag ("…off the one it opened on", g_strcmp0 (g_preedit, first) != 0, TRUE);
         send_key (ctx, IBUS_KEY_Down);
-        check ("Down wraps back to the first", g_preedit, first);
+        check ("Down moves it forward again", g_preedit, first);
         g_free (first);
-        gchar *third = g_strdup (candidate_at (2));
+        gchar *third = g_strdup (candidate_at (start + 2));
         send_key (ctx, IBUS_KEY_Down);
         send_key (ctx, IBUS_KEY_Down);
-        check_flag ("highlight on candidate 3", g_cursor_visible && g_cursor_pos == 2, TRUE);
+        check_flag ("highlight two candidates on", g_cursor_visible && g_cursor_pos == start + 2, TRUE);
         check ("inline text is the highlight", g_preedit, third);
         send_key (ctx, IBUS_KEY_Return);
         /* newline_on_enter is off by default: the word only, Enter consumed. */

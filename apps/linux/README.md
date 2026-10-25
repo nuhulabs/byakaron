@@ -470,10 +470,10 @@ failure:
 
 ```bash
 S=apps/linux/scripts
-bash $S/release.sh prepare 0.2.0 "One-line summary for AppStream"  # bump everywhere, commit, tag
-bash $S/release.sh verify  0.2.0                                    # amd64 .deb in clean 20.04/22.04/24.04
-bash $S/release.sh publish 0.2.0 notes.md                           # push, CI builds+tests both CPUs, GitHub release
-bash $S/release.sh website 0.2.0                                    # site installers, deploy, live check
+bash $S/release.sh prepare X.Y.Z "One-line summary for AppStream"  # bump everywhere, commit, tag
+bash $S/release.sh verify  X.Y.Z                                    # amd64 .deb in clean 20.04/22.04/24.04
+bash $S/release.sh publish X.Y.Z notes.md                           # push, CI builds+tests both CPUs, GitHub release
+bash $S/release.sh website X.Y.Z                                    # site installers, deploy, live check
 ```
 
 `prepare` refuses a dirty tree, an existing tag, or a version string it could
@@ -542,7 +542,7 @@ and 24.04**. On ARM, see [ARM.md](ARM.md).
 
 ```bash
 bash apps/linux/scripts/package_deb.sh
-sudo apt install ./apps/linux/build/byakaron_0.2.0_amd64.deb
+sudo apt install ./apps/linux/build/byakaron_0.2.1_amd64.deb
 ```
 
 Use `apt`, not `dpkg -i`. If an older Byakaron `.deb` is already installed

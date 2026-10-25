@@ -27,6 +27,14 @@ var current_test: ?[]const u8 = null;
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
+    // std.testing.io is undefined until the runner sets it up (Zig's default
+    // runner does); using it uninitialized hung the tests on Linux. Backed by
+    // the page allocator so its allocations are not counted as test leaks.
+    std.testing.io_instance = .init(std.heap.page_allocator, .{
+        .argv0 = .init(init.minimal.args),
+        .environ = init.minimal.environ,
+    });
+    defer std.testing.io_instance.deinit();
     const io = std.testing.io;
 
     const env = Env.init(allocator, init.minimal.environ);

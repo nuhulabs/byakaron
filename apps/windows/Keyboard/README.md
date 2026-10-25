@@ -6,8 +6,9 @@ After registration it appears in **Win+Space** / the taskbar Input Indicator as
 
 ## Installer (share this)
 
-From the repo root (Zig 0.17 + MSVC Build Tools + .NET 8 SDK).
-First run may install [Inno Setup 6](https://jrsoftware.org/isinfo.php) via winget if needed.
+From the repo root (Zig 0.17 + .NET 8 SDK + [Inno Setup 6](https://jrsoftware.org/isinfo.php),
+e.g. `choco install innosetup`; `-Dwindows-iscc=<path>` if ISCC.exe is not under
+Program Files or on PATH):
 
 ```powershell
 zig build windows
@@ -22,7 +23,9 @@ Output:
 
 The installer copies the app, registers the Bangla (Bangladesh) TIP (optional task), and adds Start Menu shortcuts.
 
-Version: set `BYAKARON_VERSION=1.2.3` before building if you want a custom version stamp.
+Version: `-Dwindows-version=1.2.3`, else `BYAKARON_VERSION`, else 1.0.0.
+spell.db is built as by `zig build db`; `-Dspell-db=<path>` stages a prebuilt
+one instead, `-Ddb-words=N` a smaller one.
 
 ## Development run
 
@@ -32,15 +35,16 @@ zig build run-win
 
 ## IME-only build
 
-```powershell
-$env:ZIG_EXE = "<path-to-zig.exe>"   # optional if zig is on PATH
-.\apps\windows\scripts\build_ime.ps1
+Cross-compiled with Zig (x86_64-windows-gnu), so this works from any host:
+
+```sh
+zig build windows-ime
 ```
 
-Produces:
-
-- `apps/windows/Keyboard/bin/x64/Release/ByakaronIME.dll`
-- `apps/windows/Keyboard/stage/` and `apps/windows/Byakaron/ime/`
+Produces `zig-out/windows/ime/ByakaronIME.dll` and `byakaron.dll`. `windows`
+and `run-win` stage the same pair into `apps/windows/Byakaron/ime/` (and
+byakaron.dll + spell.db into `Native/`), which Byakaron.csproj copies next to
+the app.
 
 ## Manual IME register
 

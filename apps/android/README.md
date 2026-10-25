@@ -18,26 +18,30 @@ git clone --recurse-submodules <this-repo-url>
 git submodule update --init apps/android/keyboard
 ```
 
-## Build the native library
+## Build
 
-Needs Zig and the Android NDK (found through `ANDROID_NDK_ROOT`,
-`ANDROID_NDK_HOME`, `ANDROID_HOME/ndk/<newest>`, `~/Library/Android/sdk/ndk` or
-`~/Android/Sdk/ndk`). Works on macOS and Linux:
-
-```sh
-apps/android/scripts/build_zig.sh
-```
-
-This builds `libbyakaron.so` for arm64-v8a, armeabi-v7a and x86_64 and copies it
-to `apps/android/keyboard/app/src/main/jniLibs/<abi>/`. Override with `DEST_DIR`,
-`BUILD_MODE` (default `ReleaseFast`) and `MIN_API` (default `21`).
-
-Then build the app as usual from the submodule:
+Needs Zig, the Android NDK and a JDK. The SDK is `ANDROID_HOME` /
+`ANDROID_SDK_ROOT`, else Android Studio's default location
+(`~/Library/Android/sdk`, `~/Android/Sdk`, `%LOCALAPPDATA%\Android\Sdk`); the
+NDK is `-Dandroid-ndk=<dir>`, `ANDROID_NDK_ROOT` / `ANDROID_NDK_HOME`, else the
+newest under the SDK's `ndk/`. Without `JAVA_HOME`, Gradle gets Android Studio's
+bundled JDK.
 
 ```sh
-cd apps/android/keyboard
-./gradlew assembleDebug
+zig build android-libs     # libbyakaron.so only
+zig build android          # → zig-out/android/Byakaron-debug.apk
+zig build install-android  # debug build onto the connected device
+zig build release-android  # → zig-out/android/Byakaron.apk, with spell.db
 ```
+
+Every step first builds `libbyakaron.so` for arm64-v8a, armeabi-v7a and x86_64
+into `zig-out/android/jniLibs/<abi>/` and copies it to
+`apps/android/keyboard/app/src/main/jniLibs/<abi>/`; the others then run Gradle
+in the submodule (`src/build/gradle.zig`). `release-android` also copies
+spell.db (as built by `zig build db`, or `-Dspell-db=<path>`, `-Ddb-words=N`)
+into `app/src/main/assets/byakaron/`, and the release APK is signed when
+`RELEASE_STORE_FILE` and friends are set (`app/build.gradle.kts`).
+`-Dandroid-api=<level>` sets the minimum API (default `21`).
 
 ## Develop inside the submodule
 

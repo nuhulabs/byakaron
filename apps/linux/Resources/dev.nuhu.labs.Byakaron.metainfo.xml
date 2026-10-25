@@ -19,6 +19,11 @@
   <icon type="stock">byakaron</icon>
   <url type="homepage">https://nuhulabs.com/byakaron</url>
   <releases>
+    <release version="0.2.1" date="2026-10-22">
+      <description>
+        <p>One install command for Intel/AMD and ARM, Raspberry Pi OS and KDE setup, a fix for Qt apps on Ubuntu 20.04/22.04, and better-ranked suggestions.</p>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-10-15">
       <description>
         <p>Arrow keys pick a suggestion, spelling corrections while typing, a personal dictionary, and a Settings page with a Bangla digits switch.</p>

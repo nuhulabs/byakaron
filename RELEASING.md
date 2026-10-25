@@ -31,9 +31,9 @@ from it.
    | Asset | Built by |
    | --- | --- |
    | `byakaron_<ver>_amd64.deb`, `byakaron_<ver>_arm64.deb` | `cd.yml` (`package_deb.sh`, installed and tested on both CPUs) |
-   | `Byakaron.dmg` | `zig build release-macos` on macos-14 |
+   | `Byakaron.dmg` | `zig build release-macos` on the `xcode-27` runner |
    | `Byakaron-Setup.exe` | `zig build windows` (Inno Setup) on windows-latest |
-   | `Byakaron.apk` | `./gradlew :app:assembleRelease` in the submodule, with freshly built `libbyakaron.so` and `spell.db` |
+   | `Byakaron.apk` | `zig build release-android` (`libbyakaron.so`, `spell.db` in the assets, Gradle's release build) |
    | `spell.db` | `cd.yml` (`zig build db`, cached on its inputs) |
    | `SHA256SUMS` | the `publish` job, which also checks each upload's digest against it |
 
@@ -89,9 +89,10 @@ Notes:
 
 ## CI
 
-`ci.yml` runs on every push and pull request: the Linux engine/app/IME tests
-(amd64 + arm64) and GNOME Wayland typing, `zig build test` on Ubuntu and macOS,
-`zig build macos` (with a one-page bnwiki dump, `.github/ci/bnwiki-tiny.xml`,
-so the bundled spell.db builds in seconds), `zig build windows`, the Android
-`libbyakaron.so` for arm64-v8a / armeabi-v7a / x86_64 plus the debug APK (when
-`BYAKARON_ANDROID_TOKEN` is set), and the web app (`zig build`).
+`ci.yml` runs on every push and pull request. `zig build test` (Ubuntu and
+macOS) runs first; when it passes, the platform jobs run in parallel: the Linux
+engine/app/IME tests (amd64 + arm64) and GNOME Wayland typing, `zig build macos`
+(with a one-page bnwiki dump, `.github/ci/bnwiki-tiny.xml`, so the bundled
+spell.db builds in seconds), `zig build windows` (the same dump), `zig build
+android` (the libraries and the debug APK; only `zig build android-libs` without
+`BYAKARON_ANDROID_TOKEN`), and the web app (`zig build`).
