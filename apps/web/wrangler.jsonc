@@ -1,13 +1,11 @@
 {
-	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"$schema": "https://cdn.jsdelivr.net/npm/wrangler/config-schema.json",
 	"name": "byakaron",
 	"main": "main.ts",
 	"compatibility_date": "2026-03-10",
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
-	// Fill in the ids printed by `wrangler kv namespace create byakaron` and
-	// `wrangler d1 create byakaron` (see README.md → Cloudflare).
 	"kv_namespaces": [
 		{
 			"binding": "KV",
@@ -18,22 +16,17 @@
 		{
 			"binding": "DB",
 			"database_name": "byakaron",
-			// spell.db as migrations, written by `zig build d1`.
 			"migrations_dir": "../../zig-out/d1",
-			"database_id": "8ccbd65d-60a1-43d8-b01a-ddba1431cfa1",
+			"database_id": "8ccbd65d-60a1-43d8-b01a-ddba1431cfa1"
 		}
 	],
 	"build": {
 		"watch_dir": "./app",
-		// The Worker (zig-out/bin/web.wasm, it serves /api/*) plus the page,
-		// prerendered into zig-out/static/index.html.
-		"command": "cd ../.. && zig build -Dtarget=wasm32-wasi --release=small -Dziex-config=.{.prerender=true}",
+		"command": "zig build zx -- build --target=wasm32-wasi --release=small --prerender"
 	},
-	// Static files, the prerendered page included, are served from Cloudflare's
-	// CDN without running the Worker; only other paths (/api/spell) reach it.
 	"assets": {
 		"directory": "../../zig-out/static",
-		"binding": "ASSETS",
+		"binding": "ASSETS"
 	},
 	"observability": {
 		"logs": {
