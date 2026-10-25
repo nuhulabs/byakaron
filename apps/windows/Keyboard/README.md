@@ -18,8 +18,8 @@ Output:
 
 | File | Purpose |
 |------|---------|
-| `zig-out/windows/Byakaron-Setup.exe` | **Single installer** — share this |
-| `zig-out/windows/Byakaron/` | Unpacked payload (debug / Inno source) |
+| `zig-out/pkg/Byakaron-Setup.exe` | **Single installer** — share this |
+| `zig-out/bin/Byakaron/` | Unpacked payload (debug / Inno source) |
 
 The installer copies the app, registers the Bangla (Bangladesh) TIP (optional task), and adds Start Menu shortcuts.
 
@@ -41,7 +41,7 @@ Cross-compiled with Zig (x86_64-windows-gnu), so this works from any host:
 zig build windows-ime
 ```
 
-Produces `zig-out/windows/ime/ByakaronIME.dll` and `byakaron.dll`. `windows`
+Produces `zig-out/lib/windows/ime/ByakaronIME.dll` and `byakaron.dll`. `windows`
 and `run-win` stage the same pair into `apps/windows/Byakaron/ime/` (and
 byakaron.dll + spell.db into `Native/`), which Byakaron.csproj copies next to
 the app.

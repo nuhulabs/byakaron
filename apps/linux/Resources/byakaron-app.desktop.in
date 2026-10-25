@@ -3,7 +3,7 @@ Type=Application
 Name=Byakaron
 GenericName=Bangla Input & Spell Checker
 Comment=Type Bangla phonetically and check spelling
-# scripts/install.sh and package_deb.sh substitute the installed binary path.
+# src/build/linux.zig (install-linux, package-linux) substitutes the installed binary path.
 Exec=@BYK_APP_EXEC@
 Icon=byakaron
 Terminal=false

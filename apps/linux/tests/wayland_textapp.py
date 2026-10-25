@@ -1,5 +1,5 @@
 # wayland_textapp.py <3|4> <outfile>: fullscreen GTK TextView that mirrors its text into
-# outfile. Driven by scripts/gnome_wayland_test.sh.
+# outfile. Driven by `zig build linux-wayland-e2e` (src/build/linux.zig).
 import sys, gi
 ver, out = sys.argv[1], sys.argv[2]
 gi.require_version('Gtk', '3.0' if ver == '3' else '4.0')

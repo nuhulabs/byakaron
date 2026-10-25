@@ -2,7 +2,8 @@
 <!--
   IBus component descriptor for Byakaron.
 
-  scripts/install.sh substitutes the exec and icon placeholders with the
+  src/build/linux.zig (install-linux, package-linux, run-linux) substitutes the
+  exec and icon placeholders with the
   absolute paths of the installed files, then writes the result to
   /usr/share/ibus/component/. That directory is the only one ibus-daemon scans
   for components. A per-user copy under ~/.local/share is never read, and

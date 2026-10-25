@@ -1,213 +1,93 @@
-# Build the shippable packages and test them the way users install them.
+# cd: prepare (spell.db) ∥ web deploy + linux install-matrix e2e
 #
-# Runs on every push to main, by hand, and from release.yml (workflow_call),
-# which then attaches the packages to the release. Package jobs are a matrix
-# over `os` / `arch` so other platforms can join later.
-#
-# Artifacts: `byakaron-<arch>` (.deb). apps/linux/scripts/release.sh downloads
-# these from the tag's release.yml run.
-#
-# On main, the `web` job also deploys apps/web to Cloudflare Workers.
-name: CD
+# Platform release packages are release/pkg.yml only. D1 migrate is local.
+name: cd
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
-  workflow_call:
 
 permissions:
   contents: read
 
 jobs:
-  # spell.db is the same for every CPU and expensive to build (bnwiki download
-  # + the whole data pipeline), so build it once, cache it on the inputs that
-  # produce it, and hand it to the package jobs.
-  spell-db:
-    name: spell.db
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
+  prepare:
+    name: prepare
+    uses: ./.github/workflows/prepare.yml
+    secrets: inherit
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Cache spell.db
-        id: cache
-        uses: actions/cache@v4
-        with:
-          path: zig-out/db/spell.db
-          key: spell-db-${{ hashFiles('build.zig', 'build.zig.zon', 'src/data/**', 'src/build/**') }}
-
-      - name: Setup Zig
-        if: steps.cache.outputs.cache-hit != 'true'
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-
-      # The pipeline's intermediate files are several GB; /mnt has the room.
-      - name: Build spell.db
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          sudo mkdir -p /mnt/zig-cache
-          sudo chown "$USER" /mnt/zig-cache
-          zig build db --cache-dir /mnt/zig-cache
-          ls -lh zig-out/db/spell.db
-
-      - name: Upload spell.db
-        uses: actions/upload-artifact@v4
-        with:
-          name: spell-db
-          path: zig-out/db/spell.db
-          retention-days: 1
-          compression-level: 1
-          if-no-files-found: error
-
-  # Build the shareable .deb for each CPU, install it on the runner, and type
-  # through the *installed* engine.
-  package:
-    name: Package (${{ matrix.arch }})
-    needs: [spell-db]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: linux
-            arch: amd64
-          - os: ubuntu-24.04-arm
-            target: linux
-            arch: arm64
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install packages
-        run: |
-          sudo bash apps/linux/scripts/setup_deps.sh
-          sudo apt-get install -y --no-install-recommends xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
-
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-
-      - name: Download spell.db
-        uses: actions/download-artifact@v4
-        with:
-          name: spell-db
-          path: zig-out/db
-
-      - name: Package
-        run: bash apps/linux/scripts/package_deb.sh
-
-      - name: Test installed package
-        run: |
-          source apps/linux/scripts/compat.sh
-          # shellcheck disable=SC2046 # the flag is empty or one word
-          zig build linux-test -Doptimize=ReleaseFast $(byk_compat_target_flag)
-          deb=$(ls apps/linux/build/byakaron_*_${{ matrix.arch }}.deb)
-          sudo apt-get install -y "./$deb"
-          # shellcheck disable=SC2016 # matches the literal ${VERSION:-...}
-          version=$(sed -n 's/^VERSION="\${VERSION:-\(.*\)}"$/\1/p' apps/linux/scripts/package_deb.sh)
-          bash apps/linux/scripts/test_installed.sh zig-out/bin/byakaron-ime-test "$version"
-
-      - name: Upload .deb
-        uses: actions/upload-artifact@v4
-        with:
-          name: byakaron-${{ matrix.arch }}
-          path: apps/linux/build/byakaron_*_${{ matrix.arch }}.deb
-          if-no-files-found: error
-
-  # Installs the way a user does — the website installer, which detects the CPU
-  # and downloads the latest release — in clean Ubuntu 20.04 / 22.04 / 24.04
-  # and Debian 12 (Raspberry Pi OS 64-bit's base) containers, on both CPUs,
-  # then checks files, icon, the app window and typing through the installed
-  # engine. This is what a Raspberry Pi user runs.
-  install:
-    name: Install (${{ matrix.arch }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: linux
-            arch: amd64
-          - os: ubuntu-24.04-arm
-            target: linux
-            arch: arm64
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install packages
-        run: sudo bash apps/linux/scripts/setup_deps.sh
-
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-
-      - name: Build IME test (glibc 2.31)
-        run: |
-          source apps/linux/scripts/compat.sh
-          # shellcheck disable=SC2046 # the flag is empty or one word
-          zig build linux-test -Doptimize=ReleaseFast $(byk_compat_target_flag)
-
-      - name: Test install in clean containers
-        run: bash apps/linux/scripts/test_install_matrix.sh zig-out/bin/byakaron-ime-test
-
-  # Deploy apps/web to Cloudflare Workers (worker `byakaron`,
-  # apps/web/wrangler.jsonc): spell.db as D1 migrations (`zig build d1`),
-  # applied to the remote database (a no-op when spell.db is unchanged), then
-  # `wrangler deploy`, whose build command is the wasm32-wasi build. Only from
-  # main, not from release.yml's tag runs. Setup: apps/web/README.md.
   web:
-    name: Web
-    if: github.ref == 'refs/heads/main'
-    needs: [spell-db]
-    environment:
-      name: byakaron-web
+    name: build (web)
+    # No needs: prepare — Worker deploy does not use spell.db; D1 migrations are local.
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 60
+    environment: ${{ github.ref == 'refs/heads/main' && 'byakaron-web' || '' }}
     concurrency:
-      group: cd-web
+      group: cd-build-web
       cancel-in-progress: false
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
+      # Worker deploy only — D1 schema/data migrations are applied locally when needed:
+      #   zig build d1 -Dspell-db=zig-out/db/spell.db
+      #   cd apps/web && npx wrangler d1 migrations apply DB --remote
+      - name: deploy
+        if: github.ref == 'refs/heads/main'
+        working-directory: apps/web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [[ -z "$CLOUDFLARE_API_TOKEN" ]]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN unset; skip deploy"
+            exit 0
+          fi
+          npx --yes wrangler@4.100.0 deploy
+
+      - uses: mlugg/setup-zig@v2
+        if: github.ref != 'refs/heads/main'
         with:
           version: 0.17.0
 
-      - name: Download spell.db
-        uses: actions/download-artifact@v4
+      - name: build
+        if: github.ref != 'refs/heads/main'
+        run: zig build -Doptimize=ReleaseSmall
+
+  e2e:
+    name: e2e (linux install-matrix)
+    needs: [prepare]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v2
         with:
-          name: spell-db
+          version: 0.17.0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: byakaron-spell-db
           path: zig-out/db
 
-      - name: D1 migrations
-        run: zig build d1 -Dspell-db=zig-out/db/spell.db
+      - name: deps
+        run: |
+          sudo -E env "PATH=$PATH" \
+            ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
+            zig build linux-deps
+          sudo apt-get install -y --no-install-recommends \
+            xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
 
-      - name: Apply migrations
-        working-directory: apps/web
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@4.100.0 d1 migrations apply DB --remote
+      - name: pkg amd64
+        run: zig build package-linux -Dlinux-arch=x86_64 -Dspell-db=zig-out/db/spell.db
 
-      - name: Deploy
-        working-directory: apps/web
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@4.100.0 deploy
+      - name: install-matrix
+        run: |
+          deb=$(echo zig-out/pkg/byakaron_*_amd64.deb)
+          zig build linux-install-test \
+            -Dlinux-arch=x86_64 \
+            -Dspell-db=zig-out/db/spell.db \
+            -Dlinux-deb="$deb"

@@ -55,9 +55,8 @@ apps/linux/
 ├── Keyboard/    The IBus engine (thin shell over the Zig composer)
 ├── Fcitx5/      Optional Fcitx5 addon (same composer; needs libfcitx5core-dev)
 ├── Resources/   IBus component XML, GSettings schema, .desktop, icons, Flatpak manifest
-├── scripts/     setup_deps.sh, build_zig.sh, smoke.sh,
-│                install.sh, uninstall.sh, package_deb.sh, package_flatpak.sh,
-│                ci.sh, wayland_probe.sh, wayland_type.sh
+│                (the build, install, packaging and CI steps are `zig build`
+│                 steps: see src/build/linux.zig)
 └── tests/       C ABI + Core smoke test, IBus integration test, Wayland probes
 ```
 
@@ -83,17 +82,17 @@ to link it.
 ### 1. System packages
 
 ```bash
-sudo bash apps/linux/scripts/setup_deps.sh          # IBus, GTK3 IM module, glib-compile-schemas
-sudo bash apps/linux/scripts/setup_deps.sh --test   # + compiler and -dev packages for the tests
+sudo zig build linux-deps              # IBus, GTK3 IM module, glib-compile-schemas
+sudo zig build linux-deps -- --test    # + compiler and -dev packages for the tests
 ```
 
-Building needs no `-dev` packages: `zig build linux` / `linux-app` compile
-against a pinned Ubuntu 24.04 sysroot (IBus, GLib, GTK 3 headers and libraries,
-SHA-256 checked) that the build downloads and caches itself, targeting glibc
-2.31 so the binaries run on Ubuntu 20.04 and newer. The same build works from
-macOS or Windows (`-Dlinux-arch=aarch64` for ARM). For an offline or distro
-build, `-Dlinux-system-libs=true` links the system libraries through
-pkg-config instead.
+Building needs no `-dev` packages: `zig build linux` (IBus engine + GTK app)
+compiles against a pinned Ubuntu 24.04 sysroot (IBus, GLib, GTK 3 headers and
+libraries, SHA-256 checked) that the build downloads and caches itself,
+targeting glibc 2.31 so the binaries run on Ubuntu 20.04 and newer. The same
+build works from macOS or Windows (`-Dlinux-arch=aarch64` for ARM). For an
+offline or distro build, `-Dlinux-system-libs=true` links the system libraries
+through pkg-config instead.
 
 ### 2. Zig
 
@@ -114,10 +113,10 @@ All other dependencies (ziex, SQLite, the sysroot packages) are fetched by
 ### 3. Verify the engine
 
 ```bash
-bash apps/linux/scripts/smoke.sh
+zig build linux-smoke
 ```
 
-This builds `libbyakaron.so` and calls it from C. Expect `ami → আমি`,
+This builds the Zig core and calls it from C. Expect `ami → আমি`,
 `bangla → বাংলা`, the keysym mapping (keypad keys, modifier-only keys not
 sent), a few keystrokes through the composer exactly as the IME shells send
 them (preedit = highlighted candidate, Space commits it, arrows wrap, Enter
@@ -128,10 +127,12 @@ behaviour itself is tested in Zig (`zig build test`, `src/Composer.zig`).
 ## Building and running the input method
 
 ```bash
-zig build linux          # -> zig-out/bin/byakaron-ibus
-zig build linux-app      # -> zig-out/bin/byakaron       (the GTK app)
+zig build linux          # -> zig-out/bin/{byakaron-ibus,byakaron}
+zig build linux-app      # alias for `linux`
 zig build linux-fcitx5   # -> zig-out/lib/fcitx5/byakaron.so  (optional)
 zig build run-linux-app  # build and run the app
+zig build linux-test     # -> zig-out/bin/byakaron-ime-test
+zig build linux-wayland  # -> zig-out/bin/byakaron-wayland-{probe,type}  (optional, needs libgtk-4-dev)
 ```
 
 The engine binary links the Zig core statically, so it is self-contained apart
@@ -144,7 +145,7 @@ method.
 ### Development run
 
 ```bash
-bash apps/linux/scripts/dev_run.sh
+zig build run-linux
 ```
 
 Registers the engine with the *running* `ibus-daemon` straight from the build
@@ -153,13 +154,17 @@ process exits. While it runs, `ibus engine byakaron` switches to it and
 `ibus engine xkb:us::eng` switches back.
 
 Permanent installation (so the engine survives a reboot and shows up in
-Settings → Keyboard → Input Sources) is `scripts/install.sh`.
+Settings → Keyboard → Input Sources) is `zig build install-linux` (below).
 
 ### Integration test
 
 ```bash
-bash apps/linux/scripts/test_ime.sh
+zig build linux-ci
 ```
+
+(`linux-ci` starts a private Xvfb + `ibus-daemon` when it can, and runs this
+test against it together with the other checks; `zig build run-linux` is the
+way to register the engine yourself.)
 
 Starts a throwaway engine, drives it through a *private* IBus input context, and
 shuts it down. Because the context is private, the desktop's own input source is
@@ -341,7 +346,8 @@ so they can still be read for that; nothing else reads them.
 ## Installing permanently
 
 ```bash
-sudo bash apps/linux/scripts/install.sh
+zig build                                              # warm the cache as your user first
+sudo -E zig build install-linux                        # add -Dlinux-install-db to build and install spell.db
 ```
 
 This is a **system** install (`/usr/libexec`, `/usr/share/ibus/component`,
@@ -376,10 +382,10 @@ After installing:
 3. Switch with **Super+Space**
 
 ```bash
-sudo bash apps/linux/scripts/uninstall.sh
+sudo zig build uninstall-linux
 ```
 
-removes everything install.sh added.
+removes everything `install-linux` added.
 
 ## Wayland
 
@@ -398,7 +404,7 @@ text-input-v3 instead.
 
 ### Tested on a real GNOME Shell Wayland session
 
-`scripts/gnome_wayland_test.sh` starts a **private** `gnome-shell --headless
+`zig build linux-wayland-e2e` (`src/build/linux.zig wayland-e2e`) starts a **private** `gnome-shell --headless
 --wayland` (own D-Bus, dconf, runtime dir and ibus-daemon, input source set to
 Byakaron) next to the running desktop, opens GTK3 and GTK4 windows natively on
 it, and types through `org.gnome.Mutter.RemoteDesktop`. Those keys take the
@@ -409,8 +415,7 @@ while a word is pending (committed once). Switching the input source to
 English makes every check fail, so the test does measure the engine.
 
 ```bash
-zig build linux
-bash apps/linux/scripts/gnome_wayland_test.sh   # GTK3 + GTK4, 10 checks
+zig build linux-wayland-e2e   # GTK3 + GTK4, 10 checks
 ```
 
 Qt was checked the same way from a container sharing the sandbox's Wayland
@@ -425,27 +430,28 @@ A click *inside* a Qt field could not be synthesised on headless Wayland (the
 pointer cannot be placed without a screen-cast stream); the same IBus path is
 covered by the X11 Qt test.
 
-`scripts/wayland_probe.sh` and `scripts/wayland_type.sh` remain as the quick
-nested-mutter checks used by `ci.sh`.
+`zig build linux-ci` runs the quick nested-mutter probes from the
+`linux-wayland` binaries (`wayland_probe`, `wayland_type`).
 
 ## CI
 
 `.github/workflows/ci.yml` runs on every branch push and pull request, on
 `ubuntu-latest` (amd64) and `ubuntu-24.04-arm` (arm64):
 
-1. `setup_deps.sh --test` plus `libfcitx5core-dev`, `xvfb`, `appstream`, …
+1. `zig build linux-deps -- --test` plus `libfcitx5core-dev`, `xvfb`, `appstream`, …
 2. Zig **0.17.0** via `mlugg/setup-zig`
-3. `bash apps/linux/scripts/ci.sh` — `zig build linux linux-app linux-test
-   -Dshared` against the pinned sysroot (glibc 2.31), `byakaron --help` /
-   `--version`, smoke test, IME integration test against a throwaway
-   Xvfb+ibus-daemon, display-path probe, Fcitx5 addon (system headers; same
-   glibc 2.31 ceiling), GtkEntry typing through the IBus IM module
+3. `zig build linux-ci` — builds `linux`, `linux-test`, the smoke test and
+   (when the headers exist) `linux-fcitx5` / `linux-wayland` against the
+   pinned sysroot (glibc 2.31), then checks the glibc ceiling, `byakaron --help` / `--version`,
+   smoke test, IME integration test against a throwaway Xvfb+ibus-daemon,
+   display-path probe, Fcitx5 addon (system headers; same glibc 2.31
+   ceiling), GtkEntry typing through the IBus IM module
 
 `spell.db` is not built there. Smoke skips those assertions when the file is
 missing; typing and candidates do not need it.
 
 A second job, **GNOME Wayland typing**, installs `gnome-shell` and runs
-`scripts/gnome_wayland_test.sh` (see [Wayland](#wayland)): GTK3 and GTK4 apps
+`zig build linux-wayland-e2e` (see [Wayland](#wayland)): GTK3 and GTK4 apps
 on a headless GNOME Shell, typed into through `org.gnome.Mutter.RemoteDesktop`.
 On the runner GNOME Shell does not give a new window keyboard focus, so the test
 clicks into the window before typing, as a user would.
@@ -459,32 +465,30 @@ a published release (see Releasing).
 To run the same steps locally:
 
 ```bash
-bash apps/linux/scripts/ci.sh
-bash apps/linux/scripts/gnome_wayland_test.sh   # needs gnome-shell
+zig build linux-ci
+zig build linux-wayland-e2e   # needs gnome-shell
+zig build linux-install-test  # the local .deb in clean Ubuntu/Debian containers (Docker)
 ```
 
 ## Releasing
 
-`scripts/release.sh` does the whole release; each stage stops on the first
-failure:
+Releases are built and published by GitHub Actions (`release.yml`, with
+`cd.yml` doing the Linux part): CI runs `zig build package-linux` on an amd64
+and an arm64 runner, installs and types through each `.deb`, and attaches them
+to the release. See [RELEASING.md](../../RELEASING.md) for the steps. There is
+no local release script.
 
-```bash
-S=apps/linux/scripts
-bash $S/release.sh prepare X.Y.Z "One-line summary for AppStream"  # bump everywhere, commit, tag
-bash $S/release.sh verify  X.Y.Z                                    # amd64 .deb in clean 20.04/22.04/24.04
-bash $S/release.sh publish X.Y.Z notes.md                           # push, CI builds+tests both CPUs, GitHub release
-bash $S/release.sh website X.Y.Z                                    # site installers, deploy, live check
-```
+Bump the version by hand before tagging: `.version` in `build.zig.zon` (the
+`.deb` version), `BYK_APP_VERSION` in `App/app.h`, `<version>` in
+`Resources/byakaron.xml.in`, `VERSION_FALLBACK` in `web_install.sh`, and a
+`<release>` entry in the AppStream metainfo.
 
-`prepare` refuses a dirty tree, an existing tag, or a version string it could
-not replace. `publish` waits for the tag's `release.yml` run, downloads both `.deb`s
-(resuming, since GitHub's artifact downloads time out on slow links), checks
-package/version/architecture, and creates the release on
-`nuhulabs/Byakaron-Assets` marked Latest, then compares the uploaded checksums.
-`website` regenerates `install.sh`, `install-amd64.sh` and `install-arm64.sh`
-(`scripts/site_installers.sh`) in the nuhulabs.com repo and checks the live
-files after the deploy. The page itself needs no version bump: both commands
-fetch the latest release.
+The website installer is `apps/linux/web_install.sh`. Copy it by hand to
+`install.sh` in the nuhulabs.com repo (`app/public/byakaron`), plus the same
+file as `install-amd64.sh` and `install-arm64.sh` for links shared earlier. The
+page itself needs no version bump: the installer fetches the latest release.
+`bash apps/linux/tests/web_install_test.sh` checks what it decides on different
+systems.
 
 ## Fcitx5 (optional)
 
@@ -505,7 +509,7 @@ add **Byakaron** in the Fcitx5 config tool.
 
 An IBus engine has to live in `/usr/share/ibus/component` so the session
 daemon can spawn it. A sandboxed Flatpak cannot register there, which is why
-ibus-avro ships as a `.deb` too. `scripts/package_deb.sh` is the IME artefact.
+ibus-avro ships as a `.deb` too. `zig build package-linux` is the IME artefact.
 It emits one package:
 
 - `byakaron_*.deb` — engine, GTK app, GSettings schema, and `spell.db`.
@@ -541,8 +545,8 @@ The keyboard is built for **glibc 2.31**, so it works on **Ubuntu 20.04, 22.04,
 and 24.04**. On ARM, see [ARM.md](ARM.md).
 
 ```bash
-bash apps/linux/scripts/package_deb.sh
-sudo apt install ./apps/linux/build/byakaron_0.2.1_amd64.deb
+zig build package-linux      # alias: linux-deb; builds spell.db too
+sudo apt install ./zig-out/pkg/byakaron_<version>_amd64.deb
 ```
 
 Use `apt`, not `dpkg -i`. If an older Byakaron `.deb` is already installed
@@ -554,7 +558,7 @@ the Bangla list, log out and back in.
 The companion GTK app *can* live in a sandbox:
 
 ```bash
-bash apps/linux/scripts/package_flatpak.sh
+zig build package-linux-flatpak
 ```
 
 That packs the already-built `byakaron` binary against `org.gnome.Platform`
@@ -567,7 +571,7 @@ the Debian package lives in `Resources/dev.nuhu.labs.Byakaron.metainfo.xml`.
 
 After installing the engine and adding **Byakaron** as an input source, switch to it with Super+Space and verify `ami` + Space commits `আমি ` in GTK4, Firefox, Chrome, one Qt application, and Cursor or another Electron app. In Cursor/Electron, specifically confirm a pending word is committed before its preedit is hidden. If using Fcitx5, also add Byakaron in the Fcitx5 configuration tool and confirm the same flow.
 
-For Wayland without logging out, run `scripts/gnome_wayland_test.sh` (see [Wayland](#wayland)). A Wayland *login* is still the place to check things the sandbox cannot: candidate-window position, and browsers.
+For Wayland without logging out, run `zig build linux-wayland-e2e` (see [Wayland](#wayland)). A Wayland *login* is still the place to check things the sandbox cannot: candidate-window position, and browsers.
 
 ## Known issues
 
@@ -591,9 +595,10 @@ For Wayland without logging out, run `scripts/gnome_wayland_test.sh` (see [Wayla
   committed (`*.db` is gitignored). Build it with `zig build db`, which
   downloads the bnwiki dump and merges the Avro lexicon into a Wikipedia
   dictionary with bigram/trigram tables (written to `zig-out/db/spell.db`).
-  `install.sh` copies it to `/usr/share/byakaron/spell.db` when the file is
+  `zig build install-linux` copies it to `/usr/share/byakaron/spell.db` when the file is
   present. The shareable `.deb` ships it in the same package as the keyboard
   and app, so one file is a complete install. Override the path
   with `BYAKARON_SPELL_DB` for development. The input method types without it;
   only spell-check needs it. Candidates use the compiled-in lexicon.
-- `apps/linux/build/` is generated output and is git-ignored.
+- Deb staging lives under `apps/linux/build/` (git-ignored); the shareable
+  `.deb` is written to `zig-out/pkg/`.

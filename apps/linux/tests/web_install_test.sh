@@ -8,11 +8,17 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-SCRIPTS="$(cd "$HERE/../scripts" && pwd)"
+SRC="$(cd "$HERE/.." && pwd)/web_install.sh"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-bash "$SCRIPTS/site_installers.sh" "$WORK/site" >/dev/null
+# The website serves one installer under three names (install.sh, plus the
+# per-CPU names older links used); copy it the same way here.
+mkdir -p "$WORK/site"
+cp "$SRC" "$WORK/site/install.sh"
+for name in install-amd64.sh install-arm64.sh; do
+    cp "$SRC" "$WORK/site/$name"
+done
 
 failures=0
 

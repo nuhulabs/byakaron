@@ -53,7 +53,7 @@
 		894ACF012FF1D0000042A597 /* spell.db */ = {isa = PBXFileReference; lastKnownFileType = file; name = spell.db; path = ../../zig-out/db/spell.db; sourceTree = SOURCE_ROOT; };
 		894ACDFA2FF1A4970042A597 /* Info-keyboard.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info-keyboard.plist"; sourceTree = "<group>"; };
 		894ACE1D2FF1A5AA0042A597 /* Byakaron Keyboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Byakaron Keyboard.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		894ACE492FF1B24F0042A597 /* libbyakaron.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libbyakaron.a; path = ../../zig-out/macos/lib/libbyakaron.a; sourceTree = SOURCE_ROOT; };
+		894ACE492FF1B24F0042A597 /* libbyakaron.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libbyakaron.a; path = ../../zig-out/lib/macos/libbyakaron.a; sourceTree = SOURCE_ROOT; };
 		899FBAA62FF2975C002BEA94 /* MenuIcon.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = MenuIcon.pdf; sourceTree = "<group>"; };
 		899FBAA72FF2975C002BEA94 /* MenuIcon.tiff */ = {isa = PBXFileReference; lastKnownFileType = image.tiff; path = MenuIcon.tiff; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -440,7 +440,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/include";
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/lib/macos";
 				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -449,7 +449,7 @@
 					"@executable_path/../Frameworks",
 				);
 				LIBRARY_SEARCH_PATHS = (
-					"$(SRCROOT)/../../zig-out/macos/lib",
+					"$(SRCROOT)/../../zig-out/lib/macos",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.nuhu.labs.Byakaron;
@@ -481,7 +481,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/include";
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/lib/macos";
 				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -490,7 +490,7 @@
 					"@executable_path/../Frameworks",
 				);
 				LIBRARY_SEARCH_PATHS = (
-					"$(SRCROOT)/../../zig-out/macos/lib",
+					"$(SRCROOT)/../../zig-out/lib/macos",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.nuhu.labs.Byakaron;
@@ -521,7 +521,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/include";
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/lib/macos";
 				INFOPLIST_FILE = "Resources/Info-keyboard.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -531,7 +531,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/lib";
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/lib/macos";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.nuhu.labs.inputmethod.Byakaron;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -560,7 +560,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/include";
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/lib/macos";
 				INFOPLIST_FILE = "Resources/Info-keyboard.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -570,7 +570,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/lib";
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/lib/macos";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.nuhu.labs.inputmethod.Byakaron;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -656,7 +656,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/include";
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/lib/macos";
 				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -665,7 +665,7 @@
 					"@executable_path/../Frameworks",
 				);
 				LIBRARY_SEARCH_PATHS = (
-					"$(SRCROOT)/../../zig-out/macos/lib",
+					"$(SRCROOT)/../../zig-out/lib/macos",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.nuhu.labs.Byakaron;
@@ -696,7 +696,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/include";
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/lib/macos";
 				INFOPLIST_FILE = "Resources/Info-keyboard.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -706,7 +706,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/macos/lib";
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/lib/macos";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.nuhu.labs.inputmethod.Byakaron;
 				PRODUCT_NAME = "$(TARGET_NAME)";
