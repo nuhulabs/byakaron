@@ -8,9 +8,9 @@
  * Nested mutter is a virtual seat. GTK4's IBus module often cannot eat those
  * synthetic keys (the engine never sees them; the entry gets latin). The
  * session X11 / Xvfb path is the one that actually proves IM-module typing.
- * text-input-v3 on nested mutter is covered by wayland_probe.sh.
+ * text-input-v3 on nested mutter is covered by wayland_probe.
  *
- * Built and run by apps/linux/scripts/wayland_type.sh.
+ * Built by `zig build linux-wayland`; run by `zig build linux-ci`.
  */
 #include <gtk/gtk.h>
 #include <locale.h>

@@ -1,19 +1,5 @@
-# Build and test every platform on every branch push and pull request.
-#
-#   test ─┬─ linux (amd64, arm64)
-#         ├─ linux-wayland
-#         ├─ macos
-#         ├─ windows
-#         ├─ android
-#         └─ web
-#
-# The Zig unit tests gate the platform builds. Linux targets build against the
-# pinned Ubuntu sysroot (`zig build linux` downloads it), so the runner only
-# needs packages for running and for the C test helpers (`setup_deps.sh --test`).
-# No platform ships a real spell.db here (release.yml does, through cd.yml).
-# The Android APK needs the private nuhulabs/byakaron-android submodule, so it is
-# built only when the BYAKARON_ANDROID_TOKEN secret is set (see RELEASING.md).
-name: CI
+# ci: test → integration → e2e (each os; placeholders where missing)
+name: ci
 
 on:
   push:
@@ -30,198 +16,133 @@ concurrency:
 
 jobs:
   test:
-    name: Test (${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: Linux
-            os: ubuntu-latest
-          - name: macOS
-            os: xcode-27
+          - os: linux
+            runner: ubuntu-latest
+          - os: macos
+            runner: xcode-27
+          - os: windows
+            runner: windows-latest
+            placeholder: true
+          - os: android
+            runner: ubuntu-latest
+            placeholder: true
+          - os: web
+            runner: ubuntu-latest
+            placeholder: true
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
+      - uses: mlugg/setup-zig@v2
+        if: ${{ !matrix.placeholder }}
         with:
           version: 0.17.0
 
-      - name: Test
+      - name: test
+        if: ${{ !matrix.placeholder }}
         run: zig build test
 
-  # Engine, app and IME tests. arm64 on a native GitHub ARM runner, not qemu:
-  # the site promises arm64, so the same build and tests have to pass there.
-  linux:
-    name: Linux (${{ matrix.arch }})
+      - name: placeholder
+        if: ${{ matrix.placeholder }}
+        run: echo "placeholder: no ${{ matrix.os }} unit tests yet"
+
+  integration:
+    name: integration (${{ matrix.os }})
     needs: [test]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: linux
+            runner: ubuntu-latest
             arch: amd64
-          - os: ubuntu-24.04-arm
+          - os: linux
+            runner: ubuntu-24.04-arm
             arch: arm64
+          - os: macos
+            runner: xcode-27
+          - os: windows
+            runner: windows-latest
+          - os: android
+            runner: ubuntu-latest
+          - os: web
+            runner: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install packages
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      # —— linux ——
+      - name: deps
+        if: matrix.os == 'linux'
         run: |
-          sudo bash apps/linux/scripts/setup_deps.sh --test
+          sudo -E env "PATH=$PATH" \
+            ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
+            zig build linux-deps -- --test
           sudo apt-get install -y --no-install-recommends \
-            libfcitx5core-dev \
-            ibus-gtk4 \
-            xvfb \
-            dbus-x11 \
-            appstream \
-            python3-gi \
-            gir1.2-gdkpixbuf-2.0 \
-            librsvg2-common
+            libfcitx5core-dev ibus-gtk4 xvfb dbus-x11 appstream \
+            python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
 
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
+      - name: integration
+        if: matrix.os == 'linux'
+        run: zig build linux-ci -Dshared=true
 
-      - name: Build and test
-        run: bash apps/linux/scripts/ci.sh
-
-  # Types into GTK3 and GTK4 apps on a real GNOME Shell Wayland session
-  # (headless, private dbus/dconf/ibus), through org.gnome.Mutter.RemoteDesktop:
-  # the path a keyboard takes on an "Ubuntu on Wayland" login. Arrow keys,
-  # candidates, click-commit, Shift, numerals, and live settings.
-  linux-wayland:
-    name: Linux (GNOME Wayland)
-    needs: [test]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install packages
+      # —— macos ——
+      - name: integration
+        if: matrix.os == 'macos'
         run: |
-          sudo bash apps/linux/scripts/setup_deps.sh --test
-          sudo apt-get install -y --no-install-recommends \
-            gnome-shell mutter dbus-x11 ibus python3-gi \
-            gir1.2-gtk-3.0 gir1.2-gtk-4.0 libgl1-mesa-dri \
-            xdg-desktop-portal gsettings-desktop-schemas
+          zig build macos -Dwiki-dump=.github/ci/bnwiki-tiny.xml
+          codesign --verify --deep --strict zig-out/bin/Byakaron.app
 
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-
-      - name: Build
-        run: zig build linux -Doptimize=ReleaseFast
-
-      - name: Test
-        run: bash apps/linux/scripts/gnome_wayland_test.sh
-
-      - name: Show logs
-        if: failure()
-        run: |
-          for f in apps/linux/build/gnome-wayland/*.log; do
-            echo "=== $f"; tail -40 "$f"
-          done
-
-  # The app through Xcode (Debug, ad-hoc signed); the project needs Xcode 27.
-  # The build graph also builds spell.db for the bundle; a one-page bnwiki dump
-  # keeps that a seconds-long smoke run.
-  macos:
-    name: macOS
-    needs: [test]
-    runs-on: xcode-27
-    timeout-minutes: 60
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-
-      - name: Build
-        run: zig build macos -Dwiki-dump=.github/ci/bnwiki-tiny.xml
-
-      - name: Verify
-        run: codesign --verify --deep --strict zig-out/macos/Byakaron.app
-
-  # The WinUI app + TSF IME in the Inno Setup installer, as on a developer
-  # machine, with spell.db from the one-page bnwiki dump.
-  windows:
-    name: Windows
-    needs: [test]
-    runs-on: windows-latest
-    timeout-minutes: 60
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-
-      # `zig build windows` finds ISCC under Program Files.
-      - name: Install Inno Setup
+      # —— windows ——
+      - name: inno
+        if: matrix.os == 'windows'
         run: choco install innosetup --no-progress -y
 
-      - name: Build
-        run: zig build windows -Dwiki-dump=.github/ci/bnwiki-tiny.xml
+      - name: integration
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: zig build windows "-Dwiki-dump=.github/ci/bnwiki-tiny.xml"
 
-      - name: Upload installer
+      - name: upload
+        if: matrix.os == 'windows'
         uses: actions/upload-artifact@v4
         with:
           name: windows-setup
-          path: zig-out/windows/Byakaron-Setup.exe
+          path: zig-out/pkg/Byakaron-Setup.exe
           retention-days: 7
           if-no-files-found: error
 
-  # libbyakaron.so for every ABI against the NDK (`zig build android-libs`),
-  # or, when the private keyboard submodule is reachable, those plus the debug
-  # APK through Gradle (`zig build android`).
-  android:
-    name: Android
-    needs: [test]
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # Check the submodule out at the recorded commit with a token that can
-      # read it, or build only the library when there is none.
-      - name: Find keyboard submodule
+      # —— android ——
+      - name: keyboard
+        if: matrix.os == 'android'
         id: keyboard
         env:
           TOKEN: ${{ secrets.BYAKARON_ANDROID_TOKEN }}
         run: |
           sha=$(git ls-tree HEAD apps/android/keyboard | awk '$2 == "commit" { print $3 }')
           if [[ -z "$sha" ]]; then
-            echo "::notice::apps/android/keyboard is not a submodule here; skipping the APK"
+            echo "::notice::no keyboard submodule; libs only"
           elif [[ -z "$TOKEN" ]]; then
-            echo "::notice::BYAKARON_ANDROID_TOKEN is not set; skipping the APK"
+            echo "::notice::BYAKARON_ANDROID_TOKEN unset; libs only"
             sha=""
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout keyboard
-        if: steps.keyboard.outputs.sha != ''
+      - name: checkout keyboard
+        if: matrix.os == 'android' && steps.keyboard.outputs.sha != ''
         uses: actions/checkout@v4
         with:
           repository: nuhulabs/byakaron-android
@@ -229,72 +150,102 @@ jobs:
           path: apps/android/keyboard
           token: ${{ secrets.BYAKARON_ANDROID_TOKEN }}
 
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-
-      - name: Setup NDK
+      - name: ndk
+        if: matrix.os == 'android'
         id: ndk
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r27c
           add-to-path: false
 
-      # Also copies each .so into apps/android/keyboard/app/src/main/jniLibs.
-      - name: Build library
-        if: steps.keyboard.outputs.sha == ''
+      - name: integration (libs)
+        if: matrix.os == 'android' && steps.keyboard.outputs.sha == ''
         run: zig build android-libs -Dandroid-ndk="${{ steps.ndk.outputs.ndk-path }}"
 
-      - name: Setup Java
-        if: steps.keyboard.outputs.sha != ''
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
+        if: matrix.os == 'android' && steps.keyboard.outputs.sha != ''
         with:
           java-version: "17"
           distribution: temurin
 
-      - name: Setup Gradle
-        if: steps.keyboard.outputs.sha != ''
-        uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4
+        if: matrix.os == 'android' && steps.keyboard.outputs.sha != ''
 
-      # The libraries, then Gradle's debug build with them.
-      - name: Build APK
-        if: steps.keyboard.outputs.sha != ''
+      - name: integration (apk)
+        if: matrix.os == 'android' && steps.keyboard.outputs.sha != ''
         run: zig build android -Dandroid-ndk="${{ steps.ndk.outputs.ndk-path }}"
 
-      - name: Upload APK
-        if: steps.keyboard.outputs.sha != ''
+      - name: upload apk
+        if: matrix.os == 'android' && steps.keyboard.outputs.sha != ''
         uses: actions/upload-artifact@v4
         with:
           name: android-debug-apk
-          path: zig-out/android/Byakaron-debug.apk
+          path: zig-out/pkg/Byakaron-debug.apk
           retention-days: 7
           if-no-files-found: error
 
-      - name: Upload library
+      - name: upload libs
+        if: matrix.os == 'android'
         uses: actions/upload-artifact@v4
         with:
           name: android-jniLibs
-          path: zig-out/android/jniLibs
+          path: zig-out/lib/android/jniLibs
           retention-days: 7
           if-no-files-found: error
 
-  # The web app (apps/web, ziex): the default install step compiles the server
-  # and the client wasm without serving or building spell.db.
-  web:
-    name: Web
-    needs: [test]
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+      # —— web ——
+      - name: integration
+        if: matrix.os == 'web'
+        run: zig build -Doptimize=ReleaseSmall
+
+  e2e:
+    name: e2e (${{ matrix.os }})
+    needs: [integration]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-24.04
+            kind: wayland
+          - os: macos
+            runner: ubuntu-latest
+            placeholder: true
+          - os: windows
+            runner: ubuntu-latest
+            placeholder: true
+          - os: android
+            runner: ubuntu-latest
+            placeholder: true
+          - os: web
+            runner: ubuntu-latest
+            placeholder: true
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
+      - name: placeholder
+        if: ${{ matrix.placeholder }}
+        run: echo "placeholder: no ${{ matrix.os }} e2e yet"
+
+      - uses: mlugg/setup-zig@v2
+        if: ${{ !matrix.placeholder }}
         with:
           version: 0.17.0
 
-      - name: Build
-        run: zig build -Doptimize=ReleaseSmall
+      - name: deps
+        if: matrix.os == 'linux'
+        run: |
+          sudo -E env "PATH=$PATH" \
+            ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
+            zig build linux-deps -- --test
+          sudo apt-get install -y --no-install-recommends \
+            gnome-shell mutter dbus-x11 ibus python3-gi \
+            gir1.2-gtk-3.0 gir1.2-gtk-4.0 libgl1-mesa-dri \
+            xdg-desktop-portal gsettings-desktop-schemas
+
+      - name: e2e
+        if: matrix.os == 'linux'
+        run: zig build linux-wayland-e2e

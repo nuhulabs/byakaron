@@ -1,85 +1,80 @@
-# Release: build every platform's package and publish them together.
+# release: cd + platform pkgs → github release tagged from build.zig.zon
 #
-# A `v*` tag (e.g. v0.3.0; v0.3.0-rc.1 is a prerelease) builds everything and
-# publishes ONE release <tag> on the public nuhulabs/Byakaron-Assets
-# (nuhulabs/byakaron is private, so users could not download from it) with:
+#   zig-out/pkg/
+#     byakaron_<ver>_{amd64,arm64}.deb
+#     Byakaron.dmg
+#     Byakaron-Setup.exe
+#     Byakaron.apk
+#     spell.db
 #
-#   byakaron_<ver>_amd64.deb, byakaron_<ver>_arm64.deb   (cd.yml)
-#   Byakaron.dmg            macOS, zig build release-macos
-#   Byakaron-Setup.exe      Windows, zig build windows
-#   Byakaron.apk            Android, zig build release-android (needs the submodule token)
-#   spell.db                (cd.yml)
-#   SHA256SUMS
-#
-# Run it by hand (workflow_dispatch) for a dry run: the same builds, uploaded
-# as this run's artifacts, nothing published.
-#
-# Signing is optional: each signing step runs only when its secrets exist, so
-# without them the assets are unsigned. Secrets and the steps to cut a
-# release are in RELEASING.md.
-#
-# Linux-only releases still work the old way: a `linux-*` tag (pushed by
-# `apps/linux/scripts/release.sh publish`) runs only cd.yml; release.sh then
-# downloads the `byakaron-<arch>` artifacts from this run and creates the
-# release on nuhulabs/Byakaron-Assets itself, e.g.:
-#
-#   gh release create linux-0.2.1 apps/linux/build/byakaron_*_amd64.deb \
-#     --repo nuhulabs/Byakaron-Assets --title "Linux 0.2.1"
-#
-# Then: curl -fsSL https://nuhulabs.com/byakaron/install.sh | sudo bash
-#
-# A release published on this repository also gets the .debs attached.
-#
-#   cd (spell.db, .debs) ─┬─ windows ─┐
-#                         ├─ android ─┼─ publish
-#   macos ────────────────┴───────────┘
-name: Release
+# Tag: v${build.zig.zon.version}. Push a matching annotated tag, or dispatch
+# to dry-run (artifacts only). Publishes to nuhulabs/Byakaron-Assets.
+name: release
 
 on:
   push:
-    tags: ["v*", "linux-*"]
-  release:
-    types: [published]
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  # spell.db (cached on its inputs) and the tested .debs for both CPUs.
   cd:
-    name: CD
+    name: cd
     uses: ./.github/workflows/cd.yml
 
+  version:
+    name: version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          version=$(sed -n 's/^[[:space:]]*\.version = "\([^"]*\)".*/\1/p' build.zig.zon | head -1)
+          [[ -n "$version" ]] || { echo "::error::no .version in build.zig.zon"; exit 1; }
+          tag="v${version}"
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            pushed="${{ github.ref_name }}"
+            if [[ "$pushed" != "$tag" && "$pushed" != "$tag"-* ]]; then
+              echo "::warning::tag $pushed does not match zon $tag; publishing as $pushed"
+              tag="$pushed"
+              version="${pushed#v}"
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release tag: $tag (zon version $version)"
+
   macos:
-    name: macOS
+    name: pkg (macos)
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: xcode-27
-    # release-macos builds the real spell.db for the bundle itself (the build
-    # graph has no way to take cd.yml's), so this is the long one.
     timeout-minutes: 180
     env:
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
+      - uses: mlugg/setup-zig@v2
         with:
           version: 0.17.0
 
-      - name: Build
-        run: |
-          zig build release-macos
-          mkdir -p dist
-          mv zig-out/macos/Byakaron-*.dmg dist/Byakaron.dmg
+      - name: build
+        run: zig build release-macos
 
-      - name: Import signing certificate
+      - name: sign
         if: env.APPLE_CERTIFICATE != ''
         env:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
           keychain="$RUNNER_TEMP/signing.keychain-db"
           password=$(openssl rand -hex 16)
@@ -91,24 +86,13 @@ jobs:
             -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           rm "$RUNNER_TEMP/certificate.p12"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
-          # shellcheck disable=SC2046 # the existing keychains, one word each
+          # shellcheck disable=SC2046
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
 
-      # Re-sign the ad-hoc signed app with the Developer ID and the hardened
-      # runtime (nested code first, keeping each bundle's entitlements), rebuild
-      # the image the way src/build/macos.zig does, then notarize and staple.
-      - name: Sign and notarize
-        if: env.APPLE_CERTIFICATE != ''
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        run: |
           mnt="$RUNNER_TEMP/mnt"
           stage="$RUNNER_TEMP/stage"
           mkdir -p "$stage"
-          hdiutil attach -quiet -nobrowse -readonly -mountpoint "$mnt" dist/Byakaron.dmg
+          hdiutil attach -quiet -nobrowse -readonly -mountpoint "$mnt" zig-out/pkg/Byakaron.dmg
           ditto "$mnt/Byakaron.app" "$stage/Byakaron.app"
           hdiutil detach -quiet "$mnt"
           ln -s /Applications "$stage/Applications"
@@ -125,61 +109,54 @@ jobs:
           sign "$app"
           codesign --verify --deep --strict "$app"
 
-          rm dist/Byakaron.dmg
-          hdiutil create -quiet -volname Byakaron -srcfolder "$stage" -ov -format UDZO dist/Byakaron.dmg
-          codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" dist/Byakaron.dmg
-          xcrun notarytool submit dist/Byakaron.dmg --wait \
+          rm zig-out/pkg/Byakaron.dmg
+          hdiutil create -quiet -volname Byakaron -srcfolder "$stage" -ov -format UDZO zig-out/pkg/Byakaron.dmg
+          codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" zig-out/pkg/Byakaron.dmg
+          xcrun notarytool submit zig-out/pkg/Byakaron.dmg --wait \
             --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
-          xcrun stapler staple dist/Byakaron.dmg
+          xcrun stapler staple zig-out/pkg/Byakaron.dmg
 
-      - name: Upload Byakaron.dmg
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: release-macos
-          path: dist/Byakaron.dmg
+          path: zig-out/pkg/Byakaron.dmg
           if-no-files-found: error
 
   windows:
-    name: Windows
+    name: pkg (windows)
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-    needs: [cd]
+    needs: [cd, version]
     runs-on: windows-latest
     timeout-minutes: 90
     env:
       WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
+      - uses: mlugg/setup-zig@v2
         with:
           version: 0.17.0
 
-      - name: Install Inno Setup
+      - name: inno
         run: choco install innosetup --no-progress -y
 
-      # Staged into the installer payload with -Dspell-db.
-      - name: Download spell.db
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: spell-db
           path: zig-out/db
 
-      - name: Build
-        run: |
-          if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:BYAKARON_VERSION = $env:GITHUB_REF_NAME -replace '^v', '' }
-          zig build windows -Dspell-db=zig-out/db/spell.db
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item zig-out/windows/Byakaron-Setup.exe dist/Byakaron-Setup.exe
+      - name: build
+        env:
+          BYAKARON_VERSION: ${{ needs.version.outputs.version }}
+        shell: pwsh
+        run: zig build windows "-Dspell-db=zig-out/db/spell.db"
 
-      # Signs the installer only; the app and IME inside it stay unsigned.
-      - name: Sign
+      - name: sign
         if: env.WINDOWS_CERTIFICATE != ''
         env:
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        shell: pwsh
         run: |
           $pfx = Join-Path $env:RUNNER_TEMP "certificate.pfx"
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
@@ -187,22 +164,20 @@ jobs:
             Sort-Object FullName -Descending | Select-Object -First 1
           if (-not $signtool) { throw "signtool.exe not found" }
           & $signtool.FullName sign /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD `
-            /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 dist/Byakaron-Setup.exe
-          $code = $LASTEXITCODE
-          Remove-Item $pfx
-          if ($code -ne 0) { throw "signtool failed ($code)" }
-          & $signtool.FullName verify /pa dist/Byakaron-Setup.exe
+            /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 zig-out/pkg/Byakaron-Setup.exe
+          if ($LASTEXITCODE -ne 0) { throw "signtool failed" }
+          & $signtool.FullName verify /pa zig-out/pkg/Byakaron-Setup.exe
           if ($LASTEXITCODE -ne 0) { throw "signature does not verify" }
+          Remove-Item $pfx
 
-      - name: Upload Byakaron-Setup.exe
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: release-windows
-          path: dist/Byakaron-Setup.exe
+          path: zig-out/pkg/Byakaron-Setup.exe
           if-no-files-found: error
 
   android:
-    name: Android
+    name: pkg (android)
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     needs: [cd]
     runs-on: ubuntu-latest
@@ -211,26 +186,21 @@ jobs:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # The keyboard app is the private nuhulabs/byakaron-android submodule:
-      # without a token that can read it there is no APK in this release.
-      - name: Find keyboard submodule
+      - name: keyboard
         id: keyboard
         env:
           TOKEN: ${{ secrets.BYAKARON_ANDROID_TOKEN }}
         run: |
           sha=$(git ls-tree HEAD apps/android/keyboard | awk '$2 == "commit" { print $3 }')
-          if [[ -z "$sha" ]]; then
-            echo "::warning::apps/android/keyboard is not a submodule here; no Byakaron.apk in this release"
-          elif [[ -z "$TOKEN" ]]; then
-            echo "::warning::BYAKARON_ANDROID_TOKEN is not set; no Byakaron.apk in this release"
+          if [[ -z "$sha" || -z "$TOKEN" ]]; then
+            echo "::warning::no Byakaron.apk in this release"
             sha=""
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout keyboard
+      - name: checkout keyboard
         if: steps.keyboard.outputs.sha != ''
         uses: actions/checkout@v4
         with:
@@ -239,13 +209,12 @@ jobs:
           path: apps/android/keyboard
           token: ${{ secrets.BYAKARON_ANDROID_TOKEN }}
 
-      - name: Setup Zig
+      - uses: mlugg/setup-zig@v2
         if: steps.keyboard.outputs.sha != ''
-        uses: mlugg/setup-zig@v2
         with:
           version: 0.17.0
 
-      - name: Setup NDK
+      - name: ndk
         if: steps.keyboard.outputs.sha != ''
         id: ndk
         uses: nttld/setup-ndk@v1
@@ -253,75 +222,65 @@ jobs:
           ndk-version: r27c
           add-to-path: false
 
-      - name: Download spell.db
+      - uses: actions/download-artifact@v4
         if: steps.keyboard.outputs.sha != ''
-        uses: actions/download-artifact@v4
         with:
           name: spell-db
           path: zig-out/db
 
-      - name: Setup Java
+      - uses: actions/setup-java@v4
         if: steps.keyboard.outputs.sha != ''
-        uses: actions/setup-java@v4
         with:
           java-version: "17"
           distribution: temurin
 
-      - name: Setup Gradle
+      - uses: gradle/actions/setup-gradle@v4
         if: steps.keyboard.outputs.sha != ''
-        uses: gradle/actions/setup-gradle@v4
 
-      # app/build.gradle.kts signs the release variant only when
-      # RELEASE_STORE_FILE points at a keystore; otherwise it stays unsigned.
-      - name: Import signing keystore
+      - name: keystore
         if: steps.keyboard.outputs.sha != '' && env.ANDROID_KEYSTORE_BASE64 != ''
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
           echo "RELEASE_STORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
-      # libbyakaron.so for every ABI, spell.db into the app's assets, then
-      # Gradle's release build.
-      - name: Build APK
+      - name: build
         if: steps.keyboard.outputs.sha != ''
         env:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
-          zig build release-android -Dandroid-ndk="${{ steps.ndk.outputs.ndk-path }}" -Dspell-db=zig-out/db/spell.db
-          mkdir -p dist
-          cp zig-out/android/Byakaron.apk dist/Byakaron.apk
+          zig build release-android \
+            -Dandroid-ndk="${{ steps.ndk.outputs.ndk-path }}" \
+            -Dspell-db=zig-out/db/spell.db
 
-      - name: Upload Byakaron.apk
+      - uses: actions/upload-artifact@v4
         if: steps.keyboard.outputs.sha != ''
-        uses: actions/upload-artifact@v4
         with:
           name: release-android
-          path: dist/Byakaron.apk
+          path: zig-out/pkg/Byakaron.apk
           if-no-files-found: error
 
   publish:
-    name: Publish
+    name: publish
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [cd, macos, windows, android]
+    needs: [cd, version, macos, windows, android]
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Download assets
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
-      - name: Publish to nuhulabs/Byakaron-Assets
+      - name: publish
         env:
           GH_TOKEN: ${{ secrets.BYAKARON_ASSETS_TOKEN }}
           ASSETS_REPO: nuhulabs/Byakaron-Assets
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.version.outputs.tag }}
         run: |
           [[ -n "$GH_TOKEN" ]] || { echo "::error::BYAKARON_ASSETS_TOKEN is not set"; exit 1; }
           cd dist
@@ -335,8 +294,7 @@ jobs:
           sha256sum -- * > SHA256SUMS
           cat SHA256SUMS
 
-          # The annotated tag's message is the release notes.
-          git fetch --quiet --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          git fetch --quiet --force origin "refs/tags/$TAG:refs/tags/$TAG" || true
           git tag -l --format='%(contents)' "$TAG" > "$RUNNER_TEMP/notes.md"
           [[ -s "$RUNNER_TEMP/notes.md" ]] || echo "Byakaron ${TAG#v}" > "$RUNNER_TEMP/notes.md"
 
@@ -345,37 +303,9 @@ jobs:
           gh release create "$TAG" --repo "$ASSETS_REPO" --title "Byakaron ${TAG#v}" \
             --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}" ./*
 
-          # Check every upload against our own checksums.
           while read -r sum name; do
             got=$(gh release view "$TAG" --repo "$ASSETS_REPO" --json assets \
               -q ".assets[] | select(.name == \"$name\") | .digest")
             [[ "$got" == "sha256:$sum" ]] || { echo "::error::$name: uploaded $got, built sha256:$sum"; exit 1; }
           done < SHA256SUMS
           echo "https://github.com/$ASSETS_REPO/releases/tag/$TAG"
-
-  # Legacy: a release published on this (private) repository gets the .debs.
-  attach:
-    name: Attach
-    if: github.event_name == 'release'
-    needs: [cd]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Download packages
-        uses: actions/download-artifact@v4
-        with:
-          pattern: byakaron-*
-          merge-multiple: true
-          path: dist
-
-      - name: Attach to release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          shopt -s nullglob
-          files=(dist/byakaron_*.deb)
-          [[ ${#files[@]} -gt 0 ]]
-          gh release upload "${{ github.event.release.tag_name }}" "${files[@]}" \
-            --repo "${{ github.repository }}" --clobber

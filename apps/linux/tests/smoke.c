@@ -7,7 +7,7 @@
  * through the same glue the IBus engine and Fcitx5 addon use (X11 keysyms ->
  * byk_keysym_to_key -> byakaron_composer_key), to prove the shell wiring.
  *
- * Build and run with: apps/linux/scripts/smoke.sh
+ * Build and run with: zig build linux-smoke
  */
 #include <stdio.h>
 #include <string.h>

@@ -6,7 +6,7 @@
  * reach that daemon: the X11 IM module, the Wayland text-input-v3 context, or
  * GTK_IM_MODULE=ibus (which is D-Bus on either backend).
  *
- * Built and run by apps/linux/scripts/wayland_probe.sh.
+ * Built by `zig build linux-wayland`; run by `zig build linux-ci`.
  */
 #include <gtk/gtk.h>
 #include <stdio.h>

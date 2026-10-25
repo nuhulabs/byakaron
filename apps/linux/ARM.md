@@ -77,7 +77,7 @@ Other dependencies (ziex, SQLite, the sysroot packages) are fetched by
 
 ```bash
 cd ~/Code/byakaron
-sudo bash apps/linux/scripts/setup_deps.sh
+sudo -E env "PATH=$PATH" zig build linux-deps   # needs Zig from step 3, so do that first
 ```
 
 That installs IBus and the GTK3 input module. The build itself downloads the
@@ -105,13 +105,14 @@ zig version   # 0.17.0
 cd ~/Code/byakaron
 
 # optional sanity check (ami → আমি)
-bash apps/linux/scripts/smoke.sh
+zig build linux-smoke
 
-sudo bash apps/linux/scripts/install.sh
+zig build                       # as your user, so root does not own the cache
+sudo -E zig build install-linux
 ```
 
-`install.sh` detects `aarch64` and builds with
-`-Dtarget=aarch64-linux-gnu.2.31`. It installs the IBus engine system-wide
+`install-linux` builds for the host CPU (`aarch64`) against glibc 2.31 and
+always as ReleaseFast. It installs the IBus engine system-wide
 and, when GTK3 is present, the companion app.
 
 First compile on a Pi can take a long time. If it dies on RAM, add swap and
@@ -131,17 +132,17 @@ about 1 GB; `zig build db` downloads the bnwiki dump and builds it).
 
 ```bash
 zig build db
-sudo bash apps/linux/scripts/install.sh
+sudo -E zig build install-linux -Dlinux-install-db
 ```
 
 ### Or package a Pi-native `.deb`
 
 This builds one complete file (keyboard, GTK app, and `spell.db`). If
-`spell.db` is not already generated, the script builds it first.
+`spell.db` is not already generated, the step builds it first.
 
 ```bash
-bash apps/linux/scripts/package_deb.sh
-sudo apt install ./apps/linux/build/byakaron_0.2.1_arm64.deb
+zig build package-linux
+sudo apt install ./zig-out/pkg/byakaron_0.2.1_arm64.deb
 ```
 
 That file is `arm64`, not `amd64`. Use `apt`, not `dpkg -i`.
@@ -162,17 +163,17 @@ If Byakaron is missing from the Bangla list, log out and back in, then add
 the input source again.
 
 ```bash
-sudo bash apps/linux/scripts/uninstall.sh
+sudo -E zig build uninstall-linux
 ```
 
-removes everything `install.sh` added.
+removes everything `install-linux` added.
 
 ## What will not work
 
 | Situation | Result |
 | --- | --- |
 | Install the `amd64.deb` on the Pi | Wrong CPU; apt/dpkg refuses it or the binary will not run |
-| 32-bit Raspberry Pi OS (`armhf`) | No glibc 2.31 Zig target in `scripts/compat.sh` |
+| 32-bit Raspberry Pi OS (`armhf`) | No glibc 2.31 `-Dlinux-arch` target in `build.zig` |
 | Ubuntu Server with no desktop | No IBus session to type into |
 | 2 GB Pi with no extra swap | Zig likely runs out of memory |
 

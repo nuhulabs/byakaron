@@ -29,13 +29,13 @@ bundled JDK.
 
 ```sh
 zig build android-libs     # libbyakaron.so only
-zig build android          # → zig-out/android/Byakaron-debug.apk
+zig build android          # → zig-out/pkg/Byakaron-debug.apk
 zig build install-android  # debug build onto the connected device
-zig build release-android  # → zig-out/android/Byakaron.apk, with spell.db
+zig build release-android  # → zig-out/pkg/Byakaron.apk, with spell.db
 ```
 
 Every step first builds `libbyakaron.so` for arm64-v8a, armeabi-v7a and x86_64
-into `zig-out/android/jniLibs/<abi>/` and copies it to
+into `zig-out/lib/android/jniLibs/<abi>/` and copies it to
 `apps/android/keyboard/app/src/main/jniLibs/<abi>/`; the others then run Gradle
 in the submodule (`src/build/gradle.zig`). `release-android` also copies
 spell.db (as built by `zig build db`, or `-Dspell-db=<path>`, `-Ddb-words=N`)

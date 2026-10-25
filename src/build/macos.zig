@@ -4,7 +4,7 @@
 //!   macos launch <app>                    stop, then open <app>
 //!   macos install <app>                   install into /Applications and launch
 //!   macos uninstall [--remove-user-data]
-//!   macos dmg <app> <out-dir>             drag-to-Applications Byakaron-<version>.dmg
+//!   macos dmg <app> <out-dir>             drag-to-Applications Byakaron.dmg
 //!
 //! Replaces apps/macos/scripts/{install,uninstall,create_dmg}.sh.
 
@@ -135,8 +135,9 @@ fn dmg(arena: std.mem.Allocator, io: Io, app: []const u8, out_dir: []const u8) !
     try run(io, &.{ "ditto", app, try std.fs.path.join(arena, &.{ stage, app_name ++ ".app" }) });
     try cwd.symLink(io, applications, try std.fs.path.join(arena, &.{ stage, "Applications" }), .{});
 
-    const out = try std.fmt.allocPrint(arena, "{s}/{s}-{s}.dmg", .{ out_dir, app_name, version });
-    try run(io, &.{ "hdiutil", "create", "-quiet", "-volname", app_name, "-srcfolder", stage, "-ov", "-format", "UDZO", out });
+    const volname = try std.fmt.allocPrint(arena, "{s} {s}", .{ app_name, version });
+    const out = try std.fmt.allocPrint(arena, "{s}/{s}.dmg", .{ out_dir, app_name });
+    try run(io, &.{ "hdiutil", "create", "-quiet", "-volname", volname, "-srcfolder", stage, "-ov", "-format", "UDZO", out });
     try cwd.deleteTree(io, stage);
 }
 

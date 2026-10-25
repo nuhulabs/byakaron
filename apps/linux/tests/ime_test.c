@@ -8,7 +8,7 @@
  * without touching the desktop's active input source.
  *
  * Requires a running ibus-daemon with the engine registered — see
- * apps/linux/scripts/dev_run.sh, which this test's runner starts for it.
+ * `zig build run-linux`, which `zig build linux-ci` starts for it.
  */
 #include <glib/gstdio.h>
 #include <ibus.h>
@@ -259,7 +259,7 @@ main (void)
     const gchar *engine_ok = wait_for_engine (ctx, "byakaron");
     if (g_strcmp0 (engine_ok, "byakaron") != 0) {
         g_printerr ("ime_test: context engine is '%s', not 'byakaron' — "
-                    "is dev_run.sh running?\n", engine_ok ? engine_ok : "(none)");
+                    "is the engine registered (zig build run-linux)?\n", engine_ok ? engine_ok : "(none)");
         return 77; /* skip rather than fail: the engine was never reachable */
     }
 
@@ -464,7 +464,7 @@ main (void)
     {
         const gchar *data_dir = g_getenv ("BYAKARON_DATA_DIR");
         if (data_dir == NULL || *data_dir == '\0') {
-            g_print ("  skip (BYAKARON_DATA_DIR not set; run via test_ime.sh)\n");
+            g_print ("  skip (BYAKARON_DATA_DIR not set; run via zig build linux-ci)\n");
         } else {
             gchar *dict = g_build_filename (data_dir, "user-words.txt", NULL);
             g_file_set_contents (dict, "জিবন\n", -1, NULL);

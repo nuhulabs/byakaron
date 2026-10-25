@@ -154,7 +154,7 @@ pub fn build(b: *std.Build) !void {
 
     // Linux: IBus engine, GTK app, optional Fcitx5, against a pinned Ubuntu
     // sysroot on every host (see `addLinux`).
-    addLinux(b, target, optimize, mod, avro);
+    addLinux(b, target, optimize, mod, avro, spell_db, &install_spell_db.step);
 
     // Executable (only built for non-Android, non-wasm targets)
     if (!is_android and !is_wasi) {
@@ -185,13 +185,13 @@ pub fn build(b: *std.Build) !void {
 
     // macOS app (apps/macos) through its Xcode project. The build graph provides
     // everything Xcode links and bundles under zig-out/ (libbyakaron.a +
-    // byakaron.h in zig-out/macos/, Dictionary.json + spell.db in zig-out/db/), and
-    // src/build/xcode.zig runs xcodebuild with its progress in zig's tree.
-    //   zig build macos            → zig-out/macos/Byakaron.app
+    // byakaron.h in zig-out/lib/macos/, Dictionary.json + spell.db in zig-out/db/),
+    // and src/build/xcode.zig runs xcodebuild with its progress in zig's tree.
+    //   zig build macos            → zig-out/bin/Byakaron.app
     //   zig build run-macos        → build, quit the running copy, launch the build
     //   zig build install-macos    → build, install into /Applications, launch
     //   zig build uninstall-macos  → remove the app and keyboard (-Dmacos-remove-user-data)
-    //   zig build release-macos    → Release build → zig-out/macos/Byakaron-<version>.dmg
+    //   zig build release-macos    → Release build → zig-out/pkg/Byakaron.dmg
     //   zig build macos-icons      → regenerate Resources/MenuIcon.{pdf,tiff}
     if (builtin.os.tag == .macos) {
         const config = b.option(MacosConfig, "macos-config", "Xcode configuration for macos / run-macos / install-macos") orelse .debug;
@@ -205,8 +205,8 @@ pub fn build(b: *std.Build) !void {
         // that Xcode's linker has no runtime for.
         mac_lib.bundle_compiler_rt = true;
         const inputs = [_]*std.Build.Step{
-            &b.addInstallFileWithDir(mac_lib.getEmittedBin(), .{ .custom = "macos/lib" }, "libbyakaron.a").step,
-            &b.addInstallFileWithDir(b.path("src/ffi/byakaron.h"), .{ .custom = "macos/include" }, "byakaron.h").step,
+            &b.addInstallFileWithDir(mac_lib.getEmittedBin(), .{ .custom = "lib/macos" }, "libbyakaron.a").step,
+            &b.addInstallFileWithDir(b.path("src/ffi/byakaron.h"), .{ .custom = "lib/macos" }, "byakaron.h").step,
             install_lexicon,
             &install_spell_db.step,
         };
@@ -238,10 +238,10 @@ pub fn build(b: *std.Build) !void {
         const install_app = b.addInstallDirectory(.{
             .source_dir = app(b, xcode_exe, &inputs, config),
             .install_dir = .prefix,
-            .install_subdir = "macos",
+            .install_subdir = "bin",
         });
-        const installed_app = b.graph.path(.install_prefix, "macos/Byakaron.app");
-        b.step("macos", "Build the macOS app → zig-out/macos/Byakaron.app").dependOn(&install_app.step);
+        const installed_app = b.graph.path(.install_prefix, "bin/Byakaron.app");
+        b.step("macos", "Build the macOS app → zig-out/bin/Byakaron.app").dependOn(&install_app.step);
 
         const launch = b.addRunArtifact(tool);
         launch.addArg("launch");
@@ -268,8 +268,8 @@ pub fn build(b: *std.Build) !void {
         dmg.addDirectoryArg(app(b, xcode_exe, &inputs, .release).path(b, "Byakaron.app"));
         const dmg_dir = dmg.addOutputDirectoryArg("dmg");
         dmg.has_side_effects = true;
-        const install_dmg = b.addInstallDirectory(.{ .source_dir = dmg_dir, .install_dir = .prefix, .install_subdir = "macos" });
-        b.step("release-macos", "Release build → zig-out/macos/Byakaron-<version>.dmg").dependOn(&install_dmg.step);
+        const install_dmg = b.addInstallDirectory(.{ .source_dir = dmg_dir, .install_dir = .prefix, .install_subdir = "pkg" });
+        b.step("release-macos", "Release build → zig-out/pkg/Byakaron.dmg").dependOn(&install_dmg.step);
 
         // Menu-bar icon (template image), drawn by the Swift generators.
         const icons = b.addUpdateSourceFiles();
@@ -461,9 +461,9 @@ fn addWindows(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
         .win32_module_definition = b.path("apps/windows/Keyboard/ByakaronIME.def"),
     });
 
-    const ime_step = b.step("windows-ime", "Build ByakaronIME.dll + byakaron.dll → zig-out/windows/ime/");
-    ime_step.dependOn(&b.addInstallFileWithDir(ime.getEmittedBin(), .{ .custom = "windows/ime" }, "ByakaronIME.dll").step);
-    ime_step.dependOn(&b.addInstallFileWithDir(ffi.getEmittedBin(), .{ .custom = "windows/ime" }, "byakaron.dll").step);
+    const ime_step = b.step("windows-ime", "Build ByakaronIME.dll + byakaron.dll → zig-out/lib/windows/ime/");
+    ime_step.dependOn(&b.addInstallFileWithDir(ime.getEmittedBin(), .{ .custom = "lib/windows/ime" }, "ByakaronIME.dll").step);
+    ime_step.dependOn(&b.addInstallFileWithDir(ffi.getEmittedBin(), .{ .custom = "lib/windows/ime" }, "byakaron.dll").step);
 
     if (builtin.os.tag != .windows) return;
 
@@ -498,9 +498,9 @@ fn addWindows(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
     if (version) |v| iscc.addArg(b.fmt("/DAppVersion={s}", .{v}));
     iscc.addFileArg(b.path("apps/windows/installer/Byakaron.iss"));
     iscc.has_side_effects = true;
-    const windows_step = b.step("windows", "Build the installer → zig-out/windows/Byakaron-Setup.exe");
-    windows_step.dependOn(&b.addInstallFileWithDir(setup_dir.path(b, "Byakaron-Setup.exe"), .{ .custom = "windows" }, "Byakaron-Setup.exe").step);
-    windows_step.dependOn(&b.addInstallDirectory(.{ .source_dir = payload, .install_dir = .{ .custom = "windows" }, .install_subdir = "Byakaron" }).step);
+    const windows_step = b.step("windows", "Build the installer → zig-out/pkg/Byakaron-Setup.exe");
+    windows_step.dependOn(&b.addInstallFileWithDir(setup_dir.path(b, "Byakaron-Setup.exe"), .{ .custom = "pkg" }, "Byakaron-Setup.exe").step);
+    windows_step.dependOn(&b.addInstallDirectory(.{ .source_dir = payload, .install_dir = .{ .custom = "bin" }, .install_subdir = "Byakaron" }).step);
 
     const run = b.addSystemCommand(&.{ "dotnet", "run", "--project" });
     run.addFileArg(proj);
@@ -672,6 +672,26 @@ fn module(b: *std.Build, exported: bool, name: []const u8, options: std.Build.Mo
 /// so a Linux, macOS or Windows machine produces the same binaries without the
 /// -dev packages, a Linux box or a container. `-Dlinux-arch` picks the CPU.
 ///
+/// `zig build linux` builds the IBus engine and the GTK companion app (and
+/// GSettings schemas on a Linux host). `linux-app` is an alias for the same
+/// install. `linux-test` and `linux-fcitx5` stay optional separate steps.
+///
+/// On a Linux host, src/build/linux.zig drives the rest (it replaces
+/// the old apps/linux/scripts/*.sh):
+///   zig build package-linux    → zig-out/pkg/byakaron_<ver>_<arch>.deb (alias linux-deb)
+///   zig build install-linux    → sudo: install into /usr
+///   zig build uninstall-linux  → sudo: remove it
+///   zig build linux-deps       → sudo: apt packages (`-- --test` adds the test toolchain)
+///   zig build run-linux        → register the engine with the running ibus-daemon
+///   zig build linux-smoke      → build and run the C ABI smoke test
+///   zig build linux-ci         → what CI runs
+///   zig build linux-wayland-e2e → typing into GTK3/GTK4 on a private headless GNOME Shell
+///   zig build linux-install-test → the local .deb in clean Ubuntu/Debian containers (Docker)
+///   zig build package-linux-flatpak → the GTK app as a Flatpak bundle
+///
+/// package-linux, install-linux and the flatpak always use ReleaseFast builds,
+/// whatever `-Doptimize` is.
+///
 /// `-Dlinux-system-libs` (Linux hosts only) links the system IBus/GTK through
 /// pkg-config instead, honouring `-Dtarget`, for offline or distro builds.
 /// Running the app, the GSettings schema and Fcitx5 always need a Linux host.
@@ -681,6 +701,8 @@ fn addLinux(
     optimize: std.builtin.OptimizeMode,
     mod: *std.Build.Module,
     avro: AvroData,
+    spell_db: std.Build.LazyPath,
+    install_spell_db: *std.Build.Step,
 ) void {
     const host_linux = builtin.os.tag == .linux;
     const system_libs = b.option(bool, "linux-system-libs", "Link the Linux targets against system IBus/GTK via pkg-config (Linux host)") orelse false;
@@ -702,10 +724,367 @@ fn addLinux(
     });
     const core = if (native) mod else addEngine(b, linux_target, optimize, avro, false).root;
     const sysroot: ?Sysroot = if (native) null else linuxSysroot(b, arch);
+    // package-linux / install-linux always ship ReleaseFast binaries, whatever
+    // the top-level -Doptimize is (a Debug engine would carry sanitizer runtimes
+    // and debug info). With -Doptimize=fast they are the same binaries as `linux`.
+    const rel_core = if (optimize == .fast) core else addEngine(b, if (native) target else linux_target, .fast, avro, false).root;
 
-    // Its own static copy of the core rather than the artifact above, so
-    // `zig build linux` produces a self-contained binary whether or not
-    // -Dshared was passed (the .so is for the GTK app and packaging).
+    const ime = linuxIme(b, linux_target, optimize, core, sysroot);
+
+    const install_ime = b.addInstallArtifact(ime, .{});
+    const linux_step = b.step("linux", "Build Linux IBus + GTK app → zig-out/bin/{byakaron-ibus,byakaron}");
+    if (misuse) |f| linux_step.dependOn(f);
+    linux_step.dependOn(&install_ime.step);
+
+    // Integration test: drives the engine through a private IBus input
+    // context, so it needs a daemon with the engine registered (`zig build
+    // run-linux`; `linux-ci` starts a private daemon and runs it).
+    const ime_test = b.addExecutable(.{
+        .name = "byakaron-ime-test",
+        .root_module = b.createModule(.{
+            .target = linux_target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+    });
+    ime_test.root_module.addCSourceFiles(.{
+        .files = &.{"apps/linux/tests/ime_test.c"},
+        .flags = engine_cflags,
+    });
+    linkLinux(b, ime_test.root_module, sysroot, &.{ "ibus-1.0", "glib-2.0", "gobject-2.0" });
+    ime_test.linker_allow_shlib_undefined = true;
+
+    const install_ime_test = b.addInstallArtifact(ime_test, .{});
+    const linux_test_step = b.step("linux-test", "Build the Linux IME integration test");
+    if (misuse) |f| linux_test_step.dependOn(f);
+    linux_test_step.dependOn(&install_ime_test.step);
+
+    // C ABI smoke test. It compiles the Core glue in (not just links the core)
+    // because it drives the composer through it, as the IME shells do; that
+    // pulls in glib/gio, which are dependencies of the glue, not of the core.
+    // Needs no IBus daemon.
+    const smoke_core = b.addLibrary(.{
+        .linkage = .static,
+        .name = "byakaron_smoke_core",
+        .root_module = core,
+    });
+    const smoke = b.addExecutable(.{
+        .name = "byakaron-smoke",
+        .root_module = b.createModule(.{
+            .target = linux_target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+    });
+    smoke.root_module.addCSourceFiles(.{
+        .files = &.{
+            "apps/linux/tests/smoke.c",
+            "apps/linux/Core/composer.c",
+            "apps/linux/Core/prefs.c",
+            "apps/linux/Core/spell.c",
+        },
+        .flags = engine_cflags,
+    });
+    smoke.root_module.addIncludePath(b.path("src/ffi"));
+    smoke.root_module.addIncludePath(b.path("apps/linux/Core"));
+    linkLinux(b, smoke.root_module, sysroot, &.{ "glib-2.0", "gobject-2.0", "gio-2.0" });
+    smoke.root_module.linkLibrary(smoke_core);
+    smoke.linker_allow_shlib_undefined = true;
+    const install_smoke = b.addInstallArtifact(smoke, .{});
+    const linux_smoke_step = b.step("linux-smoke", "Build and run the Linux C ABI smoke test");
+    if (misuse) |f| linux_smoke_step.dependOn(f);
+    linux_smoke_step.dependOn(&install_smoke.step);
+
+    // GTK3 companion app (same `linux` / `linux-app` install). Built against
+    // the pinned sysroot like the engine, so no libgtk-3-dev is required.
+    // GTK3 3.24 is on Ubuntu 20.04, 22.04, and 24.04; GTK4 / libadwaita 1.4
+    // are not.
+    const app = linuxApp(b, linux_target, optimize, core, sysroot);
+
+    const install_app = b.addInstallArtifact(app, .{});
+    linux_step.dependOn(&install_app.step);
+    // Thin alias: same install as `linux` (IBus engine + GTK app + schemas).
+    const linux_app_step = b.step("linux-app", "Alias for `linux` (IBus + GTK app → zig-out/bin/)");
+    linux_app_step.dependOn(linux_step);
+
+    // Running the app and compiling the GSettings schema (glib-compile-schemas)
+    // need a Linux host; elsewhere the build stops at the binaries.
+    if (host_linux) {
+        const run_app = b.addRunArtifact(app);
+        run_app.step.dependOn(&install_app.step);
+        run_app.addPassthruArgs();
+        const run_linux_app_step = b.step("run-linux-app", "Build and run the Linux GTK app");
+        run_linux_app_step.dependOn(&run_app.step);
+
+        // GSettings schema: compiled into zig-out/share/glib-2.0/schemas so an
+        // uninstalled engine/app can find it next to the binary (or via
+        // GSETTINGS_SCHEMA_DIR for `zig build run-linux-app`, whose artifact
+        // lives in the cache rather than zig-out/bin).
+        const compile_schemas = b.addSystemCommand(&.{
+            "sh",
+            "-c",
+            \\set -eu
+            \\dest="$1"
+            \\src="$2"
+            \\mkdir -p "$dest"
+            \\cp "$src" "$dest/dev.nuhu.labs.Byakaron.gschema.xml"
+            \\glib-compile-schemas "$dest"
+            ,
+            "byk-compile-schemas",
+        });
+        const schema_dir = compile_schemas.addOutputDirectoryArg("gsettings-schemas");
+        compile_schemas.addFileArg(b.path("apps/linux/Resources/dev.nuhu.labs.Byakaron.gschema.xml"));
+        const install_schemas = b.addInstallDirectory(.{
+            .source_dir = schema_dir,
+            .install_dir = .{ .custom = "share/glib-2.0/schemas" },
+            .install_subdir = "",
+        });
+        linux_step.dependOn(&install_schemas.step);
+        run_app.step.dependOn(&install_schemas.step);
+        run_app.setEnvironmentVariable("GSETTINGS_SCHEMA_DIR", "zig-out/share/glib-2.0/schemas");
+    }
+
+    // Optional Fcitx5 frontend. Same composer as IBus; skipped when the
+    // headers are not installed so a GNOME-only box still `zig build linux`.
+    const fcitx_step = b.step("linux-fcitx5", "Build the optional Fcitx5 addon (needs libfcitx5core-dev)");
+    if (misuse) |f| fcitx_step.dependOn(f);
+    var fcitx_so: ?std.Build.LazyPath = null;
+    var fcitx_release_so: ?std.Build.LazyPath = null;
+    // Fcitx5 is C++ against the host's libFcitx5Core, so it always uses the
+    // system libraries (it is not in the pinned sysroot).
+    if (host_linux and pkgConfigExists(b, "Fcitx5Core")) {
+        const fcitx = linuxFcitx(b, linux_target, optimize, core);
+
+        // Fcitx loads $libdir/fcitx5/byakaron.so (no lib prefix), from the
+        // Library=byakaron field in the addon conf.
+        const install_fcitx_so = b.addInstallFileWithDir(
+            fcitx.getEmittedBin(),
+            .lib,
+            "fcitx5/byakaron.so",
+        );
+        const install_fcitx_addon = b.addInstallFileWithDir(
+            b.path("apps/linux/Fcitx5/byakaron-addon.conf"),
+            .{ .custom = "share/fcitx5/addon" },
+            "byakaron.conf",
+        );
+        const install_fcitx_im = b.addInstallFileWithDir(
+            b.path("apps/linux/Fcitx5/byakaron.conf"),
+            .{ .custom = "share/fcitx5/inputmethod" },
+            "byakaron.conf",
+        );
+        fcitx_step.dependOn(&install_fcitx_so.step);
+        fcitx_step.dependOn(&install_fcitx_addon.step);
+        fcitx_step.dependOn(&install_fcitx_im.step);
+        fcitx_so = fcitx.getEmittedBin();
+        if (optimize != .fast) {
+            fcitx_release_so = linuxFcitx(b, linux_target, .fast, rel_core).getEmittedBin();
+        } else {
+            fcitx_release_so = fcitx_so;
+        }
+    } else {
+        fcitx_step.dependOn(&b.addFail(if (host_linux)
+            "Fcitx5Core not found — install libfcitx5core-dev or set PKG_CONFIG_PATH"
+        else
+            "the Fcitx5 addon is only built on a Linux host").step);
+    }
+
+    // GTK4 display-path probes (wayland_probe / wayland_type
+    // helpers). Run on the host against the system GTK4, so they are optional:
+    // `linux-ci` runs them when built.
+    const wayland_step = b.step("linux-wayland", "Build the optional GTK4 wayland probe/type tests (needs libgtk-4-dev)");
+    var have_wayland = false;
+    if (host_linux and pkgConfigExists(b, "gtk4")) {
+        have_wayland = true;
+        for ([_][2][]const u8{
+            .{ "byakaron-wayland-probe", "apps/linux/tests/wayland_probe.c" },
+            .{ "byakaron-wayland-type", "apps/linux/tests/wayland_type.c" },
+        }) |t| {
+            const exe = b.addExecutable(.{
+                .name = t[0],
+                .root_module = b.createModule(.{
+                    .target = b.graph.host,
+                    .optimize = optimize,
+                    .link_libc = true,
+                }),
+            });
+            exe.root_module.addCSourceFiles(.{ .files = &.{t[1]}, .flags = &.{ "-std=gnu11", "-Wall", "-Wextra" } });
+            exe.root_module.linkSystemLibrary("gtk4", .{});
+            wayland_step.dependOn(&b.addInstallArtifact(exe, .{}).step);
+        }
+    } else {
+        wayland_step.dependOn(&b.addFail(if (host_linux)
+            "gtk4 not found — install libgtk-4-dev"
+        else
+            "the wayland tests are only built on a Linux host").step);
+    }
+
+    // Packaging, install and CI go through src/build/linux.zig. The build graph
+    // above has already produced every binary they use; the tool never calls
+    // `zig build` itself.
+    const package_step = b.step("package-linux", "Build zig-out/pkg/byakaron_<ver>_<arch>.deb (always ReleaseFast)");
+    const deb_alias_step = b.step("linux-deb", "Alias for package-linux");
+    const flatpak_step = b.step("package-linux-flatpak", "Build zig-out/pkg/dev.nuhu.labs.Byakaron.flatpak, the GTK app only (needs flatpak)");
+    const install_step = b.step("install-linux", "Install the IBus engine + GTK app into /usr (sudo -E; ReleaseFast; -Dlinux-install-db for spell.db)");
+    const uninstall_step = b.step("uninstall-linux", "Remove the system install (sudo)");
+    const deps_step = b.step("linux-deps", "apt-get install the Linux runtime packages (sudo; `-- --test` adds the test toolchain)");
+    const run_step = b.step("run-linux", "Build and register the IBus engine with the running ibus-daemon (Ctrl-C to unregister)");
+    const ci_step = b.step("linux-ci", "Run the Linux CI checks (glibc, smoke, IME test, probes, icon, AppStream)");
+    const e2e_step = b.step("linux-wayland-e2e", "Type into GTK3/GTK4 apps on a private headless GNOME Shell Wayland (needs gnome-shell)");
+    const install_test_step = b.step("linux-install-test", "Install the built .deb in clean Docker images and test it (needs docker)");
+    deb_alias_step.dependOn(package_step);
+
+    if (!host_linux) {
+        for ([_]*std.Build.Step{ package_step, flatpak_step, install_step, uninstall_step, deps_step, run_step, ci_step, e2e_step, install_test_step, linux_smoke_step }) |s| {
+            s.dependOn(&b.addFail("this step needs a Linux host").step);
+        }
+        return;
+    }
+
+    const tool = hostExe(b, "linux", "src/build/linux.zig");
+    const root = rootPath(b, "");
+    const resources = [_][]const u8{
+        "apps/linux/Resources/byakaron.xml.in",
+        "apps/linux/Resources/byakaron-app.desktop.in",
+        "apps/linux/Resources/byakaron.svg",
+        "apps/linux/Resources/dev.nuhu.labs.Byakaron.gschema.xml",
+        "apps/linux/Resources/dev.nuhu.labs.Byakaron.metainfo.xml",
+        "apps/linux/Fcitx5/byakaron-addon.conf",
+        "apps/linux/Fcitx5/byakaron.conf",
+    };
+
+    // What gets packaged or installed is always ReleaseFast (`rel_*`), whatever
+    // -Doptimize says for the development steps.
+    const rel_ime = if (optimize == .fast) ime else linuxIme(b, linux_target, .fast, rel_core, sysroot);
+    const rel_app = if (optimize == .fast) app else linuxApp(b, linux_target, .fast, rel_core, sysroot);
+
+    const run_smoke = b.addRunArtifact(smoke);
+    run_smoke.step.dependOn(&install_smoke.step);
+    run_smoke.has_side_effects = true;
+    if (b.graph.environ_map.get("BYAKARON_SPELL_DB") == null) {
+        const db = rootPath(b, "zig-out/db/spell.db");
+        if (std.Io.Dir.cwd().access(b.graph.io, db, .{})) |_| run_smoke.setEnvironmentVariable("BYAKARON_SPELL_DB", db) else |_| {}
+    }
+    linux_smoke_step.dependOn(&run_smoke.step);
+
+    const package = b.addRunArtifact(tool);
+    package.addArgs(&.{ "package-deb", root });
+    package.addFileArg(rel_ime.getEmittedBin());
+    package.addFileArg(rel_app.getEmittedBin());
+    package.addFileArg(spell_db);
+    const deb_dir = package.addOutputDirectoryArg("deb");
+    if (fcitx_release_so) |so| package.addFileArg(so);
+    package.setEnvironmentVariable("BYK_DEB_ARCH", switch (arch) {
+        .x86_64 => "amd64",
+        .aarch64 => "arm64",
+    });
+    for (resources) |r| package.addFileInput(b.path(r));
+    package.step.dependOn(install_spell_db);
+    package_step.dependOn(&b.addInstallDirectory(.{ .source_dir = deb_dir, .install_dir = .prefix, .install_subdir = "pkg" }).step);
+
+    const install_db = b.option(bool, "linux-install-db", "install-linux: build spell.db and install it too (default: only if zig-out/db/spell.db exists)") orelse false;
+    const install = b.addRunArtifact(tool);
+    install.addArgs(&.{ "install", root });
+    install.addFileArg(rel_ime.getEmittedBin());
+    install.addFileArg(rel_app.getEmittedBin());
+    if (install_db) {
+        install.addFileArg(spell_db);
+        install.step.dependOn(install_spell_db);
+    } else {
+        const db = rootPath(b, "zig-out/db/spell.db");
+        if (std.Io.Dir.cwd().access(b.graph.io, db, .{})) |_| install.addArg(db) else |_| {}
+    }
+    if (fcitx_release_so) |so| {
+        install.addArg("--fcitx");
+        install.addFileArg(so);
+    }
+    install.has_side_effects = true;
+    install_step.dependOn(&install.step);
+
+    const uninstall = b.addRunArtifact(tool);
+    uninstall.addArg("uninstall");
+    uninstall.has_side_effects = true;
+    uninstall_step.dependOn(&uninstall.step);
+
+    const deps = b.addRunArtifact(tool);
+    deps.addArg("deps");
+    deps.addPassthruArgs();
+    deps.has_side_effects = true;
+    deps_step.dependOn(&deps.step);
+
+    const dev = b.addRunArtifact(tool);
+    dev.addArgs(&.{ "dev", root });
+    dev.addFileArg(ime.getEmittedBin());
+    dev.has_side_effects = true;
+    dev.step.dependOn(linux_step);
+    run_step.dependOn(&dev.step);
+
+    const ci = b.addRunArtifact(tool);
+    ci.addArgs(&.{ "ci", root });
+    ci.has_side_effects = true;
+    ci.step.dependOn(linux_step);
+    ci.step.dependOn(linux_test_step);
+    ci.step.dependOn(&install_smoke.step);
+    if (fcitx_so != null) ci.step.dependOn(fcitx_step);
+    if (have_wayland) ci.step.dependOn(wayland_step);
+    ci_step.dependOn(&ci.step);
+
+    // The GTK app alone as a Flatpak (the IBus engine cannot live in a sandbox).
+    const flatpak = b.addRunArtifact(tool);
+    flatpak.addArgs(&.{ "package-flatpak", root });
+    flatpak.addFileArg(rel_app.getEmittedBin());
+    const flatpak_dir = flatpak.addOutputDirectoryArg("flatpak");
+    flatpak.setEnvironmentVariable("BYK_FLATPAK_ARCH", switch (arch) {
+        .x86_64 => "x86_64",
+        .aarch64 => "aarch64",
+    });
+    for (resources) |r| flatpak.addFileInput(b.path(r));
+    flatpak_step.dependOn(&b.addInstallDirectory(.{ .source_dir = flatpak_dir, .install_dir = .prefix, .install_subdir = "pkg" }).step);
+
+    // Typing into GTK3/GTK4 apps on a private headless GNOME Shell.
+    const e2e = b.addRunArtifact(tool);
+    e2e.addArgs(&.{ "wayland-e2e", root });
+    e2e.addFileArg(ime.getEmittedBin());
+    e2e.has_side_effects = true;
+    e2e.step.dependOn(linux_step); // also compiles the GSettings schema it uses
+    e2e_step.dependOn(&e2e.step);
+
+    // The built .deb in clean containers. The checker (`linux tested`) runs
+    // inside them, so it is built static (musl): it must not need the host's glibc.
+    const static_tool = b.addExecutable(.{
+        .name = "linux-static",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/build/linux.zig"),
+            .target = b.resolveTargetQuery(.{
+                .cpu_arch = switch (arch) {
+                    .x86_64 => .x86_64,
+                    .aarch64 => .aarch64,
+                },
+                .os_tag = .linux,
+                .abi = .musl,
+            }),
+            .optimize = .small,
+        }),
+    });
+    const matrix = b.addRunArtifact(tool);
+    matrix.addArg("install-matrix");
+    matrix.addFileArg(ime_test.getEmittedBin());
+    matrix.addDirectoryArg(deb_dir);
+    matrix.addPrefixedFileArg("--tool=", static_tool.getEmittedBin());
+    matrix.addPassthruArgs(); // optional docker images after `--`
+    matrix.has_side_effects = true;
+    matrix.step.dependOn(&install_ime_test.step);
+    install_test_step.dependOn(&matrix.step);
+}
+
+/// The IBus engine, with its own static copy of the core so it is
+/// self-contained whether or not -Dshared was passed (the .so is for packaging).
+fn linuxIme(
+    b: *std.Build,
+    linux_target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    core: *std.Build.Module,
+    sysroot: ?Sysroot,
+) *std.Build.Step.Compile {
     const ime_core = b.addLibrary(.{
         .linkage = .static,
         .name = "byakaron_ime_core",
@@ -733,7 +1112,7 @@ fn addLinux(
     ime.root_module.addIncludePath(b.path("src/ffi"));
     ime.root_module.addIncludePath(b.path("apps/linux/Core"));
     ime.root_module.addIncludePath(b.path("apps/linux/Keyboard"));
-    // Natively through pkg-config (see apps/linux/scripts/setup_deps.sh).
+    // Natively through pkg-config (`zig build linux-deps -- --test`).
     linkLinux(b, ime.root_module, sysroot, &.{ "ibus-1.0", "glib-2.0", "gobject-2.0", "gio-2.0" });
     ime.root_module.linkLibrary(ime_core);
     // Host libibus/libglib were built against this machine's glibc. Their
@@ -741,38 +1120,18 @@ fn addLinux(
     // of our 2.31 libc stubs — at runtime each Ubuntu release loads its
     // own libibus, which matches its own libc.
     ime.linker_allow_shlib_undefined = true;
+    return ime;
+}
 
-    const install_ime = b.addInstallArtifact(ime, .{});
-    const linux_step = b.step("linux", "Build the Linux IBus engine (byakaron-ibus)");
-    if (misuse) |f| linux_step.dependOn(f);
-    linux_step.dependOn(&install_ime.step);
-
-    // Integration test: drives the engine through a private IBus input
-    // context, so it needs a daemon with the engine registered (dev_run.sh).
-    const ime_test = b.addExecutable(.{
-        .name = "byakaron-ime-test",
-        .root_module = b.createModule(.{
-            .target = linux_target,
-            .optimize = optimize,
-            .link_libc = true,
-        }),
-    });
-    ime_test.root_module.addCSourceFiles(.{
-        .files = &.{"apps/linux/tests/ime_test.c"},
-        .flags = engine_cflags,
-    });
-    linkLinux(b, ime_test.root_module, sysroot, &.{ "ibus-1.0", "glib-2.0", "gobject-2.0" });
-    ime_test.linker_allow_shlib_undefined = true;
-
-    const install_ime_test = b.addInstallArtifact(ime_test, .{});
-    const linux_test_step = b.step("linux-test", "Build the Linux IME integration test");
-    if (misuse) |f| linux_test_step.dependOn(f);
-    linux_test_step.dependOn(&install_ime_test.step);
-
-    // GTK3 companion app. A separate step from `linux` on purpose: the
-    // engine must stay buildable on a box with only libibus-dev, and this
-    // needs libgtk-3-dev. GTK3 3.24 is on Ubuntu 20.04, 22.04, and 24.04;
-    // GTK4 / libadwaita 1.4 are not.
+/// The GTK3 companion app. Built against the pinned sysroot like the engine,
+/// so no libgtk-3-dev is required.
+fn linuxApp(
+    b: *std.Build,
+    linux_target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    core: *std.Build.Module,
+    sysroot: ?Sysroot,
+) *std.Build.Step.Compile {
     const app_core = b.addLibrary(.{
         .linkage = .static,
         .name = "byakaron_app_core",
@@ -815,124 +1174,57 @@ fn addLinux(
     // binaries beat one shared .so that needs a SONAME, an ldconfig
     // trigger and an ABI promise this version cannot make yet.
     app.root_module.linkLibrary(app_core);
+    return app;
+}
 
-    const install_app = b.addInstallArtifact(app, .{});
-    const linux_app_step = b.step("linux-app", "Build the Linux GTK app (byakaron)");
-    if (misuse) |f| linux_app_step.dependOn(f);
-    linux_app_step.dependOn(&install_app.step);
+/// The Fcitx5 addon (C++ against the host's libFcitx5Core).
+fn linuxFcitx(
+    b: *std.Build,
+    linux_target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    core: *std.Build.Module,
+) *std.Build.Step.Compile {
+    const fcitx_core = b.addLibrary(.{
+        .linkage = .static,
+        .name = "byakaron_fcitx_core",
+        .root_module = core,
+    });
 
-    // Running the app and compiling the GSettings schema (glib-compile-schemas)
-    // need a Linux host; elsewhere the build stops at the binaries.
-    if (host_linux) {
-        const run_app = b.addRunArtifact(app);
-        run_app.step.dependOn(&install_app.step);
-        run_app.addPassthruArgs();
-        const run_linux_app_step = b.step("run-linux-app", "Build and run the Linux GTK app");
-        run_linux_app_step.dependOn(&run_app.step);
-
-        // GSettings schema: compiled into zig-out/share/glib-2.0/schemas so an
-        // uninstalled engine/app can find it next to the binary (or via
-        // GSETTINGS_SCHEMA_DIR for `zig build run-linux-app`, whose artifact
-        // lives in the cache rather than zig-out/bin).
-        const compile_schemas = b.addSystemCommand(&.{
-            "sh",
-            "-c",
-            \\set -eu
-            \\dest="$1"
-            \\src="$2"
-            \\mkdir -p "$dest"
-            \\cp "$src" "$dest/dev.nuhu.labs.Byakaron.gschema.xml"
-            \\glib-compile-schemas "$dest"
-            ,
-            "byk-compile-schemas",
-        });
-        const schema_dir = compile_schemas.addOutputDirectoryArg("gsettings-schemas");
-        compile_schemas.addFileArg(b.path("apps/linux/Resources/dev.nuhu.labs.Byakaron.gschema.xml"));
-        const install_schemas = b.addInstallDirectory(.{
-            .source_dir = schema_dir,
-            .install_dir = .{ .custom = "share/glib-2.0/schemas" },
-            .install_subdir = "",
-        });
-        linux_step.dependOn(&install_schemas.step);
-        linux_app_step.dependOn(&install_schemas.step);
-        run_app.step.dependOn(&install_schemas.step);
-        run_app.setEnvironmentVariable("GSETTINGS_SCHEMA_DIR", "zig-out/share/glib-2.0/schemas");
-    }
-
-    // Optional Fcitx5 frontend. Same composer as IBus; skipped when the
-    // headers are not installed so a GNOME-only box still `zig build linux`.
-    const fcitx_step = b.step("linux-fcitx5", "Build the optional Fcitx5 addon (needs libfcitx5core-dev)");
-    if (misuse) |f| fcitx_step.dependOn(f);
-    // Fcitx5 is C++ against the host's libFcitx5Core, so it always uses the
-    // system libraries (it is not in the pinned sysroot).
-    if (host_linux and pkgConfigExists(b, "Fcitx5Core")) {
-        const fcitx_core = b.addLibrary(.{
-            .linkage = .static,
-            .name = "byakaron_fcitx_core",
-            .root_module = core,
-        });
-
-        const fcitx = b.addLibrary(.{
-            .linkage = .dynamic,
-            .name = "byakaronim",
-            .root_module = b.createModule(.{
-                .target = linux_target,
-                .optimize = optimize,
-                .link_libc = true,
-                .link_libcpp = true,
-            }),
-        });
-        fcitx.root_module.addCSourceFiles(.{
-            .files = &.{"apps/linux/Fcitx5/engine.cpp"},
-            .flags = fcitx_cxxflags,
-        });
-        fcitx.root_module.addCSourceFiles(.{
-            .files = &.{
-                "apps/linux/Core/composer.c",
-                "apps/linux/Core/spell.c",
-                "apps/linux/Core/prefs.c",
-            },
-            .flags = fcitx_cflags,
-        });
-        fcitx.root_module.addIncludePath(b.path("src/ffi"));
-        fcitx.root_module.addIncludePath(b.path("apps/linux/Core"));
-        fcitx.root_module.addIncludePath(b.path("apps/linux/Fcitx5"));
-        addHostLibdir(b, fcitx.root_module);
-        fcitx.root_module.linkSystemLibrary("Fcitx5Core", .{});
-        fcitx.root_module.linkSystemLibrary("glib-2.0", .{});
-        fcitx.root_module.linkSystemLibrary("gio-2.0", .{});
-        fcitx.root_module.linkLibrary(fcitx_core);
-        // Host libFcitx5Core was built against this machine's glibc. Same
-        // reason as the engine: a 2.31-targeted addon must not require the
-        // host library's newer undefined symbols.
-        fcitx.linker_allow_shlib_undefined = true;
-
-        // Fcitx loads $libdir/fcitx5/byakaron.so (no lib prefix), from the
-        // Library=byakaron field in the addon conf.
-        const install_fcitx_so = b.addInstallFileWithDir(
-            fcitx.getEmittedBin(),
-            .lib,
-            "fcitx5/byakaron.so",
-        );
-        const install_fcitx_addon = b.addInstallFileWithDir(
-            b.path("apps/linux/Fcitx5/byakaron-addon.conf"),
-            .{ .custom = "share/fcitx5/addon" },
-            "byakaron.conf",
-        );
-        const install_fcitx_im = b.addInstallFileWithDir(
-            b.path("apps/linux/Fcitx5/byakaron.conf"),
-            .{ .custom = "share/fcitx5/inputmethod" },
-            "byakaron.conf",
-        );
-        fcitx_step.dependOn(&install_fcitx_so.step);
-        fcitx_step.dependOn(&install_fcitx_addon.step);
-        fcitx_step.dependOn(&install_fcitx_im.step);
-    } else {
-        fcitx_step.dependOn(&b.addFail(if (host_linux)
-            "Fcitx5Core not found — install libfcitx5core-dev or set PKG_CONFIG_PATH"
-        else
-            "the Fcitx5 addon is only built on a Linux host").step);
-    }
+    const fcitx = b.addLibrary(.{
+        .linkage = .dynamic,
+        .name = "byakaronim",
+        .root_module = b.createModule(.{
+            .target = linux_target,
+            .optimize = optimize,
+            .link_libc = true,
+            .link_libcpp = true,
+        }),
+    });
+    fcitx.root_module.addCSourceFiles(.{
+        .files = &.{"apps/linux/Fcitx5/engine.cpp"},
+        .flags = fcitx_cxxflags,
+    });
+    fcitx.root_module.addCSourceFiles(.{
+        .files = &.{
+            "apps/linux/Core/composer.c",
+            "apps/linux/Core/spell.c",
+            "apps/linux/Core/prefs.c",
+        },
+        .flags = fcitx_cflags,
+    });
+    fcitx.root_module.addIncludePath(b.path("src/ffi"));
+    fcitx.root_module.addIncludePath(b.path("apps/linux/Core"));
+    fcitx.root_module.addIncludePath(b.path("apps/linux/Fcitx5"));
+    addHostLibdir(b, fcitx.root_module);
+    fcitx.root_module.linkSystemLibrary("Fcitx5Core", .{});
+    fcitx.root_module.linkSystemLibrary("glib-2.0", .{});
+    fcitx.root_module.linkSystemLibrary("gio-2.0", .{});
+    fcitx.root_module.linkLibrary(fcitx_core);
+    // Host libFcitx5Core was built against this machine's glibc. Same
+    // reason as the engine: a 2.31-targeted addon must not require the
+    // host library's newer undefined symbols.
+    fcitx.linker_allow_shlib_undefined = true;
+    return fcitx;
 }
 
 const LinuxArch = enum { x86_64, aarch64 };
@@ -1091,11 +1383,11 @@ fn firstDir(b: *std.Build, paths: []const ?[]const u8) ?[]const u8 {
 }
 
 fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void {
-    const step = b.step("android-libs", "Build libbyakaron.so for every Android ABI → apps/android/keyboard jniLibs");
+    const step = b.step("android-libs", "Build libbyakaron.so for every Android ABI → zig-out/lib/android/jniLibs + keyboard jniLibs");
     const app_steps = [_]*std.Build.Step{
-        b.step("android", "Build the Android keyboard (debug) → zig-out/android/Byakaron-debug.apk"),
+        b.step("android", "Build the Android keyboard (debug) → zig-out/pkg/Byakaron-debug.apk"),
         b.step("install-android", "Build the Android keyboard (debug) and install it on the connected device"),
-        b.step("release-android", "Release build with spell.db → zig-out/android/Byakaron.apk"),
+        b.step("release-android", "Release build with spell.db → zig-out/pkg/Byakaron.apk"),
     };
     for (app_steps) |s| s.dependOn(step);
     const api = b.option(u32, "android-api", "Minimum Android API level for the Android steps (default 21)") orelse 21;
@@ -1139,7 +1431,7 @@ fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
         engine.root.strip = true;
         const lib = b.addLibrary(.{ .linkage = .dynamic, .name = "byakaron", .root_module = engine.root });
         lib.setLibCFile(libc);
-        const out = b.fmt("android/jniLibs/{s}/libbyakaron.so", .{a.abi});
+        const out = b.fmt("lib/android/jniLibs/{s}/libbyakaron.so", .{a.abi});
         step.dependOn(&b.addInstallFileWithDir(lib.getEmittedBin(), .prefix, out).step);
         update.addCopyFileToSource(lib.getEmittedBin(), b.fmt("apps/android/keyboard/app/src/main/jniLibs/{s}/libbyakaron.so", .{a.abi}));
     }
@@ -1169,7 +1461,7 @@ fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
     const debug = gradle(b, gradle_exe, keyboard, ":app:assembleDebug", step);
     debug.addArg(b.pathJoin(&.{ keyboard, "app/build/outputs/apk/debug" }));
     const debug_apk = debug.addOutputFileArg("Byakaron-debug.apk");
-    app_steps[0].dependOn(&b.addInstallFileWithDir(debug_apk, .prefix, "android/Byakaron-debug.apk").step);
+    app_steps[0].dependOn(&b.addInstallFileWithDir(debug_apk, .prefix, "pkg/Byakaron-debug.apk").step);
 
     app_steps[1].dependOn(&gradle(b, gradle_exe, keyboard, ":app:installDebug", step).step);
 
@@ -1179,7 +1471,7 @@ fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
     release.step.dependOn(&assets.step);
     release.addArg(b.pathJoin(&.{ keyboard, "app/build/outputs/apk/release" }));
     const release_apk = release.addOutputFileArg("Byakaron.apk");
-    app_steps[2].dependOn(&b.addInstallFileWithDir(release_apk, .prefix, "android/Byakaron.apk").step);
+    app_steps[2].dependOn(&b.addInstallFileWithDir(release_apk, .prefix, "pkg/Byakaron.apk").step);
 }
 
 /// iAvro's data, generated by src/build/lexicon.zig (see there).

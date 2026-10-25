@@ -8,10 +8,11 @@ from it.
 ## Cut a release
 
 1. Bump the version where each platform writes it (the tag does not do this):
-   - Linux: `apps/linux/scripts/release.sh prepare <version> "<summary>"`
-     bumps `app.h`, `package_deb.sh`, the installer fallback and AppStream, and
-     commits. It also creates a `linux-<version>` tag; delete that tag
-     (`git tag -d linux-<version>`) if you are cutting a `v*` release.
+   - Linux, by hand (there is no release script): `.version` in
+     `build.zig.zon` (the `.deb` version), `BYK_APP_VERSION` in
+     `apps/linux/App/app.h`, `<version>` in `apps/linux/Resources/byakaron.xml.in`,
+     `VERSION_FALLBACK` in `apps/linux/web_install.sh`, and a `<release>` entry
+     in the AppStream metainfo.
    - macOS: `CFBundleShortVersionString` in the Xcode project.
    - Android: `versionName` / `versionCode` in `apps/android/keyboard/app/build.gradle.kts`
      (in the submodule; push it, then commit the submodule bump here).
@@ -30,7 +31,7 @@ from it.
 
    | Asset | Built by |
    | --- | --- |
-   | `byakaron_<ver>_amd64.deb`, `byakaron_<ver>_arm64.deb` | `cd.yml` (`package_deb.sh`, installed and tested on both CPUs) |
+   | `byakaron_<ver>_amd64.deb`, `byakaron_<ver>_arm64.deb` | `cd.yml` (`zig build package-linux` on an amd64 and an arm64 runner, installed and tested on both CPUs) |
    | `Byakaron.dmg` | `zig build release-macos` on the `xcode-27` runner |
    | `Byakaron-Setup.exe` | `zig build windows` (Inno Setup) on windows-latest |
    | `Byakaron.apk` | `zig build release-android` (`libbyakaron.so`, `spell.db` in the assets, Gradle's release build) |
@@ -47,12 +48,13 @@ Run the `release` workflow by hand (Actions → release → Run workflow, or
 the assets as the run's artifacts (`release-macos`, `release-windows`,
 `release-android`, `byakaron-<arch>`, `spell-db`); nothing is published.
 
-### Linux-only releases
+### Linux website installer
 
-The older flow still works: `apps/linux/scripts/release.sh all <version> …`
-pushes a `linux-<version>` tag, which runs only `cd.yml` in `release.yml`;
-release.sh then downloads the .debs from that run and creates the
-`linux-<version>` release on `nuhulabs/Byakaron-Assets` from your machine.
+The `.deb`s come from CI only; nothing is released from a developer machine.
+The website installer is `apps/linux/web_install.sh`. After a release, copy it
+by hand to `app/public/byakaron/install.sh` in the nuhulabs.com repo (and as
+`install-amd64.sh` / `install-arm64.sh` for links shared earlier). It always
+installs the Latest release, so the page needs no version bump.
 
 ## Secrets
 
@@ -87,12 +89,14 @@ Notes:
   unsigned.
 - An unsigned release APK cannot be installed until it is signed.
 
-## CI
+## CI / CD
 
-`ci.yml` runs on every push and pull request. `zig build test` (Ubuntu and
-macOS) runs first; when it passes, the platform jobs run in parallel: the Linux
-engine/app/IME tests (amd64 + arm64) and GNOME Wayland typing, `zig build macos`
-(with a one-page bnwiki dump, `.github/ci/bnwiki-tiny.xml`, so the bundled
-spell.db builds in seconds), `zig build windows` (the same dump), `zig build
-android` (the libraries and the debug APK; only `zig build android-libs` without
-`BYAKARON_ANDROID_TOKEN`), and the web app (`zig build`).
+```
+ci:  test (os) → integration (os) → e2e (os)   # placeholders where missing
+cd:  db → build/pkg (linux .deb + install-test) → web deploy (main)
+release: cd + macos/windows/android pkgs → Byakaron-Assets @ v${build.zig.zon.version}
+```
+
+Linux packaging is entirely `zig build` (`package-linux`, `linux-ci`,
+`linux-wayland-e2e`, `linux-install-test`, …). The only remaining shell file
+under `apps/linux/` is the public website installer `web_install.sh`.
