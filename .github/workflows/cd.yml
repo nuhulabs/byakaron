@@ -104,8 +104,9 @@ jobs:
           sudo -E env "PATH=$PATH" \
             ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
             zig build linux-deps
+          # docker is already on the runner (containerd.io); do not install docker.io
           sudo apt-get install -y --no-install-recommends \
-            xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common docker.io
+            xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
 
       - name: pkg
         if: matrix.os == 'linux'

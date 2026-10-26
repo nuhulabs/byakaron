@@ -5,6 +5,10 @@
 ;   PublishDir  - published app folder (Byakaron.exe, ime\, native\, …)
 ;   OutputDir   - where Byakaron-Setup.exe is written
 ;   AppVersion  - e.g. 1.0.0 (-Dwindows-version; else $BYAKARON_VERSION, else 1.0.0)
+;
+; Zig passes those as package-root-relative paths. Inno resolves relative Source
+; / OutputDir paths against this script's directory, so rewrite them against
+; the repo root (three levels up from apps/windows/installer/).
 
 #ifndef PublishDir
   #error "PublishDir must be defined (/DPublishDir=...)"
@@ -18,6 +22,18 @@
     #undef AppVersion
     #define AppVersion "1.0.0"
   #endif
+#endif
+
+#define RepoRoot RemoveBackslash(AddBackslash(SourcePath) + "..\..\..")
+#if Copy(PublishDir, 2, 1) == ":" || Copy(PublishDir, 1, 2) == "\\" || Copy(PublishDir, 1, 1) == "/"
+  #define PublishRoot PublishDir
+#else
+  #define PublishRoot AddBackslash(RepoRoot) + PublishDir
+#endif
+#if Copy(OutputDir, 2, 1) == ":" || Copy(OutputDir, 1, 2) == "\\" || Copy(OutputDir, 1, 1) == "/"
+  #define OutputRoot OutputDir
+#else
+  #define OutputRoot AddBackslash(RepoRoot) + OutputDir
 #endif
 
 #define MyAppName "Byakaron"
@@ -36,7 +52,7 @@ AppSupportURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
-OutputDir={#OutputDir}
+OutputDir={#OutputRoot}
 OutputBaseFilename=Byakaron-Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -59,7 +75,7 @@ Name: "installkeyboard"; Description: "Install Byakaron Phonetic keyboard (Bangl
 
 [Files]
 ; Full self-contained WinUI payload (includes ime\ for TIP registration)
-Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PublishRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

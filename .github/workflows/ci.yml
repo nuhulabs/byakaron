@@ -200,6 +200,9 @@ jobs:
 
   e2e:
     name: e2e (${{ matrix.os }})
+    # Run even when one integration matrix leg failed (e.g. windows), so other
+    # platforms still get e2e. Skip only on cancel.
+    if: ${{ !cancelled() }}
     needs: [integration]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
