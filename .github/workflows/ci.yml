@@ -121,31 +121,7 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-      # —— android ——
-      - name: keyboard
-        if: matrix.os == 'android'
-        id: keyboard
-        env:
-          TOKEN: ${{ secrets.BYAKARON_ANDROID_TOKEN }}
-        run: |
-          sha=$(git ls-tree HEAD apps/android/keyboard | awk '$2 == "commit" { print $3 }')
-          if [[ -z "$sha" ]]; then
-            echo "::notice::no keyboard submodule; libs only"
-          elif [[ -z "$TOKEN" ]]; then
-            echo "::notice::BYAKARON_ANDROID_TOKEN unset; libs only"
-            sha=""
-          fi
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-      - name: checkout keyboard
-        if: matrix.os == 'android' && steps.keyboard.outputs.sha != ''
-        uses: actions/checkout@v4
-        with:
-          repository: nuhulabs/byakaron-android
-          ref: ${{ steps.keyboard.outputs.sha }}
-          path: apps/android/keyboard
-          token: ${{ secrets.BYAKARON_ANDROID_TOKEN }}
-
+      # —— android: compile libs only; APK/AAB packaging is release (pkg.yml) ——
       - name: ndk
         if: matrix.os == 'android'
         id: ndk
@@ -155,30 +131,8 @@ jobs:
           add-to-path: false
 
       - name: integration (libs)
-        if: matrix.os == 'android' && steps.keyboard.outputs.sha == ''
+        if: matrix.os == 'android'
         run: zig build android-libs -Dandroid-ndk="${{ steps.ndk.outputs.ndk-path }}"
-
-      - uses: actions/setup-java@v4
-        if: matrix.os == 'android' && steps.keyboard.outputs.sha != ''
-        with:
-          java-version: "17"
-          distribution: temurin
-
-      - uses: gradle/actions/setup-gradle@v4
-        if: matrix.os == 'android' && steps.keyboard.outputs.sha != ''
-
-      - name: integration (apk)
-        if: matrix.os == 'android' && steps.keyboard.outputs.sha != ''
-        run: zig build android -Dandroid-ndk="${{ steps.ndk.outputs.ndk-path }}"
-
-      - name: upload apk
-        if: matrix.os == 'android' && steps.keyboard.outputs.sha != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-debug-apk
-          path: zig-out/pkg/Byakaron-debug.apk
-          retention-days: 7
-          if-no-files-found: error
 
       - name: upload libs
         if: matrix.os == 'android'
