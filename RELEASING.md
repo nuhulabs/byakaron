@@ -43,6 +43,26 @@ Run the `release` workflow by hand (Actions → release → Run workflow, or
 the assets as the run's artifacts (`byakaron-macos`, `byakaron-windows`,
 `byakaron-android`, `byakaron-linux-*`, `byakaron-db`); nothing is published.
 
+### Download page + CDN (private repo)
+
+Installers are too large for Workers static assets, so tagged releases also:
+
+1. Tar each asset and `zig fetch --save=prebuilt_*` it into `build.zig.zon`
+   as a **lazy** dependency (`scripts/sync-prebuilt.sh`).
+2. Upload the raw files to the R2 bucket `byakaron-downloads`.
+3. Refresh `apps/web/app/downloads.zon` and redeploy the Worker.
+4. Visitors hit `/download`; files stream from R2 at `/downloads/<file>`.
+
+Enable R2 once in the Cloudflare dashboard, then:
+
+```sh
+cd apps/web
+npx wrangler@4.100.0 r2 bucket create byakaron-downloads
+```
+
+Optional repo variable `BYAKARON_R2_PUBLIC_BASE` (public R2.dev URL) rewrites
+the lazy-dep URLs so cold `zig fetch` works without GitHub auth.
+
 ### Linux website installer
 
 The `.deb`s come from CI only. The website installer is `apps/linux/web_install.sh`.

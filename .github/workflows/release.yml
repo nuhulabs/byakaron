@@ -121,3 +121,65 @@ jobs:
             [[ "$got" == "sha256:$sum" ]] || { echo "::error::$name: uploaded $got, built sha256:$sum"; exit 1; }
           done < SHA256SUMS
           echo "${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG"
+
+  # Lock installers as Zig lazy deps, push them to R2 (CDN for /downloads/*),
+  # update the download page catalog, then redeploy the web Worker.
+  deploy-web:
+    name: deploy (web downloads)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [publish, version]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: byakaron-web
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tag checkout is detached; push zon updates back to main.
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      - name: sync prebuilt + R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BYAKARON_R2_PUBLIC_BASE: ${{ vars.BYAKARON_R2_PUBLIC_BASE }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          # publish already wrote SHA256SUMS into the artifact merge
+          scripts/sync-prebuilt.sh "$TAG" dist
+
+      - name: commit prebuilt lock
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add build.zig.zon apps/web/app/downloads.zon
+          if git diff --cached --quiet; then
+            echo "no prebuilt zon changes"
+          else
+            git commit -m "chore: lock release prebuilts for ${{ needs.version.outputs.tag }}"
+            git push origin HEAD:main
+          fi
+
+      - name: deploy web
+        working-directory: apps/web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [[ -z "$CLOUDFLARE_API_TOKEN" ]]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN unset; skip web deploy"
+            exit 0
+          fi
+          npx --yes wrangler@4.100.0 deploy

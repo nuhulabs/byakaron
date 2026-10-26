@@ -20,6 +20,14 @@
 			"database_id": "8ccbd65d-60a1-43d8-b01a-ddba1431cfa1"
 		}
 	],
+	// Release installers (too large for Workers static assets). Enable R2 in the
+	// Cloudflare dashboard once, then `wrangler r2 bucket create byakaron-downloads`.
+	"r2_buckets": [
+		{
+			"binding": "RELEASES",
+			"bucket_name": "byakaron-downloads"
+		}
+	],
 	"build": {
 		"watch_dir": "./app",
 		"command": "zig build zx -- build --target=wasm32-wasi --release=small --prerender"
