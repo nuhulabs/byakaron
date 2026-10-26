@@ -52,6 +52,7 @@ jobs:
   macos:
     name: pkg (macos)
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    needs: [cd]
     runs-on: xcode-27
     timeout-minutes: 180
     env:
@@ -64,8 +65,13 @@ jobs:
         with:
           version: 0.17.0
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: spell-db
+          path: zig-out/db
+
       - name: build
-        run: zig build release-macos
+        run: zig build release-macos -Dspell-db=zig-out/db/spell.db
 
       - name: sign
         if: env.APPLE_CERTIFICATE != ''
