@@ -433,9 +433,9 @@ main (void)
     {
         const gchar *env_db = g_getenv ("BYAKARON_SPELL_DB");
         const gboolean have_db = (env_db != NULL && g_file_test (env_db, G_FILE_TEST_EXISTS)) ||
-                                 g_file_test ("/usr/share/byakaron/spell.db", G_FILE_TEST_EXISTS);
+                                 g_file_test ("/usr/share/byakaron/Byakaron.db", G_FILE_TEST_EXISTS);
         if (!have_db) {
-            g_print ("  skip (no spell.db for the engine)\n");
+            g_print ("  skip (no Byakaron.db for the engine)\n");
         } else {
             reset_state (ctx);
             send_string (ctx, "bangl");
@@ -499,7 +499,7 @@ main (void)
 
     g_print ("no candidates for a word outside the lexicon:\n");
     reset_state (ctx);
-    /* Avro has only the transliteration for it, and spell.db has no
+    /* Avro has only the transliteration for it, and Byakaron.db has no
      * correction close to it either. */
     send_string (ctx, "jhjh");
     for (guint waited = 0; waited < 1000; waited += 100) {

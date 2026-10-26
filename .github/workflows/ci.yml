@@ -215,7 +215,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
 
-      # Tiny wiki dump keeps spell.db cheap; packages once then matrix-tests that .deb.
+      # Tiny wiki dump keeps Byakaron.db cheap; packages once then matrix-tests that .deb.
       - name: e2e (install-matrix)
         if: matrix.kind == 'install-matrix'
         run: |
@@ -225,5 +225,5 @@ jobs:
           deb=$(echo zig-out/pkg/byakaron_*_amd64.deb)
           zig build linux-install-test \
             -Dlinux-arch=x86_64 \
-            -Dspell-db=zig-out/db/spell.db \
+            -Dspell-db=zig-out/db/Byakaron.db \
             -Dlinux-deb="$deb"

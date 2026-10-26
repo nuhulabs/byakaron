@@ -32,7 +32,7 @@ final class SpellChecker: ObservableObject {
 
     #if DEBUG
     /// Preview/test seam: build a checker with canned state and no engine load,
-    /// so SwiftUI previews render instantly without opening spell.db.
+    /// so SwiftUI previews render instantly without opening Byakaron.db.
     static func preview(text: String = "", misspellings: [Misspelling] = []) -> SpellChecker {
         let checker = SpellChecker(skipLoad: ())
         checker.text = text

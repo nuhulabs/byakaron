@@ -3,12 +3,12 @@
 Spell-check playground built with [Ziex](https://ziex.dev). It is part of the root build (`build.zig` → `ziex.init` with `apps/web/app`), so it shares the repo's Zig cache.
 
 ```sh
-zig build db        # once: builds zig-out/db/spell.db
+zig build db        # once: builds zig-out/db/Byakaron.db
 zig build run-web   # dev server with hot reload
 zig build serve-web # production-mode server
 ```
 
-Spell check and SQLite autocomplete read the app database `zx.db`. Natively that is `<install prefix>/db/spell.db`, opened read-only at startup (`app/pages/spell.zig`). On Cloudflare it is the D1 database bound as `DB`. The in-memory autocomplete uses the Avro lexicon embedded in `autocomplete_mem`.
+Spell check and SQLite autocomplete read the app database `zx.db`. Natively that is `<install prefix>/db/Byakaron.db`, opened read-only at startup (`app/pages/spell.zig`). On Cloudflare it is the D1 database bound as `DB`. The in-memory autocomplete uses the Avro lexicon embedded in `autocomplete_mem`.
 
 ## Cloudflare
 
@@ -28,7 +28,7 @@ curl -X POST localhost:8787/api/spell -H 'content-type: application/json' --data
 
 The page splits its text into words with the same tokenizer the server uses (`tokenization`, `.normalize = true`), answers every word it has cached and asks the API only for the others. The keyboard's corrections use the same cache. The cache is kept in memory and saved to `zx.kv` (the browser's IndexedDB) as one value under `spell_cache_v<N>`:
 
-- **Version:** bump `SpellCache.version` in `page.zx` when the server's answers change (a new spell.db, new ranking). Every browser then ignores and deletes its old cache.
+- **Version:** bump `SpellCache.version` in `page.zx` when the server's answers change (a new Byakaron.db, new ranking). Every browser then ignores and deletes its old cache.
 - **Expiry:** each word expires 7 days after it was fetched (`SpellCache.ttl_ms`). The browser's kv has no TTL of its own, so the expiry is stored with each entry and checked when it is read.
 - **Size:** at most 20 000 words (`SpellCache.max_entries`); the oldest go first.
 - **Schema:** the value is written with `zx.kv.putAs`, so a change to the result types also invalidates it.
@@ -39,13 +39,13 @@ Natively (`run-web`, `serve-web`) the server still renders the page itself.
 
 ### Spell database
 
-`zig build d1` writes spell.db as D1 migrations to `zig-out/d1/` (`migrations_dir` in `wrangler.jsonc`), and `wrangler d1 migrations apply DB` loads them like any other migrations:
+`zig build d1` writes Byakaron.db as D1 migrations to `zig-out/d1/` (`migrations_dir` in `wrangler.jsonc`), and `wrangler d1 migrations apply DB` loads them like any other migrations:
 
 - `0000_…` drops and recreates every table, the data files insert the rows (statements under D1's 100 KB limit, files of at most 4 MB), and the last file creates the indexes.
-- Every file name carries a hash of the whole set, so a changed spell.db is a new set that wrangler applies from scratch; an unchanged one is already applied and nothing runs. Spell check is unavailable while a new set loads.
+- Every file name carries a hash of the whole set, so a changed Byakaron.db is a new set that wrangler applies from scratch; an unchanged one is already applied and nothing runs. Spell check is unavailable while a new set loads.
 - Each data file first deletes the rows it inserts, so after a failure (network, timeout) rerunning `migrations apply` picks up where it stopped.
 
-The database keeps the 150 000 most frequent words by default: about 460 MB, under D1's 500 MB Free-plan database limit. `-Ddb-words=N` (or `BYAKARON_DB_WORDS=N`) changes that, for `zig build db` too; `-Dspell-db=<path>` uses an existing spell.db instead of building one. Loading 150 000 words writes about 6.8 M rows (68 files, 260 MB of SQL), so it needs Workers Paid; the Free plan allows 100 000 rows written per day.
+The database keeps the 150 000 most frequent words by default: about 460 MB, under D1's 500 MB Free-plan database limit. `-Ddb-words=N` (or `BYAKARON_DB_WORDS=N`) changes that, for `zig build db` too; `-Dspell-db=<path>` uses an existing Byakaron.db instead of building one. Loading 150 000 words writes about 6.8 M rows (68 files, 260 MB of SQL), so it needs Workers Paid; the Free plan allows 100 000 rows written per day.
 
 ### Setup
 
@@ -59,18 +59,18 @@ The database keeps the 150 000 most frequent words by default: about 460 MB, und
 
 2. In the GitHub repository, add the secrets `CLOUDFLARE_API_TOKEN` (permissions: Workers Scripts edit, D1 edit, Workers KV edit) and `CLOUDFLARE_ACCOUNT_ID`, available to the `byakaron-web` environment.
 
-3. Deploy: push to `main` or run **CD** by hand. The `web` job takes spell.db from the job that builds it, runs `zig build d1`, applies the migrations to the remote database and deploys the Worker.
+3. Deploy: push to `main` or run **CD** by hand. The `web` job takes Byakaron.db from the job that builds it, runs `zig build d1`, applies the migrations to the remote database and deploys the Worker.
 
 ### Deploy from your machine
 
 Needs Zig 0.17, Node and a Cloudflare login (`npx wrangler@4.100.0 login`, or `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`).
 
 ```sh
-# 1. spell.db: build it (zig build db), or take the latest release's
-gh release download --repo nuhulabs/Byakaron-Assets --pattern spell.db --dir zig-out/db
+# 1. Byakaron.db: build it (zig build db), or take the latest release's
+gh release download --repo nuhulabs/byakaron --pattern Byakaron.db --dir zig-out/db
 
-# 2. Load it into D1; a no-op when this spell.db is already there
-zig build d1 -Dspell-db=zig-out/db/spell.db
+# 2. Load it into D1; a no-op when this Byakaron.db is already there
+zig build d1 -Dspell-db=zig-out/db/Byakaron.db
 cd apps/web
 npx wrangler@4.100.0 d1 migrations apply DB --remote
 

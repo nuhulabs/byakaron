@@ -1,4 +1,4 @@
-# prepare: spell.db only. Shared by cd and release.
+# prepare: Byakaron.db only. Shared by cd and release.
 # D1 migrations (zig build d1 + wrangler apply) are run locally when the DB changes.
 name: prepare
 
@@ -17,29 +17,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: cache spell.db
+      - name: cache Byakaron.db
         id: cache
         uses: actions/cache@v4
         with:
-          path: zig-out/db/spell.db
-          key: spell-db-${{ hashFiles('build.zig', 'build.zig.zon', 'src/data/**', 'src/build/**') }}
+          path: zig-out/db/Byakaron.db
+          key: byakaron-db-${{ hashFiles('build.zig', 'build.zig.zon', 'src/data/**', 'src/build/**') }}
 
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.17.0
 
-      - name: spell.db
+      - name: Byakaron.db
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
           sudo mkdir -p /mnt/zig-cache
           sudo chown "$USER" /mnt/zig-cache
           zig build db --cache-dir /mnt/zig-cache
-          ls -lh zig-out/db/spell.db
+          ls -lh zig-out/db/Byakaron.db
 
       - uses: actions/upload-artifact@v4
         with:
-          name: byakaron-spell-db
-          path: zig-out/db/spell.db
+          name: byakaron-db
+          path: zig-out/db/Byakaron.db
           retention-days: 1
           compression-level: 1
           if-no-files-found: error

@@ -6,7 +6,7 @@ import AppKit
 /// can be tried here without installing it and logging out. Main thread only.
 enum AppComposer {
     static let handle: OpaquePointer? = ByakaronSettings.openComposer(
-        spellDB: Bundle.main.url(forResource: "spell", withExtension: "db")?.path,
+        spellDB: Bundle.main.url(forResource: "Byakaron", withExtension: "db")?.path,
         onUpdate: { _ in
             // Spelling corrections arrived on the composer's worker thread.
             DispatchQueue.main.async {

@@ -6,7 +6,7 @@ import InputMethodKit
 /// composer's thread.
 private enum Composer {
     static let handle: OpaquePointer? = ByakaronSettings.openComposer(
-        spellDB: Bundle.main.url(forResource: "spell", withExtension: "db")?.path,
+        spellDB: Bundle.main.url(forResource: "Byakaron", withExtension: "db")?.path,
         onUpdate: { _ in
             // Spelling corrections arrived on the composer's worker thread.
             DispatchQueue.main.async {

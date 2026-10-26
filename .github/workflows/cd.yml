@@ -1,4 +1,4 @@
-# cd: prepare (spell.db) ∥ web deploy + linux install-matrix e2e
+# cd: prepare (Byakaron.db) ∥ web deploy + linux install-matrix e2e
 #
 # Platform release packages are release/pkg.yml only. D1 migrate is local.
 name: cd
@@ -19,7 +19,7 @@ jobs:
 
   web:
     name: build (web)
-    # No needs: prepare — Worker deploy does not use spell.db; D1 migrations are local.
+    # No needs: prepare — Worker deploy does not use Byakaron.db; D1 migrations are local.
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: ${{ github.ref == 'refs/heads/main' && 'byakaron-web' || '' }}
@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # Worker deploy only — D1 schema/data migrations are applied locally when needed:
-      #   zig build d1 -Dspell-db=zig-out/db/spell.db
+      #   zig build d1 -Dspell-db=zig-out/db/Byakaron.db
       #   cd apps/web && npx wrangler d1 migrations apply DB --remote
       - name: deploy
         if: github.ref == 'refs/heads/main'
@@ -70,7 +70,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: byakaron-spell-db
+          name: byakaron-db
           path: zig-out/db
 
       - name: deps
@@ -82,12 +82,12 @@ jobs:
             xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
 
       - name: pkg amd64
-        run: zig build package-linux -Dlinux-arch=x86_64 -Dspell-db=zig-out/db/spell.db
+        run: zig build package-linux -Dlinux-arch=x86_64 -Dspell-db=zig-out/db/Byakaron.db
 
       - name: install-matrix
         run: |
           deb=$(echo zig-out/pkg/byakaron_*_amd64.deb)
           zig build linux-install-test \
             -Dlinux-arch=x86_64 \
-            -Dspell-db=zig-out/db/spell.db \
+            -Dspell-db=zig-out/db/Byakaron.db \
             -Dlinux-deb="$deb"

@@ -1,6 +1,6 @@
 -- ============================================================================
--- Validate / analyze / smoke-test spell.db
--- Usage: sqlite3 spell.db < src/queries/08_validate_spell_db.sql
+-- Validate / analyze / smoke-test Byakaron.db
+-- Usage: sqlite3 Byakaron.db < src/queries/08_validate_spell_db.sql
 -- ============================================================================
 
 .headers on

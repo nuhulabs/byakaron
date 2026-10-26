@@ -1,5 +1,5 @@
 # pkg: platform packages (linux / macos / windows / android).
-# Caller must have uploaded `byakaron-spell-db` (see prepare.yml).
+# Caller must have uploaded `byakaron-db` (see prepare.yml).
 # Used by release (all four; + version for the Windows installer).
 #
 # Linux amd64/arm64 package in parallel. Install-matrix lives in ci/cd e2e,
@@ -53,7 +53,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: byakaron-spell-db
+          name: byakaron-db
           path: zig-out/db
 
       - name: deps
@@ -63,7 +63,7 @@ jobs:
             zig build linux-deps
 
       - name: pkg
-        run: zig build package-linux -Dlinux-arch=${{ matrix.zig_arch }} -Dspell-db=zig-out/db/spell.db
+        run: zig build package-linux -Dlinux-arch=${{ matrix.zig_arch }} -Dspell-db=zig-out/db/Byakaron.db
 
       - uses: actions/upload-artifact@v4
         with:
@@ -88,11 +88,11 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: byakaron-spell-db
+          name: byakaron-db
           path: zig-out/db
 
       - name: build
-        run: zig build release-macos -Dspell-db=zig-out/db/spell.db
+        run: zig build release-macos -Dspell-db=zig-out/db/Byakaron.db
 
       - name: sign
         if: env.APPLE_CERTIFICATE != ''
@@ -169,14 +169,14 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: byakaron-spell-db
+          name: byakaron-db
           path: zig-out/db
 
       - name: build
         env:
           BYAKARON_VERSION: ${{ inputs.version }}
         shell: pwsh
-        run: zig build windows "-Dspell-db=zig-out/db/spell.db"
+        run: zig build windows "-Dspell-db=zig-out/db/Byakaron.db"
 
       - name: sign
         if: env.WINDOWS_CERTIFICATE != ''
@@ -255,7 +255,7 @@ jobs:
       - uses: actions/download-artifact@v4
         if: steps.keyboard.outputs.sha != ''
         with:
-          name: byakaron-spell-db
+          name: byakaron-db
           path: zig-out/db
 
       - uses: actions/setup-java@v4
@@ -282,7 +282,7 @@ jobs:
         run: |
           zig build release-android \
             -Dandroid-ndk="${{ steps.ndk.outputs.ndk-path }}" \
-            -Dspell-db=zig-out/db/spell.db
+            -Dspell-db=zig-out/db/Byakaron.db
 
       - uses: actions/upload-artifact@v4
         if: steps.keyboard.outputs.sha != ''

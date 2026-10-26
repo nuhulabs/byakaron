@@ -68,13 +68,13 @@ std::wstring SpellDbPath()
 {
     const std::wstring dir = ModuleDir();
     if (dir.empty()) return {};
-    const std::wstring here = dir + L"\\spell.db";
+    const std::wstring here = dir + L"\\Byakaron.db";
     if (FileExists(here)) return here;
 
-    // Installed layout (Byakaron.iss): {app}\ime\ByakaronIME.dll, {app}\native\spell.db.
+    // Installed layout (Byakaron.iss): {app}\ime\ByakaronIME.dll, {app}\native\Byakaron.db.
     const size_t slash = dir.find_last_of(L'\\');
     if (slash == std::wstring::npos) return {};
-    const std::wstring shipped = dir.substr(0, slash) + L"\\native\\spell.db";
+    const std::wstring shipped = dir.substr(0, slash) + L"\\native\\Byakaron.db";
     return FileExists(shipped) ? shipped : std::wstring();
 }
 

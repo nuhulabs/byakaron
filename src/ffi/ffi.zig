@@ -135,7 +135,7 @@ pub const SpellHandle = struct {
     backend: *SpellSqlite,
 };
 
-/// Open a spell.db and return an opaque handle, or null on failure.
+/// Open a Byakaron.db and return an opaque handle, or null on failure.
 pub export fn byakaron_spell_create(db_path: [*:0]const u8) ?*SpellHandle {
     const allocator = std.heap.c_allocator;
     const path = std.mem.span(db_path);
@@ -252,7 +252,7 @@ pub export fn byakaron_spell_suggest_ctx_list(
     return count;
 }
 
-/// Prefix completions from `spell.db` dictionary. Returns a JSON string array
+/// Prefix completions from `Byakaron.db` dictionary. Returns a JSON string array
 /// (free with byakaron_string_free), or NULL on failure.
 pub export fn byakaron_spell_prefix(spell: ?*SpellHandle, prefix: [*:0]const u8, limit: c_int) ?[*:0]u8 {
     const handle = spell orelse return null;
@@ -296,7 +296,7 @@ pub export fn byakaron_spell_prefix_list(
     return count;
 }
 
-/// Next-word predictions from `spell.db` bigrams for `previous_word`.
+/// Next-word predictions from `Byakaron.db` bigrams for `previous_word`.
 /// Returns a JSON string array (free with byakaron_string_free), or NULL.
 pub export fn byakaron_spell_next_word(spell: ?*SpellHandle, previous_word: [*:0]const u8, limit: c_int) ?[*:0]u8 {
     const handle = spell orelse return null;
@@ -340,7 +340,7 @@ pub export fn byakaron_spell_next_word_list(
     return count;
 }
 
-/// Trigram next-word predictions from spell.db trigrams (w1, w2 -> w3).
+/// Trigram next-word predictions from Byakaron.db trigrams (w1, w2 -> w3).
 /// Returns a JSON string array (free with byakaron_string_free), or NULL.
 pub export fn byakaron_spell_trigram_next_word(
     spell: ?*SpellHandle,
@@ -438,7 +438,7 @@ pub export fn byakaron_spell_is_correct(spell: ?*SpellHandle, word: [*:0]const u
 
     const raw = std.mem.span(word);
     if (raw.len == 0) return 1;
-    // spell.db spells ড় ঢ় য় as single code points; text from elsewhere often
+    // Byakaron.db spells ড় ঢ় য় as single code points; text from elsewhere often
     // has letter + nukta. Compare in that canonical form.
     const w = (Composer.UserWords.normalize(a, raw) catch return -1) orelse return -1;
 

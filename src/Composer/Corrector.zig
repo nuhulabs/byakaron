@@ -4,7 +4,7 @@
 //! implementation calls the composer's update callback, and the platform asks
 //! the composer to `refresh`, which calls `get` again.
 //!
-//! Implementations: `SpellCorrector` (spell.db on a worker thread) for native
+//! Implementations: `SpellCorrector` (Byakaron.db on a worker thread) for native
 //! keyboards; the web page fetches `/api/spell`.
 
 const Corrector = @This();

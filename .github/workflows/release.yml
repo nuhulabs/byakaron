@@ -1,14 +1,17 @@
-# release: prepare → pkg (all os) → github release tagged from build.zig.zon
+# release: prepare → pkg (all os) → GitHub Release on this repo
 #
-# Artifacts (upload names):
-#   byakaron-linux-amd64 / byakaron-linux-arm64  → byakaron_*_{amd64,arm64}.deb
+# Artifacts (upload names → release files):
+#   byakaron-linux-amd64 / byakaron-linux-arm64  → byakaron_<ver>_{amd64,arm64}.deb
 #   byakaron-macos                               → Byakaron.dmg
 #   byakaron-windows                             → Byakaron-Setup.exe
 #   byakaron-android                             → Byakaron.apk + Byakaron.aab
-#   byakaron-spell-db                            → spell.db
+#   byakaron-db                                  → Byakaron.db
+#
+# Debian keeps version in the .deb filename (pkg_ver_arch.deb). There is no
+# universal amd64+arm64 .deb — Architecture is single-arch or all (data-only).
 #
 # Tag: v${build.zig.zon.version}. Push a matching annotated tag, or dispatch
-# to dry-run (artifacts only). Publishes to nuhulabs/Byakaron-Assets.
+# to dry-run (artifacts only).
 name: release
 
 on:
@@ -69,6 +72,8 @@ jobs:
     needs: [prepare, version, pkg]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -80,13 +85,11 @@ jobs:
 
       - name: publish
         env:
-          GH_TOKEN: ${{ secrets.BYAKARON_ASSETS_TOKEN }}
-          ASSETS_REPO: nuhulabs/Byakaron-Assets
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.version.outputs.tag }}
         run: |
-          [[ -n "$GH_TOKEN" ]] || { echo "::error::BYAKARON_ASSETS_TOKEN is not set"; exit 1; }
           cd dist
-          for f in Byakaron.dmg Byakaron-Setup.exe spell.db; do
+          for f in Byakaron.dmg Byakaron-Setup.exe Byakaron.db; do
             [[ -f "$f" ]] || { echo "::error::$f is missing"; exit 1; }
           done
           for arch in amd64 arm64; do
@@ -103,12 +106,14 @@ jobs:
 
           flags=(--latest)
           [[ "$TAG" == *-* ]] && flags=(--prerelease --latest=false)
-          gh release create "$TAG" --repo "$ASSETS_REPO" --title "Byakaron ${TAG#v}" \
+          # Replace a prior attempt for the same tag (e.g. retargeted publish).
+          gh release delete "$TAG" --yes 2>/dev/null || true
+          gh release create "$TAG" --title "Byakaron ${TAG#v}" \
             --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}" ./*
 
           while read -r sum name; do
-            got=$(gh release view "$TAG" --repo "$ASSETS_REPO" --json assets \
+            got=$(gh release view "$TAG" --json assets \
               -q ".assets[] | select(.name == \"$name\") | .digest")
             [[ "$got" == "sha256:$sum" ]] || { echo "::error::$name: uploaded $got, built sha256:$sum"; exit 1; }
           done < SHA256SUMS
-          echo "https://github.com/$ASSETS_REPO/releases/tag/$TAG"
+          echo "${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG"

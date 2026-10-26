@@ -52,7 +52,7 @@ struct SettingsView: View {
 // MARK: - Model
 
 /// The keyboard's shared settings and personal dictionary, through the app's own
-/// composer on the keyboard's data directory (no spell.db: it never types). The
+/// composer on the keyboard's data directory (no Byakaron.db: it never types). The
 /// running keyboard picks up what is saved here at its next word.
 final class KeyboardSettingsModel: ObservableObject {
     private let composer: OpaquePointer?

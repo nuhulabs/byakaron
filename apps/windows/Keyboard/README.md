@@ -24,7 +24,7 @@ Output:
 The installer copies the app, registers the Bangla (Bangladesh) TIP (optional task), and adds Start Menu shortcuts.
 
 Version: `-Dwindows-version=1.2.3`, else `BYAKARON_VERSION`, else 1.0.0.
-spell.db is built as by `zig build db`; `-Dspell-db=<path>` stages a prebuilt
+Byakaron.db is built as by `zig build db`; `-Dspell-db=<path>` stages a prebuilt
 one instead, `-Ddb-words=N` a smaller one.
 
 ## Development run
@@ -43,7 +43,7 @@ zig build windows-ime
 
 Produces `zig-out/lib/windows/ime/ByakaronIME.dll` and `byakaron.dll`. `windows`
 and `run-win` stage the same pair into `apps/windows/Byakaron/ime/` (and
-byakaron.dll + spell.db into `Native/`), which Byakaron.csproj copies next to
+byakaron.dll + Byakaron.db into `Native/`), which Byakaron.csproj copies next to
 the app.
 
 ## Manual IME register
@@ -75,4 +75,4 @@ other Byakaron keyboards (OmicronLab Avro behaviour):
 Settings, learned choices and the personal dictionary live in
 `%LOCALAPPDATA%\Byakaron` (`settings.json`, `selections.json`,
 `user-words.txt`), edited from the Byakaron app's Settings. Spelling
-corrections use the installed `native\spell.db` when present.
+corrections use the installed `native\Byakaron.db` when present.

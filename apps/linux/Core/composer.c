@@ -230,7 +230,7 @@ byk_composer_open (gboolean with_spell, ByakaronUpdateFn on_update, gpointer use
     const gboolean fresh = !g_file_test (settings, G_FILE_TEST_EXISTS);
     gchar *spell = with_spell ? byk_spell_locate_db () : NULL;
     if (with_spell && spell == NULL)
-        g_message ("byakaron: spell.db unavailable, no spelling corrections");
+        g_message ("byakaron: Byakaron.db unavailable, no spelling corrections");
 
     ByakaronComposer *composer = byakaron_composer_create (dir, spell, on_update, userdata);
     if (composer == NULL)

@@ -13,7 +13,7 @@ namespace ByakaronSettings
     // Empty on failure.
     std::wstring DataDir();
 
-    // spell.db shipped with the install ({app}\native\spell.db beside {app}\ime\,
+    // Byakaron.db shipped with the install ({app}\native\Byakaron.db beside {app}\ime\,
     // or next to ByakaronIME.dll); empty when there is none.
     std::wstring SpellDbPath();
 

@@ -20,7 +20,7 @@ version: u32 = current_version,
 /// suffix forms. Off is plain phonetic mode: what is typed is transliterated
 /// exactly, with no candidate list.
 suggestions: bool = true,
-/// After Avro's list, spelling corrections from spell.db when Avro found no
+/// After Avro's list, spelling corrections from Byakaron.db when Avro found no
 /// dictionary word.
 spelling_corrections: bool = true,
 /// Remember the candidate chosen for an input and highlight it next time.

@@ -54,11 +54,11 @@ char *byakaron_engine_transliterate(ByakaronEngine *engine, const char *text);
 void byakaron_engine_destroy(ByakaronEngine *engine);
 
 /*
- * Persistent Bangla spell-check engine backed by spell.db (SymSpell + confusions).
+ * Persistent Bangla spell-check engine backed by Byakaron.db (SymSpell + confusions).
  */
 typedef struct ByakaronSpell ByakaronSpell;
 
-/* Open spell.db at db_path. Returns NULL on failure. */
+/* Open Byakaron.db at db_path. Returns NULL on failure. */
 ByakaronSpell *byakaron_spell_create(const char *db_path);
 
 /* Destroy a spell engine from byakaron_spell_create. NULL is ignored. */
@@ -123,7 +123,7 @@ size_t byakaron_spell_suggest_ctx_list(
 );
 
 /*
- * Prefix completions from spell.db dictionary. JSON string array.
+ * Prefix completions from Byakaron.db dictionary. JSON string array.
  */
 char *byakaron_spell_prefix(ByakaronSpell *spell, const char *prefix, int limit);
 
@@ -136,7 +136,7 @@ size_t byakaron_spell_prefix_list(
 );
 
 /*
- * Next-word predictions from spell.db bigrams. JSON string array.
+ * Next-word predictions from Byakaron.db bigrams. JSON string array.
  */
 char *byakaron_spell_next_word(ByakaronSpell *spell, const char *previous_word, int limit);
 
@@ -149,7 +149,7 @@ size_t byakaron_spell_next_word_list(
 );
 
 /*
- * Trigram next-word predictions from spell.db trigrams. JSON string array.
+ * Trigram next-word predictions from Byakaron.db trigrams. JSON string array.
  */
 char *byakaron_spell_trigram_next_word(
     ByakaronSpell *spell,
