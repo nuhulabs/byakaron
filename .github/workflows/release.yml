@@ -101,7 +101,11 @@ jobs:
           cat SHA256SUMS
 
           git fetch --quiet --force origin "refs/tags/$TAG:refs/tags/$TAG" || true
-          git tag -l --format='%(contents)' "$TAG" > "$RUNNER_TEMP/notes.md"
+          # %(contents) includes the PGP signature on signed tags — strip it.
+          git tag -l --format='%(contents)' "$TAG" \
+            | sed '/^-----BEGIN PGP SIGNATURE-----$/,$d' \
+            | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' \
+            > "$RUNNER_TEMP/notes.md"
           [[ -s "$RUNNER_TEMP/notes.md" ]] || echo "Byakaron ${TAG#v}" > "$RUNNER_TEMP/notes.md"
 
           flags=(--latest)
