@@ -161,6 +161,11 @@ jobs:
             git push origin HEAD:main
           fi
 
+      # wrangler.jsonc runs `zig build zx …` as a custom build before deploy.
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
       - name: deploy web
         working-directory: apps/web
         env:
