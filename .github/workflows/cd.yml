@@ -30,6 +30,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # wrangler.jsonc runs `zig build zx …` as a custom build before deploy.
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
       # Worker deploy only — D1 schema/data migrations are applied locally when needed:
       #   zig build d1 -Dspell-db=zig-out/db/Byakaron.db
       #   cd apps/web && npx wrangler d1 migrations apply DB --remote
@@ -45,11 +50,6 @@ jobs:
             exit 0
           fi
           npx --yes wrangler@4.100.0 deploy
-
-      - uses: mlugg/setup-zig@v2
-        if: github.ref != 'refs/heads/main'
-        with:
-          version: 0.17.0
 
       - name: build
         if: github.ref != 'refs/heads/main'
