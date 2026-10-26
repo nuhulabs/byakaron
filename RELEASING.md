@@ -93,7 +93,7 @@ Notes:
 
 ```
 ci:  test (os) → integration (os) → e2e (os)   # placeholders where missing
-cd:  db → build/pkg (linux .deb + install-test) → web deploy (main)
+cd:  prepare → build (os matrix: linux pkg, web deploy, …)
 release: cd + macos/windows/android pkgs → Byakaron-Assets @ v${build.zig.zon.version}
 ```
 

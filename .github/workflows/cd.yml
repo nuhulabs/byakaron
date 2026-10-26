@@ -1,4 +1,4 @@
-# cd: build → pkg (per os). called by release; deploys web on main.
+# cd: prepare → build/pkg (per os matrix). called by release; deploys web on main.
 name: cd
 
 on:
@@ -11,15 +11,15 @@ permissions:
   contents: read
 
 jobs:
-  db:
-    name: db
+  prepare:
+    name: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: cache
+      - name: cache spell.db
         id: cache
         uses: actions/cache@v4
         with:
@@ -31,7 +31,7 @@ jobs:
         with:
           version: 0.17.0
 
-      - name: build
+      - name: spell.db
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
           sudo mkdir -p /mnt/zig-cache
@@ -49,9 +49,9 @@ jobs:
 
   build:
     name: build (${{ matrix.os }})
-    needs: [db]
+    needs: [prepare]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -71,6 +71,13 @@ jobs:
           - os: android
             runner: ubuntu-latest
             placeholder: true
+          - os: web
+            runner: ubuntu-latest
+
+    environment: ${{ matrix.os == 'web' && github.ref == 'refs/heads/main' && 'byakaron-web' || '' }}
+    concurrency:
+      group: cd-${{ matrix.os }}-${{ matrix.arch || matrix.runner }}
+      cancel-in-progress: ${{ matrix.os != 'web' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -84,6 +91,13 @@ jobs:
         with:
           version: 0.17.0
 
+      - uses: actions/download-artifact@v4
+        if: ${{ !matrix.placeholder && (matrix.os == 'linux' || matrix.os == 'web') }}
+        with:
+          name: spell-db
+          path: zig-out/db
+
+      # —— linux ——
       - name: deps
         if: matrix.os == 'linux'
         run: |
@@ -92,12 +106,6 @@ jobs:
             zig build linux-deps
           sudo apt-get install -y --no-install-recommends \
             xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common docker.io
-
-      - uses: actions/download-artifact@v4
-        if: matrix.os == 'linux'
-        with:
-          name: spell-db
-          path: zig-out/db
 
       - name: pkg
         if: matrix.os == 'linux'
@@ -114,34 +122,13 @@ jobs:
           path: zig-out/pkg/byakaron_*_${{ matrix.arch }}.deb
           if-no-files-found: error
 
-  web:
-    name: web
-    if: github.ref == 'refs/heads/main'
-    needs: [db]
-    environment:
-      name: byakaron-web
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    concurrency:
-      group: cd-web
-      cancel-in-progress: false
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: spell-db
-          path: zig-out/db
-
+      # —— web ——
       - name: d1
+        if: matrix.os == 'web'
         run: zig build d1 -Dspell-db=zig-out/db/spell.db
 
       - name: migrate
+        if: matrix.os == 'web' && github.ref == 'refs/heads/main'
         working-directory: apps/web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -154,6 +141,7 @@ jobs:
           npx --yes wrangler@4.100.0 d1 migrations apply DB --remote
 
       - name: deploy
+        if: matrix.os == 'web' && github.ref == 'refs/heads/main'
         working-directory: apps/web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -164,3 +152,7 @@ jobs:
             exit 0
           fi
           npx --yes wrangler@4.100.0 deploy
+
+      - name: build
+        if: matrix.os == 'web' && github.ref != 'refs/heads/main'
+        run: zig build -Doptimize=ReleaseSmall
