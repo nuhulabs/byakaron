@@ -1112,20 +1112,24 @@ const Session = struct {
         // Same flags as wayland-e2e (no --single/--xim/--config disable — those
         // exit immediately in headless containers). Readiness is list-engine on
         // this bus; do not fail if the spawn handle dies (some builds daemonize).
+        if (t.env.get("HOME") == null) try t.env.put("HOME", runtime);
         const sock = try join(t, &.{ runtime, "ibus.sock" });
         const ibus_address = try std.fmt.allocPrint(t.arena, "unix:path={s}", .{sock});
         try t.env.put("IBUS_ADDRESS", ibus_address);
         s.ibus_log = try join(t, &.{ runtime, "ibus.log" });
 
-        // nohup: the shell exits after echo $!, and without ignoring HUP the
-        // daemon would die with the short-lived parent. Log file is for the
-        // timeout path below; stop() reaps by XDG_RUNTIME_DIR.
+        // Keep a live Child (no short-lived shell): SIGHUP and missing nohup are
+        // common container footguns. stderr → log via shell exec redirection.
         const start_cmd = try std.fmt.allocPrint(t.arena,
-            \\nohup ibus-daemon --address='{s}' --panel disable --cache none >'{s}' 2>&1 &
-            \\echo $!
+            \\exec ibus-daemon --address='{s}' --panel disable --cache none >'{s}' 2>&1
         , .{ ibus_address, s.ibus_log });
-        _ = capture(t, &.{ "sh", "-c", start_cmd }) orelse return fail("could not start ibus-daemon", .{});
-        s.ibus = null;
+        s.ibus = try std.process.spawn(t.io, .{
+            .argv = &.{ "sh", "-c", start_cmd },
+            .stdin = .ignore,
+            .stdout = .ignore,
+            .stderr = .ignore,
+            .environ_map = t.env,
+        });
 
         var i: usize = 0;
         while (i < 80) : (i += 1) {
@@ -1135,9 +1139,13 @@ const Session = struct {
             }
             try t.io.sleep(.fromMilliseconds(250), .awake);
         }
-        if (Io.Dir.cwd().readFileAlloc(t.io, s.ibus_log, t.arena, .limited(64 * 1024))) |log| {
+        // Absolute path: Dir.cwd().readFileAlloc often fails on /tmp/... paths.
+        if (capture(t, &.{ "cat", s.ibus_log })) |log| {
             if (log.len > 0) std.debug.print("ibus-daemon log:\n{s}\n", .{log});
-        } else |_| {}
+        }
+        if (capture(t, &.{ "sh", "-c", "ps -ef | grep -E '[i]bus|[X]vfb' || true" })) |ps| {
+            if (ps.len > 0) std.debug.print("processes:\n{s}\n", .{ps});
+        }
         return fail("ibus-daemon never answered 'ibus list-engine'", .{});
     }
 
@@ -1456,7 +1464,7 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
         const keep: []const []const u8 = if (good)
             &.{ "  >>>", "  ok", "  note", "installed check" }
         else
-            &.{ "  >>>", "  FAIL", "       expected", "error", "INSTALLED" };
+            &.{ "  >>>", "  FAIL", "       expected", "error", "INSTALLED", "ibus", "Xvfb", "processes:", "starting headless" };
         var shown: u32 = 0;
         var lines = std.mem.splitScalar(u8, log, '\n');
         while (lines.next()) |l| {

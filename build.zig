@@ -1050,6 +1050,9 @@ fn addLinux(
 
     // The built .deb in clean containers. The checker (`linux tested`) runs
     // inside them, so it is built static (musl): it must not need the host's glibc.
+    // `-Dlinux-deb=` reuses an already-packaged .deb (cd/release) instead of
+    // building another one via the package step.
+    const external_deb = b.option([]const u8, "linux-deb", "Existing .deb (or dir) for linux-install-test; skip re-packaging");
     const static_tool = b.addExecutable(.{
         .name = "linux-static",
         .root_module = b.createModule(.{
@@ -1068,7 +1071,11 @@ fn addLinux(
     const matrix = b.addRunArtifact(tool);
     matrix.addArg("install-matrix");
     matrix.addFileArg(ime_test.getEmittedBin());
-    matrix.addDirectoryArg(deb_dir);
+    if (external_deb) |p| {
+        matrix.addArg(p);
+    } else {
+        matrix.addDirectoryArg(deb_dir);
+    }
     matrix.addPrefixedFileArg("--tool=", static_tool.getEmittedBin());
     matrix.addPassthruArgs(); // optional docker images after `--`
     matrix.has_side_effects = true;
