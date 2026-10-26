@@ -9,7 +9,7 @@
 	"kv_namespaces": [
 		{
 			"binding": "KV",
-			"id": "746e11ca0575404aa194c723c7b664d5",
+			"id": "b21e9eae94ec4c0889f05381b7753c2c",
 		},
 	],
 	"d1_databases": [
@@ -17,15 +17,7 @@
 			"binding": "DB",
 			"database_name": "byakaron",
 			"migrations_dir": "../../zig-out/d1",
-			"database_id": "8ccbd65d-60a1-43d8-b01a-ddba1431cfa1"
-		}
-	],
-	// Release installers (too large for Workers static assets). Enable R2 in the
-	// Cloudflare dashboard once, then `wrangler r2 bucket create byakaron-downloads`.
-	"r2_buckets": [
-		{
-			"binding": "RELEASES",
-			"bucket_name": "byakaron-downloads"
+			"database_id": "512e72c6-b7f5-4456-a739-af4a86114b5a"
 		}
 	],
 	"build": {

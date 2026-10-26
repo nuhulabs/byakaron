@@ -367,11 +367,6 @@ pub fn build(b: *std.Build) !void {
         }
     }
 
-    // Lazy release installers (scripts/sync-prebuilt.sh). Not part of the default
-    // web deploy — files are too large for Workers static assets and are served
-    // from R2 at /downloads/*. `zig build prebuilt` materialises them locally.
-    addPrebuiltDownloads(b);
-
     addWindows(b, avro, spell_db);
 
     // Regenerate the committed grammars from the pinned iAvro sources:
@@ -1627,26 +1622,6 @@ fn trimSpellDb(b: *std.Build, tool: *std.Build.Step.Compile, db: std.Build.LazyP
     run.addFileArg(db);
     run.addArg(b.fmt("{d}", .{words}));
     return run.addOutputFileArg("Byakaron.db");
-}
-
-/// Materialise lazy release installers into `zig-out/prebuilt/` when present.
-/// Entries are added by `scripts/sync-prebuilt.sh` after each tagged release.
-fn addPrebuiltDownloads(b: *std.Build) void {
-    const step = b.step("prebuilt", "Fetch lazy release installers → zig-out/prebuilt/");
-    const files = [_]struct { dep: []const u8, file: []const u8 }{
-        .{ .dep = "prebuilt_macos", .file = "Byakaron.dmg" },
-        .{ .dep = "prebuilt_windows", .file = "Byakaron-Setup.exe" },
-        .{ .dep = "prebuilt_android_apk", .file = "Byakaron.apk" },
-        .{ .dep = "prebuilt_android_aab", .file = "Byakaron.aab" },
-        .{ .dep = "prebuilt_db", .file = "Byakaron.db" },
-        .{ .dep = "prebuilt_linux_amd64", .file = "byakaron_amd64.deb" },
-        .{ .dep = "prebuilt_linux_arm64", .file = "byakaron_arm64.deb" },
-    };
-    for (files) |f| {
-        const dep = b.lazyDependency(f.dep, .{}) orelse continue;
-        const install = b.addInstallFile(dep.path(f.file), b.fmt("prebuilt/{s}", .{f.file}));
-        step.dependOn(&install.step);
-    }
 }
 
 /// Absolute path to a file/dir relative to the build root (dir with build.zig).

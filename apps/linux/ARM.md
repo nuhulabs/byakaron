@@ -142,7 +142,7 @@ This builds one complete file (keyboard, GTK app, and `Byakaron.db`). If
 
 ```bash
 zig build package-linux
-sudo apt install ./zig-out/pkg/byakaron_0.2.1_arm64.deb
+sudo apt install ./zig-out/pkg/byakaron_0.1.0_arm64.deb
 ```
 
 That file is `arm64`, not `amd64`. Use `apt`, not `dpkg -i`.

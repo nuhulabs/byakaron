@@ -1,6 +1,6 @@
-//! Public download page. Installers are served from Cloudflare R2 via
-//! `/downloads/<file>` (see `apps/web/main.ts`) — not from the private GitHub
-//! release — so anonymous visitors can still get the builds.
+//! Public download page. Installers live on the public
+//! `nuhulabs/Byakaron-Assets` repo so anonymous visitors can download even when
+//! the source repository is private.
 
 const std = @import("std");
 const zx = @import("zx");
@@ -8,6 +8,7 @@ const zx = @import("zx");
 const Catalog = struct {
     version: []const u8,
     tag: []const u8,
+    repo: []const u8,
     assets: []const Asset,
 };
 const Asset = struct {
@@ -22,13 +23,13 @@ const catalog: Catalog = @import("../../downloads.zon");
 
 pub fn Page(ctx: zx.PageContext) !zx.Component {
     const title = try std.fmt.allocPrint(ctx.arena, "Byakaron {s}", .{catalog.version});
-    const notes = try std.fmt.allocPrint(ctx.arena, "https://github.com/nuhulabs/byakaron/releases/tag/{s}", .{catalog.tag});
+    const notes = try std.fmt.allocPrint(ctx.arena, "https://github.com/{s}/releases/tag/{s}", .{ catalog.repo, catalog.tag });
     return (
         <main @allocator={ctx.arena} class="dl-shell">
             <header class="dl-hero">
                 <p class="dl-brand">byakaron</p>
                 <h1 class="dl-title">{title}</h1>
-                <p class="dl-lead">Installers for every platform. Files are served from our CDN — no GitHub login required.</p>
+                <p class="dl-lead">Installers for every platform. Hosted on a public assets repo — no login required.</p>
                 <p class="dl-nav">
                     <a href="/">Spell check</a>
                     <span aria-hidden="true">·</span>
@@ -44,7 +45,11 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
                             <p class="dl-detail">{asset.detail}</p>
                             <p class="dl-hash">sha256:{asset.sha256}</p>
                         </div>
-                        <a class="dl-btn" href={try std.fmt.allocPrint(ctx.arena, "/downloads/{s}", .{asset.file})} download={asset.file}>
+                        <a
+                            class="dl-btn"
+                            href={try std.fmt.allocPrint(ctx.arena, "https://github.com/{s}/releases/download/{s}/{s}", .{ catalog.repo, catalog.tag, asset.file })}
+                            download={asset.file}
+                        >
                             Download
                         </a>
                     </li>
