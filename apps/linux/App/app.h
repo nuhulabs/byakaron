@@ -25,7 +25,7 @@ G_BEGIN_DECLS
 /* What Setup copies when the keyboard is missing: the same one-liner the
  * website gives, since the app has no source checkout to run a script from. */
 #define BYK_INSTALL_COMMAND \
-    "curl -fsSL https://nuhulabs.com/byakaron/install.sh | sudo bash"
+    "curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash"
 
 /*
  * `spell` is NULL until the database has finished opening on a worker thread,

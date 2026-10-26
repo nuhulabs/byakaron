@@ -1,11 +1,14 @@
 //! Public download page. Installers live on the public
 //! `nuhulabs/Byakaron-Assets` repo with stable filenames so
 //! `/releases/latest/download/…` always points at the current release.
+//! One-line installers are served from this site at `/install.sh` and
+//! `/install.ps1`.
 
 const std = @import("std");
 const zx = @import("zx");
 
 const Catalog = struct {
+    site: []const u8,
     repo: []const u8,
     assets: []const Asset,
 };
@@ -21,12 +24,14 @@ const catalog: Catalog = @import("../../downloads.zon");
 pub fn Page(ctx: zx.PageContext) !zx.Component {
     const notes = try std.fmt.allocPrint(ctx.arena, "https://github.com/{s}/releases/latest", .{catalog.repo});
     const sums = try std.fmt.allocPrint(ctx.arena, "https://github.com/{s}/releases/latest/download/SHA256SUMS", .{catalog.repo});
+    const unix_cmd = try std.fmt.allocPrint(ctx.arena, "curl -fsSL {s}/install.sh | bash", .{catalog.site});
+    const win_cmd = try std.fmt.allocPrint(ctx.arena, "irm {s}/install.ps1 | iex", .{catalog.site});
     return (
         <main @allocator={ctx.arena} class="dl-shell">
             <header class="dl-hero">
                 <p class="dl-brand">byakaron</p>
                 <h1 class="dl-title">Download</h1>
-                <p class="dl-lead">Latest installers for every platform. Hosted on a public assets repo — no login required.</p>
+                <p class="dl-lead">Install with one command, or grab a platform installer. Binaries are hosted on a public assets repo — no login required.</p>
                 <p class="dl-nav">
                     <a href="/">Spell check</a>
                     <span aria-hidden="true">·</span>
@@ -36,23 +41,49 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
                 </p>
             </header>
 
-            <ul class="dl-list">
-                {for (catalog.assets) |asset| (
-                    <li class="dl-item">
-                        <div class="dl-meta">
-                            <h2 class="dl-label">{asset.label}</h2>
-                            <p class="dl-detail">{asset.detail}</p>
-                        </div>
-                        <a
-                            class="dl-btn"
-                            href={try std.fmt.allocPrint(ctx.arena, "https://github.com/{s}/releases/latest/download/{s}", .{ catalog.repo, asset.file })}
-                            download={asset.file}
-                        >
-                            Download
-                        </a>
-                    </li>
-                )}
-            </ul>
+            <section class="dl-guide" aria-labelledby="dl-guide-title">
+                <h2 id="dl-guide-title" class="dl-section-title">Install with one command</h2>
+                <p class="dl-guide-lead">The script detects your machine, downloads the latest release, and installs Byakaron (keyboard + app).</p>
+
+                <div class="dl-cmd-block">
+                    <div class="dl-cmd-head">
+                        <span class="dl-cmd-os">Linux and macOS</span>
+                        <a class="dl-cmd-link" href="/install.sh">install.sh</a>
+                    </div>
+                    <pre class="dl-cmd"><code>{unix_cmd}</code></pre>
+                </div>
+
+                <div class="dl-cmd-block">
+                    <div class="dl-cmd-head">
+                        <span class="dl-cmd-os">Windows (PowerShell)</span>
+                        <a class="dl-cmd-link" href="/install.ps1">install.ps1</a>
+                    </div>
+                    <pre class="dl-cmd"><code>{win_cmd}</code></pre>
+                </div>
+
+                <p class="dl-guide-note">Linux needs an apt-based system (Ubuntu / Debian). macOS installs into Applications. Windows runs the quiet Setup.exe.</p>
+            </section>
+
+            <section class="dl-manual" aria-labelledby="dl-manual-title">
+                <h2 id="dl-manual-title" class="dl-section-title">Or download an installer</h2>
+                <ul class="dl-list">
+                    {for (catalog.assets) |asset| (
+                        <li class="dl-item">
+                            <div class="dl-meta">
+                                <h3 class="dl-label">{asset.label}</h3>
+                                <p class="dl-detail">{asset.detail}</p>
+                            </div>
+                            <a
+                                class="dl-btn"
+                                href={try std.fmt.allocPrint(ctx.arena, "https://github.com/{s}/releases/latest/download/{s}", .{ catalog.repo, asset.file })}
+                                download={asset.file}
+                            >
+                                Download
+                            </a>
+                        </li>
+                    )}
+                </ul>
+            </section>
         </main>
     );
 }
