@@ -216,12 +216,17 @@ jobs:
       - name: keyboard
         id: keyboard
         env:
-          TOKEN: ${{ secrets.BYAKARON_ANDROID_TOKEN }}
+          DEPLOY_KEY: ${{ secrets.ANDROID_DEPLOY_KEY }}
         run: |
           sha=$(git ls-tree HEAD apps/android/keyboard | awk '$2 == "commit" { print $3 }')
-          if [[ -z "$sha" || -z "$TOKEN" ]]; then
-            echo "::warning::no Byakaron.apk / Byakaron.aab in this release"
+          if [[ -z "$sha" ]]; then
+            echo "::warning::no gitlink at apps/android/keyboard — skip android pkg"
             sha=""
+          elif [[ -z "$DEPLOY_KEY" ]]; then
+            echo "::warning::ANDROID_DEPLOY_KEY unset — cannot clone private byakaron-android@$sha; skip android pkg"
+            sha=""
+          else
+            echo "android keyboard@$sha"
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
@@ -232,7 +237,7 @@ jobs:
           repository: nuhulabs/byakaron-android
           ref: ${{ steps.keyboard.outputs.sha }}
           path: apps/android/keyboard
-          token: ${{ secrets.BYAKARON_ANDROID_TOKEN }}
+          ssh-key: ${{ secrets.ANDROID_DEPLOY_KEY }}
 
       - uses: mlugg/setup-zig@v2
         if: steps.keyboard.outputs.sha != ''
