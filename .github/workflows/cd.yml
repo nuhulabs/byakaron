@@ -1,7 +1,6 @@
-# cd: prepare → web deploy
+# cd: prepare (spell.db) ∥ web deploy + linux install-matrix e2e
 #
-# Platform packages (linux/macos/windows/android) are built only in release
-# via pkg.yml — same for every OS, no linux-only exception on main.
+# Platform release packages are release/pkg.yml only. D1 migrate is local.
 name: cd
 
 on:
@@ -20,7 +19,7 @@ jobs:
 
   web:
     name: build (web)
-    needs: [prepare]
+    # No needs: prepare — Worker deploy does not use spell.db; D1 migrations are local.
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: ${{ github.ref == 'refs/heads/main' && 'byakaron-web' || '' }}
@@ -31,21 +30,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: spell-db
-          path: zig-out/db
-
-      - uses: actions/download-artifact@v4
-        if: github.ref == 'refs/heads/main'
-        with:
-          name: d1
-          path: zig-out/d1
-
+      # Worker deploy only — D1 schema/data migrations are applied locally when needed:
+      #   zig build d1 -Dspell-db=zig-out/db/spell.db
+      #   cd apps/web && npx wrangler d1 migrations apply DB --remote
       - name: deploy
         if: github.ref == 'refs/heads/main'
         working-directory: apps/web
@@ -59,6 +46,48 @@ jobs:
           fi
           npx --yes wrangler@4.100.0 deploy
 
+      - uses: mlugg/setup-zig@v2
+        if: github.ref != 'refs/heads/main'
+        with:
+          version: 0.17.0
+
       - name: build
         if: github.ref != 'refs/heads/main'
         run: zig build -Doptimize=ReleaseSmall
+
+  e2e:
+    name: e2e (linux install-matrix)
+    needs: [prepare]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: spell-db
+          path: zig-out/db
+
+      - name: deps
+        run: |
+          sudo -E env "PATH=$PATH" \
+            ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
+            zig build linux-deps
+          sudo apt-get install -y --no-install-recommends \
+            xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
+
+      - name: pkg amd64
+        run: zig build package-linux -Dlinux-arch=x86_64 -Dspell-db=zig-out/db/spell.db
+
+      - name: install-matrix
+        run: |
+          deb=$(echo zig-out/pkg/byakaron_*_amd64.deb)
+          zig build linux-install-test \
+            -Dlinux-arch=x86_64 \
+            -Dspell-db=zig-out/db/spell.db \
+            -Dlinux-deb="$deb"

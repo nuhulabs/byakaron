@@ -149,13 +149,13 @@ jobs:
         run: zig build -Doptimize=ReleaseSmall
 
   e2e:
-    name: e2e (${{ matrix.os }})
+    name: e2e (${{ matrix.kind || matrix.os }})
     # Run even when one integration matrix leg failed (e.g. windows), so other
     # platforms still get e2e. Skip only on cancel.
     if: ${{ !cancelled() }}
     needs: [integration]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -163,6 +163,9 @@ jobs:
           - os: linux
             runner: ubuntu-24.04
             kind: wayland
+          - os: linux
+            runner: ubuntu-latest
+            kind: install-matrix
           - os: macos
             runner: ubuntu-latest
             placeholder: true
@@ -188,8 +191,8 @@ jobs:
         with:
           version: 0.17.0
 
-      - name: deps
-        if: matrix.os == 'linux'
+      - name: deps (wayland)
+        if: matrix.kind == 'wayland'
         run: |
           sudo -E env "PATH=$PATH" \
             ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
@@ -199,6 +202,28 @@ jobs:
             gir1.2-gtk-3.0 gir1.2-gtk-4.0 libgl1-mesa-dri \
             xdg-desktop-portal gsettings-desktop-schemas
 
-      - name: e2e
-        if: matrix.os == 'linux'
+      - name: e2e (wayland)
+        if: matrix.kind == 'wayland'
         run: zig build linux-wayland-e2e
+
+      - name: deps (install-matrix)
+        if: matrix.kind == 'install-matrix'
+        run: |
+          sudo -E env "PATH=$PATH" \
+            ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
+            zig build linux-deps
+          sudo apt-get install -y --no-install-recommends \
+            xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
+
+      # Tiny wiki dump keeps spell.db cheap; packages once then matrix-tests that .deb.
+      - name: e2e (install-matrix)
+        if: matrix.kind == 'install-matrix'
+        run: |
+          zig build package-linux \
+            -Dlinux-arch=x86_64 \
+            -Dwiki-dump=.github/ci/bnwiki-tiny.xml
+          deb=$(echo zig-out/pkg/byakaron_*_amd64.deb)
+          zig build linux-install-test \
+            -Dlinux-arch=x86_64 \
+            -Dspell-db=zig-out/db/spell.db \
+            -Dlinux-deb="$deb"
