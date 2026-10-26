@@ -480,7 +480,7 @@ no local release script.
 
 Bump the version by hand before tagging: `.version` in `build.zig.zon` (the
 `.deb` version), `BYK_APP_VERSION` in `App/app.h`, `<version>` in
-`Resources/byakaron.xml.in`, `VERSION_FALLBACK` in `web_install.sh`, and a
+`Resources/byakaron.xml.in`, and a
 `<release>` entry in the AppStream metainfo.
 
 The website installer is `apps/linux/web_install.sh`. Copy it by hand to

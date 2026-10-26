@@ -10,7 +10,8 @@
 set -euo pipefail
 
 REPO="${BYAKARON_REPO:-nuhulabs/Byakaron-Assets}"
-VERSION_FALLBACK="0.1.0"
+# Stable asset name on Byakaron-Assets (version lives inside the .deb control file).
+DEB_NAME_FOR_ARCH() { echo "byakaron_${1}.deb"; }
 
 die() { echo "error: $*" >&2; exit 1; }
 
@@ -54,38 +55,9 @@ case "$ARCH" in
 esac
 echo ">>> Detected: $OS_NAME, $CPU_NAME"
 
-# Three ways to find the .deb, most exact first. None needs python3: a stock
-# Ubuntu image does not have it, and the old python-only parse fell through to
-# VERSION_FALLBACK — a 404 whenever that version was not the latest release.
-deb_url=""
-if [[ -n "${BYAKARON_DEB_URL:-}" ]]; then
-    deb_url="$BYAKARON_DEB_URL"
-else
-    # 1. The API lists the assets. It is rate-limited to 60 calls an hour per
-    #    IP, which a shared office or campus NAT can use up.
-    api="https://api.github.com/repos/${REPO}/releases/latest"
-    json="$(curl -fsSL -H "Accept: application/vnd.github+json" "$api" 2>/dev/null || true)"
-    deb_url="$(printf '%s' "$json" \
-        | grep -oE '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]+"' \
-        | grep -oE 'https://[^"]+/byakaron_[^/"]+_'"$ARCH"'\.deb' \
-        | head -n 1 || true)"
-
-    # 2. The web redirect for "latest" names the tag (v0.1.0) and is not
-    #    rate-limited; the asset name follows from it.
-    if [[ -z "$deb_url" ]]; then
-        latest="$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
-            "https://github.com/${REPO}/releases/latest" 2>/dev/null || true)"
-        tag="${latest##*/tag/}"
-        if [[ "$latest" == */tag/* && "$tag" == v* ]]; then
-            deb_url="https://github.com/${REPO}/releases/download/${tag}/byakaron_${tag#v}_${ARCH}.deb"
-        fi
-    fi
-
-    # 3. Last resort, e.g. github.com unreachable for the lookups above.
-    if [[ -z "$deb_url" ]]; then
-        deb_url="https://github.com/${REPO}/releases/latest/download/byakaron_${VERSION_FALLBACK}_${ARCH}.deb"
-    fi
-fi
+# Stable filename + /releases/latest/download/ — no version lookup needed.
+deb_name="$(DEB_NAME_FOR_ARCH "$ARCH")"
+deb_url="${BYAKARON_DEB_URL:-https://github.com/${REPO}/releases/latest/download/${deb_name}}"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -94,7 +66,7 @@ deb="$tmp/byakaron.deb"
 echo ">>> downloading $deb_url"
 curl -fL --progress-bar -o "$deb" "$deb_url" \
     || die "could not download $deb_url
-       publish byakaron_*_${ARCH}.deb on nuhulabs/Byakaron-Assets (public), or set BYAKARON_DEB_URL"
+       publish ${deb_name} on nuhulabs/Byakaron-Assets (public), or set BYAKARON_DEB_URL"
 
 echo ">>> installing (keyboard + app + spell-check)"
 export DEBIAN_FRONTEND=noninteractive

@@ -1,6 +1,7 @@
 .{
-    .version = "0.1.0",
-    .tag = "v0.1.0",
+    // Stable asset names on nuhulabs/Byakaron-Assets. Links use
+    // /releases/latest/download/<file> so this catalog does not need a
+    // per-release refresh.
     .repo = "nuhulabs/Byakaron-Assets",
     .assets = .{
         .{
@@ -8,42 +9,36 @@
             .label = "macOS",
             .detail = "Apple Silicon & Intel · .dmg",
             .file = "Byakaron.dmg",
-            .sha256 = "ba507155fd4230b22965e8ab1b98eb1364ad9f96bd214c43eaf9db0dc602f976",
         },
         .{
             .id = "windows",
             .label = "Windows",
             .detail = "x64 installer · .exe",
             .file = "Byakaron-Setup.exe",
-            .sha256 = "e0f9010e914880e918ad58a109f0263e7101832f8e3d22c7cd572f7e0b2da6da",
         },
         .{
             .id = "linux_amd64",
             .label = "Linux (amd64)",
             .detail = "Ubuntu / Debian · .deb",
-            .file = "byakaron_0.1.0_amd64.deb",
-            .sha256 = "f710190a1a26df8dbbe6da3ddb83a80c435df9da02a2e024eaebf6a825b65be8",
+            .file = "byakaron_amd64.deb",
         },
         .{
             .id = "linux_arm64",
             .label = "Linux (arm64)",
             .detail = "Ubuntu / Debian · .deb",
-            .file = "byakaron_0.1.0_arm64.deb",
-            .sha256 = "e69a78383a7951f874c666db857eb3537b71ca887c41ec28531a4e48ee4d387b",
+            .file = "byakaron_arm64.deb",
         },
         .{
             .id = "android_apk",
             .label = "Android (APK)",
             .detail = "Sideload · .apk",
             .file = "Byakaron.apk",
-            .sha256 = "b2a0ab756e2e08079be8da18d1172729e4812ad8878d5f4707e1327bc1b8af67",
         },
         .{
             .id = "android_aab",
             .label = "Android (Play bundle)",
             .detail = "Play Store · .aab",
             .file = "Byakaron.aab",
-            .sha256 = "326a05af08b2a1b3830ed190fea4230db2b89c1cc2e1073037e6dc1d62a111ad",
         },
     },
 }
