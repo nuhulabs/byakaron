@@ -67,8 +67,8 @@ The database keeps the 150 000 most frequent words by default: about 460 MB, und
 Needs Zig 0.17, Node and a Cloudflare login (`npx wrangler@4.100.0 login`, or `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`).
 
 ```sh
-# 1. Byakaron.db: build it (zig build db), or take the latest release's
-gh release download --repo nuhulabs/byakaron --pattern Byakaron.db --dir zig-out/db
+# 1. Byakaron.db: build it locally (not published on Byakaron-Assets)
+zig build db
 
 # 2. Load it into D1; a no-op when this Byakaron.db is already there
 zig build d1 -Dspell-db=zig-out/db/Byakaron.db

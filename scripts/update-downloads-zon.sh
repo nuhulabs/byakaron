@@ -38,7 +38,6 @@ catalog = [
     ("linux_arm64", "Linux (arm64)", "Ubuntu / Debian · .deb", f"byakaron_{version}_arm64.deb"),
     ("android_apk", "Android (APK)", "Sideload · .apk", "Byakaron.apk"),
     ("android_aab", "Android (Play bundle)", "Play Store · .aab", "Byakaron.aab"),
-    ("db", "Spell database", "Shared · Byakaron.db", "Byakaron.db"),
 ]
 
 out = [
