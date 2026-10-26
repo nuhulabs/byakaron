@@ -1,13 +1,11 @@
 //! Public download page. Installers live on the public
-//! `nuhulabs/Byakaron-Assets` repo so anonymous visitors can download even when
-//! the source repository is private.
+//! `nuhulabs/Byakaron-Assets` repo with stable filenames so
+//! `/releases/latest/download/…` always points at the current release.
 
 const std = @import("std");
 const zx = @import("zx");
 
 const Catalog = struct {
-    version: []const u8,
-    tag: []const u8,
     repo: []const u8,
     assets: []const Asset,
 };
@@ -16,24 +14,25 @@ const Asset = struct {
     label: []const u8,
     detail: []const u8,
     file: []const u8,
-    sha256: []const u8,
 };
 
 const catalog: Catalog = @import("../../downloads.zon");
 
 pub fn Page(ctx: zx.PageContext) !zx.Component {
-    const title = try std.fmt.allocPrint(ctx.arena, "Byakaron {s}", .{catalog.version});
-    const notes = try std.fmt.allocPrint(ctx.arena, "https://github.com/{s}/releases/tag/{s}", .{ catalog.repo, catalog.tag });
+    const notes = try std.fmt.allocPrint(ctx.arena, "https://github.com/{s}/releases/latest", .{catalog.repo});
+    const sums = try std.fmt.allocPrint(ctx.arena, "https://github.com/{s}/releases/latest/download/SHA256SUMS", .{catalog.repo});
     return (
         <main @allocator={ctx.arena} class="dl-shell">
             <header class="dl-hero">
                 <p class="dl-brand">byakaron</p>
-                <h1 class="dl-title">{title}</h1>
-                <p class="dl-lead">Installers for every platform. Hosted on a public assets repo — no login required.</p>
+                <h1 class="dl-title">Download</h1>
+                <p class="dl-lead">Latest installers for every platform. Hosted on a public assets repo — no login required.</p>
                 <p class="dl-nav">
                     <a href="/">Spell check</a>
                     <span aria-hidden="true">·</span>
                     <a href={notes}>Release notes</a>
+                    <span aria-hidden="true">·</span>
+                    <a href={sums}>SHA256SUMS</a>
                 </p>
             </header>
 
@@ -43,11 +42,10 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
                         <div class="dl-meta">
                             <h2 class="dl-label">{asset.label}</h2>
                             <p class="dl-detail">{asset.detail}</p>
-                            <p class="dl-hash">sha256:{asset.sha256}</p>
                         </div>
                         <a
                             class="dl-btn"
-                            href={try std.fmt.allocPrint(ctx.arena, "https://github.com/{s}/releases/download/{s}/{s}", .{ catalog.repo, catalog.tag, asset.file })}
+                            href={try std.fmt.allocPrint(ctx.arena, "https://github.com/{s}/releases/latest/download/{s}", .{ catalog.repo, asset.file })}
                             download={asset.file}
                         >
                             Download

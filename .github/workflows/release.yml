@@ -1,20 +1,20 @@
-# release: prepare → pkg (all os) → publish to public nuhulabs/Byakaron-Assets
+# release: prepare → pkg (all os) → Byakaron-Assets (binaries) + byakaron (notes)
 #
-# Artifacts (upload names → release files):
-#   byakaron-linux-amd64 / byakaron-linux-arm64  → byakaron_<ver>_{amd64,arm64}.deb
+# Artifacts on nuhulabs/Byakaron-Assets (stable names → /releases/latest/download/…):
+#   byakaron-linux-amd64 / byakaron-linux-arm64  → byakaron_{amd64,arm64}.deb
 #   byakaron-macos                               → Byakaron.dmg
 #   byakaron-windows                             → Byakaron-Setup.exe
 #   byakaron-android                             → Byakaron.apk + Byakaron.aab
 #
-# Byakaron.db is built in prepare and baked into packages; it is not published
-# on Byakaron-Assets (too large / not a public download).
+# Local `zig build package-linux` still writes byakaron_<ver>_<arch>.deb; publish
+# renames for the public Assets release so the website/installer never need a
+# versioned URL. Byakaron.db is baked into packages, not uploaded to Assets.
 #
-# Debian keeps version in the .deb filename (pkg_ver_arch.deb). There is no
-# universal amd64+arm64 .deb — Architecture is single-arch or all (data-only).
+# The source repo gets a matching GitHub Release (notes + link to Assets, no
+# binary attachments). Web deploy stays on cd.yml — download links are stable.
 #
 # Tag: v${build.zig.zon.version}. Push a matching annotated tag, or dispatch
-# to dry-run (artifacts only). Binaries ship on Byakaron-Assets (public) so
-# downloads work when this source repo is private.
+# to dry-run (artifacts only).
 name: release
 
 on:
@@ -75,6 +75,8 @@ jobs:
     needs: [prepare, version, pkg]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -88,17 +90,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.BYAKARON_ASSETS_TOKEN }}
           ASSETS_REPO: nuhulabs/Byakaron-Assets
+          SOURCE_REPO: ${{ github.repository }}
           TAG: ${{ needs.version.outputs.tag }}
+          # Source-repo release uses the job token (not the Assets PAT).
+          SOURCE_TOKEN: ${{ github.token }}
         run: |
           [[ -n "$GH_TOKEN" ]] || { echo "::error::BYAKARON_ASSETS_TOKEN is not set"; exit 1; }
           cd dist
           # prepare still uploads Byakaron.db for packaging; keep it off Assets.
           rm -f Byakaron.db
+
           for f in Byakaron.dmg Byakaron-Setup.exe; do
             [[ -f "$f" ]] || { echo "::error::$f is missing"; exit 1; }
           done
           for arch in amd64 arm64; do
-            compgen -G "byakaron_*_$arch.deb" >/dev/null || { echo "::error::the $arch .deb is missing"; exit 1; }
+            mapfile -t matches < <(compgen -G "byakaron_*_${arch}.deb" || true)
+            [[ ${#matches[@]} -eq 1 ]] || {
+              echo "::error::expected one byakaron_*_${arch}.deb, got: ${matches[*]-<none>}"
+              exit 1
+            }
+            # Stable public name so /releases/latest/download/byakaron_${arch}.deb works.
+            mv -f "${matches[0]}" "byakaron_${arch}.deb"
           done
           [[ -f Byakaron.apk ]] || echo "::warning::publishing without Byakaron.apk"
           [[ -f Byakaron.aab ]] || echo "::warning::publishing without Byakaron.aab (Play Store bundle)"
@@ -113,8 +125,18 @@ jobs:
             > "$RUNNER_TEMP/notes.md"
           [[ -s "$RUNNER_TEMP/notes.md" ]] || echo "Byakaron ${TAG#v}" > "$RUNNER_TEMP/notes.md"
 
+          {
+            echo
+            echo "---"
+            echo
+            echo "Installers: https://github.com/${ASSETS_REPO}/releases/tag/${TAG}"
+            echo "Latest downloads: https://github.com/${ASSETS_REPO}/releases/latest"
+          } >> "$RUNNER_TEMP/notes.md"
+
           flags=(--latest)
           [[ "$TAG" == *-* ]] && flags=(--prerelease --latest=false)
+
+          # Public binaries on Byakaron-Assets (stable asset names).
           gh release delete "$TAG" --repo "$ASSETS_REPO" --yes 2>/dev/null || true
           gh release create "$TAG" --repo "$ASSETS_REPO" --title "Byakaron ${TAG#v}" \
             --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}" ./*
@@ -126,58 +148,8 @@ jobs:
           done < SHA256SUMS
           echo "https://github.com/$ASSETS_REPO/releases/tag/$TAG"
 
-  # Refresh the download-page catalog and redeploy the Worker (links → Assets).
-  deploy-web:
-    name: deploy (web downloads)
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [publish, version]
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    environment: byakaron-web
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-
-      - name: update downloads.zon
-        env:
-          TAG: ${{ needs.version.outputs.tag }}
-          VERSION: ${{ needs.version.outputs.version }}
-        run: scripts/update-downloads-zon.sh "$TAG" dist
-
-      - name: commit catalog
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/web/app/downloads.zon
-          if git diff --cached --quiet; then
-            echo "downloads.zon unchanged"
-          else
-            git commit -m "chore: refresh download catalog for ${{ needs.version.outputs.tag }}"
-            git push origin HEAD:main
-          fi
-
-      # wrangler.jsonc runs `zig build zx …` as a custom build before deploy.
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-
-      - name: deploy web
-        working-directory: apps/web
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          if [[ -z "$CLOUDFLARE_API_TOKEN" ]]; then
-            echo "::warning::CLOUDFLARE_API_TOKEN unset; skip web deploy"
-            exit 0
-          fi
-          npx --yes wrangler@4.100.0 deploy
+          # Source repo: release notes only (private clone / changelog), no binaries.
+          GH_TOKEN="$SOURCE_TOKEN" gh release delete "$TAG" --repo "$SOURCE_REPO" --yes 2>/dev/null || true
+          GH_TOKEN="$SOURCE_TOKEN" gh release create "$TAG" --repo "$SOURCE_REPO" \
+            --title "Byakaron ${TAG#v}" --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}"
+          echo "https://github.com/$SOURCE_REPO/releases/tag/$TAG"
