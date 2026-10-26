@@ -34,8 +34,10 @@ repository, so installers stay downloadable when this source repo is private.
    | `Byakaron.dmg` | `zig build release-macos` |
    | `Byakaron-Setup.exe` | `zig build windows` |
    | `Byakaron.apk`, `Byakaron.aab` | `zig build release-android` |
-   | `Byakaron.db` | `zig build db` (prepare) |
    | `SHA256SUMS` | the `publish` job |
+
+   `Byakaron.db` is still built in prepare and embedded in the installers; it is
+   not uploaded to Byakaron-Assets.
 
    Then `deploy-web` refreshes `apps/web/app/downloads.zon` (links on `/download`)
    and redeploys the Worker.

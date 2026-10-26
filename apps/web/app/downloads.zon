@@ -45,12 +45,5 @@
             .file = "Byakaron.aab",
             .sha256 = "326a05af08b2a1b3830ed190fea4230db2b89c1cc2e1073037e6dc1d62a111ad",
         },
-        .{
-            .id = "db",
-            .label = "Spell database",
-            .detail = "Shared · Byakaron.db",
-            .file = "Byakaron.db",
-            .sha256 = "719b48ee62d998354fb1ada4ffd1923a2c2344a9ec9baa3f0a519c33676326aa",
-        },
     },
 }

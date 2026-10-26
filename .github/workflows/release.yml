@@ -5,7 +5,9 @@
 #   byakaron-macos                               → Byakaron.dmg
 #   byakaron-windows                             → Byakaron-Setup.exe
 #   byakaron-android                             → Byakaron.apk + Byakaron.aab
-#   byakaron-db                                  → Byakaron.db
+#
+# Byakaron.db is built in prepare and baked into packages; it is not published
+# on Byakaron-Assets (too large / not a public download).
 #
 # Debian keeps version in the .deb filename (pkg_ver_arch.deb). There is no
 # universal amd64+arm64 .deb — Architecture is single-arch or all (data-only).
@@ -90,7 +92,9 @@ jobs:
         run: |
           [[ -n "$GH_TOKEN" ]] || { echo "::error::BYAKARON_ASSETS_TOKEN is not set"; exit 1; }
           cd dist
-          for f in Byakaron.dmg Byakaron-Setup.exe Byakaron.db; do
+          # prepare still uploads Byakaron.db for packaging; keep it off Assets.
+          rm -f Byakaron.db
+          for f in Byakaron.dmg Byakaron-Setup.exe; do
             [[ -f "$f" ]] || { echo "::error::$f is missing"; exit 1; }
           done
           for arch in amd64 arm64; do
