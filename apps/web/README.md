@@ -15,7 +15,7 @@ Spell check and SQLite autocomplete read the app database `zx.db`. Natively that
 The site deploys as the Worker `byakaron` (`wrangler.jsonc`, entry `main.ts`), split in three:
 
 - **The page is static.** `app/pages/page.zx` is `.rendering = .prerendered`: the build renders it once into `zig-out/static/index.html`, an empty shell whose UI is a `@client` component that runs in the browser (wasm). Everything that depends on the visitor (the saved draft and settings in the browser's storage, a shared `?q=` link) is read there. Cloudflare serves it, with the client wasm, the JS and the CSS, straight from its CDN; the Worker doesn't run for them.
-- **Downloads** at `/download` list the latest installers (`app/downloads.zon`). Files are **not** in Workers static assets (too large); `main.ts` streams them from the R2 bucket `byakaron-downloads` at `/downloads/<file>`. Tagged releases run `scripts/sync-prebuilt.sh` to `zig fetch` lazy `prebuilt_*` deps and upload the objects.
+- **Downloads** at `/download` list the latest installers (`app/downloads.zon`) with links to the public [`nuhulabs/Byakaron-Assets`](https://github.com/nuhulabs/Byakaron-Assets) releases (so downloads work when the source repo is private).
 - **The API is dynamic.** `app/pages/api/spell/route.zig` is `.rendering = .request`: `POST /api/spell` runs in the Worker against the D1 database.
 
 ### Spell API and the browser cache

@@ -21,7 +21,7 @@
   <name>org.freedesktop.IBus.Byakaron</name>
   <description>Byakaron Bangla phonetic input method</description>
   <exec>@BYK_EXEC@ --ibus</exec>
-  <version>0.2.1</version>
+  <version>0.1.0</version>
   <author>Byakaron contributors</author>
   <license>MIT</license>
   <homepage>https://nuhulabs.com/byakaron</homepage>

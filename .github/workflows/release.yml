@@ -1,4 +1,4 @@
-# release: prepare → pkg (all os) → GitHub Release on this repo
+# release: prepare → pkg (all os) → publish to public nuhulabs/Byakaron-Assets
 #
 # Artifacts (upload names → release files):
 #   byakaron-linux-amd64 / byakaron-linux-arm64  → byakaron_<ver>_{amd64,arm64}.deb
@@ -11,7 +11,8 @@
 # universal amd64+arm64 .deb — Architecture is single-arch or all (data-only).
 #
 # Tag: v${build.zig.zon.version}. Push a matching annotated tag, or dispatch
-# to dry-run (artifacts only).
+# to dry-run (artifacts only). Binaries ship on Byakaron-Assets (public) so
+# downloads work when this source repo is private.
 name: release
 
 on:
@@ -72,8 +73,6 @@ jobs:
     needs: [prepare, version, pkg]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
-      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -85,9 +84,11 @@ jobs:
 
       - name: publish
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.BYAKARON_ASSETS_TOKEN }}
+          ASSETS_REPO: nuhulabs/Byakaron-Assets
           TAG: ${{ needs.version.outputs.tag }}
         run: |
+          [[ -n "$GH_TOKEN" ]] || { echo "::error::BYAKARON_ASSETS_TOKEN is not set"; exit 1; }
           cd dist
           for f in Byakaron.dmg Byakaron-Setup.exe Byakaron.db; do
             [[ -f "$f" ]] || { echo "::error::$f is missing"; exit 1; }
@@ -110,26 +111,24 @@ jobs:
 
           flags=(--latest)
           [[ "$TAG" == *-* ]] && flags=(--prerelease --latest=false)
-          # Replace a prior attempt for the same tag (e.g. retargeted publish).
-          gh release delete "$TAG" --yes 2>/dev/null || true
-          gh release create "$TAG" --title "Byakaron ${TAG#v}" \
+          gh release delete "$TAG" --repo "$ASSETS_REPO" --yes 2>/dev/null || true
+          gh release create "$TAG" --repo "$ASSETS_REPO" --title "Byakaron ${TAG#v}" \
             --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}" ./*
 
           while read -r sum name; do
-            got=$(gh release view "$TAG" --json assets \
+            got=$(gh release view "$TAG" --repo "$ASSETS_REPO" --json assets \
               -q ".assets[] | select(.name == \"$name\") | .digest")
             [[ "$got" == "sha256:$sum" ]] || { echo "::error::$name: uploaded $got, built sha256:$sum"; exit 1; }
           done < SHA256SUMS
-          echo "${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG"
+          echo "https://github.com/$ASSETS_REPO/releases/tag/$TAG"
 
-  # Lock installers as Zig lazy deps, push them to R2 (CDN for /downloads/*),
-  # update the download page catalog, then redeploy the web Worker.
+  # Refresh the download-page catalog and redeploy the Worker (links → Assets).
   deploy-web:
     name: deploy (web downloads)
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [publish, version]
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     environment: byakaron-web
     permissions:
       contents: write
@@ -137,38 +136,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Tag checkout is detached; push zon updates back to main.
           ref: main
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-
-      - name: sync prebuilt + R2
+      - name: update downloads.zon
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          BYAKARON_R2_PUBLIC_BASE: ${{ vars.BYAKARON_R2_PUBLIC_BASE }}
           TAG: ${{ needs.version.outputs.tag }}
-        run: |
-          # publish already wrote SHA256SUMS into the artifact merge
-          scripts/sync-prebuilt.sh "$TAG" dist
+          VERSION: ${{ needs.version.outputs.version }}
+        run: scripts/update-downloads-zon.sh "$TAG" dist
 
-      - name: commit prebuilt lock
+      - name: commit catalog
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add build.zig.zon apps/web/app/downloads.zon
+          git add apps/web/app/downloads.zon
           if git diff --cached --quiet; then
-            echo "no prebuilt zon changes"
+            echo "downloads.zon unchanged"
           else
-            git commit -m "chore: lock release prebuilts for ${{ needs.version.outputs.tag }}"
+            git commit -m "chore: refresh download catalog for ${{ needs.version.outputs.tag }}"
             git push origin HEAD:main
           fi
 

@@ -19,7 +19,7 @@
   <icon type="stock">byakaron</icon>
   <url type="homepage">https://nuhulabs.com/byakaron</url>
   <releases>
-    <release version="0.2.1" date="2026-10-22">
+    <release version="0.1.0" date="2026-10-26">
       <description>
         <p>One install command for Intel/AMD and ARM, Raspberry Pi OS and KDE setup, a fix for Qt apps on Ubuntu 20.04/22.04, and better-ranked suggestions.</p>
       </description>

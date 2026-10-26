@@ -1,6 +1,7 @@
 .{
-    .version = "0.2.1",
-    .tag = "v0.2.1",
+    .version = "0.1.0",
+    .tag = "v0.1.0",
+    .repo = "nuhulabs/Byakaron-Assets",
     .assets = .{
         .{
             .id = "macos",
@@ -20,14 +21,14 @@
             .id = "linux_amd64",
             .label = "Linux (amd64)",
             .detail = "Ubuntu / Debian · .deb",
-            .file = "byakaron_0.2.1_amd64.deb",
+            .file = "byakaron_0.1.0_amd64.deb",
             .sha256 = "f710190a1a26df8dbbe6da3ddb83a80c435df9da02a2e024eaebf6a825b65be8",
         },
         .{
             .id = "linux_arm64",
             .label = "Linux (arm64)",
             .detail = "Ubuntu / Debian · .deb",
-            .file = "byakaron_0.2.1_arm64.deb",
+            .file = "byakaron_0.1.0_arm64.deb",
             .sha256 = "e69a78383a7951f874c666db857eb3537b71ca887c41ec28531a4e48ee4d387b",
         },
         .{
