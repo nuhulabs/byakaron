@@ -1,4 +1,4 @@
-//! `Composer.Corrector` over spell.db for native keyboards. A spell.db lookup
+//! `Composer.Corrector` over Byakaron.db for native keyboards. A Byakaron.db lookup
 //! can take long enough to stall a keystroke, so it runs on a worker thread:
 //! `get` answers from the cache, otherwise queues the word (only the latest
 //! waiting word is kept) and returns null; when a result lands, `on_ready` is

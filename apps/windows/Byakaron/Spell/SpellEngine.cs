@@ -7,7 +7,7 @@ using Byakaron.Interop;
 namespace Byakaron.Spell;
 
 /// <summary>
-/// Bengali spell-checking engine backed by the Zig SymSpell lexicon (<c>spell.db</c>).
+/// Bengali spell-checking engine backed by the Zig SymSpell lexicon (<c>Byakaron.db</c>).
 /// Mirrors the macOS <c>SpellEngine</c>: FFI for correctness/suggestions; session
 /// Ignore/Learn words stay in managed code.
 /// </summary>
@@ -23,7 +23,7 @@ public sealed class SpellEngine : IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(dbPath);
         if (!File.Exists(dbPath))
         {
-            throw new FileNotFoundException("spell.db not found", dbPath);
+            throw new FileNotFoundException("Byakaron.db not found", dbPath);
         }
 
         _handle = ByakaronNative.SpellCreate(dbPath);
@@ -34,7 +34,7 @@ public sealed class SpellEngine : IDisposable
     }
 
     /// <summary>
-    /// Open bundled <c>native/spell.db</c> next to the app (staged by <c>zig build windows</c> / <c>run-win</c>).
+    /// Open bundled <c>native/Byakaron.db</c> next to the app (staged by <c>zig build windows</c> / <c>run-win</c>).
     /// Returns null if the file is missing or the engine fails to open.
     /// </summary>
     public static SpellEngine? LoadFromAppDirectory()
@@ -60,8 +60,8 @@ public sealed class SpellEngine : IDisposable
         var baseDir = AppContext.BaseDirectory;
         var candidates = new[]
         {
-            Path.Combine(baseDir, "native", "spell.db"),
-            Path.Combine(baseDir, "spell.db"),
+            Path.Combine(baseDir, "native", "Byakaron.db"),
+            Path.Combine(baseDir, "Byakaron.db"),
         };
 
         foreach (var path in candidates)
@@ -127,7 +127,7 @@ public sealed class SpellEngine : IDisposable
 
     /// <summary>
     /// Ranked correction candidates. Optional neighbors boost ranking via
-    /// bigram/trigram frequencies in spell.db (same as macOS suggest_ctx).
+    /// bigram/trigram frequencies in Byakaron.db (same as macOS suggest_ctx).
     /// </summary>
     public IReadOnlyList<string> Suggestions(
         string word,

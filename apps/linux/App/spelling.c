@@ -119,7 +119,7 @@ byk_spell_page_suggest (BykSpellPage *self, const BykIssue *issue)
 
     /*
      * Plain suggest, not suggest_ctx. The context-aware variant ranks with
-     * bigrams and trigrams, and the locally built spell.db has neither table
+     * bigrams and trigrams, and the locally built Byakaron.db has neither table
      * populated (they need a Wikipedia export that is not in the repo), so
      * passing neighbours would cost two extra queries per word for identical
      * output. Worth revisiting the day the n-grams land.
@@ -572,7 +572,7 @@ on_ignore_clicked (GtkButton *button, gpointer user_data)
     if (issue == NULL)
         return;
 
-    /* Session-only, like the macOS app: nothing is written back to spell.db,
+    /* Session-only, like the macOS app: nothing is written back to Byakaron.db,
      * so an accidental Ignore cannot poison the dictionary. */
     g_hash_table_add (self->ignored, g_strdup (issue->word));
     byk_spell_page_check_now (self);
@@ -1237,7 +1237,7 @@ byk_spell_page_build_loading (void)
 
     GtkWidget *page = byk_status_page (NULL,
                                        "Loading dictionary\u2026",
-                                       "Opening spell.db. This happens once per launch.");
+                                       "Opening Byakaron.db. This happens once per launch.");
     byk_box_add (page, spinner);
     return page;
 }

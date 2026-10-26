@@ -4,7 +4,7 @@
  * The keyboard itself — the latin buffer, Avro's candidates, paging, the
  * highlight, learning, the personal dictionary, spelling corrections and the
  * shared settings — lives in Zig, identical on every platform. What is left
- * here is what only Linux knows: where the data directory and spell.db are,
+ * here is what only Linux knows: where the data directory and Byakaron.db are,
  * how X11 keysyms (IBus, GDK and Fcitx5 all speak them) map to composer keys,
  * the one-time move of the old GSettings keys into settings.json, and small
  * GLib-friendly readers for the JSON the ABI returns.
@@ -29,7 +29,7 @@ gchar *byk_data_dir (void);
 
 /*
  * A composer on byk_data_dir(). With `with_spell`, spelling corrections come
- * from spell.db (byk_spell_locate_db) and `on_update(userdata)` fires on a
+ * from Byakaron.db (byk_spell_locate_db) and `on_update(userdata)` fires on a
  * worker thread when they arrive: hop to the main loop, then
  * byakaron_composer_refresh and redraw. Before the first settings.json exists,
  * the old GSettings values are written into it once (see composer.c).

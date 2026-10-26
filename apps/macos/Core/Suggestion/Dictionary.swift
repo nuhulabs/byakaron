@@ -1,6 +1,6 @@
 import Foundation
 
-/// Bengali spell-checking engine backed by the Zig SymSpell lexicon (`spell.db`).
+/// Bengali spell-checking engine backed by the Zig SymSpell lexicon (`Byakaron.db`).
 ///
 /// Pure Foundation — no AppKit/UIKit — so it compiles unchanged on macOS and iOS.
 /// Correctness and suggestions are answered by `libbyakaron` over the C FFI;
@@ -22,10 +22,10 @@ final class SpellEngine {
         }
     }
 
-    /// Convenience: open bundled `spell.db`, then build.
+    /// Convenience: open bundled `Byakaron.db`, then build.
     /// Returns nil if the resource is missing or the engine fails to open.
     static func loadFromBundle(_ bundle: Bundle = .main) -> SpellEngine? {
-        guard let url = bundle.url(forResource: "spell", withExtension: "db") else {
+        guard let url = bundle.url(forResource: "Byakaron", withExtension: "db") else {
             return nil
         }
         return SpellEngine(dbPath: url.path)
@@ -56,7 +56,7 @@ final class SpellEngine {
     // MARK: - Suggestions
 
     /// Ranked correction candidates for a (presumed misspelled) word.
-    /// Optional neighbors boost ranking via bigram/trigram frequencies in spell.db.
+    /// Optional neighbors boost ranking via bigram/trigram frequencies in Byakaron.db.
     func suggestions(
         for word: String,
         prev2: String = "",

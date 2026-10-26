@@ -1,9 +1,7 @@
 # Releasing Byakaron
 
 Releases are built by GitHub Actions (`.github/workflows/release.yml`) and
-published on the public [`nuhulabs/Byakaron-Assets`](https://github.com/nuhulabs/Byakaron-Assets)
-repository, because this repository is private and users could not download
-from it.
+published as a GitHub Release on this repository (`nuhulabs/byakaron`).
 
 ## Cut a release
 
@@ -27,46 +25,41 @@ from it.
    A tag with a `-` (`v0.3.0-rc.1`) is published as a prerelease; any other
    tag becomes the Latest release, which the Linux web installer reads.
 3. Watch the `release` run. When every job passes, `publish` creates the
-   release `v0.3.0` on `nuhulabs/Byakaron-Assets` with:
+   release `v0.3.0` on this repo with:
 
    | Asset | Built by |
    | --- | --- |
-   | `byakaron_<ver>_amd64.deb`, `byakaron_<ver>_arm64.deb` | `cd.yml` (`zig build package-linux` on an amd64 and an arm64 runner, installed and tested on both CPUs) |
+   | `byakaron_<ver>_amd64.deb`, `byakaron_<ver>_arm64.deb` | `zig build package-linux` (one `.deb` per CPU; Debian has no universal binary package) |
    | `Byakaron.dmg` | `zig build release-macos` on the `xcode-27` runner |
    | `Byakaron-Setup.exe` | `zig build windows` (Inno Setup) on windows-latest |
-   | `Byakaron.apk` | `zig build release-android` (`libbyakaron.so`, `spell.db` in the assets, Gradle's release build) |
-   | `spell.db` | `cd.yml` (`zig build db`, cached on its inputs) |
+   | `Byakaron.apk`, `Byakaron.aab` | `zig build release-android` |
+   | `Byakaron.db` | `zig build db` (prepare job) |
    | `SHA256SUMS` | the `publish` job, which also checks each upload's digest against it |
-
-   Without `BYAKARON_ANDROID_TOKEN` the release goes out without the APK (the
-   run shows a warning).
 
 ### Dry run
 
 Run the `release` workflow by hand (Actions → release → Run workflow, or
 `gh workflow run release.yml --ref <branch>`). It builds everything and leaves
-the assets as the run's artifacts (`release-macos`, `release-windows`,
-`release-android`, `byakaron-<arch>`, `spell-db`); nothing is published.
+the assets as the run's artifacts (`byakaron-macos`, `byakaron-windows`,
+`byakaron-android`, `byakaron-linux-*`, `byakaron-db`); nothing is published.
 
 ### Linux website installer
 
-The `.deb`s come from CI only; nothing is released from a developer machine.
-The website installer is `apps/linux/web_install.sh`. After a release, copy it
-by hand to `app/public/byakaron/install.sh` in the nuhulabs.com repo (and as
-`install-amd64.sh` / `install-arm64.sh` for links shared earlier). It always
-installs the Latest release, so the page needs no version bump.
+The `.deb`s come from CI only. The website installer is `apps/linux/web_install.sh`.
+After a release, copy it by hand to `app/public/byakaron/install.sh` in the
+nuhulabs.com repo (and as `install-amd64.sh` / `install-arm64.sh` for links
+shared earlier). It always installs the Latest release, so the page needs no
+version bump.
 
 ## Secrets
 
 Set these in this repository's Settings → Secrets and variables → Actions.
-Only `BYAKARON_ASSETS_TOKEN` is required to publish; every other secret is
-optional and its step is skipped when it is missing, so the assets are
-**unsigned** until the signing secrets are added.
+Publish uses `GITHUB_TOKEN` (no PAT). Other secrets are optional; their steps
+are skipped when missing, so assets are **unsigned** until signing secrets are added.
 
 | Secret | Used by | What it is |
 | --- | --- | --- |
-| `BYAKARON_ASSETS_TOKEN` | `release.yml` publish | PAT (fine-grained: Contents read/write on `nuhulabs/Byakaron-Assets`) to create the release and upload assets. |
-| `BYAKARON_ANDROID_TOKEN` | `ci.yml` android, `release.yml` android | PAT with Contents read on `nuhulabs/byakaron-android`, to check out the private `apps/android/keyboard` submodule. Without it CI builds only `libbyakaron.so` and releases have no APK. |
+| `ANDROID_DEPLOY_KEY` | `pkg.yml` / `ci.yml` android | Deploy key to clone `nuhulabs/byakaron-android`. Without it CI builds only `libbyakaron.so` and releases have no APK. |
 | `APPLE_CERTIFICATE` | `release.yml` macos | Base64 of the "Developer ID Application" certificate + key exported as `.p12` (`base64 -i cert.p12`). Its presence turns on signing and notarization. |
 | `APPLE_CERTIFICATE_PASSWORD` | `release.yml` macos | Password of that `.p12`. |
 | `APPLE_SIGNING_IDENTITY` | `release.yml` macos | The identity name, e.g. `Developer ID Application: Nuhu Labs (TEAMID)`. |
@@ -92,10 +85,9 @@ Notes:
 ## CI / CD
 
 ```
-ci:  test (os) → integration (os) → e2e (os)   # one linux; placeholders where missing
-cd:  prepare (spell.db + d1 + migrate) → build (os) → test (os)
-     linux build packages amd64+arm64 .debs from one runner
-release: cd + macos/windows/android pkgs → Byakaron-Assets @ v${build.zig.zon.version}
+ci:  test (os) → integration (os) → e2e (os)
+cd:  prepare (Byakaron.db) ∥ web deploy + linux install-matrix e2e
+release: prepare → pkg (all os) → GitHub Release @ v${build.zig.zon.version}
 ```
 
 Linux packaging is entirely `zig build` (`package-linux`, `linux-ci`,

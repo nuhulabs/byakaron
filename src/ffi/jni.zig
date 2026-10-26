@@ -86,7 +86,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeCreate(
     }
 
     // Embedded autocomplete (Avro dictionary + iAvro suggestions). Always created,
-    // alongside spell.db when present. Non-fatal if OOM (Avro calls return empty).
+    // alongside Byakaron.db when present. Non-fatal if OOM (Avro calls return empty).
     const ac_engine = ffi.byakaron_ac_create();
 
     session.* = .{
@@ -361,7 +361,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeIsCorrect(
 
 // ── P1: embedded autocomplete ───────────────────────────────────────────────
 
-/// Bangla prefix completions: spell.db when present, else the embedded Mem
+/// Bangla prefix completions: Byakaron.db when present, else the embedded Mem
 /// lexicon. Returns String[].
 export fn Java_com_byakaron_engine_ByakaronEngine_nativeAcPrefix(
     env: *jni.cjni.JNIEnv,
@@ -407,7 +407,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeAcPrefix(
     return stringArrayFromCStrings(&j_env, string_class, out[0..count], count);
 }
 
-/// 1 if word is known (spell.db when present, else the embedded lexicon),
+/// 1 if word is known (Byakaron.db when present, else the embedded lexicon),
 /// 0 otherwise, -1 on error.
 export fn Java_com_byakaron_engine_ByakaronEngine_nativeAcContains(
     env: *jni.cjni.JNIEnv,
@@ -567,9 +567,9 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeAvroImportSelections(
     return ffi.byakaron_ac_import_selections(session.autocomplete_engine, j);
 }
 
-// ── P2: spell.db prefix / next-word + tokenization ──────────────────────────
+// ── P2: Byakaron.db prefix / next-word + tokenization ──────────────────────────
 
-/// Prefix completions from spell.db dictionary. Returns String[].
+/// Prefix completions from Byakaron.db dictionary. Returns String[].
 export fn Java_com_byakaron_engine_ByakaronEngine_nativePrefixSuggest(
     env: *jni.cjni.JNIEnv,
     thiz: jni.jobject,
@@ -603,7 +603,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativePrefixSuggest(
     return stringArrayFromCStrings(&j_env, string_class, out[0..count], count);
 }
 
-/// Next-word predictions from spell.db bigrams. Returns String[].
+/// Next-word predictions from Byakaron.db bigrams. Returns String[].
 export fn Java_com_byakaron_engine_ByakaronEngine_nativeNextWordSuggest(
     env: *jni.cjni.JNIEnv,
     thiz: jni.jobject,
@@ -637,7 +637,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeNextWordSuggest(
     return stringArrayFromCStrings(&j_env, string_class, out[0..count], count);
 }
 
-/// Trigram next-word predictions from spell.db trigrams (prev2, prev1 -> next). Returns String[].
+/// Trigram next-word predictions from Byakaron.db trigrams (prev2, prev1 -> next). Returns String[].
 export fn Java_com_byakaron_engine_ByakaronEngine_nativeTrigramNextWordSuggest(
     env: *jni.cjni.JNIEnv,
     thiz: jni.jobject,

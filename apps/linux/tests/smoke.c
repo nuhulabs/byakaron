@@ -206,14 +206,14 @@ int main(void)
         byakaron_composer_destroy(c);
     }
 
-    puts("spell-check (local spell.db):");
+    puts("spell-check (local Byakaron.db):");
     {
         gchar *db_path = byk_spell_locate_db();
         if (db_path == NULL) {
             /* Typing and candidates do not need the file; CI never ships the
              * 364 MB database. Skip rather than fail so a fresh checkout still
              * goes green. */
-            puts("  skip spell.db not present (zig build db)");
+            puts("  skip Byakaron.db not present (zig build db)");
         } else {
             g_free(db_path);
             BykSpell *spell = byk_spell_new(NULL);
@@ -231,7 +231,7 @@ int main(void)
                        "is_correct qqq", unknown);
                 if (unknown != 0) failures++;
 
-                /* NFC text spells য় as য + nukta; spell.db has U+09DF. */
+                /* NFC text spells য় as য + nukta; Byakaron.db has U+09DF. */
                 const int nfc = byk_spell_is_correct(spell, "আমায়");
                 printf("  %-4s %-28s -> %d\n", nfc == 1 ? "ok" : "FAIL",
                        "is_correct NFC আমায়", nfc);

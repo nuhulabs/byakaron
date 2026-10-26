@@ -1,5 +1,5 @@
-// spell_db trim <spell.db> <words> <out.db>   keep the most frequent words
-// spell_db d1 <spell.db> <out-dir>            write D1 migrations
+// spell_db trim <Byakaron.db> <words> <out.db>   keep the most frequent words
+// spell_db d1 <Byakaron.db> <out-dir>            write D1 migrations
 // spell_db sync <from-dir> <to-dir>           mirror the .sql files
 
 const std = @import("std");
@@ -21,8 +21,8 @@ pub fn main(init: std.process.Init) !void {
     if (args.len == 4 and std.mem.eql(u8, args[1], "d1")) return d1(arena, io, args[2], args[3]);
     if (args.len == 4 and std.mem.eql(u8, args[1], "sync")) return sync(arena, io, args[2], args[3]);
     std.debug.print(
-        \\usage: {s} trim <spell.db> <words> <out.db>
-        \\       {s} d1 <spell.db> <out-dir>
+        \\usage: {s} trim <Byakaron.db> <words> <out.db>
+        \\       {s} d1 <Byakaron.db> <out-dir>
         \\       {s} sync <from-dir> <to-dir>
         \\
     , .{ args[0], args[0], args[0] });

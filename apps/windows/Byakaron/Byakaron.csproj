@@ -58,7 +58,7 @@
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
   </PropertyGroup>
 
-  <!-- Zig FFI DLL + spell.db (native\) and the IME payload (ime\ByakaronIME.dll +
+  <!-- Zig FFI DLL + Byakaron.db (native\) and the IME payload (ime\ByakaronIME.dll +
        byakaron.dll), staged by `zig build windows` / `zig build run-win`.
        byakaron.dll is copied as byakaron_ffi.dll so it does not overwrite the
        managed Byakaron.dll. -->
@@ -67,7 +67,7 @@
       <_NativeDest Condition="'$(PublishDir)' != '' and Exists('$(PublishDir)')">$(PublishDir)</_NativeDest>
       <_NativeDest Condition="'$(_NativeDest)' == ''">$(OutputPath)</_NativeDest>
     </PropertyGroup>
-    <MakeDir Directories="$(_NativeDest)native" Condition="Exists('native\spell.db')" />
+    <MakeDir Directories="$(_NativeDest)native" Condition="Exists('native\Byakaron.db')" />
     <MakeDir Directories="$(_NativeDest)ime" Condition="Exists('ime\ByakaronIME.dll')" />
     <Copy
       SourceFiles="native\byakaron.dll"
@@ -75,10 +75,10 @@
       SkipUnchangedFiles="true"
       Condition="Exists('native\byakaron.dll')" />
     <Copy
-      SourceFiles="native\spell.db"
-      DestinationFiles="$(_NativeDest)native\spell.db"
+      SourceFiles="native\Byakaron.db"
+      DestinationFiles="$(_NativeDest)native\Byakaron.db"
       SkipUnchangedFiles="true"
-      Condition="Exists('native\spell.db')" />
+      Condition="Exists('native\Byakaron.db')" />
     <Copy
       SourceFiles="ime\ByakaronIME.dll"
       DestinationFiles="$(_NativeDest)ime\ByakaronIME.dll"

@@ -34,7 +34,7 @@ byk_spell_new (const gchar *db_path)
     }
 
     if (path == NULL) {
-        g_warning ("byakaron: spell.db not found "
+        g_warning ("byakaron: Byakaron.db not found "
                    "(set BYAKARON_SPELL_DB or install to %s)",
                    BYK_SPELL_DB_SYSTEM);
         return NULL;
@@ -64,7 +64,7 @@ byk_spell_free (BykSpell *self)
 }
 
 /*
- * spell.db spells ড় ঢ় য় as the single code points U+09DC/09DD/09DF, which is
+ * Byakaron.db spells ড় ঢ় য় as the single code points U+09DC/09DD/09DF, which is
  * also what the keyboard types. Unicode NFC does the opposite — those three are
  * composition exclusions, so normalised text (most web pages, other keyboards)
  * carries ড/ঢ/য + nukta U+09BC — and without this every pasted পড়, আমায় was

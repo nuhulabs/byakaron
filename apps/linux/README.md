@@ -64,9 +64,9 @@ The keyboard itself — latin buffer, Avro's candidates, highlight, paging,
 learning, the personal dictionary, spelling corrections and settings — is the
 Zig `Composer` (`src/Composer.zig`) behind the `byakaron_composer_*` ABI, the
 same on every platform. `Core/` holds only what Linux adds: `composer.c` maps
-X11 keysyms to composer keys, finds the data directory and spell.db, migrates
+X11 keysyms to composer keys, finds the data directory and Byakaron.db, migrates
 the old GSettings keys into `settings.json` once, and reads the JSON word lists
-the ABI returns; `spell.c` wraps spell.db for the app's Spelling page; `prefs.c`
+the ABI returns; `spell.c` wraps Byakaron.db for the app's Spelling page; `prefs.c`
 opens the GSettings schema (now only the Qt click fix). IBus and Fcitx5 are
 thin shells over the composer, so they cannot drift from each other or from
 macOS, Windows, Android and the web.
@@ -239,12 +239,12 @@ user can no longer see once the list is gone.
 
 When Avro's list is just the plain transliteration, the word is probably
 misspelled (`sonar` → সনার, `jibon` → জিবন), so up to three corrections from
-spell.db follow it. A lookup can take ~150 ms on a cold disk cache, so the
+Byakaron.db follow it. A lookup can take ~150 ms on a cold disk cache, so the
 composer does it on a worker thread; when the results arrive it calls back, and
 the engine hops to its main loop (`g_idle_add` in IBus, the Fcitx5 event
 dispatcher), refreshes the composer and redraws.
 
-spell.db is `$BYAKARON_SPELL_DB` or `/usr/share/byakaron/spell.db`; without it
+Byakaron.db is `$BYAKARON_SPELL_DB` or `/usr/share/byakaron/Byakaron.db`; without it
 nothing changes. **Spelling corrections** turns it off.
 
 ### Personal dictionary
@@ -293,11 +293,11 @@ punctuation and emoji are left alone rather than reported as misspelled, and
 Bangla digits are skipped because `২০২৪` is not a misspelling.
 
 Suggestions use plain `byakaron_spell_suggest`, not the `_ctx` variant: context
-ranking reads bigram and trigram tables that the locally built `spell.db` has
+ranking reads bigram and trigram tables that the locally built `Byakaron.db` has
 empty, so passing neighbours would cost two queries per word for identical
 output. Worth revisiting when the n-grams exist.
 
-`spell.db` is 364 MB, so it opens on a worker thread. The window paints
+`Byakaron.db` is 364 MB, so it opens on a worker thread. The window paints
 immediately, the Spelling page shows a loading state, and with no database at
 all it says so and stays out of the way — Layout and Setup need nothing
 installed.
@@ -347,7 +347,7 @@ so they can still be read for that; nothing else reads them.
 
 ```bash
 zig build                                              # warm the cache as your user first
-sudo -E zig build install-linux                        # add -Dlinux-install-db to build and install spell.db
+sudo -E zig build install-linux                        # add -Dlinux-install-db to build and install Byakaron.db
 ```
 
 This is a **system** install (`/usr/libexec`, `/usr/share/ibus/component`,
@@ -447,7 +447,7 @@ covered by the X11 Qt test.
    display-path probe, Fcitx5 addon (system headers; same glibc 2.31
    ceiling), GtkEntry typing through the IBus IM module
 
-`spell.db` is not built there. Smoke skips those assertions when the file is
+`Byakaron.db` is not built there. Smoke skips those assertions when the file is
 missing; typing and candidates do not need it.
 
 A second job, **GNOME Wayland typing**, installs `gnome-shell` and runs
@@ -456,7 +456,7 @@ on a headless GNOME Shell, typed into through `org.gnome.Mutter.RemoteDesktop`.
 On the runner GNOME Shell does not give a new window keyboard focus, so the test
 clicks into the window before typing, as a user would.
 
-`.github/workflows/cd.yml` runs on every push to `main`: it builds `spell.db`
+`.github/workflows/cd.yml` runs on every push to `main`: it builds `Byakaron.db`
 once (cached on its inputs), packages, installs and types through both `.deb`s,
 and runs the website installer in clean Ubuntu 20.04–24.04 / Debian 12
 containers. `.github/workflows/release.yml` runs the same for a `linux-*` tag or
@@ -512,7 +512,7 @@ daemon can spawn it. A sandboxed Flatpak cannot register there, which is why
 ibus-avro ships as a `.deb` too. `zig build package-linux` is the IME artefact.
 It emits one package:
 
-- `byakaron_*.deb` — engine, GTK app, GSettings schema, and `spell.db`.
+- `byakaron_*.deb` — engine, GTK app, GSettings schema, and `Byakaron.db`.
   Typing Bangla and spell-check.
 
 One `apt install` of that file is a complete install. Upgrading from the older
@@ -534,7 +534,7 @@ curl -fsSL https://nuhulabs.com/byakaron/install.sh | sudo bash         # either
 
 Each per-CPU script stops with the right command if run on the other kind of
 computer. They download the `.deb` from the public
-[nuhulabs/Byakaron-Assets](https://github.com/nuhulabs/Byakaron-Assets/releases)
+[nuhulabs/byakaron](https://github.com/nuhulabs/byakaron/releases)
 releases and runs `apt`. Then **add the input source** (installing the package
 is not enough): Settings → Keyboard → Input Sources → **+** → **Bangla** →
 **Byakaron (Bangla Phonetic)** → Add. Switch with Super+Space.
@@ -545,7 +545,7 @@ The keyboard is built for **glibc 2.31**, so it works on **Ubuntu 20.04, 22.04,
 and 24.04**. On ARM, see [ARM.md](ARM.md).
 
 ```bash
-zig build package-linux      # alias: linux-deb; builds spell.db too
+zig build package-linux      # alias: linux-deb; builds Byakaron.db too
 sudo apt install ./zig-out/pkg/byakaron_<version>_amd64.deb
 ```
 
@@ -563,7 +563,7 @@ zig build package-linux-flatpak
 
 That packs the already-built `byakaron` binary against `org.gnome.Platform`
 (used as both runtime and SDK, so `org.gnome.Sdk` is not required). It does
-not include the engine or the 364 MB `spell.db`. Manifest:
+not include the engine or the 364 MB `Byakaron.db`. Manifest:
 `Resources/dev.nuhu.labs.Byakaron.json`. The same AppStream metadata used by
 the Debian package lives in `Resources/dev.nuhu.labs.Byakaron.metainfo.xml`.
 
@@ -591,11 +591,11 @@ For Wayland without logging out, run `zig build linux-wayland-e2e` (see [Wayland
 
 ## Notes
 
-- `spell.db` is a **local SQLite file**, not a server. It is generated, not
+- `Byakaron.db` is a **local SQLite file**, not a server. It is generated, not
   committed (`*.db` is gitignored). Build it with `zig build db`, which
   downloads the bnwiki dump and merges the Avro lexicon into a Wikipedia
-  dictionary with bigram/trigram tables (written to `zig-out/db/spell.db`).
-  `zig build install-linux` copies it to `/usr/share/byakaron/spell.db` when the file is
+  dictionary with bigram/trigram tables (written to `zig-out/db/Byakaron.db`).
+  `zig build install-linux` copies it to `/usr/share/byakaron/Byakaron.db` when the file is
   present. The shareable `.deb` ships it in the same package as the keyboard
   and app, so one file is a complete install. Override the path
   with `BYAKARON_SPELL_DB` for development. The input method types without it;

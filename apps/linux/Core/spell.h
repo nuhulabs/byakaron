@@ -1,7 +1,7 @@
 /*
  * Thin GLib-friendly wrapper around libbyakaron's spell-check ABI.
  *
- * spell.db is a local SQLite file shipped with the install, not a server.
+ * Byakaron.db is a local SQLite file shipped with the install, not a server.
  * Callers get g_malloc'd strings / gchar ** (g_strfreev), so the Zig ownership
  * rule stops here — same deal as composer.h.
  *
@@ -14,12 +14,12 @@
 
 G_BEGIN_DECLS
 
-#define BYK_SPELL_DB_SYSTEM "/usr/share/byakaron/spell.db"
+#define BYK_SPELL_DB_SYSTEM "/usr/share/byakaron/Byakaron.db"
 
 typedef struct _BykSpell BykSpell;
 
 /*
- * Path of the spell.db this process should open.
+ * Path of the Byakaron.db this process should open.
  *
  * Order: BYAKARON_SPELL_DB (dev / tests), then the system install path.
  * Returns a newly allocated string the caller frees with g_free, or NULL if
@@ -28,7 +28,7 @@ typedef struct _BykSpell BykSpell;
 gchar *byk_spell_locate_db (void);
 
 /*
- * Open spell.db. Tries byk_spell_locate_db unless `db_path` is non-NULL.
+ * Open Byakaron.db. Tries byk_spell_locate_db unless `db_path` is non-NULL.
  * Returns NULL if the file is missing or the engine cannot open it.
  */
 BykSpell *byk_spell_new (const gchar *db_path);

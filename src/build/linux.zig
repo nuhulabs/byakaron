@@ -1,7 +1,7 @@
 //! Build-time helper for the Linux port, run by the `*-linux` build steps.
 //!
-//!   linux package-deb <repo-root> <ime> <app> <spell.db> <out-dir> [fcitx.so]
-//!   linux install <repo-root> <ime> <app> [spell.db] [--fcitx <fcitx.so>]
+//!   linux package-deb <repo-root> <ime> <app> <Byakaron.db> <out-dir> [fcitx.so]
+//!   linux install <repo-root> <ime> <app> [Byakaron.db] [--fcitx <fcitx.so>]
 //!   linux uninstall
 //!   linux deps [--test]
 //!   linux dev <repo-root> <ime>
@@ -76,8 +76,8 @@ fn dispatch(init: std.process.Init) !u8 {
         try packageFlatpak(&t, rest);
     } else {
         std.debug.print(
-            \\usage: {s} package-deb <repo-root> <ime> <app> <spell.db> <out-dir> [fcitx.so]
-            \\       {s} install <repo-root> <ime> <app> [spell.db] [--fcitx <fcitx.so>]
+            \\usage: {s} package-deb <repo-root> <ime> <app> <Byakaron.db> <out-dir> [fcitx.so]
+            \\       {s} install <repo-root> <ime> <app> [Byakaron.db] [--fcitx <fcitx.so>]
             \\       {s} uninstall
             \\       {s} deps [--test]
             \\       {s} dev <repo-root> <ime>
@@ -143,8 +143,8 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
     std.debug.print(">>> Packaged the GTK app (Spelling / Layout / Setup)\n", .{});
 
     if (!exists(t.io, spell_db)) return fail("{s} is missing; run: zig build db", .{spell_db});
-    try installFile(t, "644", spell_db, try join(t, &.{ stage, "usr/share/byakaron/spell.db" }));
-    std.debug.print(">>> Packaged spell.db\n", .{});
+    try installFile(t, "644", spell_db, try join(t, &.{ stage, "usr/share/byakaron/Byakaron.db" }));
+    std.debug.print(">>> Packaged Byakaron.db\n", .{});
 
     try render(t, try join(t, &.{ res, "byakaron.xml.in" }), try join(t, &.{ stage, "usr/share/ibus/component/byakaron.xml" }), &.{
         .{ "@BYK_EXEC@", "/usr/libexec/byakaron-ibus" },
@@ -382,13 +382,13 @@ fn install(t: *Tool, a: []const []const u8) !void {
 
     if (spell_db) |db| {
         if (exists(t.io, db)) {
-            try installFile(t, "644", db, datadir ++ "/spell.db");
-            std.debug.print(">>> Installed: {s}/spell.db\n", .{datadir});
+            try installFile(t, "644", db, datadir ++ "/Byakaron.db");
+            std.debug.print(">>> Installed: {s}/Byakaron.db\n", .{datadir});
         } else {
             std.debug.print("note: {s} missing; spell-check will be unavailable (zig build db)\n", .{db});
         }
     } else {
-        std.debug.print("note: no spell.db given; spell-check will be unavailable (zig build db)\n", .{});
+        std.debug.print("note: no Byakaron.db given; spell-check will be unavailable (zig build db)\n", .{});
     }
 
     try render(t, try join(t, &.{ res, "byakaron.xml.in" }), xmldir ++ "/byakaron.xml", &.{
@@ -467,7 +467,7 @@ fn uninstall(t: *Tool) !void {
         "/usr/share/applications/" ++ app_id ++ ".desktop",
         "/usr/share/metainfo/" ++ app_id ++ ".metainfo.xml",
         "/usr/share/icons/hicolor/scalable/apps/byakaron.svg",
-        "/usr/share/byakaron/spell.db",
+        "/usr/share/byakaron/Byakaron.db",
         "/usr/share/glib-2.0/schemas/" ++ app_id ++ ".gschema.xml",
         "/usr/share/fcitx5/addon/byakaron.conf",
         "/usr/share/fcitx5/inputmethod/byakaron.conf",
@@ -488,7 +488,7 @@ fn uninstall(t: *Tool) !void {
 
     _ = ok(t, &.{ "pkill", "-f", "[b]yakaron-ibus" });
     // The app holds no session state, but leaving it running against a deleted
-    // binary and a deleted spell.db is not worth the confusion.
+    // binary and a deleted Byakaron.db is not worth the confusion.
     _ = ok(t, &.{ "pkill", "-x", "byakaron" });
 
     const cwd = Io.Dir.cwd();
@@ -628,10 +628,10 @@ fn dev(t: *Tool, repo: []const u8, ime: []const u8) !void {
     return err;
 }
 
-/// Point the engine at the built spell.db unless the caller chose one.
+/// Point the engine at the built Byakaron.db unless the caller chose one.
 fn useBuiltSpellDb(t: *Tool, repo: []const u8) !void {
     if (t.env.get("BYAKARON_SPELL_DB") != null) return;
-    const db = try join(t, &.{ repo, "zig-out/db/spell.db" });
+    const db = try join(t, &.{ repo, "zig-out/db/Byakaron.db" });
     if (exists(t.io, db)) try t.env.put("BYAKARON_SPELL_DB", db);
 }
 
@@ -779,10 +779,10 @@ fn ci(t: *Tool, repo: []const u8, prefix_arg: ?[]const u8) !u8 {
     const ime_test = try join(t, &.{ bin, "byakaron-ime-test" });
     const linux_dir = try join(t, &.{ repo, "apps/linux" });
 
-    // The engine and the smoke test read the spell.db when present; both skip
+    // The engine and the smoke test read the Byakaron.db when present; both skip
     // those assertions when it is absent (it is 364 MB and not needed here).
     if (t.env.get("BYAKARON_SPELL_DB") == null) {
-        const db = try join(t, &.{ prefix, "db/spell.db" });
+        const db = try join(t, &.{ prefix, "db/Byakaron.db" });
         if (exists(t.io, db)) try t.env.put("BYAKARON_SPELL_DB", db);
     }
 
@@ -796,7 +796,7 @@ fn ci(t: *Tool, repo: []const u8, prefix_arg: ?[]const u8) !u8 {
     const smoke = try join(t, &.{ bin, "byakaron-smoke" });
     std.debug.print("\n=== smoke (C ABI + Core glue) ===\n", .{});
     if (exists(t.io, smoke)) {
-        if (t.env.get("BYAKARON_SPELL_DB") == null) std.debug.print("note: spell.db missing; spell-check assertions will be skipped\n", .{});
+        if (t.env.get("BYAKARON_SPELL_DB") == null) std.debug.print("note: Byakaron.db missing; spell-check assertions will be skipped\n", .{});
         try run(t, &.{smoke});
     } else {
         std.debug.print("note: {s} not built; skipped\n", .{smoke});
@@ -1242,10 +1242,10 @@ fn tested(t: *Tool, a: []const []const u8) !u8 {
     } else {
         std.debug.print("  note python3-gi not installed, icon load not checked\n", .{});
     }
-    if (exists(t.io, datadir ++ "/spell.db")) {
-        pass("spell.db", .{});
+    if (exists(t.io, datadir ++ "/Byakaron.db")) {
+        pass("Byakaron.db", .{});
     } else {
-        std.debug.print("  note spell.db not installed (spell-check off, typing unaffected)\n", .{});
+        std.debug.print("  note Byakaron.db not installed (spell-check off, typing unaffected)\n", .{});
     }
 
     const xml = Io.Dir.cwd().readFileAlloc(t.io, component, t.arena, .limited(1024 * 1024)) catch "";
@@ -1555,10 +1555,10 @@ fn waylandE2e(t: *Tool, repo: []const u8, engine: []const u8) !u8 {
         .{ "@BYK_SETUP@", "" },
     });
 
-    // The spelling-correction case needs a spell.db the engine can open.
+    // The spelling-correction case needs a Byakaron.db the engine can open.
     const spell_present = blk: {
         if (t.env.get("BYAKARON_SPELL_DB")) |db| if (db.len > 0 and exists(t.io, db)) break :blk true;
-        break :blk exists(t.io, datadir ++ "/spell.db");
+        break :blk exists(t.io, datadir ++ "/Byakaron.db");
     };
 
     // The build tree's compiled schema, so gsettings and the engine agree on keys
@@ -1648,7 +1648,7 @@ const e2e_inside =
 ///
 /// Uses org.gnome.Platform as both runtime and SDK so a box that already has
 /// the Platform, and not org.gnome.Sdk, can still pack the binary we already
-/// built. spell.db is omitted (364 MB; the app runs without it).
+/// built. Byakaron.db is omitted (364 MB; the app runs without it).
 fn packageFlatpak(t: *Tool, a: []const []const u8) !void {
     const repo = a[0];
     const app = a[1];

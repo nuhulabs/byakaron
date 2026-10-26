@@ -3,13 +3,13 @@
 #
 #   curl -fsSL https://nuhulabs.com/byakaron/install.sh | sudo bash
 #
-# Downloads the matching .deb from the public Byakaron-Assets GitHub Releases
-# (nuhulabs/byakaron is private, so anonymous curl cannot use that repo) and
+# Downloads the matching .deb from the public Byakaron GitHub Releases
+# and
 # installs it with apt (keyboard, GTK app, spell-check). Adding the input
 # source in Settings is still a separate click — the package cannot do that.
 set -euo pipefail
 
-REPO="${BYAKARON_REPO:-nuhulabs/Byakaron-Assets}"
+REPO="${BYAKARON_REPO:-nuhulabs/byakaron}"
 VERSION_FALLBACK="0.2.1"
 
 die() { echo "error: $*" >&2; exit 1; }
@@ -70,14 +70,14 @@ else
         | grep -oE 'https://[^"]+/byakaron_[^/"]+_'"$ARCH"'\.deb' \
         | head -n 1 || true)"
 
-    # 2. The web redirect for "latest" names the tag (linux-0.1.5) and is not
+    # 2. The web redirect for "latest" names the tag (v0.2.1) and is not
     #    rate-limited; the asset name follows from it.
     if [[ -z "$deb_url" ]]; then
         latest="$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
             "https://github.com/${REPO}/releases/latest" 2>/dev/null || true)"
         tag="${latest##*/tag/}"
-        if [[ "$latest" == */tag/* && "$tag" == linux-* ]]; then
-            deb_url="https://github.com/${REPO}/releases/download/${tag}/byakaron_${tag#linux-}_${ARCH}.deb"
+        if [[ "$latest" == */tag/* && "$tag" == v* ]]; then
+            deb_url="https://github.com/${REPO}/releases/download/${tag}/byakaron_${tag#v}_${ARCH}.deb"
         fi
     fi
 
@@ -94,7 +94,7 @@ deb="$tmp/byakaron.deb"
 echo ">>> downloading $deb_url"
 curl -fL --progress-bar -o "$deb" "$deb_url" \
     || die "could not download $deb_url
-       publish byakaron_*_${ARCH}.deb on nuhulabs/Byakaron-Assets (public), or set BYAKARON_DEB_URL"
+       publish byakaron_*_${ARCH}.deb on nuhulabs/byakaron (public), or set BYAKARON_DEB_URL"
 
 echo ">>> installing (keyboard + app + spell-check)"
 export DEBIAN_FRONTEND=noninteractive

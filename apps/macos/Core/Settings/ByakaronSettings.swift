@@ -28,7 +28,7 @@ enum ByakaronSettings {
     }
 
     /// Open a composer on `dataDirectory`, after the one-time migrations from the
-    /// pre-composer builds. `spellDB` (the bundled spell.db) enables spelling
+    /// pre-composer builds. `spellDB` (the bundled Byakaron.db) enables spelling
     /// corrections; `onUpdate(userdata)` is then called on a worker thread when
     /// they arrive.
     static func openComposer(

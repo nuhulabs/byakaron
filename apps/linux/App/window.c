@@ -20,7 +20,7 @@ struct _BykWindow {
 
 G_DEFINE_TYPE (BykWindow, byk_window, GTK_TYPE_APPLICATION_WINDOW)
 
-/* ── opening spell.db ────────────────────────────────────────────────────── */
+/* ── opening Byakaron.db ────────────────────────────────────────────────────── */
 
 static void
 load_spell_in_thread (GTask *task,
@@ -59,7 +59,7 @@ on_spell_loaded (GObject *source_object, GAsyncResult *result, gpointer user_dat
 }
 
 /*
- * spell.db is a 364MB SQLite file, so opening it on the main thread would hold
+ * Byakaron.db is a 364MB SQLite file, so opening it on the main thread would hold
  * the first frame hostage. The window paints immediately, the Spelling page
  * shows its loading state, and the handle is installed when it arrives — the
  * same shape as the macOS app's detached load.
@@ -203,7 +203,7 @@ byk_window_build_menu_button (BykWindow *self)
 static void
 byk_window_init (BykWindow *self)
 {
-    /* spell.db is the only handle worth a thread; the composer opens at once
+    /* Byakaron.db is the only handle worth a thread; the composer opens at once
      * (and moves old GSettings values into settings.json the first time). */
     self->engines.spell = NULL;
     self->engines.composer = byk_composer_open (FALSE, NULL, NULL);
@@ -257,7 +257,7 @@ byk_window_dispose (GObject *object)
 {
     BykWindow *self = BYK_WINDOW (object);
 
-    /* Tells a spell.db load still in flight that its page is gone. */
+    /* Tells a Byakaron.db load still in flight that its page is gone. */
     self->spell_page = NULL;
     self->setup_page = NULL;
     self->settings_page = NULL;

@@ -1,10 +1,10 @@
-//! Assemble `spell.db` from `export` CSVs with the `sqlite3` shell.
+//! Assemble `Byakaron.db` from `export` CSVs with the `sqlite3` shell.
 //!
 //! Every path is explicit so `zig build db` can run this as a cached step:
 //!
 //!   prepare --data <data exe> --sqlite3 <sqlite3 exe> --schema <schema.sql>
 //!           --export <export_id dir> --seed <confusions_seed.csv>
-//!           --work <scratch dir> --out <spell.db>
+//!           --work <scratch dir> --out <Byakaron.db>
 //!           [--avro <words.txt>] [--debug]
 //!
 //! With `--avro`, Avro IME words (one per line) are appended to the Wikipedia
@@ -122,7 +122,7 @@ pub fn main(init: std.process.Init) !void {
     progress.completeOne();
 
     {
-        const stage = progress.start("assemble spell.db (sqlite3)", 0);
+        const stage = progress.start("assemble Byakaron.db (sqlite3)", 0);
         defer stage.end();
         try assemble(gpa, io, args, .{
             .dictionary = dictionary,

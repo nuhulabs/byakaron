@@ -1,8 +1,8 @@
 //! Thin web façade over byakaron `src/` spell + autocomplete backends.
 //!
 //! Storage is the app database `zx.db`: Cloudflare D1 on the Workers build
-//! (spell.db as migrations from `zig build d1`), and natively
-//! `<install prefix>/db/spell.db` (built by `zig build db`) opened read-only by
+//! (Byakaron.db as migrations from `zig build d1`), and natively
+//! `<install prefix>/db/Byakaron.db` (built by `zig build db`) opened read-only by
 //! main.zig. Backends are process-static (no heap) so hot-reload doesn't trip
 //! leak checks.
 
@@ -26,13 +26,13 @@ var ac_sqlite_ready: bool = false;
 
 var ac_mem_backend: ?*AutoCompleteMem = null;
 
-/// Opens spell.db read-only as `zx.db` on native targets. On wasm32-wasi ziex
+/// Opens Byakaron.db read-only as `zx.db` on native targets. On wasm32-wasi ziex
 /// already binds `zx.db` to the platform database (D1 on Cloudflare).
 pub fn openLocalDb() !void {
     if (zx.platform.isWasm()) return;
     const allocator = std.heap.page_allocator;
     const root: []const u8 = if (std.c.getenv("ZIEX_ROOT_DIR")) |r| std.mem.span(r) else "zig-out";
-    const path = try std.fs.path.join(allocator, &.{ root, "db", "spell.db" });
+    const path = try std.fs.path.join(allocator, &.{ root, "db", "Byakaron.db" });
     std.Io.Dir.cwd().access(zx.io(), path, .{}) catch {
         std.log.warn("byakaron: no {s}; spell check is off (run `zig build db`)", .{path});
         return;
@@ -86,7 +86,7 @@ pub fn checkWords(allocator: std.mem.Allocator, words: []const []const u8) ![]co
     return try (try spellEngine()).checkWords(allocator, words);
 }
 
-/// Lexicon prefix suggestions via spell.db `dictionary` (Spell engine API).
+/// Lexicon prefix suggestions via Byakaron.db `dictionary` (Spell engine API).
 pub fn prefixSuggest(allocator: std.mem.Allocator, prefix: []const u8, limit: i64) ![]const Suggestion {
     return try (try spellEngine()).prefixSuggest(allocator, prefix, limit);
 }
@@ -95,7 +95,7 @@ pub fn nextWordSuggest(allocator: std.mem.Allocator, prev: []const u8, limit: i6
     return try (try spellEngine()).nextWordSuggest(allocator, prev, limit);
 }
 
-/// Prefix autocomplete ranked by the AutoComplete engine over spell.db.
+/// Prefix autocomplete ranked by the AutoComplete engine over Byakaron.db.
 pub fn autoCompletePrefix(allocator: std.mem.Allocator, prefix: []const u8, limit: i64) ![]const AutoCompleteSuggestion {
     return try autoCompleteSqlite().prefixSuggest(allocator, prefix, limit);
 }

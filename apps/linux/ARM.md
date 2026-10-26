@@ -127,7 +127,7 @@ sudo swapon /swapfile
 
 ### Spell-check dictionary (optional)
 
-Typing does not need this. Spell-check in the GTK app does (`spell.db` is
+Typing does not need this. Spell-check in the GTK app does (`Byakaron.db` is
 about 1 GB; `zig build db` downloads the bnwiki dump and builds it).
 
 ```bash
@@ -137,8 +137,8 @@ sudo -E zig build install-linux -Dlinux-install-db
 
 ### Or package a Pi-native `.deb`
 
-This builds one complete file (keyboard, GTK app, and `spell.db`). If
-`spell.db` is not already generated, the step builds it first.
+This builds one complete file (keyboard, GTK app, and `Byakaron.db`). If
+`Byakaron.db` is not already generated, the step builds it first.
 
 ```bash
 zig build package-linux
