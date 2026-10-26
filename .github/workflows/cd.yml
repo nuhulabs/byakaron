@@ -70,7 +70,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: spell-db
+          name: byakaron-spell-db
           path: zig-out/db
 
       - name: deps

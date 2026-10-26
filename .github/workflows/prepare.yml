@@ -38,7 +38,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: spell-db
+          name: byakaron-spell-db
           path: zig-out/db/spell.db
           retention-days: 1
           compression-level: 1

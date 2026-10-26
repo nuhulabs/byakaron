@@ -1,12 +1,11 @@
 # release: prepare → pkg (all os) → github release tagged from build.zig.zon
 #
-#   zig-out/pkg/
-#     byakaron_<ver>_{amd64,arm64}.deb
-#     Byakaron.dmg
-#     Byakaron-Setup.exe
-#     Byakaron.apk
-#     Byakaron.aab
-#     spell.db
+# Artifacts (upload names):
+#   byakaron-linux-amd64 / byakaron-linux-arm64  → byakaron_*_{amd64,arm64}.deb
+#   byakaron-macos                               → Byakaron.dmg
+#   byakaron-windows                             → Byakaron-Setup.exe
+#   byakaron-android                             → Byakaron.apk + Byakaron.aab
+#   byakaron-spell-db                            → spell.db
 #
 # Tag: v${build.zig.zon.version}. Push a matching annotated tag, or dispatch
 # to dry-run (artifacts only). Publishes to nuhulabs/Byakaron-Assets.

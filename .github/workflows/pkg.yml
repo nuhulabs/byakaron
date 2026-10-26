@@ -1,5 +1,5 @@
 # pkg: platform packages (linux / macos / windows / android).
-# Caller must have uploaded `spell-db` (see prepare.yml).
+# Caller must have uploaded `byakaron-spell-db` (see prepare.yml).
 # Used by release (all four; + version for the Windows installer).
 #
 # Linux amd64/arm64 package in parallel. Install-matrix lives in ci/cd e2e,
@@ -53,7 +53,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: spell-db
+          name: byakaron-spell-db
           path: zig-out/db
 
       - name: deps
@@ -67,7 +67,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: byakaron-${{ matrix.deb_arch }}
+          name: byakaron-linux-${{ matrix.deb_arch }}
           path: zig-out/pkg/byakaron_*_${{ matrix.deb_arch }}.deb
           if-no-files-found: error
 
@@ -88,7 +88,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: spell-db
+          name: byakaron-spell-db
           path: zig-out/db
 
       - name: build
@@ -145,7 +145,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: release-macos
+          name: byakaron-macos
           path: zig-out/pkg/Byakaron.dmg
           if-no-files-found: error
 
@@ -169,7 +169,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: spell-db
+          name: byakaron-spell-db
           path: zig-out/db
 
       - name: build
@@ -198,7 +198,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: release-windows
+          name: byakaron-windows
           path: zig-out/pkg/Byakaron-Setup.exe
           if-no-files-found: error
 
@@ -255,7 +255,7 @@ jobs:
       - uses: actions/download-artifact@v4
         if: steps.keyboard.outputs.sha != ''
         with:
-          name: spell-db
+          name: byakaron-spell-db
           path: zig-out/db
 
       - uses: actions/setup-java@v4
@@ -287,7 +287,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: steps.keyboard.outputs.sha != ''
         with:
-          name: release-android
+          name: byakaron-android
           path: |
             zig-out/pkg/Byakaron.apk
             zig-out/pkg/Byakaron.aab
