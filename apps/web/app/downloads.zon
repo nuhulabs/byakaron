@@ -1,4 +1,6 @@
 .{
+    // Public site origin for one-line installers (/install.sh, /install.ps1).
+    .site = "https://nuhulabs.com/byakaron",
     // Stable asset names on nuhulabs/Byakaron-Assets. Links use
     // /releases/latest/download/<file> so this catalog does not need a
     // per-release refresh.

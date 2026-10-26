@@ -50,12 +50,12 @@ Run the `release` workflow by hand (Actions → release → Run workflow, or
 `gh workflow run release.yml --ref <branch>`). It builds everything and leaves
 the assets as the run's artifacts; nothing is published.
 
-### Linux website installer
+### Website installers
 
-The website installer is `apps/linux/web_install.sh`. It always installs
-`byakaron_<arch>.deb` from Byakaron-Assets `releases/latest`. After a change to
-the script, copy it by hand to `app/public/byakaron/install.sh` in the
-nuhulabs.com repo when needed.
+`apps/web/app/public/install.sh` (Linux + macOS) and `install.ps1` (Windows) are
+served at `/install.sh` and `/install.ps1` on the Worker. They always pull from
+Byakaron-Assets `releases/latest`. The `/download` page shows the one-liners.
+`apps/linux/web_install.sh` remains a Linux-only fallback for older links.
 
 ## Secrets
 

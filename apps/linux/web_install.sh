@@ -1,32 +1,27 @@
 #!/bin/bash
 # Byakaron for Linux — one-command install.
 #
-#   curl -fsSL https://nuhulabs.com/byakaron/install.sh | sudo bash
+# Canonical installer is the website script (Linux + macOS):
+#   curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash
 #
-# Downloads the matching .deb from the public Byakaron-Assets GitHub Releases
-# (nuhulabs/byakaron may be private) and installs it with apt (keyboard, GTK
-# app, spell-check). Adding the input source in Settings is still a separate
-# click — the package cannot do that.
+# This file stays as a thin Linux-only entry for older links and local tests.
+# Prefer apps/web/app/public/install.sh when updating install behaviour.
 set -euo pipefail
 
+# When this file is the one being curled from an old URL, just run the same
+# Linux path as the website script (inlined below so offline copies still work).
+
 REPO="${BYAKARON_REPO:-nuhulabs/Byakaron-Assets}"
-# Stable asset name on Byakaron-Assets (version lives inside the .deb control file).
 DEB_NAME_FOR_ARCH() { echo "byakaron_${1}.deb"; }
 
 die() { echo "error: $*" >&2; exit 1; }
 
-# One command for every supported computer: the CPU is detected here and the
-# matching .deb (amd64 or arm64) is installed. install-amd64.sh and
-# install-arm64.sh on the website are copies of this file, so links shared
-# while the site had one command per CPU still work on any computer.
-
 case "$(uname -s)" in
     Linux) ;;
-    Darwin) die "this is the Linux installer. For a Mac, download Byakaron for macOS: https://nuhulabs.com/byakaron" ;;
+    Darwin) die "this is the Linux installer. For a Mac: curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash" ;;
     *) die "this installer is for Linux (Ubuntu or Debian), not $(uname -s)" ;;
 esac
 
-# Which Linux, for the messages. BYAKARON_OS_RELEASE is for the tests.
 OS_RELEASE="${BYAKARON_OS_RELEASE:-/etc/os-release}"
 OS_NAME="Linux"
 if [[ -r "$OS_RELEASE" ]]; then
@@ -44,7 +39,6 @@ case "$ARCH" in
     amd64) CPU_NAME="Intel/AMD 64-bit (amd64)" ;;
     arm64) CPU_NAME="ARM 64-bit (arm64)" ;;
     armhf|armel)
-        # Raspberry Pi OS (32-bit) runs a 32-bit system even on a 64-bit Pi.
         hint=""
         [[ "$KERNEL_CPU" == aarch64 ]] && hint=" The processor is 64-bit, but the installed system is 32-bit."
         die "this is a 32-bit ARM system ($ARCH, $OS_NAME).$hint
@@ -55,7 +49,6 @@ case "$ARCH" in
 esac
 echo ">>> Detected: $OS_NAME, $CPU_NAME"
 
-# Stable filename + /releases/latest/download/ — no version lookup needed.
 deb_name="$(DEB_NAME_FOR_ARCH "$ARCH")"
 deb_url="${BYAKARON_DEB_URL:-https://github.com/${REPO}/releases/latest/download/${deb_name}}"
 
@@ -70,8 +63,6 @@ curl -fL --progress-bar -o "$deb" "$deb_url" \
 
 echo ">>> installing (keyboard + app + spell-check)"
 export DEBIAN_FRONTEND=noninteractive
-# Tells the package's postinst that the steps are printed below, once.
-# `sudo env`, because sudo would otherwise drop the variable.
 was_installed="$(dpkg-query -W -f='${Version}' byakaron 2>/dev/null || true)"
 if [[ "${EUID}" -eq 0 ]]; then
     BYAKARON_INSTALLER=1 apt-get install -y "$deb"
@@ -102,7 +93,6 @@ if command -v gnome-control-center >/dev/null; then
     echo "  Or open the Byakaron app -> Setup."
     echo "  If it is missing from the Bangla list, log out and back in."
 else
-    # Raspberry Pi OS, KDE, Xfce, ...: no GNOME Settings; IBus has its own.
     echo "  1. Make IBus start with your desktop (as yourself, not root):"
     echo "       im-config -n ibus      (sudo apt install im-config if missing)"
     echo "     then log out and back in."

@@ -1117,9 +1117,10 @@ const Session = struct {
             s.dbus_pid = pid;
         }
 
-        // Default ibus-daemon daemonizes: parent exits (zombie under our Child)
-        // after binding, then the child rebinds the same path → EADDRINUSE and
-        // no live daemon. Stay in the foreground with -n/--daemonize=no.
+        // Prefer foreground (--daemonize=no). Some ibus builds still fork/replace
+        // and leave our Child as a zombie while the real daemon is reparented to
+        // init — readiness must not treat that as failure (see wait loop).
+        // No --replace: it forces a second process and a zombie parent under us.
         const sock = try join(t, &.{ runtime, "ibus.sock" });
         _ = ok(t, &.{ "rm", "-f", sock });
         const ibus_address = try std.fmt.allocPrint(t.arena, "unix:path={s}", .{sock});
@@ -1129,7 +1130,7 @@ const Session = struct {
         // Keep a live Child (no short-lived shell): SIGHUP and missing nohup are
         // common container footguns. stderr → log via shell exec redirection.
         const start_cmd = try std.fmt.allocPrint(t.arena,
-            \\exec ibus-daemon --daemonize=no --replace --address='{s}' --panel disable --cache none >'{s}' 2>&1
+            \\exec ibus-daemon --daemonize=no --address='{s}' --panel disable --cache none >'{s}' 2>&1
         , .{ ibus_address, s.ibus_log });
         s.ibus = try std.process.spawn(t.io, .{
             .argv = &.{ "sh", "-c", start_cmd },
@@ -1139,12 +1140,21 @@ const Session = struct {
             .environ_map = t.env,
         });
 
+        // Ready when `ibus list-engine` talks to IBUS_ADDRESS — not when Child is
+        // alive. A daemonized/replaced parent becomes zombie (~0.7s) while the
+        // bus is still coming up; breaking on !alive caused false failures.
         var i: usize = 0;
-        while (i < 80) : (i += 1) {
-            if (!alive(t, &s.ibus.?)) break;
+        while (i < 120) : (i += 1) {
             if (ok(t, &.{ "ibus", "list-engine" })) {
                 std.debug.print(">>> ibus ready on DISPLAY={s}\n", .{display});
                 return;
+            }
+            if (s.ibus) |*c| {
+                if (!alive(t, c)) {
+                    // Reap zombie parent; daemon (if any) is still on IBUS_ADDRESS.
+                    _ = c.wait(t.io) catch {};
+                    s.ibus = null;
+                }
             }
             try t.io.sleep(.fromMilliseconds(250), .awake);
         }
