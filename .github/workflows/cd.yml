@@ -1,6 +1,6 @@
-# cd: prepare → linux pkg (+ install-matrix) + web deploy
+# cd: prepare → pkg (linux) + web deploy
 #
-# Platform installers (macos/windows/android) are built only in release.
+# macOS / Windows / Android installers are built only in release (pkg.yml).
 name: cd
 
 on:
@@ -17,10 +17,13 @@ jobs:
     uses: ./.github/workflows/prepare.yml
     secrets: inherit
 
-  linux:
-    name: linux
+  pkg:
+    name: pkg
     needs: [prepare]
-    uses: ./.github/workflows/linux-pkg.yml
+    uses: ./.github/workflows/pkg.yml
+    secrets: inherit
+    with:
+      linux: true
 
   web:
     name: build (web)
