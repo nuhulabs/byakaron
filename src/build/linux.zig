@@ -1079,7 +1079,10 @@ const Session = struct {
         // XDG_RUNTIME_DIR collides: apt/ibus may already have bound
         // $XDG_RUNTIME_DIR/ibus.sock ("Address already in use").
         // Include nanotime: inside Docker `exec` the tool is often PID 1.
-        const runtime = try std.fmt.allocPrint(t.arena, "/tmp/byk-ibus-{d}-{d}", .{ std.os.linux.getpid(), std.time.nanoTimestamp() });
+        const runtime = try std.fmt.allocPrint(t.arena, "/tmp/byk-ibus-{d}-{d}", .{
+            std.os.linux.getpid(),
+            std.Io.Timestamp.now(t.io, .awake).nanoseconds,
+        });
         Io.Dir.cwd().deleteTree(t.io, runtime) catch {};
         Io.Dir.cwd().createDirPath(t.io, runtime) catch {};
         try t.env.put("XDG_RUNTIME_DIR", runtime);
