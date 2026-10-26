@@ -1060,11 +1060,14 @@ fn startMutter(t: *Tool, name: []const u8) !?Child {
 }
 
 /// A private Xvfb + dbus + ibus-daemon, for CI and for desktops where the
-/// session daemon would follow real focus.
+/// session daemon would follow real focus. Matches the working wayland-e2e
+/// pattern: fixed IBUS_ADDRESS under a 0700 XDG_RUNTIME_DIR.
 const Session = struct {
     xvfb: ?Child = null,
     ibus: ?Child = null,
     dbus_pid: ?[]const u8 = null,
+    runtime: []const u8 = "",
+    ibus_log: []const u8 = "",
 
     fn start(s: *Session, t: *Tool) !void {
         std.debug.print("=== starting headless ibus (Xvfb + dbus) ===\n", .{});
@@ -1072,12 +1075,15 @@ const Session = struct {
             return fail("Xvfb and ibus-daemon are required for the IME test in CI\n       install: xvfb ibus dbus-x11", .{});
         }
 
-        // Docker/CI images often have no XDG_RUNTIME_DIR; ibus refuses to start without one.
-        if (t.env.get("XDG_RUNTIME_DIR") == null) {
-            const runtime = try join(t, &.{ "/tmp", "byk-runtime" });
-            Io.Dir.cwd().createDirPath(t.io, runtime) catch {};
-            try t.env.put("XDG_RUNTIME_DIR", runtime);
-        }
+        // ibus requires XDG_RUNTIME_DIR owned by the user with mode 0700.
+        const runtime = t.env.get("XDG_RUNTIME_DIR") orelse blk: {
+            const path = try join(t, &.{ "/tmp", "byk-runtime" });
+            Io.Dir.cwd().createDirPath(t.io, path) catch {};
+            try t.env.put("XDG_RUNTIME_DIR", path);
+            break :blk path;
+        };
+        s.runtime = runtime;
+        _ = ok(t, &.{ "chmod", "700", runtime });
 
         var n: u32 = 99;
         // GitHub runners may already have something on :99; pick a free slot.
@@ -1103,31 +1109,52 @@ const Session = struct {
             s.dbus_pid = pid;
         }
 
-        // Stay in the foreground (no -d): we own the process and kill it in stop().
-        s.ibus = try std.process.spawn(t.io, .{
-            .argv = &.{ "ibus-daemon", "--single", "--xim", "--panel", "disable", "--config", "disable", "--cache", "none" },
-            .stdin = .ignore,
-            .stdout = .ignore,
-            .stderr = .ignore,
-            .environ_map = t.env,
-        });
+        // Same flags as wayland-e2e (no --single/--xim/--config disable — those
+        // exit immediately in headless containers). Readiness is list-engine on
+        // this bus; do not fail if the spawn handle dies (some builds daemonize).
+        const sock = try join(t, &.{ runtime, "ibus.sock" });
+        const ibus_address = try std.fmt.allocPrint(t.arena, "unix:path={s}", .{sock});
+        try t.env.put("IBUS_ADDRESS", ibus_address);
+        s.ibus_log = try join(t, &.{ runtime, "ibus.log" });
+
+        // nohup: the shell exits after echo $!, and without ignoring HUP the
+        // daemon would die with the short-lived parent. Log file is for the
+        // timeout path below; stop() reaps by XDG_RUNTIME_DIR.
+        const start_cmd = try std.fmt.allocPrint(t.arena,
+            \\nohup ibus-daemon --address='{s}' --panel disable --cache none >'{s}' 2>&1 &
+            \\echo $!
+        , .{ ibus_address, s.ibus_log });
+        _ = capture(t, &.{ "sh", "-c", start_cmd }) orelse return fail("could not start ibus-daemon", .{});
+        s.ibus = null;
+
         var i: usize = 0;
         while (i < 80) : (i += 1) {
-            // list-engine, not `ibus address`: the address file can be left over
-            // from an earlier daemon on the same display and answer instantly.
             if (ok(t, &.{ "ibus", "list-engine" })) {
                 std.debug.print(">>> ibus ready on DISPLAY={s}\n", .{display});
                 return;
             }
-            if (!alive(t, &s.ibus.?)) return fail("ibus-daemon exited before becoming ready", .{});
             try t.io.sleep(.fromMilliseconds(250), .awake);
         }
-        return fail("ibus-daemon started but never answered 'ibus list-engine'", .{});
+        if (Io.Dir.cwd().readFileAlloc(t.io, s.ibus_log, t.arena, .limited(64 * 1024))) |log| {
+            if (log.len > 0) std.debug.print("ibus-daemon log:\n{s}\n", .{log});
+        } else |_| {}
+        return fail("ibus-daemon never answered 'ibus list-engine'", .{});
     }
 
     fn stop(s: *Session, t: *Tool) void {
+        // Prefer a clean exit on our bus; fall back to killing anything we started.
+        _ = ok(t, &.{ "ibus", "exit" });
         if (s.ibus) |*c| c.kill(t.io);
         s.ibus = null;
+        if (s.runtime.len > 0) {
+            _ = ok(t, &.{
+                "sh", "-c",
+                \\for p in $(pgrep -x ibus-daemon); do
+                \\  grep -qsa "XDG_RUNTIME_DIR=$0" /proc/$p/environ 2>/dev/null && kill "$p" 2>/dev/null
+                \\done
+                \\true
+            , s.runtime });
+        }
         if (s.xvfb) |*c| c.kill(t.io);
         s.xvfb = null;
         if (s.dbus_pid) |pid| _ = ok(t, &.{ "kill", pid });
