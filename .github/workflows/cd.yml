@@ -1,4 +1,8 @@
-# cd: prepare → build/pkg (per os matrix). called by release; deploys web on main.
+# cd: prepare → build (os matrix) → test (os matrix)
+#
+# prepare: spell.db + d1 (+ migrate on main)
+# build:   one linux runner packages amd64+arm64 .debs; web deploys
+# test:    install-matrix against the built amd64 .deb
 name: cd
 
 on:
@@ -15,6 +19,7 @@ jobs:
     name: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    environment: ${{ github.ref == 'refs/heads/main' && 'byakaron-web' || '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +32,6 @@ jobs:
           key: spell-db-${{ hashFiles('build.zig', 'build.zig.zon', 'src/data/**', 'src/build/**') }}
 
       - uses: mlugg/setup-zig@v2
-        if: steps.cache.outputs.cache-hit != 'true'
         with:
           version: 0.17.0
 
@@ -39,12 +43,35 @@ jobs:
           zig build db --cache-dir /mnt/zig-cache
           ls -lh zig-out/db/spell.db
 
+      - name: d1
+        run: zig build d1 -Dspell-db=zig-out/db/spell.db
+
+      - name: migrate
+        if: github.ref == 'refs/heads/main'
+        working-directory: apps/web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [[ -z "$CLOUDFLARE_API_TOKEN" ]]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN unset; skip d1 migrate"
+            exit 0
+          fi
+          npx --yes wrangler@4.100.0 d1 migrations apply DB --remote
+
       - uses: actions/upload-artifact@v4
         with:
           name: spell-db
           path: zig-out/db/spell.db
           retention-days: 1
           compression-level: 1
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d1
+          path: zig-out/d1
+          retention-days: 1
           if-no-files-found: error
 
   build:
@@ -58,10 +85,6 @@ jobs:
         include:
           - os: linux
             runner: ubuntu-latest
-            arch: amd64
-          - os: linux
-            runner: ubuntu-24.04-arm
-            arch: arm64
           - os: macos
             runner: xcode-27
             placeholder: true
@@ -76,7 +99,7 @@ jobs:
 
     environment: ${{ matrix.os == 'web' && github.ref == 'refs/heads/main' && 'byakaron-web' || '' }}
     concurrency:
-      group: cd-${{ matrix.os }}-${{ matrix.arch || matrix.runner }}
+      group: cd-build-${{ matrix.os }}
       cancel-in-progress: ${{ matrix.os != 'web' }}
 
     steps:
@@ -97,49 +120,44 @@ jobs:
           name: spell-db
           path: zig-out/db
 
-      # —— linux ——
+      # —— linux: both .debs from one amd64 runner (zig sysroot cross) ——
       - name: deps
         if: matrix.os == 'linux'
         run: |
           sudo -E env "PATH=$PATH" \
             ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
             zig build linux-deps
-          # docker is already on the runner (containerd.io); do not install docker.io
           sudo apt-get install -y --no-install-recommends \
             xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
 
-      - name: pkg
+      - name: pkg amd64
         if: matrix.os == 'linux'
-        run: zig build package-linux -Dspell-db=zig-out/db/spell.db
+        run: zig build package-linux -Dlinux-arch=x86_64 -Dspell-db=zig-out/db/spell.db
 
-      - name: test pkg
+      - name: pkg arm64
         if: matrix.os == 'linux'
-        run: zig build linux-install-test -Dspell-db=zig-out/db/spell.db
+        run: zig build package-linux -Dlinux-arch=aarch64 -Dspell-db=zig-out/db/spell.db
 
       - uses: actions/upload-artifact@v4
         if: matrix.os == 'linux'
         with:
-          name: byakaron-${{ matrix.arch }}
-          path: zig-out/pkg/byakaron_*_${{ matrix.arch }}.deb
+          name: byakaron-amd64
+          path: zig-out/pkg/byakaron_*_amd64.deb
           if-no-files-found: error
 
-      # —— web ——
-      - name: d1
-        if: matrix.os == 'web'
-        run: zig build d1 -Dspell-db=zig-out/db/spell.db
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'linux'
+        with:
+          name: byakaron-arm64
+          path: zig-out/pkg/byakaron_*_arm64.deb
+          if-no-files-found: error
 
-      - name: migrate
+      # —— web: deploy only (d1 + migrate already ran in prepare) ——
+      - uses: actions/download-artifact@v4
         if: matrix.os == 'web' && github.ref == 'refs/heads/main'
-        working-directory: apps/web
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          if [[ -z "$CLOUDFLARE_API_TOKEN" ]]; then
-            echo "::warning::CLOUDFLARE_API_TOKEN unset; skip web deploy"
-            exit 0
-          fi
-          npx --yes wrangler@4.100.0 d1 migrations apply DB --remote
+        with:
+          name: d1
+          path: zig-out/d1
 
       - name: deploy
         if: matrix.os == 'web' && github.ref == 'refs/heads/main'
@@ -149,7 +167,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           if [[ -z "$CLOUDFLARE_API_TOKEN" ]]; then
-            echo "skip deploy"
+            echo "::warning::CLOUDFLARE_API_TOKEN unset; skip deploy"
             exit 0
           fi
           npx --yes wrangler@4.100.0 deploy
@@ -157,3 +175,59 @@ jobs:
       - name: build
         if: matrix.os == 'web' && github.ref != 'refs/heads/main'
         run: zig build -Doptimize=ReleaseSmall
+
+  test:
+    name: test (${{ matrix.os }})
+    needs: [build]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-latest
+          - os: macos
+            runner: ubuntu-latest
+            placeholder: true
+          - os: windows
+            runner: ubuntu-latest
+            placeholder: true
+          - os: android
+            runner: ubuntu-latest
+            placeholder: true
+          - os: web
+            runner: ubuntu-latest
+            placeholder: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: placeholder
+        if: ${{ matrix.placeholder }}
+        run: echo "placeholder — no ${{ matrix.os }} pkg test yet"
+
+      - uses: mlugg/setup-zig@v2
+        if: ${{ !matrix.placeholder }}
+        with:
+          version: 0.17.0
+
+      - uses: actions/download-artifact@v4
+        if: matrix.os == 'linux'
+        with:
+          name: spell-db
+          path: zig-out/db
+
+      - name: deps
+        if: matrix.os == 'linux'
+        run: |
+          sudo -E env "PATH=$PATH" \
+            ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
+            zig build linux-deps
+          sudo apt-get install -y --no-install-recommends \
+            xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
+
+      # Builds the host-arch .deb and runs it through clean containers.
+      - name: pkg
+        if: matrix.os == 'linux'
+        run: zig build linux-install-test -Dlinux-arch=x86_64 -Dspell-db=zig-out/db/spell.db

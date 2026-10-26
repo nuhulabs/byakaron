@@ -92,8 +92,9 @@ Notes:
 ## CI / CD
 
 ```
-ci:  test (os) → integration (os) → e2e (os)   # placeholders where missing
-cd:  prepare → build (os matrix: linux pkg, web deploy, …)
+ci:  test (os) → integration (os) → e2e (os)   # one linux; placeholders where missing
+cd:  prepare (spell.db + d1 + migrate) → build (os) → test (os)
+     linux build packages amd64+arm64 .debs from one runner
 release: cd + macos/windows/android pkgs → Byakaron-Assets @ v${build.zig.zon.version}
 ```
 

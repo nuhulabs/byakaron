@@ -1072,6 +1072,13 @@ const Session = struct {
             return fail("Xvfb and ibus-daemon are required for the IME test in CI\n       install: xvfb ibus dbus-x11", .{});
         }
 
+        // Docker/CI images often have no XDG_RUNTIME_DIR; ibus refuses to start without one.
+        if (t.env.get("XDG_RUNTIME_DIR") == null) {
+            const runtime = try join(t, &.{ "/tmp", "byk-runtime" });
+            Io.Dir.cwd().createDirPath(t.io, runtime) catch {};
+            try t.env.put("XDG_RUNTIME_DIR", runtime);
+        }
+
         var n: u32 = 99;
         // GitHub runners may already have something on :99; pick a free slot.
         while (exists(t.io, try std.fmt.allocPrint(t.arena, "/tmp/.X{d}-lock", .{n}))) n += 1;
@@ -1096,20 +1103,24 @@ const Session = struct {
             s.dbus_pid = pid;
         }
 
+        // Stay in the foreground (no -d): we own the process and kill it in stop().
         s.ibus = try std.process.spawn(t.io, .{
             .argv = &.{ "ibus-daemon", "--single", "--xim", "--panel", "disable", "--config", "disable", "--cache", "none" },
             .stdin = .ignore,
+            .stdout = .ignore,
+            .stderr = .ignore,
             .environ_map = t.env,
         });
         var i: usize = 0;
-        while (i < 40) : (i += 1) {
+        while (i < 80) : (i += 1) {
             // list-engine, not `ibus address`: the address file can be left over
             // from an earlier daemon on the same display and answer instantly.
             if (ok(t, &.{ "ibus", "list-engine" })) {
                 std.debug.print(">>> ibus ready on DISPLAY={s}\n", .{display});
                 return;
             }
-            try t.io.sleep(.fromMilliseconds(150), .awake);
+            if (!alive(t, &s.ibus.?)) return fail("ibus-daemon exited before becoming ready", .{});
+            try t.io.sleep(.fromMilliseconds(250), .awake);
         }
         return fail("ibus-daemon started but never answered 'ibus list-engine'", .{});
     }
@@ -1449,8 +1460,13 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
 const matrix_inside =
     \\#!/bin/bash
     \\export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
+    \\export XDG_RUNTIME_DIR=/tmp/byk-runtime
+    \\mkdir -p "$XDG_RUNTIME_DIR"
+    \\chmod 700 "$XDG_RUNTIME_DIR"
     \\apt-get update -qq >/dev/null
-    \\apt-get install -y -qq xvfb dbus-x11 x11-utils \
+    \\# ibus explicitly: the .deb Depends on it, but pull the daemon/tools first so
+    \\# a failed dependency resolution is obvious before we install Byakaron.
+    \\apt-get install -y -qq xvfb dbus-x11 x11-utils ibus \
     \\    python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common >/dev/null 2>&1 \
     \\    || { echo "  FAIL could not install the test tools"; exit 1; }
     \\echo "  >>> apt install /w/byakaron.deb"

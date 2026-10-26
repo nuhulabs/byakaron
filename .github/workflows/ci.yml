@@ -64,10 +64,6 @@ jobs:
         include:
           - os: linux
             runner: ubuntu-latest
-            arch: amd64
-          - os: linux
-            runner: ubuntu-24.04-arm
-            arch: arm64
           - os: macos
             runner: xcode-27
           - os: windows
