@@ -1078,12 +1078,17 @@ const Session = struct {
         // Private runtime per Session. Reusing the install-matrix's
         // XDG_RUNTIME_DIR collides: apt/ibus may already have bound
         // $XDG_RUNTIME_DIR/ibus.sock ("Address already in use").
-        const runtime = try std.fmt.allocPrint(t.arena, "/tmp/byk-ibus-{d}", .{std.os.linux.getpid()});
+        // Include nanotime: inside Docker `exec` the tool is often PID 1.
+        const runtime = try std.fmt.allocPrint(t.arena, "/tmp/byk-ibus-{d}-{d}", .{ std.os.linux.getpid(), std.time.nanoTimestamp() });
+        Io.Dir.cwd().deleteTree(t.io, runtime) catch {};
         Io.Dir.cwd().createDirPath(t.io, runtime) catch {};
         try t.env.put("XDG_RUNTIME_DIR", runtime);
         s.runtime = runtime;
         _ = ok(t, &.{ "chmod", "700", runtime });
         if (t.env.get("HOME") == null) try t.env.put("HOME", runtime);
+        // Avoid at-spi / portal side channels fighting the private bus.
+        try t.env.put("NO_AT_BRIDGE", "1");
+        try t.env.put("GTK_USE_PORTAL", "0");
 
         var n: u32 = 99;
         // GitHub runners may already have something on :99; pick a free slot.
@@ -1109,11 +1114,10 @@ const Session = struct {
             s.dbus_pid = pid;
         }
 
-        // Same flags as wayland-e2e (no --single/--xim/--config disable — those
-        // exit immediately in headless containers). Readiness is list-engine on
-        // this bus; do not fail if the spawn handle dies (some builds daemonize).
+        // Default ibus-daemon daemonizes: parent exits (zombie under our Child)
+        // after binding, then the child rebinds the same path → EADDRINUSE and
+        // no live daemon. Stay in the foreground with -n/--daemonize=no.
         const sock = try join(t, &.{ runtime, "ibus.sock" });
-        // Stale AF_UNIX path ⇒ EADDRINUSE even with no live process.
         _ = ok(t, &.{ "rm", "-f", sock });
         const ibus_address = try std.fmt.allocPrint(t.arena, "unix:path={s}", .{sock});
         try t.env.put("IBUS_ADDRESS", ibus_address);
@@ -1122,7 +1126,7 @@ const Session = struct {
         // Keep a live Child (no short-lived shell): SIGHUP and missing nohup are
         // common container footguns. stderr → log via shell exec redirection.
         const start_cmd = try std.fmt.allocPrint(t.arena,
-            \\exec ibus-daemon --address='{s}' --panel disable --cache none >'{s}' 2>&1
+            \\exec ibus-daemon --daemonize=no --replace --address='{s}' --panel disable --cache none >'{s}' 2>&1
         , .{ ibus_address, s.ibus_log });
         s.ibus = try std.process.spawn(t.io, .{
             .argv = &.{ "sh", "-c", start_cmd },
@@ -1134,6 +1138,7 @@ const Session = struct {
 
         var i: usize = 0;
         while (i < 80) : (i += 1) {
+            if (!alive(t, &s.ibus.?)) break;
             if (ok(t, &.{ "ibus", "list-engine" })) {
                 std.debug.print(">>> ibus ready on DISPLAY={s}\n", .{display});
                 return;
