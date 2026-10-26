@@ -1075,15 +1075,15 @@ const Session = struct {
             return fail("Xvfb and ibus-daemon are required for the IME test in CI\n       install: xvfb ibus dbus-x11", .{});
         }
 
-        // ibus requires XDG_RUNTIME_DIR owned by the user with mode 0700.
-        const runtime = t.env.get("XDG_RUNTIME_DIR") orelse blk: {
-            const path = try join(t, &.{ "/tmp", "byk-runtime" });
-            Io.Dir.cwd().createDirPath(t.io, path) catch {};
-            try t.env.put("XDG_RUNTIME_DIR", path);
-            break :blk path;
-        };
+        // Private runtime per Session. Reusing the install-matrix's
+        // XDG_RUNTIME_DIR collides: apt/ibus may already have bound
+        // $XDG_RUNTIME_DIR/ibus.sock ("Address already in use").
+        const runtime = try std.fmt.allocPrint(t.arena, "/tmp/byk-ibus-{d}", .{std.os.linux.getpid()});
+        Io.Dir.cwd().createDirPath(t.io, runtime) catch {};
+        try t.env.put("XDG_RUNTIME_DIR", runtime);
         s.runtime = runtime;
         _ = ok(t, &.{ "chmod", "700", runtime });
+        if (t.env.get("HOME") == null) try t.env.put("HOME", runtime);
 
         var n: u32 = 99;
         // GitHub runners may already have something on :99; pick a free slot.
@@ -1112,8 +1112,9 @@ const Session = struct {
         // Same flags as wayland-e2e (no --single/--xim/--config disable — those
         // exit immediately in headless containers). Readiness is list-engine on
         // this bus; do not fail if the spawn handle dies (some builds daemonize).
-        if (t.env.get("HOME") == null) try t.env.put("HOME", runtime);
         const sock = try join(t, &.{ runtime, "ibus.sock" });
+        // Stale AF_UNIX path ⇒ EADDRINUSE even with no live process.
+        _ = ok(t, &.{ "rm", "-f", sock });
         const ibus_address = try std.fmt.allocPrint(t.arena, "unix:path={s}", .{sock});
         try t.env.put("IBUS_ADDRESS", ibus_address);
         s.ibus_log = try join(t, &.{ runtime, "ibus.log" });
@@ -1495,9 +1496,8 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
 const matrix_inside =
     \\#!/bin/bash
     \\export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
-    \\export XDG_RUNTIME_DIR=/tmp/byk-runtime
-    \\mkdir -p "$XDG_RUNTIME_DIR"
-    \\chmod 700 "$XDG_RUNTIME_DIR"
+    \\# Do not set XDG_RUNTIME_DIR before apt: ibus's postinst can bind
+    \\# $XDG_RUNTIME_DIR/ibus.sock and then Session.start fails with EADDRINUSE.
     \\apt-get update -qq >/dev/null
     \\# ibus explicitly: the .deb Depends on it, but pull the daemon/tools first so
     \\# a failed dependency resolution is obvious before we install Byakaron.

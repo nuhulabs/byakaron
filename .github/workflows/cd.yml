@@ -1,6 +1,7 @@
-# cd: prepare → pkg (linux) + web deploy
+# cd: prepare → web deploy
 #
-# macOS / Windows / Android installers are built only in release (pkg.yml).
+# Platform packages (linux/macos/windows/android) are built only in release
+# via pkg.yml — same for every OS, no linux-only exception on main.
 name: cd
 
 on:
@@ -16,14 +17,6 @@ jobs:
     name: prepare
     uses: ./.github/workflows/prepare.yml
     secrets: inherit
-
-  pkg:
-    name: pkg
-    needs: [prepare]
-    uses: ./.github/workflows/pkg.yml
-    secrets: inherit
-    with:
-      linux: true
 
   web:
     name: build (web)

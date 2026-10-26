@@ -31,7 +31,7 @@ bundled JDK.
 zig build android-libs     # libbyakaron.so only
 zig build android          # → zig-out/pkg/Byakaron-debug.apk
 zig build install-android  # debug build onto the connected device
-zig build release-android  # → zig-out/pkg/Byakaron.apk, with spell.db
+zig build release-android  # → zig-out/pkg/Byakaron.apk + Byakaron.aab, with spell.db
 ```
 
 Every step first builds `libbyakaron.so` for arm64-v8a, armeabi-v7a and x86_64
@@ -39,8 +39,9 @@ into `zig-out/lib/android/jniLibs/<abi>/` and copies it to
 `apps/android/keyboard/app/src/main/jniLibs/<abi>/`; the others then run Gradle
 in the submodule (`src/build/gradle.zig`). `release-android` also copies
 spell.db (as built by `zig build db`, or `-Dspell-db=<path>`, `-Ddb-words=N`)
-into `app/src/main/assets/byakaron/`, and the release APK is signed when
-`RELEASE_STORE_FILE` and friends are set (`app/build.gradle.kts`).
+into `app/src/main/assets/byakaron/`, then builds the sideload APK
+(`assembleRelease`) and the Play Store bundle (`bundleRelease`). Both are
+signed when `RELEASE_STORE_FILE` and friends are set (`app/build.gradle.kts`).
 `-Dandroid-api=<level>` sets the minimum API (default `21`).
 
 ## Develop inside the submodule

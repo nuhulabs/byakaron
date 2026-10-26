@@ -1,8 +1,6 @@
 # pkg: platform packages (linux / macos / windows / android).
 # Caller must have uploaded `spell-db` (see prepare.yml).
-#
-# CD:    linux only
-# release: all four (+ version for the Windows installer)
+# Used by release (all four; + version for the Windows installer).
 name: pkg
 
 on:
@@ -230,7 +228,7 @@ jobs:
         run: |
           sha=$(git ls-tree HEAD apps/android/keyboard | awk '$2 == "commit" { print $3 }')
           if [[ -z "$sha" || -z "$TOKEN" ]]; then
-            echo "::warning::no Byakaron.apk in this release"
+            echo "::warning::no Byakaron.apk / Byakaron.aab in this release"
             sha=""
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -293,5 +291,7 @@ jobs:
         if: steps.keyboard.outputs.sha != ''
         with:
           name: release-android
-          path: zig-out/pkg/Byakaron.apk
+          path: |
+            zig-out/pkg/Byakaron.apk
+            zig-out/pkg/Byakaron.aab
           if-no-files-found: error

@@ -5,6 +5,7 @@
 #     Byakaron.dmg
 #     Byakaron-Setup.exe
 #     Byakaron.apk
+#     Byakaron.aab
 #     spell.db
 #
 # Tag: v${build.zig.zon.version}. Push a matching annotated tag, or dispatch
@@ -93,6 +94,7 @@ jobs:
             compgen -G "byakaron_*_$arch.deb" >/dev/null || { echo "::error::the $arch .deb is missing"; exit 1; }
           done
           [[ -f Byakaron.apk ]] || echo "::warning::publishing without Byakaron.apk"
+          [[ -f Byakaron.aab ]] || echo "::warning::publishing without Byakaron.aab (Play Store bundle)"
           sha256sum -- * > SHA256SUMS
           cat SHA256SUMS
 
