@@ -749,3 +749,134 @@ body {
     color: var(--muted);
     font-size: 0.9rem;
 }
+
+/* —— Download page —— */
+.dl-shell {
+    min-height: 100vh;
+    max-width: 42rem;
+    margin: 0 auto;
+    padding: 3.5rem 1.25rem 4rem;
+    background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, #e8efff 0%, transparent 55%),
+        var(--panel);
+}
+
+.dl-hero {
+    margin-bottom: 2.25rem;
+}
+
+.dl-brand {
+    margin: 0 0 0.35rem;
+    font-family: Syne, "Anek Bangla", sans-serif;
+    font-size: clamp(2.4rem, 8vw, 3.4rem);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    color: var(--ink);
+}
+
+.dl-title {
+    margin: 0 0 0.65rem;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--muted-2);
+}
+
+.dl-lead {
+    margin: 0 0 1rem;
+    max-width: 28rem;
+    color: var(--muted);
+    font-size: 1rem;
+}
+
+.dl-nav {
+    margin: 0;
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    font-size: 0.92rem;
+}
+
+.dl-nav a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.dl-nav a:hover {
+    text-decoration: underline;
+}
+
+.dl-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+
+.dl-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--line);
+    border-radius: 0.65rem;
+    background: var(--panel);
+}
+
+.dl-meta {
+    min-width: 0;
+}
+
+.dl-label {
+    margin: 0 0 0.15rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.dl-detail {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.dl-hash {
+    margin: 0.35rem 0 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.68rem;
+    color: var(--muted-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dl-btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.55rem 1rem;
+    border-radius: 0.45rem;
+    background: var(--ink);
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.92rem;
+    text-decoration: none;
+}
+
+.dl-btn:hover {
+    background: #000;
+}
+
+@media (max-width: 560px) {
+    .dl-item {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .dl-btn {
+        width: 100%;
+    }
+}
