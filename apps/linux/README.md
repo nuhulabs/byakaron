@@ -458,7 +458,7 @@ clicks into the window before typing, as a user would.
 
 `.github/workflows/cd.yml` runs on every push to `main`: it builds `Byakaron.db`
 once (cached on its inputs), packages, installs and types through both `.deb`s,
-and runs the website installer in clean Ubuntu 20.04–24.04 / Debian 12
+and runs the website installer in clean Ubuntu 20.04–26.04 / Debian 12–13
 containers. `.github/workflows/release.yml` runs the same for a `linux-*` tag or
 a published release (see Releasing).
 
@@ -519,7 +519,8 @@ One `apt install` of that file is a complete install. Upgrading from the older
 split (`byakaron` + `byakaron-data`) replaces `byakaron-data` automatically.
 
 The settings app is GTK3, so Spelling / Layout / Setup run on
-**Ubuntu 20.04, 22.04, and 24.04** — the same releases as the keyboard.
+**Ubuntu 20.04, 22.04, 24.04 and 26.04, and Debian 12 and 13** — the same
+releases as the keyboard.
 
 ### Installing on Ubuntu
 
@@ -542,7 +543,7 @@ is not enough): Settings → Keyboard → Input Sources → **+** → **Bangla**
 To build and share a `.deb` yourself instead:
 
 The keyboard is built for **glibc 2.31**, so it works on **Ubuntu 20.04, 22.04,
-and 24.04**. On ARM, see [ARM.md](ARM.md).
+24.04 and 26.04, and Debian 12 and 13**. On ARM, see [ARM.md](ARM.md).
 
 ```bash
 zig build package-linux      # alias: linux-deb; builds Byakaron.db too

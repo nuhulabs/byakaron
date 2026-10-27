@@ -191,7 +191,8 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
         \\ switches with Super+Space, powered by the shared Byakaron Zig engine.
         \\ .
         \\ Includes a GTK3 companion app (Spelling, Layout, Setup) that runs on
-        \\ Ubuntu 20.04, 22.04, and 24.04, and the spell-check dictionary.
+        \\ Ubuntu 20.04, 22.04, 24.04 and 26.04 and Debian 12 and 13, and the
+        \\ spell-check dictionary.
         \\
     , .{ version, arch, installed_kb });
     try writeFile(t, try join(t, &.{ stage, "DEBIAN/control" }), control, "644");
@@ -208,8 +209,8 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
         \\=== Built: {s} ===
         \\
         \\Share this one file. It is a complete install (keyboard, app, spell-check)
-        \\on Ubuntu 20.04, 22.04, and 24.04. Do not use 'dpkg -i': apt is what
-        \\installs ibus and GTK.
+        \\on Ubuntu 20.04, 22.04, 24.04 and 26.04 and Debian 12 and 13. Do not use
+        \\'dpkg -i': apt is what installs ibus and GTK.
         \\
         \\    sudo apt install ./{s}.deb
         \\
@@ -732,7 +733,7 @@ fn imeTest(t: *Tool, repo: []const u8, ime: []const u8, test_bin: []const u8) !u
 
 /// Fail if `bin` needs a GLIBC symbol newer than 2.31 (Ubuntu 20.04). Zig can
 /// emit that ABI while still linking this machine's libibus and libglib, so one
-/// engine binary runs on 20.04, 22.04, and 24.04.
+/// engine binary runs on 20.04, 22.04, 24.04 and 26.04.
 fn assertGlibc(t: *Tool, bin: []const u8) !void {
     const r = std.process.run(t.arena, t.io, .{
         .argv = &.{ "objdump", "-T", bin },
@@ -1415,9 +1416,10 @@ fn tested(t: *Tool, a: []const []const u8) !u8 {
 /// Install the *local* .deb in clean containers, the way apt does for a user,
 /// then run `tested` inside each (files, icon, app window, typing through the
 /// installed engine). `deb` is the .deb or a directory holding one. Images
-/// default to ubuntu 20.04 / 22.04 / 24.04 and debian:bookworm (what Raspberry
-/// Pi OS 64-bit is built on); the .deb's CPU must match the Docker host's. The
-/// IME test binary must be built for glibc 2.31 (`zig build linux-test`).
+/// default to ubuntu 20.04 / 22.04 / 24.04 / 26.04 and debian:bookworm / trixie
+/// (what Raspberry Pi OS 64-bit is built on); the .deb's CPU must match the
+/// Docker host's. The IME test binary must be built for glibc 2.31
+/// (`zig build linux-test`).
 /// `--tool` is a static build of this program, so it runs on any image.
 fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
     const ime_test = a[0];
@@ -1427,7 +1429,7 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
         if (std.mem.startsWith(u8, arg, "--tool=")) tool = arg["--tool=".len..] else try images.append(t.arena, arg);
     }
     if (images.items.len == 0) {
-        try images.appendSlice(t.arena, &.{ "ubuntu:20.04", "ubuntu:22.04", "ubuntu:24.04", "debian:bookworm" });
+        try images.appendSlice(t.arena, &.{ "ubuntu:20.04", "ubuntu:22.04", "ubuntu:24.04", "ubuntu:26.04", "debian:bookworm", "debian:trixie" });
     }
     if (!haveCmd(t, "docker")) return fail("docker is required", .{});
     if (!exists(t.io, ime_test)) return fail("{s} is not an executable", .{ime_test});
