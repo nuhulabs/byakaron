@@ -78,7 +78,7 @@ check "32-bit-pc"            install.sh       Linux  i686    i386  "Ubuntu 18.04
 check "fedora-no-apt"        install.sh       Linux  x86_64  ""    "Fedora Linux 40 (Workstation Edition)" \
       "This is Fedora Linux 40 (Workstation Edition), which has no apt"
 check "mac"                  install.sh       Darwin arm64   ""    "macOS" \
-      "For a Mac, download Byakaron for macOS"
+      "For a Mac: curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash"
 
 echo
 if [[ $failures -gt 0 ]]; then
