@@ -1117,20 +1117,24 @@ const Session = struct {
             s.dbus_pid = pid;
         }
 
-        // Prefer foreground (--daemonize=no). Some ibus builds still fork/replace
-        // and leave our Child as a zombie while the real daemon is reparented to
-        // init — readiness must not treat that as failure (see wait loop).
-        // No --replace: it forces a second process and a zombie parent under us.
-        const sock = try join(t, &.{ runtime, "ibus.sock" });
-        _ = ok(t, &.{ "rm", "-f", sock });
-        const ibus_address = try std.fmt.allocPrint(t.arena, "unix:path={s}", .{sock});
+        // --daemonize: in the foreground ibus-daemon exits at once when its
+        // parent is PID 1, which this tool is under `docker run` ("The parent
+        // process died", printed only with --verbose). The forked parent then
+        // becomes a zombie under our Child — readiness must not treat that as
+        // failure (see wait loop). `--daemonize=no` also daemonized: the flag
+        // takes no value. No --replace: it forces a second process.
+        //
+        // unix:abstract=, not unix:path=: IBus 1.5.22 (Ubuntu 20.04) creates
+        // the whole unix:path= value as a directory, then cannot bind there.
+        // The abstract name is unique per Session through `runtime`.
+        const ibus_address = try std.fmt.allocPrint(t.arena, "unix:abstract={s}/ibus", .{runtime});
         try t.env.put("IBUS_ADDRESS", ibus_address);
         s.ibus_log = try join(t, &.{ runtime, "ibus.log" });
 
         // Keep a live Child (no short-lived shell): SIGHUP and missing nohup are
         // common container footguns. stderr → log via shell exec redirection.
         const start_cmd = try std.fmt.allocPrint(t.arena,
-            \\exec ibus-daemon --daemonize=no --address='{s}' --panel disable --cache none >'{s}' 2>&1
+            \\exec ibus-daemon --daemonize --address='{s}' --panel disable --cache none >'{s}' 2>&1
         , .{ ibus_address, s.ibus_log });
         s.ibus = try std.process.spawn(t.io, .{
             .argv = &.{ "sh", "-c", start_cmd },
