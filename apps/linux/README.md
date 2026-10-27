@@ -297,7 +297,7 @@ ranking reads bigram and trigram tables that the locally built `Byakaron.db` has
 empty, so passing neighbours would cost two queries per word for identical
 output. Worth revisiting when the n-grams exist.
 
-`Byakaron.db` is 364 MB, so it opens on a worker thread. The window paints
+`Byakaron.db` is 571 MB as shipped, so it opens on a worker thread. The window paints
 immediately, the Spelling page shows a loading state, and with no database at
 all it says so and stays out of the way — Layout and Setup need nothing
 installed.
@@ -564,7 +564,7 @@ zig build package-linux-flatpak
 
 That packs the already-built `byakaron` binary against `org.gnome.Platform`
 (used as both runtime and SDK, so `org.gnome.Sdk` is not required). It does
-not include the engine or the 364 MB `Byakaron.db`. Manifest:
+not include the engine or the 571 MB `Byakaron.db`. Manifest:
 `Resources/dev.nuhu.labs.Byakaron.json`. The same AppStream metadata used by
 the Debian package lives in `Resources/dev.nuhu.labs.Byakaron.metainfo.xml`.
 
@@ -598,7 +598,10 @@ For Wayland without logging out, run `zig build linux-wayland-e2e` (see [Wayland
   dictionary with bigram/trigram tables (written to `zig-out/db/Byakaron.db`).
   `zig build install-linux` copies it to `/usr/share/byakaron/Byakaron.db` when the file is
   present. The shareable `.deb` ships it in the same package as the keyboard
-  and app, so one file is a complete install. Override the path
+  and app, so one file is a complete install. The `.deb` gets a packed copy
+  (`spell_db pack`): the SymSpell `deletes` table stored once instead of as a
+  table plus an index, so 571 MB instead of 1007 MB, with the same answers to
+  every query (90 MB `.deb` instead of 172 MB). Override the path
   with `BYAKARON_SPELL_DB` for development. The input method types without it;
   only spell-check needs it. Candidates use the compiled-in lexicon.
 - Deb staging lives under `apps/linux/build/` (git-ignored); the shareable

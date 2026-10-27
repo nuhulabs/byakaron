@@ -1,4 +1,5 @@
 // spell_db trim <Byakaron.db> <words> <out.db>   keep the most frequent words
+// spell_db pack <Byakaron.db> <out.db>           the smaller copy apps ship
 // spell_db d1 <Byakaron.db> <out-dir>            write D1 migrations
 // spell_db sync <from-dir> <to-dir>           mirror the .sql files
 
@@ -18,14 +19,16 @@ pub fn main(init: std.process.Init) !void {
         const words = try std.fmt.parseInt(u32, args[3], 10);
         return trim(arena, io, args[2], words, args[4]);
     }
+    if (args.len == 4 and std.mem.eql(u8, args[1], "pack")) return pack(arena, io, args[2], args[3]);
     if (args.len == 4 and std.mem.eql(u8, args[1], "d1")) return d1(arena, io, args[2], args[3]);
     if (args.len == 4 and std.mem.eql(u8, args[1], "sync")) return sync(arena, io, args[2], args[3]);
     std.debug.print(
         \\usage: {s} trim <Byakaron.db> <words> <out.db>
+        \\       {s} pack <Byakaron.db> <out.db>
         \\       {s} d1 <Byakaron.db> <out-dir>
         \\       {s} sync <from-dir> <to-dir>
         \\
-    , .{ args[0], args[0], args[0] });
+    , .{ args[0], args[0], args[0], args[0] });
     return error.InvalidArguments;
 }
 
@@ -54,6 +57,51 @@ fn trim(arena: std.mem.Allocator, io: Io, src: []const u8, words: u32, out: []co
         \\INSERT INTO confusions SELECT * FROM src.confusions;
     , .{words}));
     for (try column(arena, db, "SELECT sql FROM src.sqlite_master WHERE type = 'index' AND sql IS NOT NULL")) |sql| {
+        try exec(arena, db, sql);
+    }
+    try exec(arena, db, "COMMIT");
+    try exec(arena, db, "DETACH src");
+    try exec(arena, db, "ANALYZE");
+}
+
+/// The copy apps ship. `deletes` (the SymSpell keys) is 93% of Byakaron.db:
+/// a rowid table plus `idx_deletes_key`, which stores every key a second time.
+/// Here it is one WITHOUT ROWID b-tree on (delete_key, word_id) instead, and
+/// everything else is copied as it is, so every other query plan is unchanged.
+/// Same rows in the same order: word_id only rises with rowid, so the old
+/// index already returned a key's rows in word_id order. ~45% smaller.
+/// Not for `trim` or `d1`, which read rowids.
+fn pack(arena: std.mem.Allocator, io: Io, src: []const u8, out: []const u8) !void {
+    Io.Dir.cwd().deleteFile(io, out) catch |err| switch (err) {
+        error.FileNotFound => {},
+        else => return err,
+    };
+    const db = try open(arena, out, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
+    defer _ = sqlite3_close(db);
+
+    try exec(arena, db, try std.fmt.allocPrint(arena, "ATTACH {f} AS src", .{quoted(src)}));
+    try exec(arena, db, "PRAGMA journal_mode = OFF");
+    try exec(arena, db, "BEGIN");
+    const tables = try column(arena, db, "SELECT name FROM src.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY rowid");
+    for (try column(arena, db, "SELECT sql FROM src.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY rowid"), tables) |sql, t| {
+        try exec(arena, db, if (std.mem.eql(u8, t, "deletes"))
+            \\CREATE TABLE deletes (
+            \\    delete_key TEXT NOT NULL,
+            \\    word_id INTEGER NOT NULL,
+            \\    PRIMARY KEY (delete_key, word_id)
+            \\) WITHOUT ROWID
+        else
+            sql);
+    }
+    for (tables) |t| {
+        // OR IGNORE: a repeated (key, word) pair would only repeat a candidate
+        // the speller keeps once per word anyway.
+        try exec(arena, db, if (std.mem.eql(u8, t, "deletes"))
+            "INSERT OR IGNORE INTO deletes SELECT delete_key, word_id FROM src.deletes ORDER BY delete_key, word_id"
+        else
+            try std.fmt.allocPrint(arena, "INSERT INTO {f} SELECT * FROM src.{f} ORDER BY rowid", .{ quotedIdent(t), quotedIdent(t) }));
+    }
+    for (try column(arena, db, "SELECT sql FROM src.sqlite_master WHERE type = 'index' AND sql IS NOT NULL AND tbl_name <> 'deletes' ORDER BY rowid")) |sql| {
         try exec(arena, db, sql);
     }
     try exec(arena, db, "COMMIT");
