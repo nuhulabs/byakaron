@@ -33,9 +33,9 @@ dpkg --print-architecture   # arm64 (a 64-bit system); armhf means 32-bit
 `aarch64` with `armhf` means a 64-bit Pi running the 32-bit Raspberry Pi OS:
 install Raspberry Pi OS (64-bit) to use Byakaron.
 
-Tested in CI on every push: the installer in clean Ubuntu 20.04, 22.04, 24.04
-and Debian 12 (Raspberry Pi OS's base) containers on an ARM 64-bit runner,
-then typing through the installed keyboard and opening the app.
+Tested in CI on every push: the installer in clean Ubuntu 20.04, 22.04, 24.04,
+26.04 and Debian 12 and 13 (Raspberry Pi OS's base) containers on an ARM
+64-bit runner, then typing through the installed keyboard and opening the app.
 
 ## After installing
 
