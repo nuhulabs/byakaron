@@ -154,7 +154,7 @@ pub fn build(b: *std.Build) !void {
 
     // Linux: IBus engine, GTK app, optional Fcitx5, against a pinned Ubuntu
     // sysroot on every host (see `addLinux`).
-    addLinux(b, target, optimize, mod, avro, spell_db, &install_spell_db.step);
+    addLinux(b, target, optimize, mod, avro, packSpellDb(b, spell_db_tool, spell_db), &install_spell_db.step);
 
     // Executable (only built for non-Android, non-wasm targets)
     if (!is_android and !is_wasi) {
@@ -1621,6 +1621,15 @@ fn trimSpellDb(b: *std.Build, tool: *std.Build.Step.Compile, db: std.Build.LazyP
     run.addArg("trim");
     run.addFileArg(db);
     run.addArg(b.fmt("{d}", .{words}));
+    return run.addOutputFileArg("Byakaron.db");
+}
+
+/// The Byakaron.db an app package ships (`spell_db pack`): same answers, ~45%
+/// smaller. zig-out/db/ keeps the original, which `trim` and `d1` need.
+fn packSpellDb(b: *std.Build, tool: *std.Build.Step.Compile, db: std.Build.LazyPath) std.Build.LazyPath {
+    const run = b.addRunArtifact(tool);
+    run.addArg("pack");
+    run.addFileArg(db);
     return run.addOutputFileArg("Byakaron.db");
 }
 
