@@ -73,12 +73,17 @@ t("2026 numerals", "২০২৬ ", lambda: typ("2026 "))
 # are checked against each other, so a dictionary change does not break them.
 second = run(lambda: (typ("ami"), time.sleep(0.4), key(ord('2'))))
 report("pick candidate 2", second, second not in ("", "আমি") and not second.endswith(" "), "a word other than আমি")
+# Remember my choices: the pick is learned, so the next "ami" opens on it and
+# Space takes it.
+t("Remember my choices", f"{second} {second} ",
+  lambda: (typ("ami"), time.sleep(0.4), key(ord('2')), time.sleep(0.3), typ(" ami ")))
 t("click commits once", "আমি", lambda: (typ("ami"), time.sleep(0.4), click()))
 third = run(lambda: (typ("ami"), time.sleep(0.4), key(ord('3'))))
 t("Down Down Enter", third, lambda: (typ("ami"), time.sleep(0.4), key(0xff54), key(0xff54), time.sleep(0.2), key(0xff0d)))
 if os.environ.get("BYK_SPELL_DB_PRESENT") == "1":
-    # The correction arrives from the engine's worker thread after the keystroke.
-    t("sonar + 2 (spelling fix)", "সোনার", lambda: (typ("sonar"), time.sleep(1.0), key(ord('2'))))
+    # The composer lists Avro's dictionary words first, so সোনার is already
+    # first for "sonar" (corrections are only added when Avro has none).
+    t("sonar + Space (dictionary word first)", "সোনার ", lambda: typ("sonar "))
 if os.environ.get("BYK_SETTINGS_TEST") == "1":
     # Settings apply from the next word: flip one in settings.json (what the app
     # writes through its composer) while the keyboard runs.
