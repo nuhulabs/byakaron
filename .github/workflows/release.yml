@@ -98,7 +98,7 @@ jobs:
           [[ -n "$GH_TOKEN" ]] || { echo "::error::BYAKARON_ASSETS_TOKEN is not set"; exit 1; }
           cd dist
           # prepare still uploads Byakaron.db for packaging; keep it off Assets.
-          rm -f Byakaron.db
+          rm -f Byakaron.db mapping.txt
 
           for f in Byakaron.dmg Byakaron-Setup.exe; do
             [[ -f "$f" ]] || { echo "::error::$f is missing"; exit 1; }
@@ -153,3 +153,54 @@ jobs:
           GH_TOKEN="$SOURCE_TOKEN" gh release create "$TAG" --repo "$SOURCE_REPO" \
             --title "Byakaron ${TAG#v}" --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}"
           echo "https://github.com/$SOURCE_REPO/releases/tag/$TAG"
+
+  play-store:
+    name: play-store
+    needs: [publish, pkg]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: download android bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: byakaron-android
+          path: dist
+
+      - name: check aab bundle
+        id: check_aab
+        run: |
+          if [[ -f "dist/Byakaron.aab" ]]; then
+            echo "has_aab=true" >> "$GITHUB_OUTPUT"
+            echo "Found Byakaron.aab ($(du -h dist/Byakaron.aab | cut -f1))"
+          else
+            echo "::warning::Byakaron.aab not found in artifacts, skipping Play Store upload"
+            echo "has_aab=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: check credentials
+        id: check_creds
+        env:
+          KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
+        run: |
+          if [[ -z "$KEY" ]]; then
+            echo "::warning::PLAY_STORE_JSON_KEY secret is not configured in repository secrets. Skipping Play Store upload."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: upload to Google Play Console
+        if: steps.check_aab.outputs.has_aab == 'true' && steps.check_creds.outputs.configured == 'true'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_JSON_KEY }}
+          packageName: com.nuhulabs.byakaron
+          releaseFiles: dist/Byakaron.aab
+          track: internal
+          status: completed
+          changesNotSentForReview: true
