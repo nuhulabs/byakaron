@@ -509,14 +509,15 @@ main (void)
 
     g_print ("no candidates for a word outside the lexicon:\n");
     reset_state (ctx);
-    /* Avro has only the transliteration for it, and Byakaron.db has no
-     * correction close to it either. */
-    send_string (ctx, "jhjh");
+    /* Avro has only the transliteration for it, and no Byakaron.db has a
+     * correction within two edits of six ঝ. ("jhjh" -> ঝঝ was close enough to
+     * a word in CI's small dictionary, built from bnwiki-tiny.xml, to get one.) */
+    send_string (ctx, "jhjhjhjhjhjh");
     for (guint waited = 0; waited < 1000; waited += 100) {
         g_usleep (100 * 1000);
         pump ();
     }
-    check ("preedit still transliterates", g_preedit, "ঝঝ");
+    check ("preedit still transliterates", g_preedit, "ঝঝঝঝঝঝ");
     check_flag ("lookup table hidden", g_table_visible, FALSE);
 
     g_print ("escape drops the candidates with the word:\n");
