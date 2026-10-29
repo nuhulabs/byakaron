@@ -784,11 +784,14 @@ fn ci(t: *Tool, repo: []const u8, prefix_arg: ?[]const u8) !u8 {
     const linux_dir = try join(t, &.{ repo, "apps/linux" });
 
     // The engine and the smoke test read the Byakaron.db when present; both skip
-    // those assertions when it is absent (it is 364 MB and not needed here).
+    // those assertions when it is absent (it is ~1 GB and not needed here).
     if (t.env.get("BYAKARON_SPELL_DB") == null) {
         const db = try join(t, &.{ prefix, "db/Byakaron.db" });
         if (exists(t.io, db)) try t.env.put("BYAKARON_SPELL_DB", db);
     }
+
+    std.debug.print("\n=== one version everywhere ===\n", .{});
+    try checkVersions(t, repo);
 
     std.debug.print("\n=== glibc 2.31 compatibility ===\n", .{});
     try assertGlibc(t, ime);
@@ -872,6 +875,30 @@ fn ci(t: *Tool, repo: []const u8, prefix_arg: ?[]const u8) !u8 {
 
     std.debug.print("\n=== linux-ci finished ===\n", .{});
     return 0;
+}
+
+/// The .deb's Version (build.zig.zon), `byakaron --version` (App/app.h), the
+/// IBus component and the newest AppStream release must agree: v0.1.1 and
+/// v0.1.2 were tagged without bumping them, and their .debs said 0.1.0.
+fn checkVersions(t: *Tool, repo: []const u8) !void {
+    const sources = [_]struct { file: []const u8, before: []const u8 }{
+        .{ .file = "build.zig.zon", .before = ".version = \"" },
+        .{ .file = "apps/linux/App/app.h", .before = "#define BYK_APP_VERSION \"" },
+        .{ .file = "apps/linux/Resources/byakaron.xml.in", .before = "<version>" },
+        .{ .file = "apps/linux/Resources/" ++ app_id ++ ".metainfo.xml", .before = "<release version=\"" },
+    };
+    var first: ?[]const u8 = null;
+    var differ = false;
+    for (sources) |s| {
+        const text = try Io.Dir.cwd().readFileAlloc(t.io, try join(t, &.{ repo, s.file }), t.arena, .limited(4 * 1024 * 1024));
+        const at = std.mem.indexOf(u8, text, s.before) orelse return fail("no version in {s}", .{s.file});
+        const start = at + s.before.len;
+        const end = std.mem.indexOfAnyPos(u8, text, start, "\"<") orelse return fail("malformed version in {s}", .{s.file});
+        const version = text[start..end];
+        std.debug.print("  {s:<10} {s}\n", .{ version, s.file });
+        if (first) |f| differ = differ or !std.mem.eql(u8, f, version) else first = version;
+    }
+    if (differ) return fail("the versions above differ: bump them together (RELEASING.md)", .{});
 }
 
 fn checkAppCli(t: *Tool, app: []const u8, linux_dir: []const u8) !void {

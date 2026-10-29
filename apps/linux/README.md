@@ -493,7 +493,13 @@ no local release script.
 Bump the version by hand before tagging: `.version` in `build.zig.zon` (the
 `.deb` version), `BYK_APP_VERSION` in `App/app.h`, `<version>` in
 `Resources/byakaron.xml.in`, and a
-`<release>` entry in the AppStream metainfo.
+`<release>` entry in the AppStream metainfo. `zig build linux-ci` fails when
+these four disagree, and the release fails when the tag does not match
+`build.zig.zon`.
+
+The `.deb` Version carries epoch 1 (`1:0.1.3`): until 0.2.1 the Linux package
+had its own numbering, and without the epoch apt refuses the shared 0.1.x over
+0.2.1 as a downgrade. Keep it in every future version.
 
 The website installer is `apps/linux/web_install.sh`. Copy it by hand to
 `install.sh` in the nuhulabs.com repo (`app/public/byakaron`), plus the same
