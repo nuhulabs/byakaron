@@ -169,10 +169,13 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
         break :blk du[0..end];
     };
 
-    // Control metadata.
+    // Control metadata. Epoch 1: the Linux .deb had its own numbering up to
+    // 0.2.1; the shared Byakaron version restarted at 0.1.0, and apt refuses
+    // 0.1.x over 0.2.1 as a downgrade. 1:0.1.x is newer than all of those. An
+    // epoch can never be dropped again.
     const control = try std.fmt.allocPrint(t.arena,
         \\Package: byakaron
-        \\Version: {s}
+        \\Version: 1:{s}
         \\Architecture: {s}
         \\Maintainer: Byakaron contributors <byakaron@example.com>
         \\Installed-Size: {s}
