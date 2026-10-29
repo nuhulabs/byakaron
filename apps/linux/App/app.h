@@ -15,7 +15,7 @@
 G_BEGIN_DECLS
 
 #define BYK_APP_ID      "dev.nuhu.labs.Byakaron"
-#define BYK_APP_VERSION "0.1.0"
+#define BYK_APP_VERSION "0.1.3"
 
 /* Public pages only: nuhulabs/byakaron is private, so a link to it is a 404
  * for everyone who installs the app. */

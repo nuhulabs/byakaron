@@ -46,10 +46,11 @@ jobs:
           tag="v${version}"
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
             pushed="${{ github.ref_name }}"
+            # A mismatch used to publish anyway, and the Linux .deb and macOS app
+            # kept the old version (v0.1.1 and v0.1.2 shipped .debs saying 0.1.0).
             if [[ "$pushed" != "$tag" && "$pushed" != "$tag"-* ]]; then
-              echo "::warning::tag $pushed does not match zon $tag; publishing as $pushed"
-              tag="$pushed"
-              version="${pushed#v}"
+              echo "::error::tag $pushed does not match build.zig.zon ($tag): bump the versions first (RELEASING.md)"
+              exit 1
             fi
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
