@@ -1,6 +1,6 @@
 .{
     .name = .byakaron,
-    .version = "0.1.0",
+    .version = "0.1.3",
     .fingerprint = 0x3fd6609b9d3cf29c,
     .minimum_zig_version = "0.17.0",
     .dependencies = .{
