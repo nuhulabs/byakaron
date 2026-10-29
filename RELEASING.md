@@ -11,8 +11,9 @@ link to Assets).
    - Linux, by hand (there is no release script): `.version` in
      `build.zig.zon` (the `.deb` control Version), `BYK_APP_VERSION` in
      `apps/linux/App/app.h`, `<version>` in `apps/linux/Resources/byakaron.xml.in`,
-     and a `<release>` entry in the AppStream metainfo.
-   - macOS: `CFBundleShortVersionString` in the Xcode project.
+     and a `<release>` entry in the AppStream metainfo. `zig build linux-ci`
+     fails when these disagree; the `.deb` adds epoch 1 itself (`1:0.1.3`).
+   - macOS: `CFBundleShortVersionString` in the Xcode project (`MARKETING_VERSION`).
    - Android: `versionName` / `versionCode` in `apps/android/keyboard/app/build.gradle.kts`
      (in the submodule; push it, then commit the submodule bump here).
    - Windows takes its version from the tag (`BYAKARON_VERSION`).
@@ -24,7 +25,8 @@ link to Assets).
    ```
 
    A tag with a `-` (`v0.3.0-rc.1`) is published as a prerelease; any other
-   tag becomes the Latest release.
+   tag becomes the Latest release. A tag that does not match `build.zig.zon`
+   stops the release in its `version` job.
 3. Watch the `release` run. When every job passes:
 
    - **Byakaron-Assets** gets release `v0.3.0` with stable asset names (so
