@@ -191,6 +191,22 @@ check (const char *what, const char *got, const char *want)
 }
 
 /*
+ * Focus `ctx` and switch it to `name`. Since IBus 1.5.31 (Debian 13, Ubuntu
+ * 26.04) the daemon refuses SetEngine on an input context while
+ * use-global-engine is on, which is the default, and the context stays on
+ * "dummy". The global engine is what the focused context takes on every 1.5.x,
+ * so set that; per-context SetEngine is only the fallback.
+ */
+static void
+use_engine (IBusInputContext *ctx, const gchar *name)
+{
+    ibus_input_context_focus_in (ctx);
+    if (!ibus_bus_set_global_engine (g_bus, name))
+        ibus_input_context_set_engine (ctx, name);
+    pump ();
+}
+
+/*
  * Name of the engine behind `ctx` once the daemon has started one, polling for
  * up to 20 s. set_engine is asynchronous: the daemon asks the factory for an
  * instance, and on GitHub's arm64 runner that took 6 s, longer than pump()'s
@@ -252,9 +268,7 @@ main (void)
     ibus_input_context_set_capabilities (ctx, IBUS_CAP_PREEDIT_TEXT |
                                              IBUS_CAP_LOOKUP_TABLE |
                                              IBUS_CAP_FOCUS);
-    ibus_input_context_focus_in (ctx);
-    ibus_input_context_set_engine (ctx, "byakaron");
-    pump ();
+    use_engine (ctx, "byakaron");
 
     const gchar *engine_ok = wait_for_engine (ctx, "byakaron");
     if (g_strcmp0 (engine_ok, "byakaron") != 0) {
@@ -336,9 +350,7 @@ main (void)
         g_signal_connect (qt, "hide-preedit-text", G_CALLBACK (on_hide_preedit), NULL);
         g_signal_connect (qt, "commit-text", G_CALLBACK (on_commit), NULL);
         ibus_input_context_set_capabilities (qt, IBUS_CAP_PREEDIT_TEXT | IBUS_CAP_FOCUS);
-        ibus_input_context_focus_in (qt);
-        ibus_input_context_set_engine (qt, "byakaron");
-        pump ();
+        use_engine (qt, "byakaron");
         wait_for_engine (qt, "byakaron");
 
         reset_state (qt);
@@ -349,9 +361,7 @@ main (void)
         check ("daemon does not commit for Qt", g_committed, "");
 
         ibus_input_context_focus_out (qt);
-        ibus_input_context_focus_in (ctx);
-        ibus_input_context_set_engine (ctx, "byakaron");
-        pump ();
+        use_engine (ctx, "byakaron");
         wait_for_engine (ctx, "byakaron");
         g_object_unref (qt);
 
@@ -499,14 +509,15 @@ main (void)
 
     g_print ("no candidates for a word outside the lexicon:\n");
     reset_state (ctx);
-    /* Avro has only the transliteration for it, and Byakaron.db has no
-     * correction close to it either. */
-    send_string (ctx, "jhjh");
+    /* Avro has only the transliteration for it, and no Byakaron.db has a
+     * correction within two edits of six ঝ. ("jhjh" -> ঝঝ was close enough to
+     * a word in CI's small dictionary, built from bnwiki-tiny.xml, to get one.) */
+    send_string (ctx, "jhjhjhjhjhjh");
     for (guint waited = 0; waited < 1000; waited += 100) {
         g_usleep (100 * 1000);
         pump ();
     }
-    check ("preedit still transliterates", g_preedit, "ঝঝ");
+    check ("preedit still transliterates", g_preedit, "ঝঝঝঝঝঝ");
     check_flag ("lookup table hidden", g_table_visible, FALSE);
 
     g_print ("escape drops the candidates with the word:\n");

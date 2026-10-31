@@ -63,6 +63,10 @@ check "ubuntu-amd64"         install.sh       Linux  x86_64  amd64 "Ubuntu 24.04
       "Detected: Ubuntu 24.04.1 LTS, Intel/AMD 64-bit (amd64)"
 check "pi-os-64bit"          install.sh       Linux  aarch64 arm64 "Debian GNU/Linux 12 (bookworm)" \
       "Detected: Debian GNU/Linux 12 (bookworm), ARM 64-bit (arm64)"
+check "ubuntu-26.04-amd64"   install.sh       Linux  x86_64  amd64 "Ubuntu 26.04.1 LTS" \
+      "Detected: Ubuntu 26.04.1 LTS, Intel/AMD 64-bit (amd64)"
+check "pi-os-trixie-64bit"   install.sh       Linux  aarch64 arm64 "Debian GNU/Linux 13 (trixie)" \
+      "Detected: Debian GNU/Linux 13 (trixie), ARM 64-bit (arm64)"
 check "old-arm-link-on-amd"  install-arm64.sh Linux  x86_64  amd64 "Ubuntu 22.04.4 LTS" \
       "Detected: Ubuntu 22.04.4 LTS, Intel/AMD 64-bit (amd64)"
 check "old-amd-link-on-arm"  install-amd64.sh Linux  aarch64 arm64 "Ubuntu 24.04.1 LTS" \
@@ -78,7 +82,7 @@ check "32-bit-pc"            install.sh       Linux  i686    i386  "Ubuntu 18.04
 check "fedora-no-apt"        install.sh       Linux  x86_64  ""    "Fedora Linux 40 (Workstation Edition)" \
       "This is Fedora Linux 40 (Workstation Edition), which has no apt"
 check "mac"                  install.sh       Darwin arm64   ""    "macOS" \
-      "For a Mac, download Byakaron for macOS"
+      "For a Mac: curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash"
 
 echo
 if [[ $failures -gt 0 ]]; then

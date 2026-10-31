@@ -169,10 +169,13 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
         break :blk du[0..end];
     };
 
-    // Control metadata.
+    // Control metadata. Epoch 1: the Linux .deb had its own numbering up to
+    // 0.2.1; the shared Byakaron version restarted at 0.1.0, and apt refuses
+    // 0.1.x over 0.2.1 as a downgrade. 1:0.1.x is newer than all of those. An
+    // epoch can never be dropped again.
     const control = try std.fmt.allocPrint(t.arena,
         \\Package: byakaron
-        \\Version: {s}
+        \\Version: 1:{s}
         \\Architecture: {s}
         \\Maintainer: Byakaron contributors <byakaron@example.com>
         \\Installed-Size: {s}
@@ -191,7 +194,8 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
         \\ switches with Super+Space, powered by the shared Byakaron Zig engine.
         \\ .
         \\ Includes a GTK3 companion app (Spelling, Layout, Setup) that runs on
-        \\ Ubuntu 20.04, 22.04, and 24.04, and the spell-check dictionary.
+        \\ Ubuntu 20.04, 22.04, 24.04 and 26.04 and Debian 12 and 13, and the
+        \\ spell-check dictionary.
         \\
     , .{ version, arch, installed_kb });
     try writeFile(t, try join(t, &.{ stage, "DEBIAN/control" }), control, "644");
@@ -208,8 +212,8 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
         \\=== Built: {s} ===
         \\
         \\Share this one file. It is a complete install (keyboard, app, spell-check)
-        \\on Ubuntu 20.04, 22.04, and 24.04. Do not use 'dpkg -i': apt is what
-        \\installs ibus and GTK.
+        \\on Ubuntu 20.04, 22.04, 24.04 and 26.04 and Debian 12 and 13. Do not use
+        \\'dpkg -i': apt is what installs ibus and GTK.
         \\
         \\    sudo apt install ./{s}.deb
         \\
@@ -732,7 +736,7 @@ fn imeTest(t: *Tool, repo: []const u8, ime: []const u8, test_bin: []const u8) !u
 
 /// Fail if `bin` needs a GLIBC symbol newer than 2.31 (Ubuntu 20.04). Zig can
 /// emit that ABI while still linking this machine's libibus and libglib, so one
-/// engine binary runs on 20.04, 22.04, and 24.04.
+/// engine binary runs on 20.04, 22.04, 24.04 and 26.04.
 fn assertGlibc(t: *Tool, bin: []const u8) !void {
     const r = std.process.run(t.arena, t.io, .{
         .argv = &.{ "objdump", "-T", bin },
@@ -780,11 +784,14 @@ fn ci(t: *Tool, repo: []const u8, prefix_arg: ?[]const u8) !u8 {
     const linux_dir = try join(t, &.{ repo, "apps/linux" });
 
     // The engine and the smoke test read the Byakaron.db when present; both skip
-    // those assertions when it is absent (it is 364 MB and not needed here).
+    // those assertions when it is absent (it is ~1 GB and not needed here).
     if (t.env.get("BYAKARON_SPELL_DB") == null) {
         const db = try join(t, &.{ prefix, "db/Byakaron.db" });
         if (exists(t.io, db)) try t.env.put("BYAKARON_SPELL_DB", db);
     }
+
+    std.debug.print("\n=== one version everywhere ===\n", .{});
+    try checkVersions(t, repo);
 
     std.debug.print("\n=== glibc 2.31 compatibility ===\n", .{});
     try assertGlibc(t, ime);
@@ -868,6 +875,30 @@ fn ci(t: *Tool, repo: []const u8, prefix_arg: ?[]const u8) !u8 {
 
     std.debug.print("\n=== linux-ci finished ===\n", .{});
     return 0;
+}
+
+/// The .deb's Version (build.zig.zon), `byakaron --version` (App/app.h), the
+/// IBus component and the newest AppStream release must agree: v0.1.1 and
+/// v0.1.2 were tagged without bumping them, and their .debs said 0.1.0.
+fn checkVersions(t: *Tool, repo: []const u8) !void {
+    const sources = [_]struct { file: []const u8, before: []const u8 }{
+        .{ .file = "build.zig.zon", .before = ".version = \"" },
+        .{ .file = "apps/linux/App/app.h", .before = "#define BYK_APP_VERSION \"" },
+        .{ .file = "apps/linux/Resources/byakaron.xml.in", .before = "<version>" },
+        .{ .file = "apps/linux/Resources/" ++ app_id ++ ".metainfo.xml", .before = "<release version=\"" },
+    };
+    var first: ?[]const u8 = null;
+    var differ = false;
+    for (sources) |s| {
+        const text = try Io.Dir.cwd().readFileAlloc(t.io, try join(t, &.{ repo, s.file }), t.arena, .limited(4 * 1024 * 1024));
+        const at = std.mem.indexOf(u8, text, s.before) orelse return fail("no version in {s}", .{s.file});
+        const start = at + s.before.len;
+        const end = std.mem.indexOfAnyPos(u8, text, start, "\"<") orelse return fail("malformed version in {s}", .{s.file});
+        const version = text[start..end];
+        std.debug.print("  {s:<10} {s}\n", .{ version, s.file });
+        if (first) |f| differ = differ or !std.mem.eql(u8, f, version) else first = version;
+    }
+    if (differ) return fail("the versions above differ: bump them together (RELEASING.md)", .{});
 }
 
 fn checkAppCli(t: *Tool, app: []const u8, linux_dir: []const u8) !void {
@@ -1117,20 +1148,24 @@ const Session = struct {
             s.dbus_pid = pid;
         }
 
-        // Prefer foreground (--daemonize=no). Some ibus builds still fork/replace
-        // and leave our Child as a zombie while the real daemon is reparented to
-        // init — readiness must not treat that as failure (see wait loop).
-        // No --replace: it forces a second process and a zombie parent under us.
-        const sock = try join(t, &.{ runtime, "ibus.sock" });
-        _ = ok(t, &.{ "rm", "-f", sock });
-        const ibus_address = try std.fmt.allocPrint(t.arena, "unix:path={s}", .{sock});
+        // --daemonize: in the foreground ibus-daemon exits at once when its
+        // parent is PID 1, which this tool is under `docker run` ("The parent
+        // process died", printed only with --verbose). The forked parent then
+        // becomes a zombie under our Child — readiness must not treat that as
+        // failure (see wait loop). `--daemonize=no` also daemonized: the flag
+        // takes no value. No --replace: it forces a second process.
+        //
+        // unix:abstract=, not unix:path=: IBus 1.5.22 (Ubuntu 20.04) creates
+        // the whole unix:path= value as a directory, then cannot bind there.
+        // The abstract name is unique per Session through `runtime`.
+        const ibus_address = try std.fmt.allocPrint(t.arena, "unix:abstract={s}/ibus", .{runtime});
         try t.env.put("IBUS_ADDRESS", ibus_address);
         s.ibus_log = try join(t, &.{ runtime, "ibus.log" });
 
         // Keep a live Child (no short-lived shell): SIGHUP and missing nohup are
         // common container footguns. stderr → log via shell exec redirection.
         const start_cmd = try std.fmt.allocPrint(t.arena,
-            \\exec ibus-daemon --daemonize=no --address='{s}' --panel disable --cache none >'{s}' 2>&1
+            \\exec ibus-daemon --daemonize --address='{s}' --panel disable --cache none >'{s}' 2>&1
         , .{ ibus_address, s.ibus_log });
         s.ibus = try std.process.spawn(t.io, .{
             .argv = &.{ "sh", "-c", start_cmd },
@@ -1411,9 +1446,10 @@ fn tested(t: *Tool, a: []const []const u8) !u8 {
 /// Install the *local* .deb in clean containers, the way apt does for a user,
 /// then run `tested` inside each (files, icon, app window, typing through the
 /// installed engine). `deb` is the .deb or a directory holding one. Images
-/// default to ubuntu 20.04 / 22.04 / 24.04 and debian:bookworm (what Raspberry
-/// Pi OS 64-bit is built on); the .deb's CPU must match the Docker host's. The
-/// IME test binary must be built for glibc 2.31 (`zig build linux-test`).
+/// default to ubuntu 20.04 / 22.04 / 24.04 / 26.04 and debian:bookworm / trixie
+/// (what Raspberry Pi OS 64-bit is built on); the .deb's CPU must match the
+/// Docker host's. The IME test binary must be built for glibc 2.31
+/// (`zig build linux-test`).
 /// `--tool` is a static build of this program, so it runs on any image.
 fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
     const ime_test = a[0];
@@ -1423,7 +1459,7 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
         if (std.mem.startsWith(u8, arg, "--tool=")) tool = arg["--tool=".len..] else try images.append(t.arena, arg);
     }
     if (images.items.len == 0) {
-        try images.appendSlice(t.arena, &.{ "ubuntu:20.04", "ubuntu:22.04", "ubuntu:24.04", "debian:bookworm" });
+        try images.appendSlice(t.arena, &.{ "ubuntu:20.04", "ubuntu:22.04", "ubuntu:24.04", "ubuntu:26.04", "debian:bookworm", "debian:trixie" });
     }
     if (!haveCmd(t, "docker")) return fail("docker is required", .{});
     if (!exists(t.io, ime_test)) return fail("{s} is not an executable", .{ime_test});

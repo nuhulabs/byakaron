@@ -238,7 +238,7 @@ user can no longer see once the list is gone.
 ### Spelling corrections
 
 When Avro's list is just the plain transliteration, the word is probably
-misspelled (`sonar` → সনার, `jibon` → জিবন), so up to three corrections from
+misspelled (`bangl` → বাংল), so up to three corrections from
 Byakaron.db follow it. A lookup can take ~150 ms on a cold disk cache, so the
 composer does it on a worker thread; when the results arrive it calls back, and
 the engine hops to its main loop (`g_idle_add` in IBus, the Fcitx5 event
@@ -297,7 +297,7 @@ ranking reads bigram and trigram tables that the locally built `Byakaron.db` has
 empty, so passing neighbours would cost two queries per word for identical
 output. Worth revisiting when the n-grams exist.
 
-`Byakaron.db` is 364 MB, so it opens on a worker thread. The window paints
+`Byakaron.db` is 571 MB as shipped, so it opens on a worker thread. The window paints
 immediately, the Spelling page shows a loading state, and with no database at
 all it says so and stays out of the way — Layout and Setup need nothing
 installed.
@@ -409,26 +409,38 @@ text-input-v3 instead.
 Byakaron) next to the running desktop, opens GTK3 and GTK4 windows natively on
 it, and types through `org.gnome.Mutter.RemoteDesktop`. Those keys take the
 same path as a keyboard on an "Ubuntu on Wayland" login: text-input-v3 →
-GNOME Shell → IBus → `byakaron-ibus`. Five checks per toolkit: `ami bangla `,
-Shift (`bhalO.` → ভালো।), Bangla numerals, picking candidate 2, and a click
-while a word is pending (committed once). Switching the input source to
-English makes every check fail, so the test does measure the engine.
+GNOME Shell → IBus → `byakaron-ibus`. Checks per toolkit: `ami bangla `,
+Shift (`bhalO.` → ভালো।), Bangla numerals, picking candidate 2, Remember my
+choices (the pick opens first next time and Space takes it), a click while a
+word is pending (committed once) and arrows + Enter; with Byakaron.db, `sonar`
+gives the dictionary's সোনার first; and Bangla digits switched off and on in
+`settings.json` while typing. Switching the input source to English makes
+every check fail, so the test does measure the engine.
 
 ```bash
-zig build linux-wayland-e2e   # GTK3 + GTK4, 10 checks
+zig build linux-wayland-e2e   # GTK3 + GTK4
 ```
 
-Qt was checked the same way from a container sharing the sandbox's Wayland
-and IBus sockets (not scripted here):
+The same sandbox was also used by hand for other apps (28/10/26, the packaged
+ReleaseFast engine and Byakaron.db; the suggestion popup checked on
+screenshots from `org.gnome.Shell.Screenshot`):
 
-| Qt on GNOME Wayland | Result |
+| App on GNOME 46 Wayland, no Xwayland | Result |
 | --- | --- |
-| Qt 5.15 / 6.4, `QT_IM_MODULE=ibus` (Ubuntu's default session setting) | typing, Shift, numerals, candidates pass |
-| Qt 6.4 without `QT_IM_MODULE` | plain latin: Qt 6.4 has no text-input-v3, so no IME of any kind reaches it |
+| GTK3, GTK4, gedit 46.2 | all pass, popup under the word |
+| Firefox 158 (Mozilla build), GTK_IM_MODULE unset (what GNOME sets) or `ibus` | all pass, popup under the word |
+| Chrome 152, default flags or `--enable-wayland-ime --wayland-text-input-version=3` | all pass: Chrome 152 needs no flags |
+| Qt 6.4 (Ubuntu 24.04), `QT_IM_MODULE=ibus` (what gnome-session 46 sets) | all pass, a click included |
+| Qt 6.10 (Ubuntu 26.04), no `QT_IM_MODULE` (gnome-session 50 sets none) | all pass, through text-input-v3 |
+| Qt 6.10, `QT_IM_MODULE=ibus` | all pass except a click while a word is pending: the word is lost (Known issues) |
+| Qt 6.4 without `QT_IM_MODULE` | plain latin: Qt 6.4 has no text-input-v3 |
+| Cursor 3.19 (Electron 42) | not checked: its window never maps on the headless shell |
 
-A click *inside* a Qt field could not be synthesised on headless Wayland (the
-pointer cannot be placed without a screen-cast stream); the same IBus path is
-covered by the X11 Qt test.
+Qt ran in containers sharing the sandbox's Wayland and IBus sockets, with
+`--pid=host`: Qt's IBus module only connects when the `IBUS_DAEMON_PID` in its
+address file is a process it can see. Clicks land in the field because the
+pointer is first moved to the middle of the screen (relative RemoteDesktop
+motion needs no screen-cast stream).
 
 `zig build linux-ci` runs the quick nested-mutter probes from the
 `linux-wayland` binaries (`wayland_probe`, `wayland_type`).
@@ -458,7 +470,7 @@ clicks into the window before typing, as a user would.
 
 `.github/workflows/cd.yml` runs on every push to `main`: it builds `Byakaron.db`
 once (cached on its inputs), packages, installs and types through both `.deb`s,
-and runs the website installer in clean Ubuntu 20.04–24.04 / Debian 12
+and runs the website installer in clean Ubuntu 20.04–26.04 / Debian 12–13
 containers. `.github/workflows/release.yml` runs the same for a `linux-*` tag or
 a published release (see Releasing).
 
@@ -481,7 +493,13 @@ no local release script.
 Bump the version by hand before tagging: `.version` in `build.zig.zon` (the
 `.deb` version), `BYK_APP_VERSION` in `App/app.h`, `<version>` in
 `Resources/byakaron.xml.in`, and a
-`<release>` entry in the AppStream metainfo.
+`<release>` entry in the AppStream metainfo. `zig build linux-ci` fails when
+these four disagree, and the release fails when the tag does not match
+`build.zig.zon`.
+
+The `.deb` Version carries epoch 1 (`1:0.1.3`): until 0.2.1 the Linux package
+had its own numbering, and without the epoch apt refuses the shared 0.1.x over
+0.2.1 as a downgrade. Keep it in every future version.
 
 The website installer is `apps/linux/web_install.sh`. Copy it by hand to
 `install.sh` in the nuhulabs.com repo (`app/public/byakaron`), plus the same
@@ -519,7 +537,8 @@ One `apt install` of that file is a complete install. Upgrading from the older
 split (`byakaron` + `byakaron-data`) replaces `byakaron-data` automatically.
 
 The settings app is GTK3, so Spelling / Layout / Setup run on
-**Ubuntu 20.04, 22.04, and 24.04** — the same releases as the keyboard.
+**Ubuntu 20.04, 22.04, 24.04 and 26.04, and Debian 12 and 13** — the same
+releases as the keyboard.
 
 ### Installing on Ubuntu
 
@@ -542,7 +561,7 @@ is not enough): Settings → Keyboard → Input Sources → **+** → **Bangla**
 To build and share a `.deb` yourself instead:
 
 The keyboard is built for **glibc 2.31**, so it works on **Ubuntu 20.04, 22.04,
-and 24.04**. On ARM, see [ARM.md](ARM.md).
+24.04 and 26.04, and Debian 12 and 13**. On ARM, see [ARM.md](ARM.md).
 
 ```bash
 zig build package-linux      # alias: linux-deb; builds Byakaron.db too
@@ -563,7 +582,7 @@ zig build package-linux-flatpak
 
 That packs the already-built `byakaron` binary against `org.gnome.Platform`
 (used as both runtime and SDK, so `org.gnome.Sdk` is not required). It does
-not include the engine or the 364 MB `Byakaron.db`. Manifest:
+not include the engine or the 571 MB `Byakaron.db`. Manifest:
 `Resources/dev.nuhu.labs.Byakaron.json`. The same AppStream metadata used by
 the Debian package lives in `Resources/dev.nuhu.labs.Byakaron.metainfo.xml`.
 
@@ -588,6 +607,19 @@ For Wayland without logging out, run `zig build linux-wayland-e2e` (see [Wayland
   switch on, আমিআমি off; GTK gives আমি off, nothing on.
   Fixed on Ubuntu 24.04 (IBus 1.5.29 reports the client name). GTK, Chrome,
   Firefox and Electron are unaffected on all three releases.
+- **Qt 6.7+ apps with `QT_IM_MODULE=ibus` drop a pending word on a click**
+  (`ami` + click → nothing). Since Qt 6.7 (and later 6.5/6.6 patch releases;
+  qtbase `84cf0e2be5`, "IBus: Support a property ClientCommitPreedit") Qt's IBus
+  module commits the pending word only if the engine's preedit mode says so.
+  The engine says "drop it" for every Qt client, which older Qt (5.15, 6.4)
+  needs so it does not type the word twice (the issue above), and IBus gives
+  the engine no way to tell the two apart: same client name
+  (`QIBusInputContext`), same capabilities. It affects Qt 6.7+ apps where
+  `QT_IM_MODULE=ibus` is set, which im-config does on non-GNOME desktops
+  (Raspberry Pi OS on Debian 13 has Qt 6.8). gnome-session 50 (Ubuntu 26.04)
+  no longer sets it, so Qt apps on Ubuntu's GNOME use text-input-v3 and are not
+  affected; Ubuntu 24.04's Qt is 6.4. Workaround: press Space before clicking
+  away.
 
 ## Notes
 
@@ -597,7 +629,10 @@ For Wayland without logging out, run `zig build linux-wayland-e2e` (see [Wayland
   dictionary with bigram/trigram tables (written to `zig-out/db/Byakaron.db`).
   `zig build install-linux` copies it to `/usr/share/byakaron/Byakaron.db` when the file is
   present. The shareable `.deb` ships it in the same package as the keyboard
-  and app, so one file is a complete install. Override the path
+  and app, so one file is a complete install. The `.deb` gets a packed copy
+  (`spell_db pack`): the SymSpell `deletes` table stored once instead of as a
+  table plus an index, so 571 MB instead of 1007 MB, with the same answers to
+  every query (90 MB `.deb` instead of 172 MB). Override the path
   with `BYAKARON_SPELL_DB` for development. The input method types without it;
   only spell-check needs it. Candidates use the compiled-in lexicon.
 - Deb staging lives under `apps/linux/build/` (git-ignored); the shareable

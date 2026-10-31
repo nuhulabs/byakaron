@@ -71,21 +71,24 @@ else
 fi
 
 now_installed="$(dpkg-query -W -f='${Version}' byakaron 2>/dev/null || true)"
+# Shown without the epoch: the .deb is 1:0.1.x so it is newer than the
+# old Linux-only 0.2.x; people know the version as 0.1.x.
+was_shown="${was_installed#*:}" now_shown="${now_installed#*:}"
 if [[ -n "$was_installed" && "$was_installed" == "$now_installed" ]]; then
     echo
-    echo "=== Byakaron $now_installed is already the latest ==="
+    echo "=== Byakaron $now_shown is already the latest ==="
     echo
     exit 0
 elif [[ -n "$was_installed" ]]; then
     echo
-    echo "=== Byakaron updated: $was_installed -> $now_installed ==="
+    echo "=== Byakaron updated: $was_shown -> $now_shown ==="
     echo "  Your input source stays as it is. Switch with Super+Space."
     echo
     exit 0
 fi
 
 echo
-echo "=== Byakaron $now_installed is installed. Add it as an input source: ==="
+echo "=== Byakaron $now_shown is installed. Add it as an input source: ==="
 if command -v gnome-control-center >/dev/null; then
     echo "  1. Settings -> Keyboard -> Input Sources -> '+'"
     echo "  2. Choose Bangla, then Byakaron (Bangla Phonetic) -> Add"
