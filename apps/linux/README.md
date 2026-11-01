@@ -525,7 +525,12 @@ headers). That does **not** switch the session to Fcitx5.
 Install copies `byakaron.so` plus the addon/inputmethod `.conf` files if the
 addon was **rebuilt in that same run** (a leftover `zig-out` copy is not
 shipped). The addon is built for glibc 2.31 like the engine. Fcitx5 users then
-add **Byakaron** in the Fcitx5 config tool.
+add **Byakaron** in the Fcitx5 config tool — but see Known issues: today the
+addon compiles and does not load. The `.deb` does not ship it.
+
+It is C++20: Fcitx5's headers on Ubuntu 26.04 (5.1.19) use `std::span` and
+`string_view::starts_with`. The class is `BykFcitxEngine`, not `ByakaronEngine`,
+which is the C API's handle type in `byakaron.h`.
 
 ## Flatpak (app only)
 
@@ -598,6 +603,14 @@ For Wayland without logging out, run `zig build linux-wayland-e2e` (see [Wayland
 
 ## Known issues
 
+- **The Fcitx5 addon compiles but does not load.** Zig compiles C++ against
+  its own libc++, while every distribution builds Fcitx5 with libstdc++, so
+  the Fcitx5 functions that take `std::function` or `std::string` resolve to
+  different symbols: `ldd -r` on the addon reports 7 undefined symbols (5 of
+  them `std::__1` types) against Fcitx5 5.1.7 (Ubuntu 24.04) and 5.1.19
+  (26.04) alike. Fix: build `Fcitx5/engine.cpp` with the system's g++ and link
+  the Zig core as C. The `.deb` does not ship the addon, so no install is
+  affected.
 - **Qt apps on Ubuntu 20.04 / 22.04 type a pending word twice on a click**
   (`ami` + click → আমিআমি). Qt's IBus module commits the word itself and does
   not tell the daemon; IBus 1.5.22 / 1.5.26 cannot tell the engine which app
