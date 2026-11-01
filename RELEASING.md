@@ -54,10 +54,17 @@ the assets as the run's artifacts; nothing is published.
 
 ### Website installers
 
-`apps/web/app/public/install.sh` (Linux + macOS) and `install.ps1` (Windows) are
-served at `/install.sh` and `/install.ps1` on the Worker. They always pull from
-Byakaron-Assets `releases/latest`. The `/download` page shows the one-liners.
-`apps/linux/web_install.sh` remains a Linux-only fallback for older links.
+The public command is `curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash`.
+`nuhulabs.com/byakaron/` is served by the **nuhulabs.com repo**, which keeps copies
+in `app/public/byakaron/`: `install.sh` is `apps/web/app/public/install.sh` (Linux
++ macOS), and `install-amd64.sh` / `install-arm64.sh` (links shared earlier) are
+`apps/linux/web_install.sh`. Copy them there when they change; that site deploys
+on push. byakaron's Worker serves `install.sh` and `install.ps1` (Windows) and the
+`/download` page at https://byakaron.nuhulabs.workers.dev. Every installer pulls
+from Byakaron-Assets `releases/latest`, so a release itself needs no copy.
+
+After publishing, `release.yml`'s `live-install` job runs the public command in
+clean Ubuntu containers (amd64 and arm64) and fails unless it installs this release.
 
 ## Secrets
 
