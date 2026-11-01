@@ -501,12 +501,16 @@ The `.deb` Version carries epoch 1 (`1:0.1.3`): until 0.2.1 the Linux package
 had its own numbering, and without the epoch apt refuses the shared 0.1.x over
 0.2.1 as a downgrade. Keep it in every future version.
 
-The website installer is `apps/linux/web_install.sh`. Copy it by hand to
-`install.sh` in the nuhulabs.com repo (`app/public/byakaron`), plus the same
-file as `install-amd64.sh` and `install-arm64.sh` for links shared earlier. The
-page itself needs no version bump: the installer fetches the latest release.
-`bash apps/linux/tests/web_install_test.sh` checks what it decides on different
-systems.
+The public command, `curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash`,
+is served by the nuhulabs.com repo from copies in `app/public/byakaron/`:
+`install.sh` is `apps/web/app/public/install.sh` (Linux + macOS), and
+`install-amd64.sh` / `install-arm64.sh` (links shared earlier) are
+`apps/linux/web_install.sh`. Copy them there when they change (RELEASING.md).
+They download `byakaron_<arch>.deb` from the latest release, so a release needs
+no copy; the copies of 22/10 still asked for `byakaron_<version>_<arch>.deb` and
+failed for everyone from 0.1.0 (26/10) on. `release.yml` now runs the public
+command after each release. `bash apps/linux/tests/web_install_test.sh` checks
+what the installer decides on different systems.
 
 ## Fcitx5 (optional)
 
