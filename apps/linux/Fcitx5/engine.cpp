@@ -52,7 +52,7 @@ byk_fcitx_mods (const fcitx::KeyEvent &event)
 
 class BykCandidateWord : public fcitx::CandidateWord {
 public:
-    BykCandidateWord (ByakaronEngine *engine, size_t index, std::string text)
+    BykCandidateWord (BykFcitxEngine *engine, size_t index, std::string text)
         : fcitx::CandidateWord (fcitx::Text (std::move (text))),
           engine_ (engine),
           index_ (index)
@@ -65,20 +65,20 @@ public:
     }
 
 private:
-    ByakaronEngine *engine_;
+    BykFcitxEngine *engine_;
     size_t index_;
 };
 
 } // namespace
 
-ByakaronEngine::ByakaronEngine (fcitx::Instance *instance)
+BykFcitxEngine::BykFcitxEngine (fcitx::Instance *instance)
     : instance_ (instance)
 {
     dispatcher_.attach (&instance_->eventLoop ());
-    composer_ = byk_composer_open (TRUE, &ByakaronEngine::onUpdate, this);
+    composer_ = byk_composer_open (TRUE, &BykFcitxEngine::onUpdate, this);
 }
 
-ByakaronEngine::~ByakaronEngine ()
+BykFcitxEngine::~BykFcitxEngine ()
 {
     /* First: it stops the worker that calls onUpdate. */
     byakaron_composer_destroy (composer_);
@@ -89,9 +89,9 @@ ByakaronEngine::~ByakaronEngine ()
 /* The composer's worker thread: corrections arrived. Refresh on the event
  * loop, where the composer lives. */
 void
-ByakaronEngine::onUpdate (void *userdata)
+BykFcitxEngine::onUpdate (void *userdata)
 {
-    auto *self = static_cast<ByakaronEngine *> (userdata);
+    auto *self = static_cast<BykFcitxEngine *> (userdata);
     self->dispatcher_.schedule ([self] () {
         if (self->composer_ == nullptr)
             return;
@@ -104,7 +104,7 @@ ByakaronEngine::onUpdate (void *userdata)
 /* Draw the composer's state: the highlighted candidate inline, the current
  * page in the panel. */
 void
-ByakaronEngine::redraw (fcitx::InputContext *ic)
+BykFcitxEngine::redraw (fcitx::InputContext *ic)
 {
     ByakaronComposerState st;
     byakaron_composer_state (composer_, &st);
@@ -138,7 +138,7 @@ ByakaronEngine::redraw (fcitx::InputContext *ic)
 /* Insert the commit, then redraw (which clears the preedit): the same
  * Electron/Monaco order as IBus. Returns whether the key was consumed. */
 bool
-ByakaronEngine::apply (fcitx::InputContext *ic, ByakaronKeyResult result)
+BykFcitxEngine::apply (fcitx::InputContext *ic, ByakaronKeyResult result)
 {
     if (result.commit != nullptr && result.commit[0] != '\0')
         ic->commitString (result.commit);
@@ -148,7 +148,7 @@ ByakaronEngine::apply (fcitx::InputContext *ic, ByakaronKeyResult result)
 
 /* Focus left `ic` (or it was reset): insert the pending word there. */
 void
-ByakaronEngine::flush (fcitx::InputContext *ic)
+BykFcitxEngine::flush (fcitx::InputContext *ic)
 {
     if (composer_ == nullptr)
         return;
@@ -159,14 +159,14 @@ ByakaronEngine::flush (fcitx::InputContext *ic)
 }
 
 void
-ByakaronEngine::pick (fcitx::InputContext *ic, size_t index)
+BykFcitxEngine::pick (fcitx::InputContext *ic, size_t index)
 {
     if (composer_ != nullptr)
         apply (ic, byakaron_composer_pick (composer_, index));
 }
 
 void
-ByakaronEngine::keyEvent (const fcitx::InputMethodEntry &entry,
+BykFcitxEngine::keyEvent (const fcitx::InputMethodEntry &entry,
                           fcitx::KeyEvent &keyEvent)
 {
     FCITX_UNUSED (entry);
@@ -189,7 +189,7 @@ ByakaronEngine::keyEvent (const fcitx::InputMethodEntry &entry,
 }
 
 void
-ByakaronEngine::reset (const fcitx::InputMethodEntry &entry,
+BykFcitxEngine::reset (const fcitx::InputMethodEntry &entry,
                        fcitx::InputContextEvent &event)
 {
     FCITX_UNUSED (entry);
@@ -201,7 +201,7 @@ ByakaronEngine::reset (const fcitx::InputMethodEntry &entry,
 }
 
 void
-ByakaronEngine::deactivate (const fcitx::InputMethodEntry &entry,
+BykFcitxEngine::deactivate (const fcitx::InputMethodEntry &entry,
                             fcitx::InputContextEvent &event)
 {
     reset (entry, event);
@@ -210,7 +210,7 @@ ByakaronEngine::deactivate (const fcitx::InputMethodEntry &entry,
 fcitx::AddonInstance *
 ByakaronEngineFactory::create (fcitx::AddonManager *manager)
 {
-    return new ByakaronEngine (manager->instance ());
+    return new BykFcitxEngine (manager->instance ());
 }
 
 FCITX_ADDON_FACTORY (ByakaronEngineFactory);

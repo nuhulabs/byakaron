@@ -62,8 +62,10 @@ const fcitx_cflags: []const []const u8 = &.{
     "-DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_64",
 };
 
+// C++20: Fcitx5's headers on Ubuntu 26.04 (and GitHub's ubuntu-latest since
+// 10/2026) use std::span and string_view::starts_with.
 const fcitx_cxxflags: []const []const u8 = &.{
-    "-std=c++17",
+    "-std=c++20",
     "-Wall",
     "-Wextra",
     "-fPIC",

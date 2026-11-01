@@ -17,10 +17,10 @@ class InputMethodEntry;
 class AddonManager;
 }
 
-class ByakaronEngine : public fcitx::InputMethodEngineV2 {
+class BykFcitxEngine : public fcitx::InputMethodEngineV2 {
 public:
-    explicit ByakaronEngine (fcitx::Instance *instance);
-    ~ByakaronEngine () override;
+    explicit BykFcitxEngine (fcitx::Instance *instance);
+    ~BykFcitxEngine () override;
 
     void keyEvent (const fcitx::InputMethodEntry &entry,
                    fcitx::KeyEvent &keyEvent) override;
