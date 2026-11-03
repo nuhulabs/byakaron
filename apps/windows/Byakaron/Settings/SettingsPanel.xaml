@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Byakaron.Settings.SettingsPanel"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    MinWidth="360"
+    MaxWidth="440">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="20" Padding="4,0,4,8">
+            <TextBlock
+                x:Name="UnavailableText"
+                Visibility="Collapsed"
+                FontSize="12"
+                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                TextWrapping="Wrap"
+                Text="Keyboard settings are unavailable: byakaron_ffi.dll could not be loaded." />
+
+            <StackPanel Spacing="8">
+                <TextBlock
+                    FontSize="12"
+                    FontWeight="SemiBold"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="Typing" />
+                <ToggleSwitch
+                    x:Name="SuggestionsToggle"
+                    Header="Word suggestions"
+                    Toggled="Toggle_Toggled" />
+                <TextBlock
+                    FontSize="12"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    TextWrapping="Wrap"
+                    Text="Avro dictionary mode: a list of words while you type. Off types exactly what you spell, phonetically." />
+                <ToggleSwitch
+                    x:Name="SpellingToggle"
+                    Header="Spelling corrections"
+                    Toggled="Toggle_Toggled" />
+                <ToggleSwitch
+                    x:Name="LearnToggle"
+                    Header="Remember my choices"
+                    Toggled="Toggle_Toggled" />
+                <ToggleSwitch
+                    x:Name="DigitsToggle"
+                    Header="Bangla digits"
+                    Toggled="Toggle_Toggled" />
+                <ToggleSwitch
+                    x:Name="NewlineToggle"
+                    Header="New line on Enter"
+                    Toggled="Toggle_Toggled" />
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock
+                    FontSize="12"
+                    FontWeight="SemiBold"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="Candidates" />
+                <TextBlock
+                    FontSize="13"
+                    Text="List orientation" />
+                <ComboBox
+                    x:Name="OrientationCombo"
+                    MinWidth="200"
+                    SelectionChanged="OrientationCombo_SelectionChanged">
+                    <ComboBoxItem Content="Horizontal" Tag="horizontal" />
+                    <ComboBoxItem Content="Vertical" Tag="vertical" />
+                </ComboBox>
+
+                <TextBlock
+                    Margin="0,8,0,0"
+                    FontSize="13"
+                    Text="Candidates per page" />
+                <Slider
+                    x:Name="PerPageSlider"
+                    Minimum="3"
+                    Maximum="9"
+                    StepFrequency="1"
+                    TickFrequency="1"
+                    ValueChanged="PerPageSlider_ValueChanged" />
+                <TextBlock
+                    x:Name="PerPageValueText"
+                    FontSize="12"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock
+                    FontSize="12"
+                    FontWeight="SemiBold"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="Personal dictionary" />
+                <TextBlock
+                    FontSize="12"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    TextWrapping="Wrap"
+                    Text="Your words are suggested after Avro's while you type." />
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox
+                        x:Name="NewWordBox"
+                        PlaceholderText="Add a Bangla word" />
+                    <Button
+                        x:Name="AddWordButton"
+                        Grid.Column="1"
+                        Content="Add"
+                        Click="AddWord_Click" />
+                </Grid>
+                <TextBlock
+                    x:Name="WordStatusText"
+                    Visibility="Collapsed"
+                    FontSize="12"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    x:Name="UserWordsEmptyText"
+                    FontSize="12"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Text="No words yet." />
+                <StackPanel x:Name="UserWordsPanel" Spacing="2" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

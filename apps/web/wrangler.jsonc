@@ -1,0 +1,37 @@
+{
+	"$schema": "https://cdn.jsdelivr.net/npm/wrangler/config-schema.json",
+	"name": "byakaron",
+	"main": "main.ts",
+	"compatibility_date": "2026-03-10",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"kv_namespaces": [
+		{
+			"binding": "KV",
+			"id": "b21e9eae94ec4c0889f05381b7753c2c",
+		},
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "byakaron",
+			"migrations_dir": "../../zig-out/d1",
+			"database_id": "512e72c6-b7f5-4456-a739-af4a86114b5a"
+		}
+	],
+	"build": {
+		"watch_dir": "./app",
+		"command": "zig build zx -- build --target=wasm32-wasi --release=small --prerender"
+	},
+	"assets": {
+		"directory": "../../zig-out/static",
+		"binding": "ASSETS"
+	},
+	"observability": {
+		"logs": {
+			"enabled": false,
+			"invocation_logs": true
+		}
+	}
+}

@@ -1,0 +1,46 @@
+.{
+    // Public site origin for one-line installers (/install.sh, /install.ps1).
+    .site = "https://nuhulabs.com/byakaron",
+    // Stable asset names on nuhulabs/Byakaron-Assets. Links use
+    // /releases/latest/download/<file> so this catalog does not need a
+    // per-release refresh.
+    .repo = "nuhulabs/Byakaron-Assets",
+    .assets = .{
+        .{
+            .id = "macos",
+            .label = "macOS",
+            .detail = "Apple Silicon & Intel · .dmg",
+            .file = "Byakaron.dmg",
+        },
+        .{
+            .id = "windows",
+            .label = "Windows",
+            .detail = "x64 installer · .exe",
+            .file = "Byakaron-Setup.exe",
+        },
+        .{
+            .id = "linux_amd64",
+            .label = "Linux (amd64)",
+            .detail = "Ubuntu / Debian · .deb",
+            .file = "byakaron_amd64.deb",
+        },
+        .{
+            .id = "linux_arm64",
+            .label = "Linux (arm64)",
+            .detail = "Ubuntu / Debian · .deb",
+            .file = "byakaron_arm64.deb",
+        },
+        .{
+            .id = "android_apk",
+            .label = "Android (APK)",
+            .detail = "Sideload · .apk",
+            .file = "Byakaron.apk",
+        },
+        .{
+            .id = "android_aab",
+            .label = "Android (Play bundle)",
+            .detail = "Play Store · .aab",
+            .file = "Byakaron.aab",
+        },
+    },
+}

@@ -1,0 +1,2 @@
+# Treat .zx (ziex) templates as Zig on GitHub for syntax highlighting
+*.zx text eol=lf linguist-language=Zig

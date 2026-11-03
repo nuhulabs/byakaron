@@ -7,23 +7,25 @@
 const std = @import("std");
 const testing = std.testing;
 
-pub const Transliteration = @import("transliteration/transliteration.zig").Transliteration;
+pub const Transliteration = @import("transliteration");
 pub const Tokenization = @import("tokenization");
 pub const Spell = @import("spell");
 pub const SpellSqlite = @import("Spell/Sqlite.zig");
 pub const AutoComplete = @import("autocomplete");
-pub const AutoCompleteMem = @import("AutoComplete/Mem.zig");
+pub const AutoCompleteMem = @import("autocomplete_mem");
 pub const AutoCompleteSqlite = @import("AutoComplete/Sqlite.zig");
-pub const TransliterationMode = @import("transliteration/transliteration.zig").Mode;
+pub const Composer = @import("composer");
+pub const TransliterationMode = Transliteration.Mode;
 
-// Pull in the C-ABI FFI exports (byakaron_transliterate / byakaron_string_free)
-// so they are included when this module is built as a static/shared library.
+// Pull in the C-ABI FFI exports (and the JNI bridge on Android) so they are
+// included when this module is built as a static/shared library.
 comptime {
     _ = @import("ffi/ffi.zig");
+    if (@import("builtin").abi.isAndroid()) _ = @import("ffi/jni.zig");
 }
 
 test {
-    _ = @import("transliteration/transliteration.zig");
+    _ = @import("transliteration");
     _ = @import("tokenization");
     _ = @import("spell");
     _ = SpellSqlite;
