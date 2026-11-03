@@ -101,6 +101,11 @@ pub fn build(b: *std.Build) !void {
     b.addNamedLazyPath("spell_db", spell_db);
     const install_spell_db = b.addInstallFile(spell_db, "db/Byakaron.db");
     b.step("db", "Download bnwiki + build Byakaron.db → zig-out/db/").dependOn(&install_spell_db.step);
+    // What every app package ships (Linux, macOS, Windows, Android): the same
+    // answers in about half the bytes. zig-out/db/app/ for Xcode; zig-out/db/
+    // keeps the original for the web, `trim` and `d1`.
+    const app_db = packSpellDb(b, spell_db_tool, spell_db);
+    const install_app_db = b.addInstallFile(app_db, "db/app/Byakaron.db");
     b.step("db-debug", "Build the text-keyed spell_debug.db (large) → zig-out/db/")
         .dependOn(&b.addInstallFile(spell.debug_db, "db/spell_debug.db").step);
 
@@ -156,7 +161,7 @@ pub fn build(b: *std.Build) !void {
 
     // Linux: IBus engine, GTK app, optional Fcitx5, against a pinned Ubuntu
     // sysroot on every host (see `addLinux`).
-    addLinux(b, target, optimize, mod, avro, packSpellDb(b, spell_db_tool, spell_db), &install_spell_db.step);
+    addLinux(b, target, optimize, mod, avro, app_db, &install_spell_db.step);
 
     // Executable (only built for non-Android, non-wasm targets)
     if (!is_android and !is_wasi) {
@@ -210,7 +215,7 @@ pub fn build(b: *std.Build) !void {
             &b.addInstallFileWithDir(mac_lib.getEmittedBin(), .{ .custom = "lib/macos" }, "libbyakaron.a").step,
             &b.addInstallFileWithDir(b.path("src/ffi/byakaron.h"), .{ .custom = "lib/macos" }, "byakaron.h").step,
             install_lexicon,
-            &install_spell_db.step,
+            &install_app_db.step,
         };
         const xcode_exe = hostExe(b, "xcode", "src/build/xcode.zig");
         const tool = hostExe(b, "macos", "src/build/macos.zig");
@@ -286,7 +291,7 @@ pub fn build(b: *std.Build) !void {
         b.step("macos-icons", "Regenerate apps/macos/Resources/MenuIcon.{pdf,tiff}").dependOn(&icons.step);
     }
 
-    addAndroid(b, avro, spell_db);
+    addAndroid(b, avro, app_db);
 
     // Web app (apps/web): a ziex app in this build graph, so it shares the cache.
     //   zig build run-web    dev server (hot reload)
@@ -369,7 +374,7 @@ pub fn build(b: *std.Build) !void {
         }
     }
 
-    addWindows(b, avro, spell_db);
+    addWindows(b, avro, app_db);
 
     // Regenerate the committed grammars from the pinned iAvro sources:
     // `zig build grammars` (see src/build/grammars.zig).

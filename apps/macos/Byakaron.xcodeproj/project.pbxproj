@@ -50,7 +50,7 @@
 		894ACDF42FF1A4970042A597 /* Autocorrect.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Autocorrect.json; sourceTree = "<group>"; };
 		894ACDF52FF1A4970042A597 /* Byakaron.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Byakaron.entitlements; sourceTree = "<group>"; };
 		894ACDF62FF1A4970042A597 /* Dictionary.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = Dictionary.json; path = ../../zig-out/db/Dictionary.json; sourceTree = SOURCE_ROOT; };
-		894ACF012FF1D0000042A597 /* Byakaron.db */ = {isa = PBXFileReference; lastKnownFileType = file; name = Byakaron.db; path = ../../zig-out/db/Byakaron.db; sourceTree = SOURCE_ROOT; };
+		894ACF012FF1D0000042A597 /* Byakaron.db */ = {isa = PBXFileReference; lastKnownFileType = file; name = Byakaron.db; path = ../../zig-out/db/app/Byakaron.db; sourceTree = SOURCE_ROOT; };
 		894ACDFA2FF1A4970042A597 /* Info-keyboard.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info-keyboard.plist"; sourceTree = "<group>"; };
 		894ACE1D2FF1A5AA0042A597 /* Byakaron Keyboard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Byakaron Keyboard.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		894ACE492FF1B24F0042A597 /* libbyakaron.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libbyakaron.a; path = ../../zig-out/lib/macos/libbyakaron.a; sourceTree = SOURCE_ROOT; };
