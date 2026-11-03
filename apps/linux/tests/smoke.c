@@ -250,6 +250,15 @@ int main(void)
                 if (!has_sug) failures++;
                 g_strfreev(sug);
 
+                /* A missing vowel sign beats two lookalike swaps to a rare word
+                 * (ভাঙল, seen once in the corpus). */
+                sug = byk_spell_suggest(spell, "বাংল", 5);
+                const gboolean bangla_first = sug && g_strcmp0(sug[0], "বাংলা") == 0;
+                printf("  %-4s %-28s -> %s\n", bangla_first ? "ok" : "FAIL",
+                       "suggest বাংল first", sug && sug[0] ? sug[0] : "(none)");
+                if (!bangla_first) failures++;
+                g_strfreev(sug);
+
                 byk_spell_free(spell);
             }
         }
