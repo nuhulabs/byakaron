@@ -845,8 +845,16 @@ fn ci(t: *Tool, repo: []const u8, prefix_arg: ?[]const u8) !u8 {
         if (std.mem.indexOf(u8, syms, "fcitx_addon_factory_instance") == null) {
             return fail("{s} does not export fcitx_addon_factory_instance", .{fcitx_so});
         }
-        try assertGlibc(t, fcitx_so);
-        std.debug.print(">>> {s} exports fcitx_addon_factory_instance\n", .{fcitx_so});
+        // g++ builds it against this machine's Fcitx5 (whose C++ API differs
+        // between versions), so no glibc 2.31 check: what matters is that it
+        // loads here. The Zig-built addon had 7 unresolved std::__1 symbols and
+        // never loaded.
+        const ldd = capture(t, &.{ "sh", "-c", "ldd -r \"$0\" 2>&1", fcitx_so }) orelse "";
+        if (std.mem.indexOf(u8, ldd, "undefined symbol") != null or std.mem.indexOf(u8, ldd, "not found") != null) {
+            std.debug.print("{s}\n", .{ldd});
+            return fail("{s} would not load: unresolved symbols or libraries", .{fcitx_so});
+        }
+        std.debug.print(">>> {s} exports fcitx_addon_factory_instance, every symbol resolves\n", .{fcitx_so});
     } else {
         std.debug.print("skipped (zig build linux-fcitx5 was not run; needs libfcitx5core-dev)\n", .{});
     }

@@ -514,23 +514,33 @@ what the installer decides on different systems.
 
 ## Fcitx5 (optional)
 
-A second IME framework, not a skin over IBus. `apps/linux/Fcitx5/` is a
-C++ `InputMethodEngineV2` over the same Zig composer as `Keyboard/engine.c`
-(one composer for the addon; a pending word is committed when its input
-context is reset or loses focus, since Fcitx5 does not commit the preedit by
-itself). Build with `zig build linux-fcitx5` when
-`libfcitx5core-dev` is installed (or `PKG_CONFIG_PATH` points at those
-headers). That does **not** switch the session to Fcitx5.
+A second IME framework, not a skin over IBus, and optional: IBus stays the
+Byakaron keyboard on Linux (the `.deb`, the install command, every test). For
+desktops that run Fcitx5 instead (often KDE), `apps/linux/Fcitx5/` is a C++
+`InputMethodEngineV2` over the same Zig composer as `Keyboard/engine.c` (a
+pending word is committed when its input context is reset or loses focus,
+since Fcitx5 does not commit the preedit by itself).
 
+Build it on the machine that uses it, with `libfcitx5core-dev` and `g++`
+installed (or `PKG_CONFIG_PATH` pointing at the Fcitx5 headers):
+`zig build linux-fcitx5`. That does **not** switch the session to Fcitx5.
 Install copies `byakaron.so` plus the addon/inputmethod `.conf` files if the
 addon was **rebuilt in that same run** (a leftover `zig-out` copy is not
-shipped). The addon is built for glibc 2.31 like the engine. Fcitx5 users then
-add **Byakaron** in the Fcitx5 config tool — but see Known issues: today the
-addon compiles and does not load. The `.deb` does not ship it.
+shipped). Fcitx5 users then add **Byakaron** in the Fcitx5 config tool. The
+`.deb` does not ship it: the addon is built against one Fcitx5's C++ API.
 
-It is C++20: Fcitx5's headers on Ubuntu 26.04 (5.1.19) use `std::span` and
-`string_view::starts_with`. The class is `BykFcitxEngine`, not `ByakaronEngine`,
-which is the C API's handle type in `byakaron.h`.
+The system's g++ compiles `engine.cpp`, not Zig. Fcitx5's API passes
+`std::string` and `std::function`, distributions build Fcitx5 with libstdc++,
+and Zig's C++ is libc++, so the Zig-built addon referenced `std::__1` symbols
+no Fcitx5 has and never loaded ("undefined symbol" in Fcitx5's log). Zig still
+builds the engine and the C glue as static libraries with a C interface; g++
+links them with `--no-undefined`, and `zig build linux-ci` checks that every
+symbol resolves. It is C++20 (Fcitx5 5.1.19's headers use `std::span`), and
+the class is `BykFcitxEngine` (`ByakaronEngine` is the C API's handle type).
+
+Checked in clean containers with Fcitx5 5.1.7 (Ubuntu 24.04) and 5.1.19
+(26.04), typing through Fcitx5's D-Bus frontend: the addon loads, `ami ` gives
+আমি, `ami bangla ` gives আমি বাংলা, the preedit shows আমি.
 
 ## Flatpak (app only)
 
@@ -603,14 +613,6 @@ For Wayland without logging out, run `zig build linux-wayland-e2e` (see [Wayland
 
 ## Known issues
 
-- **The Fcitx5 addon compiles but does not load.** Zig compiles C++ against
-  its own libc++, while every distribution builds Fcitx5 with libstdc++, so
-  the Fcitx5 functions that take `std::function` or `std::string` resolve to
-  different symbols: `ldd -r` on the addon reports 7 undefined symbols (5 of
-  them `std::__1` types) against Fcitx5 5.1.7 (Ubuntu 24.04) and 5.1.19
-  (26.04) alike. Fix: build `Fcitx5/engine.cpp` with the system's g++ and link
-  the Zig core as C. The `.deb` does not ship the addon, so no install is
-  affected.
 - **Qt apps on Ubuntu 20.04 / 22.04 type a pending word twice on a click**
   (`ami` + click → আমিআমি). Qt's IBus module commits the word itself and does
   not tell the daemon; IBus 1.5.22 / 1.5.26 cannot tell the engine which app
