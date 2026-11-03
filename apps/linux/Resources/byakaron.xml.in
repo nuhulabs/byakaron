@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  IBus component descriptor for Byakaron.
+
+  src/build/linux.zig (install-linux, package-linux, run-linux) substitutes the
+  exec and icon placeholders with the
+  absolute paths of the installed files, then writes the result to
+  /usr/share/ibus/component/. That directory is the only one ibus-daemon scans
+  for components. A per-user copy under ~/.local/share is never read, and
+  IBUS_COMPONENT_PATH is not honoured by ibus 1.5.x either (both verified
+  on 1.5.29).
+
+  Note for editors: an XML comment may not contain a double hyphen, and the
+  placeholder names are written here without their delimiters so the install
+  substitution does not rewrite this comment too.
+
+  <language>bn</language> is what puts the engine under Bangla in
+  GNOME Settings -> Keyboard -> Input Sources.
+-->
+<component>
+  <name>org.freedesktop.IBus.Byakaron</name>
+  <description>Byakaron Bangla phonetic input method</description>
+  <exec>@BYK_EXEC@ --ibus</exec>
+  <version>0.1.3</version>
+  <author>Byakaron contributors</author>
+  <license>MIT</license>
+  <homepage>https://nuhulabs.com/byakaron</homepage>
+  <textdomain>byakaron</textdomain>
+
+  <engines>
+    <engine>
+      <name>byakaron</name>
+      <language>bn</language>
+      <license>MIT</license>
+      <author>Byakaron contributors</author>
+      <icon>@BYK_ICON@</icon>
+      <layout>us</layout>
+      <longname>Byakaron (Bangla Phonetic)</longname>
+      <description>Type Bangla phonetically using the latin keyboard</description>
+      <rank>99</rank>
+      <symbol>ব</symbol>
+      <!--
+        Wires the panel's "Preferences" button to the GTK app. Substituted with
+        an empty string when the app was not installed, because a setup command
+        that does not exist gives a button that silently does nothing.
+      -->
+      <setup>@BYK_SETUP@</setup>
+    </engine>
+  </engines>
+</component>

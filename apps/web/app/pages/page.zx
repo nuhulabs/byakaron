@@ -1,0 +1,1141 @@
+//! Interactive Bangla spell checker — client-side UI with `zx.fetch` to `/api/spell`.
+//! Typing, issue selection, and applying suggestions do not full-page refresh.
+//! Avro typing runs in the browser (wasm) through the same `Composer` every
+//! native keyboard drives, so keys, candidates, settings and learned choices
+//! behave exactly as on Linux, macOS, Windows and Android. Its user data lives
+//! in `zx.kv` (the browser's storage) under the same names as the native data
+//! files.
+
+const std = @import("std");
+const zx = @import("zx");
+const Composer = @import("composer");
+const AutoComplete = @import("autocomplete");
+const Tokenizer = @import("tokenization").Tokenizer;
+const schema = @import("api/spell/schema.zig");
+
+// —— Client-side model (WASM module globals) ——
+
+const Suggestion = schema.Suggestion;
+const TokenResult = schema.TokenResult;
+
+var draft_text: []const u8 = "";
+var results: []const TokenResult = &.{};
+var selected_issue: usize = 0;
+var checking: bool = false;
+var check_seq: u32 = 0;
+var check_in_flight: bool = false;
+var ignored: std.StringHashMapUnmanaged(void) = .empty;
+
+/// Trailing throttle: at most one `/api/spell` per `check_throttle_ms` while typing.
+/// (zx.client has setTimeout but no clearTimeout, so we coalesce with an armed flag.)
+const check_throttle_ms: u32 = 400;
+var check_dirty: bool = false;
+var check_timer_armed: bool = false;
+
+/// Avro typing on/off for this page (switching between Bangla and English
+/// input, like changing the keyboard layout); the keyboard's own settings are
+/// `Composer.Settings`.
+var transliterate_on: bool = true;
+/// The word being composed occupies `compose_len` bytes of `draft_text` at
+/// `compose_start`: the composer's preedit.
+var composer: ?Composer = null;
+var compose_start: usize = 0;
+var compose_len: usize = 0;
+var settings_open: bool = false;
+
+/// Persisted in the browser through `zx.kv`: the draft as raw text, the caret,
+/// the last spell-check results (so a reload comes back exactly as it was
+/// left), and this page's Avro on/off toggle. The composer keeps its own blobs
+/// (`Composer.Store` names) in the same kv.
+const WebPrefs = struct {
+    transliterate: bool = true,
+};
+const Caret = struct {
+    start: usize = 0,
+    end: usize = 0,
+};
+const draft_key = "draft";
+const prefs_key = "settings";
+const caret_key = "caret";
+const results_key = "results";
+/// Where earlier versions of this page kept Avro's learned choices.
+const legacy_selections_key = "avro_selections";
+var store_loaded: bool = false;
+var saved_caret: ?Caret = null;
+/// False until the saved state is in place. The server cannot read the browser's
+/// store, so the parts it would change stay hidden (`.is-restoring`) until then
+/// instead of popping in and shifting the layout.
+var restored: bool = false;
+
+pub fn Page(ctx: zx.PageContext) !zx.Component {
+    return (
+        <main @allocator={ctx.arena} class="app-shell">
+            <SpellApp @client />
+        </main>
+    );
+}
+
+pub fn SpellApp(ctx: *zx.ComponentContext) zx.Component {
+    const issues = collectIssues(ctx.allocator);
+    const unknown_count = issues.len;
+    const sel_idx = clampIndex(selected_issue, unknown_count);
+    const selected: ?Issue = if (unknown_count > 0) issues[sel_idx] else null;
+    const word_count = results.len;
+    const char_count = utf8Codepoints(draft_text);
+    if (zx.platform.role == .client and !store_loaded) loadStore();
+    const menu = currentMenu(ctx.allocator);
+    const meta = std.fmt.allocPrint(
+        ctx.allocator,
+        "{d} words · {d} issues",
+        .{ word_count, unknown_count },
+    ) catch "—";
+
+    return (
+        <div @allocator={ctx.allocator} class={if (restored) "app-layout" else "app-layout is-restoring"}>
+            <aside class="sidebar">
+                <h2 class="sidebar-title">Issues ({unknown_count})</h2>
+                <div class="issue-list">
+                    {if (unknown_count == 0) (
+                        <p class="issue-empty">
+                            {if (draft_text.len == 0) "Nothing to check yet" else "No misspellings"}
+                        </p>
+                    )}
+                    {for (issues) |issue| (
+                        <button
+                            class={if (issue.ordinal == sel_idx) "issue-item is-active" else "issue-item"}
+                            type="button"
+                            value={issue.ordinal}
+                            onclick={onSelectIssue}
+                        >
+                            <span class="issue-icon" aria-hidden="true"></span>
+                            <span class="issue-word">{issue.token}</span>
+                            <span class="issue-count">{issue.suggestion_count}</span>
+                        </button>
+                    )}
+                </div>
+            </aside>
+
+            <section class="main-pane">
+                <header class="main-header">
+                    <div class="brand-block">
+                        <h1 class="brand">Byakaron</h1>
+                        <p class="brand-meta">
+                            {meta}
+                            <span class={if (checking) "check-dot is-busy" else "check-dot"} title="Checking" aria-hidden="true"></span>
+                        </p>
+                    </div>
+                    <div class="toolbar">
+                        <button
+                            class={if (transliterate_on) "tool-btn tool-toggle is-on" else "tool-btn tool-toggle"}
+                            type="button"
+                            title={if (transliterate_on) "Avro transliteration on: English typing becomes Bangla" else "Avro transliteration off"}
+                            aria-label="Toggle Avro transliteration"
+                            aria-pressed={if (transliterate_on) "true" else "false"}
+                            onclick={onToggleTransliterate}
+                        >{if (transliterate_on) "অ" else "A"}</button>
+                        <button
+                            class={if (settings_open) "tool-btn tool-toggle is-on" else "tool-btn tool-toggle"}
+                            type="button"
+                            title="Keyboard settings"
+                            aria-label="Keyboard settings"
+                            aria-pressed={if (settings_open) "true" else "false"}
+                            onclick={onToggleSettingsPanel}
+                        ><span class="icon-gear" aria-hidden="true"></span></button>
+                        <button class="tool-btn" type="button" title="Check spelling" aria-label="Check spelling" onclick={onCheckNow}>
+                            <span class="icon-wand" aria-hidden="true"></span>
+                        </button>
+                        <button class="tool-btn" type="button" title="Clear" aria-label="Clear" onclick={onClear}>
+                            <span class="icon-trash" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                </header>
+
+                <div class="editor">
+                    {if (results.len > 0) (
+                        <div class="editor-backdrop" aria-hidden="true">
+                            {for (results) |r| (
+                                <span class={tokenClass(r)}>{r.token}</span>
+                            )}
+                        </div>
+                    )}
+                    <textarea
+                        id="spell-text"
+                        class="editor-input"
+                        rows="8"
+                        autofocus
+                        placeholder={if (transliterate_on) "ইংরেজিতে লিখুন: ami banglay gan gai…" else "এখানে বাংলা লিখুন…"}
+                        spellcheck="false"
+                        autocomplete="off"
+                        oninput={onTextInput}
+                        onkeydown={onEditorKeyDown}
+                        onkeyup={onCaretMoved}
+                        onmouseup={onCaretMoved}
+                        onblur={onEditorBlur}
+                    >{draft_text}</textarea>
+                    {if (menu.items.len > 0) (
+                        <ul class={if (menu.vertical) "suggest-menu" else "suggest-menu is-horizontal"} role="listbox">
+                            {for (menu.items, 0..) |item, mi| (
+                                <li
+                                    class={if (mi == menu.highlight) "suggest-item is-active" else "suggest-item"}
+                                    role="option"
+                                    value={mi}
+                                    onmousedown={onPickSuggestion}
+                                ><span class="suggest-num">{mi + 1}</span>{item}</li>
+                            )}
+                            {if (menu.page_count > 1) (
+                                <li class="suggest-page" aria-hidden="true">{menu.page_label}</li>
+                            )}
+                        </ul>
+                    )}
+                </div>
+
+                {if (settings_open) (
+                    <SettingsPanel />
+                )}
+
+                <div class="fix-slot">
+                {if (selected) |sel| (
+                    <div class="fix-bar">
+                        <div class="fix-target">
+                            <span class="fix-word">{sel.token}</span>
+                            <span class="fix-label">Replace with</span>
+                        </div>
+                        <div class="fix-chips">
+                            {if (sel.suggestions.len == 0) (
+                                <span class="fix-none">No suggestions</span>
+                            )}
+                            {for (sel.suggestions, 0..) |s, si| (
+                                <button
+                                    class="fix-chip"
+                                    type="button"
+                                    value={si}
+                                    onclick={onApplySuggestion}
+                                >{s.word}</button>
+                            )}
+                        </div>
+                        <button class="fix-ignore" type="button" onclick={onIgnore}>Ignore</button>
+                    </div>
+                )}
+                {if (selected == null and results.len > 0) (
+                    <div class="fix-bar fix-bar-ok">
+                        <span class="fix-ok">All words look good.</span>
+                        <button class="fix-ignore" type="button" onclick={onCheckNow}>Recheck</button>
+                    </div>
+                )}
+                </div>
+
+                <footer class="status-bar">
+                    <div class="status-left">
+                        <span class="stat">
+                            <span class="icon-list" aria-hidden="true"></span>
+                            {word_count} words
+                        </span>
+                        <span class="stat">
+                            <span class="icon-char" aria-hidden="true"></span>
+                            {char_count} characters
+                        </span>
+                    </div>
+                    <div class="status-right">
+                        <span class={if (unknown_count > 0) "stat stat-warn" else "stat"}>
+                            <span class="icon-warn" aria-hidden="true"></span>
+                            {unknown_count} issues
+                        </span>
+                    </div>
+                </footer>
+            </section>
+        </div>
+    );
+}
+
+fn tokenClass(r: TokenResult) []const u8 {
+    if (r.known or ignored.contains(r.token)) return "tok";
+    return "tok tok-bad";
+}
+
+const Issue = struct {
+    ordinal: usize,
+    token: []const u8,
+    suggestion_count: usize,
+    suggestions: []const Suggestion,
+};
+
+fn collectIssues(allocator: std.mem.Allocator) []const Issue {
+    var list: std.ArrayList(Issue) = .empty;
+    var n: usize = 0;
+    for (results) |r| {
+        if (r.known) continue;
+        if (ignored.contains(r.token)) continue;
+        list.append(allocator, .{
+            .ordinal = n,
+            .token = r.token,
+            .suggestion_count = r.suggestions.len,
+            .suggestions = r.suggestions,
+        }) catch break;
+        n += 1;
+    }
+    return list.toOwnedSlice(allocator) catch &.{};
+}
+
+fn clampIndex(idx: usize, count: usize) usize {
+    if (count == 0) return 0;
+    if (idx >= count) return count - 1;
+    return idx;
+}
+
+fn utf8Codepoints(text: []const u8) usize {
+    return std.unicode.utf8CountCodepoints(text) catch text.len;
+}
+
+// —— Client handlers ——
+
+fn onTextInput(e: zx.client.Event) void {
+    const v = e.value() orelse "";
+    draft_text = zx.allocator.dupe(u8, v) catch return;
+    // Composer keys are handled in keydown and never reach here: this is a
+    // paste, an OS input method, a deletion, or typing with Avro off. Whatever
+    // was being composed is now just text.
+    if (composer) |*c| c.reset();
+    compose_len = 0;
+    zx.client.rerender();
+    draftChanged();
+}
+
+fn onToggleTransliterate(_: zx.client.Event) void {
+    finishWord();
+    transliterate_on = !transliterate_on;
+    saveWebPrefs();
+    zx.client.rerender();
+    focusTextarea();
+}
+
+fn onEditorBlur(_: zx.client.Event) void {
+    finishWord();
+}
+
+/// Commit the word being composed where it stands (focus or caret leaving it).
+fn finishWord() void {
+    const c = ensureComposer() orelse return;
+    if (!c.composing()) return;
+    const text = c.flush() catch return;
+    apply(.{ .handled = true, .commit = text }, null, true);
+}
+
+fn onEditorKeyDown(e: zx.client.Event) void {
+    if (!transliterate_on) return;
+    const ke = e.as(zx.client.events.KeyboardEvent, zx.allocator);
+    if (ke.is_composing) return; // an OS input method is active
+    const k = keyFor(ke.key) orelse return; // modifier keys alone
+    const c = ensureComposer() orelse return;
+    const mods: Composer.Modifiers = .{ .shift = ke.shift_key, .ctrl = ke.ctrl_key, .alt = ke.alt_key, .meta = ke.meta_key };
+
+    const was_composing = c.composing();
+    if (!was_composing and k == .char) {
+        // A new word replaces whatever is selected.
+        syncDraftFromDom();
+        const sel = readSelection() orelse return;
+        compose_start = sel.start;
+        compose_len = sel.end - sel.start;
+    } else if (was_composing) {
+        // The caret left the word (click, programmatic move): commit it first.
+        const sel = readSelection() orelse return;
+        if (sel.start != sel.end or sel.start != compose_start + compose_len) finishWord();
+    }
+
+    const outcome = c.key(k, mods) catch return;
+    apply(outcome, e, c.composing() or was_composing);
+}
+
+/// The composer key for a DOM `KeyboardEvent.key`, or null for keys the
+/// composer never sees (Shift, CapsLock, …).
+fn keyFor(name: []const u8) ?Composer.Key {
+    if (name.len == 1) return if (name[0] == ' ') .space else if (name[0] >= 0x21 and name[0] <= 0x7e) .{ .char = name[0] } else .other;
+    const named = [_]struct { []const u8, Composer.Key }{
+        .{ "Enter", .enter },         .{ "Tab", .tab },           .{ "Backspace", .backspace },
+        .{ "Escape", .escape },       .{ "ArrowUp", .up },        .{ "ArrowDown", .down },
+        .{ "ArrowLeft", .left },      .{ "ArrowRight", .right },  .{ "PageUp", .page_up },
+        .{ "PageDown", .page_down },
+    };
+    for (named) |n| if (std.mem.eql(u8, name, n[0])) return n[1];
+    for ([_][]const u8{ "Shift", "Control", "Alt", "Meta", "CapsLock", "AltGraph", "Fn", "Dead", "Unidentified" }) |m| {
+        if (std.mem.eql(u8, name, m)) return null;
+    }
+    return .other;
+}
+
+fn onPickSuggestion(e: zx.client.Event) void {
+    // mousedown + preventDefault keeps focus (and the caret) in the textarea.
+    e.preventDefault();
+    const raw = e.value() orelse return;
+    const c = ensureComposer() orelse return;
+    const outcome = c.pick(std.fmt.parseInt(usize, raw, 10) catch return) catch return;
+    apply(outcome, null, true);
+}
+
+/// Put a composer result into the textarea: `commit` replaces the word slot,
+/// then the new preedit (if still composing) takes it.
+fn apply(outcome: Composer.Outcome, e: ?zx.client.Event, touched: bool) void {
+    const c = ensureComposer() orelse return;
+    if (outcome.handled) if (e) |ev| ev.preventDefault();
+    if (!touched) return;
+    if (outcome.commit.len > 0 or !c.composing()) {
+        replaceWord(outcome.commit);
+        compose_start += compose_len;
+        compose_len = 0;
+    }
+    if (c.composing()) {
+        replaceWord(c.preedit());
+        positionMenu();
+    }
+    zx.client.rerender();
+    draftChanged();
+}
+
+fn replaceWord(text: []const u8) void {
+    const end = @min(compose_start + compose_len, draft_text.len);
+    const next = std.mem.concat(zx.allocator, u8, &.{ draft_text[0..compose_start], text, draft_text[end..] }) catch return;
+    compose_len = text.len;
+    draft_text = next;
+    setTextareaValue(draft_text, compose_start + compose_len);
+}
+
+/// The candidate page as the menu draws it.
+const Menu = struct {
+    items: []const []const u8 = &.{},
+    highlight: usize = 0,
+    vertical: bool = false,
+    page_count: usize = 0,
+    page_label: []const u8 = "",
+};
+
+fn currentMenu(allocator: std.mem.Allocator) Menu {
+    const c = if (composer) |*c| c else return .{};
+    if (!c.panelVisible()) return .{};
+    return .{
+        .items = c.pageItems(),
+        .highlight = c.pageHighlight(),
+        .vertical = c.settings.candidate_orientation == .vertical,
+        .page_count = c.pageCount(),
+        .page_label = std.fmt.allocPrint(allocator, "{d}/{d}", .{ c.page() + 1, c.pageCount() }) catch "",
+    };
+}
+
+fn ensureComposer() ?*Composer {
+    if (zx.platform.role != .client) return null;
+    if (composer == null) composer = Composer.init(zx.allocator, kv_store, web_corrector.corrector()) catch return null;
+    return &composer.?;
+}
+
+// —— Composer user data in zx.kv ——
+//
+// zx.kv is the browser's IndexedDB, which is asynchronous: a key handler that
+// touched it would suspend before it could `preventDefault`, and the browser
+// would type the raw key. So the composer's blobs are mirrored in memory —
+// read from kv once at startup (`loadStore`) — and written back from a timer.
+
+const blob_names = [_][]const u8{ Composer.Store.settings, Composer.Store.selections, Composer.Store.user_words };
+var blobs: [blob_names.len]?[]u8 = .{ null, null, null };
+var blobs_dirty: [blob_names.len]bool = .{ false, false, false };
+var blob_flush_armed: bool = false;
+
+var kv_ctx: u8 = 0;
+const kv_store: Composer.Store = .{ .ctx = &kv_ctx, .vtable = &.{ .load = blobLoad, .save = blobSave }, .codec = &kv_codec };
+
+// Typed zxon like zx.kv.putAs, not the native JSON, to keep std.json out of the client.
+const kv_codec: Composer.Store.Codec = .{
+    .encodeSettings = encodeSettings,
+    .decodeSettings = decodeSettings,
+    .encodeSelections = encodeSelections,
+    .decodeSelections = decodeSelections,
+};
+
+fn encodeTyped(allocator: std.mem.Allocator, value: anytype) anyerror![]u8 {
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    try zx.Kv.encodeTyped(&out.writer, value);
+    return out.toOwnedSlice();
+}
+
+fn encodeSettings(allocator: std.mem.Allocator, s: Composer.Settings) anyerror![]u8 {
+    return encodeTyped(allocator, s);
+}
+
+fn decodeSettings(allocator: std.mem.Allocator, bytes: []const u8) anyerror!Composer.Settings {
+    return zx.Kv.decodeTyped(Composer.Settings, allocator, bytes);
+}
+
+fn encodeSelections(allocator: std.mem.Allocator, ac: *const AutoComplete) anyerror![]u8 {
+    const list = try ac.selectionList(allocator);
+    defer allocator.free(list);
+    return encodeTyped(allocator, list);
+}
+
+fn decodeSelections(gpa: std.mem.Allocator, ac: *AutoComplete, bytes: []const u8) anyerror!void {
+    var arena: std.heap.ArenaAllocator = .init(gpa);
+    defer arena.deinit();
+    const list = try zx.Kv.decodeTyped([]const AutoComplete.Selection, arena.allocator(), bytes);
+    try ac.importSelectionList(gpa, list);
+}
+
+fn blobSlot(name: []const u8) ?usize {
+    for (blob_names, 0..) |n, i| if (std.mem.eql(u8, n, name)) return i;
+    return null;
+}
+
+fn blobLoad(_: *anyopaque, allocator: std.mem.Allocator, name: []const u8) ?[]u8 {
+    const bytes = blobs[blobSlot(name) orelse return null] orelse return null;
+    return allocator.dupe(u8, bytes) catch null;
+}
+
+fn blobSave(_: *anyopaque, name: []const u8, bytes: []const u8) void {
+    const slot = blobSlot(name) orelse return;
+    const copy = zx.allocator.dupe(u8, bytes) catch return;
+    if (blobs[slot]) |old| zx.allocator.free(old);
+    blobs[slot] = copy;
+    blobs_dirty[slot] = true;
+    if (blob_flush_armed) return;
+    blob_flush_armed = true;
+    _ = zx.client.setTimeout(&flushBlobs, 0);
+}
+
+fn flushBlobs() void {
+    blob_flush_armed = false;
+    for (blob_names, 0..) |name, i| {
+        if (!blobs_dirty[i]) continue;
+        blobs_dirty[i] = false;
+        if (blobs[i]) |bytes| zx.kv.put(name, bytes, .{}) catch {};
+    }
+}
+
+// —— Spelling corrections from /api/spell ——
+
+const WebCorrector = struct {
+    pending: bool = false,
+
+    fn corrector(self: *WebCorrector) Composer.Corrector {
+        return .{ .ctx = self, .vtable = &.{ .get = get } };
+    }
+
+    fn get(ctx: *anyopaque, word: []const u8) ?[]const []const u8 {
+        const self: *WebCorrector = @ptrCast(@alignCast(ctx));
+        if (spell_cache.lookup(word)) |r| {
+            const fixes = zx.allocator.alloc([]const u8, r.suggestions.len) catch return null;
+            for (r.suggestions, fixes) |sg, *f| f.* = sg.word;
+            return fixes;
+        }
+        if (self.pending) return null;
+        self.pending = requestWords(&.{word}, &onCorrections);
+        return null;
+    }
+};
+var web_corrector: WebCorrector = .{};
+
+fn onCorrections(res: ?*zx.Fetch.Response, err: ?zx.Fetch.FetchError) void {
+    web_corrector.pending = false;
+    if (!storeResponse(res, err)) return;
+    const c = ensureComposer() orelse return;
+    if (!c.composing()) return;
+    c.refresh() catch return;
+    replaceWord(c.preedit());
+    zx.client.rerender();
+}
+
+// —— Spell results, cached per word ——
+
+const SpellCache = struct {
+    // Bump when the server's answers change to drop every browser's cache.
+    const version = 1;
+    const key = std.fmt.comptimePrint("spell_cache_v{d}", .{version});
+    const ttl_ms: i64 = 7 * std.time.ms_per_day;
+    const max_entries = 20_000;
+
+    const Entry = struct {
+        expires_at: i64 = 0,
+        result: TokenResult = .{},
+    };
+
+    map: std.StringArrayHashMapUnmanaged(Entry) = .empty,
+    dirty: bool = false,
+    save_armed: bool = false,
+
+    fn lookup(self: *SpellCache, word: []const u8) ?TokenResult {
+        const e = self.map.get(word) orelse return null;
+        if (e.expires_at <= nowMs()) return null;
+        return e.result;
+    }
+
+    fn put(self: *SpellCache, result: TokenResult) void {
+        self.map.put(zx.allocator, result.token, .{ .expires_at = nowMs() + ttl_ms, .result = result }) catch return;
+        self.dirty = true;
+        if (self.save_armed) return;
+        self.save_armed = true;
+        _ = zx.client.setTimeout(&saveSpellCache, 1000);
+    }
+
+    fn load(self: *SpellCache) void {
+        for (1..version) |v| zx.kv.delete(std.fmt.allocPrint(zx.allocator, "spell_cache_v{d}", .{v}) catch continue) catch {};
+        const entries = zx.kv.as(zx.allocator, key, []const Entry) catch null orelse return;
+        const now = nowMs();
+        for (entries) |e| {
+            if (e.expires_at <= now) continue;
+            self.map.put(zx.allocator, e.result.token, e) catch return;
+        }
+    }
+
+    fn save(self: *SpellCache) void {
+        self.save_armed = false;
+        if (!self.dirty) return;
+        self.dirty = false;
+        const values = self.map.values();
+        const keep = values[values.len -| max_entries..];
+        zx.kv.putAs(key, keep, .{}) catch {};
+    }
+};
+var spell_cache: SpellCache = .{};
+
+fn saveSpellCache() void {
+    spell_cache.save();
+}
+
+fn nowMs() i64 {
+    if (comptime zx.platform.role != .client) return 0;
+    const date = zx.client.js.global.get(zx.client.js.Object, "Date") catch return 0;
+    defer date.deinit();
+    const ms = date.call(f64, "now", .{}) catch return 0;
+    return @intFromFloat(ms);
+}
+
+fn requestWords(words: []const []const u8, callback: zx.Fetch.ResponseCallback) bool {
+    var body: std.Io.Writer.Allocating = .init(zx.allocator);
+    zx.util.zxon.serialize(schema.Request{ .words = words }, &body.writer, .{}) catch return false;
+    _ = zx.fetch(.wasm(callback), zx.allocator, "/api/spell", .{
+        .method = .POST,
+        .headers = &.{
+            .{ .name = "content-type", .value = schema.content_type },
+            .{ .name = "accept", .value = schema.content_type },
+        },
+        .body = body.written(),
+    }) catch return false;
+    return true;
+}
+
+fn storeResponse(res: ?*zx.Fetch.Response, err: ?zx.Fetch.FetchError) bool {
+    if (err != null) return false;
+    const r = res orelse return false;
+    defer r.deinit();
+    if (!r.ok()) return false;
+    const body = r.text() catch return false;
+    const parsed = zx.util.zxon.parse(schema.Response, zx.allocator, body, .{}) catch return false;
+    for (parsed.results) |result| spell_cache.put(result);
+    return true;
+}
+
+// —— Settings panel (the settings every Byakaron keyboard shares) ——
+
+fn onToggleSettingsPanel(_: zx.client.Event) void {
+    finishWord();
+    settings_open = !settings_open;
+    if (ensureComposer()) |c| c.sync();
+    zx.client.rerender();
+}
+
+pub fn SettingsPanel(ctx: *zx.ComponentContext) zx.Component {
+    const c = ensureComposer();
+    const s: Composer.Settings = if (c) |cc| cc.settings else .{};
+    const words: []const []u8 = if (c) |cc| cc.user_words.words.items else &.{};
+    const per_page = std.fmt.allocPrint(ctx.allocator, "{d}", .{s.candidates_per_page}) catch "";
+    return (
+        <section @allocator={ctx.allocator} class="settings-panel" aria-label="Keyboard settings">
+            <h2 class="settings-title">Keyboard</h2>
+            <SettingRow name="suggestions" label="Word suggestions" hint="Avro dictionary mode. Off: phonetic only — type every word exactly." on={s.suggestions} />
+            <SettingRow name="spelling_corrections" label="Spelling corrections" hint="Suggest corrections when Avro finds no dictionary word." on={s.spelling_corrections} />
+            <SettingRow name="learn_choices" label="Remember my choices" hint="Highlight the candidate you picked last time." on={s.learn_choices} />
+            <SettingRow name="bangla_digits" label="Bangla digits" hint="Digits typed on their own become ০–৯." on={s.bangla_digits} />
+            <SettingRow name="newline_on_enter" label="New line on Enter" hint="Enter commits the word and starts a new line." on={s.newline_on_enter} />
+            <div class="setting-row">
+                <div class="setting-text">
+                    <span class="setting-label">Candidate list</span>
+                </div>
+                <div class="segmented">
+                    <button type="button" class={if (s.candidate_orientation == .horizontal) "seg is-on" else "seg"} value="horizontal" onclick={onSetOrientation}>Horizontal</button>
+                    <button type="button" class={if (s.candidate_orientation == .vertical) "seg is-on" else "seg"} value="vertical" onclick={onSetOrientation}>Vertical</button>
+                </div>
+            </div>
+            <div class="setting-row">
+                <div class="setting-text">
+                    <span class="setting-label">Candidates per page</span>
+                </div>
+                <div class="stepper">
+                    <button type="button" class="seg" value="-1" onclick={onStepPerPage}>−</button>
+                    <span class="stepper-value">{per_page}</span>
+                    <button type="button" class="seg" value="1" onclick={onStepPerPage}>+</button>
+                </div>
+            </div>
+            <h2 class="settings-title">Personal dictionary</h2>
+            <div class="userdict-add">
+                <input id="userdict-word" class="userdict-input" type="text" placeholder="নতুন শব্দ" autocomplete="off" spellcheck="false" />
+                <button type="button" class="seg is-on" onclick={onAddUserWord}>Add</button>
+            </div>
+            <ul class="userdict-list">
+                {if (words.len == 0) (
+                    <li class="userdict-empty">No words yet</li>
+                )}
+                {for (words) |w| (
+                    <li class="userdict-item">
+                        <span>{w}</span>
+                        <button type="button" class="userdict-remove" value={w} onclick={onRemoveUserWord} aria-label="Remove">×</button>
+                    </li>
+                )}
+            </ul>
+        </section>
+    );
+}
+
+const SettingRowProps = struct {
+    name: []const u8,
+    label: []const u8,
+    hint: []const u8,
+    on: bool,
+};
+
+pub fn SettingRow(allocator: std.mem.Allocator, props: SettingRowProps) zx.Component {
+    return (
+        <div @allocator={allocator} class="setting-row">
+            <div class="setting-text">
+                <span class="setting-label">{props.label}</span>
+                <span class="setting-hint">{props.hint}</span>
+            </div>
+            <button
+                type="button"
+                class={if (props.on) "switch is-on" else "switch"}
+                role="switch"
+                aria-checked={if (props.on) "true" else "false"}
+                value={props.name}
+                onclick={onToggleSetting}
+            ><span class="switch-knob"></span></button>
+        </div>
+    );
+}
+
+fn updateSettings(s: Composer.Settings) void {
+    const c = ensureComposer() orelse return;
+    c.setSettings(s) catch {};
+    zx.client.rerender();
+}
+
+fn onToggleSetting(e: zx.client.Event) void {
+    const c = ensureComposer() orelse return;
+    const name = e.value() orelse return;
+    var s = c.settings;
+    inline for (.{ "suggestions", "spelling_corrections", "learn_choices", "bangla_digits", "newline_on_enter" }) |field| {
+        if (std.mem.eql(u8, name, field)) @field(s, field) = !@field(s, field);
+    }
+    updateSettings(s);
+}
+
+fn onSetOrientation(e: zx.client.Event) void {
+    const c = ensureComposer() orelse return;
+    var s = c.settings;
+    s.candidate_orientation = std.meta.stringToEnum(Composer.Settings.Orientation, e.value() orelse return) orelse return;
+    updateSettings(s);
+}
+
+fn onStepPerPage(e: zx.client.Event) void {
+    const c = ensureComposer() orelse return;
+    var s = c.settings;
+    const step = std.fmt.parseInt(i8, e.value() orelse return, 10) catch return;
+    s.candidates_per_page = @intCast(std.math.clamp(@as(i16, s.candidates_per_page) + step, Composer.Settings.min_candidates_per_page, Composer.Settings.max_candidates_per_page));
+    updateSettings(s);
+}
+
+fn onAddUserWord(_: zx.client.Event) void {
+    if (zx.platform.role != .client) return;
+    const c = ensureComposer() orelse return;
+    const document = zx.client.Document.init(zx.allocator);
+    defer document.deinit();
+    const el = document.getElementById("userdict-word") catch return;
+    defer el.deinit();
+    const word = el.ref.getAlloc(zx.client.js.String, zx.allocator, "value") catch return;
+    if (c.addUserWord(word) catch false) el.setProperty("value", zx.client.js.string(""));
+    zx.client.rerender();
+}
+
+fn onRemoveUserWord(e: zx.client.Event) void {
+    const c = ensureComposer() orelse return;
+    _ = c.removeUserWord(e.value() orelse return) catch {};
+    zx.client.rerender();
+}
+
+const Selection = struct { start: usize, end: usize };
+
+/// Textarea selection as byte offsets into `draft_text` (the DOM counts UTF-16 units).
+fn readSelection() ?Selection {
+    if (zx.platform.role != .client) return null;
+    const document = zx.client.Document.init(zx.allocator);
+    defer document.deinit();
+    const el = document.getElementById("spell-text") catch return null;
+    defer el.deinit();
+    const a = el.ref.get(f64, "selectionStart") catch return null;
+    const b = el.ref.get(f64, "selectionEnd") catch return null;
+    return .{
+        .start = byteOffset(draft_text, @intFromFloat(a)),
+        .end = byteOffset(draft_text, @intFromFloat(b)),
+    };
+}
+
+fn byteOffset(text: []const u8, utf16_units: usize) usize {
+    var units: usize = 0;
+    var i: usize = 0;
+    while (i < text.len and units < utf16_units) {
+        const n = std.unicode.utf8ByteSequenceLength(text[i]) catch 1;
+        units += if (n == 4) 2 else 1;
+        i = @min(i + n, text.len);
+    }
+    return i;
+}
+
+fn utf16Len(text: []const u8) usize {
+    var units: usize = 0;
+    var i: usize = 0;
+    while (i < text.len) {
+        const n = std.unicode.utf8ByteSequenceLength(text[i]) catch 1;
+        units += if (n == 4) 2 else 1;
+        i += n;
+    }
+    return units;
+}
+
+/// Write the textarea value and put the caret at byte offset `caret`.
+fn setTextareaValue(text: []const u8, caret: usize) void {
+    if (zx.platform.role != .client) return;
+    const document = zx.client.Document.init(zx.allocator);
+    defer document.deinit();
+    const el = document.getElementById("spell-text") catch return;
+    defer el.deinit();
+    el.setProperty("value", zx.client.js.string(text));
+    const pos: f64 = @floatFromInt(utf16Len(text[0..@min(caret, text.len)]));
+    el.ref.call(void, "setSelectionRange", .{ pos, pos }) catch {};
+}
+
+fn focusTextarea() void {
+    if (zx.platform.role != .client) return;
+    const document = zx.client.Document.init(zx.allocator);
+    defer document.deinit();
+    const el = document.getElementById("spell-text") catch return;
+    defer el.deinit();
+    el.focus() catch {};
+}
+
+/// JS for `positionMenu` (the .zx transpiler takes no multiline string literals).
+const caret_js = "(() => {\n"
+    ++ " const t = document.getElementById('spell-text');\n"
+    ++ " if (!t) return;\n"
+    ++ " const cs = getComputedStyle(t);\n"
+    ++ " const m = document.createElement('div');\n"
+    ++ " for (const p of ['boxSizing', 'width', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',\n"
+    ++ "   'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'fontFamily',\n"
+    ++ "   'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'tabSize']) m.style[p] = cs[p];\n"
+    ++ " Object.assign(m.style, { position: 'absolute', visibility: 'hidden', top: '0', left: '0',\n"
+    ++ "   whiteSpace: 'pre-wrap', overflowWrap: 'break-word' });\n"
+    ++ " m.textContent = t.value.slice(0, t.selectionStart);\n"
+    ++ " const mark = document.createElement('span');\n"
+    ++ " mark.textContent = '\\u200b';\n"
+    ++ " m.appendChild(mark);\n"
+    ++ " t.parentElement.appendChild(m);\n"
+    ++ " const lh = parseFloat(cs.lineHeight) || mark.offsetHeight;\n"
+    ++ " const x = t.offsetLeft + mark.offsetLeft - t.scrollLeft;\n"
+    ++ " const y = t.offsetTop + mark.offsetTop - t.scrollTop + lh;\n"
+    ++ " m.remove();\n"
+    ++ " t.parentElement.style.setProperty('--caret-x', Math.max(0, x) + 'px');\n"
+    ++ " t.parentElement.style.setProperty('--caret-y', y + 'px');\n"
+    ++ "})()\n";
+
+/// Anchor the menu under the caret: measure it with a hidden mirror of the
+/// textarea and publish the position as CSS variables on `.editor`.
+fn positionMenu() void {
+    if (zx.platform.role != .client) return;
+    zx.client.eval(void, caret_js) catch {};
+}
+
+fn onCheckNow(_: zx.client.Event) void {
+    syncDraftFromDom();
+    check_seq += 1;
+    startFetch();
+}
+
+fn syncDraftFromDom() void {
+    if (zx.platform.role != .client) return;
+    const document = zx.client.Document.init(zx.allocator);
+    defer document.deinit();
+    const el = document.getElementById("spell-text") catch return;
+    defer el.deinit();
+    const v = el.ref.getAlloc(zx.client.js.String, zx.allocator, "value") catch return;
+    draft_text = v;
+}
+
+fn onApplySuggestion(e: zx.client.Event) void {
+    const raw = e.value() orelse return;
+    const sugg_i = std.fmt.parseInt(usize, raw, 10) catch return;
+    const issues = collectIssues(zx.allocator);
+    if (issues.len == 0) return;
+    const idx = clampIndex(selected_issue, issues.len);
+    const issue = issues[idx];
+    if (sugg_i >= issue.suggestions.len) return;
+    const replacement = issue.suggestions[sugg_i].word;
+    const target = issue.token;
+
+    const next = replaceNthUnknown(zx.allocator, draft_text, results, target, idx, replacement) catch return;
+    draft_text = next;
+    syncTextarea(draft_text);
+
+    // Prefer the same slot (next issue shifts in after recheck).
+    selected_issue = if (idx + 1 < issues.len) idx else 0;
+
+    zx.client.rerender();
+    draftChanged();
+}
+
+/// Textareas keep their live `.value` after user edits; child text from rerender
+/// alone won't update them — write the property explicitly.
+fn syncTextarea(text: []const u8) void {
+    if (zx.platform.role != .client) return;
+    const document = zx.client.Document.init(zx.allocator);
+    defer document.deinit();
+    const el = document.getElementById("spell-text") catch return;
+    defer el.deinit();
+    el.setProperty("value", zx.client.js.string(text));
+}
+
+fn onClear(_: zx.client.Event) void {
+    if (composer) |*c| c.reset();
+    compose_len = 0;
+    draft_text = "";
+    results = &.{};
+    selected_issue = 0;
+    checking = false;
+    ignored = .empty;
+    syncTextarea("");
+    zx.client.rerender();
+    saveDraft();
+    saveResults();
+}
+
+fn onSelectIssue(e: zx.client.Event) void {
+    const raw = e.value() orelse return;
+    selected_issue = std.fmt.parseInt(usize, raw, 10) catch return;
+    zx.client.rerender();
+}
+
+fn onIgnore(_: zx.client.Event) void {
+    const issues = collectIssues(zx.allocator);
+    if (issues.len == 0) return;
+    const idx = clampIndex(selected_issue, issues.len);
+    _ = ignored.put(zx.allocator, issues[idx].token, {}) catch {};
+    selected_issue = if (idx + 1 < issues.len) idx else if (idx > 0) idx - 1 else 0;
+    zx.client.rerender();
+}
+
+/// Persist the draft, and spell-check it unless a word is still being composed:
+/// a half-typed word reads as a misspelling and would flash the fix bar on every
+/// key. The check runs when the word is committed instead.
+fn draftChanged() void {
+    saveDraft();
+    const composing = if (composer) |*c| c.composing() else false;
+    if (!composing) scheduleCheck();
+}
+
+fn loadStore() void {
+    store_loaded = true;
+    if (zx.kv.as(zx.allocator, prefs_key, WebPrefs) catch null) |prefs| {
+        transliterate_on = prefs.transliterate;
+    }
+    for (blob_names, 0..) |name, i| blobs[i] = zx.kv.get(zx.allocator, name) catch null;
+    // Learned choices from before the composer kept them under its own name.
+    if (blobs[1] == null) blobs[1] = zx.kv.get(zx.allocator, legacy_selections_key) catch null;
+    _ = ensureComposer();
+    spell_cache.load();
+    // A shared ?q= link wins over the saved draft.
+    if (sharedQuery(zx.allocator)) |q| draft_text = q;
+    if (draft_text.len == 0) {
+        if (zx.kv.get(zx.allocator, draft_key) catch null) |saved| {
+            draft_text = saved;
+            saved_caret = zx.kv.as(zx.allocator, caret_key, Caret) catch null;
+            results = zx.kv.as(zx.allocator, results_key, []const TokenResult) catch null orelse &.{};
+        }
+    }
+    // The textarea is not in the DOM yet during this first render.
+    _ = zx.client.setTimeout(&onStoreLoaded, 0);
+}
+
+fn sharedQuery(allocator: std.mem.Allocator) ?[]const u8 {
+    if (comptime zx.platform.role != .client) return null;
+    const location = zx.client.js.global.get(zx.client.js.Object, "location") catch return null;
+    defer location.deinit();
+    const search = location.getAlloc(zx.client.js.String, allocator, "search") catch return null;
+    var params = std.mem.splitScalar(u8, std.mem.trimStart(u8, search, "?"), '&');
+    while (params.next()) |param| {
+        const eq = std.mem.indexOfScalar(u8, param, '=') orelse continue;
+        if (!std.mem.eql(u8, param[0..eq], "q")) continue;
+        const value = allocator.dupe(u8, param[eq + 1 ..]) catch return null;
+        std.mem.replaceScalar(u8, value, '+', ' ');
+        const q = std.mem.trim(u8, std.Uri.percentDecodeInPlace(value), " \t\r\n");
+        return if (q.len > 0) q else null;
+    }
+    return null;
+}
+
+fn onStoreLoaded() void {
+    syncTextarea(draft_text);
+    if (saved_caret) |c| restoreCaret(c);
+    restored = true;
+    zx.client.rerender();
+    // The saved results may predate the last edits; a matching recheck changes nothing.
+    if (draft_text.len > 0) scheduleCheck();
+}
+
+fn restoreCaret(c: Caret) void {
+    const document = zx.client.Document.init(zx.allocator);
+    defer document.deinit();
+    const el = document.getElementById("spell-text") catch return;
+    defer el.deinit();
+    const start: f64 = @floatFromInt(utf16Len(draft_text[0..@min(c.start, draft_text.len)]));
+    const end: f64 = @floatFromInt(utf16Len(draft_text[0..@min(c.end, draft_text.len)]));
+    el.focus() catch {};
+    el.ref.call(void, "setSelectionRange", .{ start, end }) catch {};
+}
+
+fn onCaretMoved(_: zx.client.Event) void {
+    saveCaret();
+}
+
+fn saveCaret() void {
+    if (zx.platform.role != .client) return;
+    const sel = readSelection() orelse return;
+    const c: Caret = .{ .start = sel.start, .end = sel.end };
+    if (saved_caret) |prev| if (prev.start == c.start and prev.end == c.end) return;
+    saved_caret = c;
+    zx.kv.putAs(caret_key, c, .{}) catch {};
+}
+
+fn saveResults() void {
+    if (zx.platform.role != .client) return;
+    zx.kv.putAs(results_key, results, .{}) catch {};
+}
+
+fn saveDraft() void {
+    if (zx.platform.role != .client) return;
+    zx.kv.put(draft_key, draft_text, .{}) catch {};
+    saveCaret();
+}
+
+fn saveWebPrefs() void {
+    if (zx.platform.role != .client) return;
+    zx.kv.putAs(prefs_key, WebPrefs{ .transliterate = transliterate_on }, .{}) catch {};
+}
+
+fn scheduleCheck() void {
+    check_seq += 1;
+    check_dirty = true;
+    if (check_timer_armed) return;
+    check_timer_armed = true;
+    _ = zx.client.setTimeout(&onThrottleFire, check_throttle_ms);
+}
+
+fn onThrottleFire() void {
+    check_timer_armed = false;
+    if (!check_dirty) return;
+    check_dirty = false;
+    startFetch();
+    // More keystrokes arrived while we were starting the fetch — arm another window.
+    if (check_dirty) scheduleCheck();
+}
+
+fn startFetch() void {
+    if (check_in_flight) {
+        check_dirty = true;
+        return;
+    }
+    const tokens = draftWords() orelse return;
+
+    var missing: std.ArrayList([]const u8) = .empty;
+    var seen: std.StringHashMapUnmanaged(void) = .empty;
+    for (tokens) |t| {
+        if (t.len == 0 or spell_cache.lookup(t) != null) continue;
+        const gop = seen.getOrPut(zx.allocator, t) catch return;
+        if (!gop.found_existing) missing.append(zx.allocator, t) catch return;
+    }
+    if (missing.items.len == 0) return showResults(tokens);
+
+    check_in_flight = requestWords(missing.items, &onCheckResponse);
+    checking = check_in_flight;
+    zx.client.rerender();
+}
+
+fn onCheckResponse(res: ?*zx.Fetch.Response, err: ?zx.Fetch.FetchError) void {
+    check_in_flight = false;
+    checking = false;
+    defer zx.client.rerender();
+    if (!storeResponse(res, err)) return;
+    showResults(draftWords() orelse return);
+    if (check_dirty) scheduleCheck();
+}
+
+fn draftWords() ?[]const []const u8 {
+    return Tokenizer.wordsFromText(zx.allocator, draft_text, .{ .normalize = true }) catch null;
+}
+
+fn showResults(tokens: []const []const u8) void {
+    var out: std.ArrayList(TokenResult) = .empty;
+    for (tokens) |t| {
+        if (t.len == 0) continue;
+        out.append(zx.allocator, spell_cache.lookup(t) orelse .{ .token = t }) catch return;
+    }
+    results = out.items;
+    selected_issue = clampIndex(selected_issue, countIssues(results));
+    zx.client.rerender();
+    saveResults();
+}
+
+fn countIssues(list: []const TokenResult) usize {
+    var n: usize = 0;
+    for (list) |r| {
+        if (!r.known and !ignored.contains(r.token)) n += 1;
+    }
+    return n;
+}
+
+fn replaceNthUnknown(
+    allocator: std.mem.Allocator,
+    text: []const u8,
+    toks: []const TokenResult,
+    target: []const u8,
+    unknown_ordinal: usize,
+    replacement: []const u8,
+) ![]const u8 {
+    _ = text;
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+
+    var seen: usize = 0;
+    var first = true;
+    for (toks) |r| {
+        if (!first) try out.append(allocator, ' ');
+        first = false;
+
+        const is_target = !r.known and std.mem.eql(u8, r.token, target) and !ignored.contains(r.token);
+        if (is_target) {
+            if (seen == unknown_ordinal) {
+                try out.appendSlice(allocator, replacement);
+            } else {
+                try out.appendSlice(allocator, r.token);
+            }
+            seen += 1;
+        } else {
+            try out.appendSlice(allocator, r.token);
+        }
+    }
+    return try out.toOwnedSlice(allocator);
+}
+
+pub const options: zx.PageOptions = .{
+    .rendering = .prerendered,
+};

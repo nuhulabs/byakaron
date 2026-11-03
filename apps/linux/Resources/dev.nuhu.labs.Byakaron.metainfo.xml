@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.nuhu.labs.Byakaron</id>
+  <name>Byakaron</name>
+  <summary>Type Bangla phonetically and check spelling</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="dev.nuhu.labs">
+    <name>Nuhu Labs</name>
+  </developer>
+  <description>
+    <p>Byakaron is a Bangla phonetic input method and companion app. Type with a Latin keyboard and compose Bangla with Avro phonetic rules.</p>
+    <p>The app provides a Bangla spell checker, an Avro key-map reference, and a guide for adding the system input source in GNOME.</p>
+  </description>
+  <launchable type="desktop-id">dev.nuhu.labs.Byakaron.desktop</launchable>
+  <provides><binary>byakaron</binary></provides>
+  <categories><category>Utility</category><category>TextTools</category></categories>
+  <keywords><keyword>Bangla</keyword><keyword>Bengali</keyword><keyword>বাংলা</keyword><keyword>phonetic</keyword><keyword>Avro</keyword><keyword>spell</keyword><keyword>keyboard</keyword></keywords>
+  <icon type="stock">byakaron</icon>
+  <url type="homepage">https://nuhulabs.com/byakaron</url>
+  <releases>
+    <release version="0.1.3" date="2026-10-29">
+      <description>
+        <p>Works on Ubuntu 26.04 and Debian 13. The download is about half the size (90 MB instead of 172 MB) with the same spell-check. Updates cleanly from the earlier 0.2.x packages.</p>
+      </description>
+    </release>
+    <release version="0.1.0" date="2026-10-26">
+      <description>
+        <p>One install command for Intel/AMD and ARM, Raspberry Pi OS and KDE setup, a fix for Qt apps on Ubuntu 20.04/22.04, and better-ranked suggestions.</p>
+      </description>
+    </release>
+    <!-- Before 0.1.0 the Linux package had its own numbering (0.1.7 to 0.2.1,
+         October 2026); AppStream needs newest first, so those are in git history. -->
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <!--
+    Byakaron's keyboard settings live in settings.json (shared with every
+    platform; see src/Composer/Settings.zig). Only qt-click-fix, which is
+    Linux/IBus-specific, is still a GSettings key; the others are read once
+    to migrate them (apps/linux/Core/composer.c).
+  -->
+  <schema id="dev.nuhu.labs.Byakaron" path="/dev/nuhu/labs/Byakaron/">
+    <key name="phonetic-only" type="b">
+      <default>false</default>
+      <summary>Deprecated: Hide word suggestions</summary>
+      <description>
+        Deprecated, kept only so it can still be read: the first time Byakaron
+        starts without a settings.json in ~/.local/share/byakaron, it copies
+        this value there (suggestions = !phonetic-only) and never reads it again.
+      </description>
+    </key>
+    <key name="candidates-horizontal" type="b">
+      <default>true</default>
+      <summary>Deprecated: Horizontal candidate list</summary>
+      <description>
+        Deprecated, kept only so it can still be read: the first time Byakaron
+        starts without a settings.json in ~/.local/share/byakaron, it copies
+        this value there (candidate_orientation) and never reads it again.
+      </description>
+    </key>
+    <key name="spelling-suggestions" type="b">
+      <default>true</default>
+      <summary>Deprecated: Offer spelling corrections</summary>
+      <description>
+        Deprecated, kept only so it can still be read: the first time Byakaron
+        starts without a settings.json in ~/.local/share/byakaron, it copies
+        this value there (spelling_corrections) and never reads it again.
+      </description>
+    </key>
+    <key name="bangla-digits" type="b">
+      <default>true</default>
+      <summary>Deprecated: Type Bangla digits</summary>
+      <description>
+        Deprecated, kept only so it can still be read: the first time Byakaron
+        starts without a settings.json in ~/.local/share/byakaron, it copies
+        this value there (bangla_digits) and never reads it again.
+      </description>
+    </key>
+    <key name="qt-click-fix" type="b">
+      <default>false</default>
+      <summary>Qt apps: type a word once when clicking (older IBus)</summary>
+      <description>
+        Ubuntu 20.04 and 22.04 only (IBus older than 1.5.27, which cannot report
+        the focused app). When true, IBus never commits the word being typed by
+        itself, so Qt apps (KDE, Telegram, VLC) do not type it twice on a click;
+        in GTK apps and browsers that word is dropped instead if you click away
+        before Space. Ignored on newer IBus, which handles Qt automatically.
+      </description>
+    </key>
+  </schema>
+</schemalist>

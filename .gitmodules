@@ -1,0 +1,4 @@
+[submodule "apps/android/keyboard"]
+	path = apps/android/keyboard
+	url = https://github.com/nuhulabs/byakaron-android.git
+	branch = dev
