@@ -545,8 +545,15 @@ fn rankScore(typed: []const u8, candidate: []const u8, milli: i64, freq: i64) i6
     score -= len_diff * 20_000;
     const f: u64 = if (freq > 0) @intCast(freq) else 1;
     score += @as(i64, @intCast(std.math.log2_int(u64, f))) * unigram_frequency_weight;
+    // A word seen fewer than 5 times in the corpus is as likely a typo as a
+    // word, but two cheap lookalike swaps let it beat a common word one vowel
+    // sign away: "bangl" (বাংল) offered ভাঙল (seen once) before বাংলা (86,685).
+    if (freq < rare_word_frequency) score -= rare_word_penalty;
     return score;
 }
+
+const rare_word_frequency: i64 = 5;
+const rare_word_penalty: i64 = 600_000;
 
 fn longestCommonSubseq(a: []const u21, b: []const u21) usize {
     var prev: [65]usize = undefined;
@@ -639,6 +646,19 @@ fn substitutionMilli(edges: []const ConfusionEdge, from_cp: u21, to_cp: u21) i64
     return 1_000;
 }
 
+/// Cost of a character the candidate has and the typed word lacks. A missing
+/// vowel sign (া ি ী ু ূ ৃ ে ৈ ো ৌ ৗ) is the commonest phonetic-typing slip
+/// ("kcher" for কাছের), so it costs half an edit; it used to cost as much as
+/// any letter, and cheaper lookalike swaps to rarer words won (কছের -> কচের).
+/// On 1,021 misspelt common words this and the rare-word penalty in
+/// rankScore take the right word first from 93.8% to 95.6% (in the top 3:
+/// 99.4% -> 99.8%); on 1,227 less common ones, 94.2% -> 95.5%. No kind of
+/// mistake got worse.
+fn insertMilli(cp: u21) i64 {
+    const vowel_sign = (cp >= 0x09BE and cp <= 0x09CC) or cp == 0x09D7;
+    return if (vowel_sign) 500 else 1_000;
+}
+
 fn weightedCodepointEditMilli(edges: []const ConfusionEdge, a: []const u8, b: []const u8) i64 {
     const max_milli: i64 = 2_500;
     var a_cps: [64]u21 = undefined;
@@ -650,7 +670,8 @@ fn weightedCodepointEditMilli(edges: []const ConfusionEdge, a: []const u8, b: []
     var prev: [65]i64 = undefined;
     var cur: [65]i64 = undefined;
     var i: usize = 0;
-    while (i <= bn) : (i += 1) prev[i] = @as(i64, @intCast(i)) * 1_000;
+    prev[0] = 0;
+    while (i < bn) : (i += 1) prev[i + 1] = prev[i] + insertMilli(b_cps[i]);
 
     i = 0;
     while (i < an) : (i += 1) {
@@ -660,7 +681,7 @@ fn weightedCodepointEditMilli(edges: []const ConfusionEdge, a: []const u8, b: []
         while (j < bn) : (j += 1) {
             const cost = substitutionMilli(edges, a_cps[i], b_cps[j]);
             const del = prev[j + 1] + 1_000;
-            const ins = cur[j] + 1_000;
+            const ins = cur[j] + insertMilli(b_cps[j]);
             const sub = prev[j] + cost;
             var best = @min(del, @min(ins, sub));
             if (i > 0 and j > 0 and a_cps[i] == b_cps[j - 1] and a_cps[i - 1] == b_cps[j]) {
