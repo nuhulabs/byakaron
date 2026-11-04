@@ -21,7 +21,7 @@
   <releases>
     <release version="0.1.4" date="2026-11-05">
       <description>
-        <p>Type Bangla on the Spelling page without changing the system keyboard, using the new switch at the top left. A compact suggestion panel in the app, more suggested words while typing (am now offers আমি and আমরা-style longer words), corrections only in the bar under the text, and the Fcitx5 addon loads again.</p>
+        <p>Type Bangla on the Spelling page without changing the system keyboard, using the new switch at the top left. A compact suggestion panel in the app, more suggested words while typing (am now also offers আমা and আমি), and corrections only in the bar under the text.</p>
       </description>
     </release>
     <release version="0.1.3" date="2026-10-29">
