@@ -20,6 +20,7 @@
 const Composer = @This();
 
 const std = @import("std");
+const builtin = @import("builtin");
 const AutoComplete = @import("autocomplete");
 const AutoCompleteMem = @import("autocomplete_mem");
 pub const Settings = @import("Composer/Settings.zig");
@@ -33,7 +34,9 @@ const user_word_limit = 5;
 /// Spelling corrections listed when Avro has no dictionary word.
 const correction_limit = 3;
 /// Dictionary words that start with what is typed, listed last: `am` also
-/// offers আমা and আমি, not just Avro's আম and এম.
+/// offers আমা and আমি, not just Avro's আম and এম. Desktop Linux only: every other
+/// platform's list stays as its owner left it.
+const prefix_words = builtin.os.tag == .linux and !builtin.abi.isAndroid();
 const prefix_limit = 8;
 
 pub const Key = union(enum) {
@@ -274,7 +277,10 @@ pub fn refresh(self: *Composer) !void {
     self.avro_count = fresh.items.len;
     self.highlight = fresh.selected;
 
-    if (self.settings.suggestions) try self.addExtras();
+    if (self.settings.suggestions) {
+        try self.addExtras();
+        if (prefix_words) try self.addPrefixWords();
+    }
 
     // A refresh that only appended (corrections arriving) keeps the user's place.
     if (keep) |k| for (self.items.items, 0..) |item, i| if (std.mem.eql(u8, item, k)) {
@@ -291,22 +297,11 @@ fn addExtras(self: *Composer) !void {
     const words = try self.user_words.prefix(arena, plain, user_word_limit);
     for (words) |w| if (!self.listed(w)) try self.items.append(self.gpa, w);
 
-    // A single letter starts too many words to say anything yet.
-    if ((std.unicode.utf8CountCodepoints(plain) catch 0) < 2) return;
-    try self.addCorrections(arena, plain);
-
-    const longer = self.ac().prefixSuggest(arena, plain, prefix_limit) catch &.{};
-    for (longer) |entry| if (!self.listed(entry.word)) {
-        try self.items.append(self.gpa, try arena.dupe(u8, entry.word));
-    };
-}
-
-/// Corrections only when Avro found no dictionary word: its list is just the
-/// plain transliteration. Before the longer words, which a misspelling rarely
-/// starts.
-fn addCorrections(self: *Composer, arena: std.mem.Allocator, plain: []const u8) !void {
+    // Corrections only when Avro found no dictionary word: its list is just
+    // the plain transliteration.
     if (!self.settings.spelling_corrections or self.avro_count > 1) return;
     const corrector = self.corrector orelse return;
+    if ((std.unicode.utf8CountCodepoints(plain) catch 0) < 2) return;
     if (self.user_words.contains(plain) or self.ac().contains(plain)) return;
     const fixes = corrector.get(plain) orelse return;
     var added: usize = 0;
@@ -316,6 +311,18 @@ fn addCorrections(self: *Composer, arena: std.mem.Allocator, plain: []const u8) 
         try self.items.append(self.gpa, try arena.dupe(u8, f));
         added += 1;
     }
+}
+
+/// After the corrections: a misspelling rarely starts a real word.
+fn addPrefixWords(self: *Composer) !void {
+    const arena = self.extras.allocator();
+    const plain = try self.ac().transliterate(self.gpa, arena, self.latin.items);
+    // A single letter starts too many words to say anything yet.
+    if ((std.unicode.utf8CountCodepoints(plain) catch 0) < 2) return;
+    const longer = self.ac().prefixSuggest(arena, plain, prefix_limit) catch &.{};
+    for (longer) |entry| if (!self.listed(entry.word)) {
+        try self.items.append(self.gpa, try arena.dupe(u8, entry.word));
+    };
 }
 
 fn listed(self: Composer, word: []const u8) bool {
@@ -603,7 +610,8 @@ test "personal words follow Avro's list; settings sync from the store" {
     try testing.expect(!h.c.panelVisible());
 }
 
-test "words that start with what is typed follow Avro's list" {
+test "Linux: words that start with what is typed follow Avro's list" {
+    if (!prefix_words) return error.SkipZigTest;
     var h: Harness = undefined;
     try h.init();
     defer h.deinit();

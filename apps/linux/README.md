@@ -224,7 +224,8 @@ suffix forms, the plain transliteration), then personal-dictionary words that
 start with the transliteration, then spelling corrections when Avro found no
 dictionary word, then up to 8 dictionary words that start with the
 transliteration (from two letters on): Avro alone gives `am` only আম and এম, and
-these add আমন, আমা, আমি and so on. The lexicon is compiled into the binary, so
+these add আমন, আমা, আমি and so on. That last step is a compile-time switch in
+`src/Composer.zig`, on for desktop Linux only. The lexicon is compiled into the binary, so
 candidates work with nothing installed. **Word suggestions** off is phonetic mode: the word is
 transliterated exactly and no list is shown.
 
