@@ -32,8 +32,8 @@ pub const Corrector = @import("Composer/Corrector.zig");
 const user_word_limit = 5;
 /// Spelling corrections listed when Avro has no dictionary word.
 const correction_limit = 3;
-/// Dictionary words that start with what is typed, listed last: আম also
-/// offers আমি and আমরা, not just Avro's আম and এম.
+/// Dictionary words that start with what is typed, listed last: `am` also
+/// offers আমা and আমি, not just Avro's আম and এম.
 const prefix_limit = 8;
 
 pub const Key = union(enum) {
