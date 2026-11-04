@@ -43,10 +43,31 @@ byk_prefs_try_open (void)
     return g_settings_new (BYK_PREFS_SCHEMA);
 }
 
+/* g_settings_get_boolean aborts on a key the installed schema does not have. */
+static gboolean
+byk_prefs_has_key (GSettings *settings, const gchar *key)
+{
+    GSettingsSchema *schema = NULL;
+
+    if (settings == NULL || key == NULL)
+        return FALSE;
+
+    g_object_get (settings, "settings-schema", &schema, NULL);
+    const gboolean found = schema != NULL && g_settings_schema_has_key (schema, key);
+    g_clear_pointer (&schema, g_settings_schema_unref);
+    return found;
+}
+
 gboolean
 byk_prefs_boolean (GSettings *settings, const gchar *key, gboolean fallback)
 {
-    if (settings == NULL || key == NULL)
-        return fallback;
-    return g_settings_get_boolean (settings, key);
+    return byk_prefs_has_key (settings, key) ? g_settings_get_boolean (settings, key)
+                                             : fallback;
+}
+
+void
+byk_prefs_set_boolean (GSettings *settings, const gchar *key, gboolean value)
+{
+    if (byk_prefs_has_key (settings, key))
+        g_settings_set_boolean (settings, key, value);
 }

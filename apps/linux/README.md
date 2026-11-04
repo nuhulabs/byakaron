@@ -222,14 +222,21 @@ Electron/Monaco treats HidePreeditText as cancel.
 Avro's own list for the latin typed so far (autocorrect, dictionary words,
 suffix forms, the plain transliteration), then personal-dictionary words that
 start with the transliteration, then spelling corrections when Avro found no
-dictionary word. The lexicon is compiled into the binary, so candidates work
-with nothing installed. **Word suggestions** off is phonetic mode: the word is
+dictionary word, then up to 8 dictionary words that start with the
+transliteration (from two letters on): Avro alone gives `am` only আম and এম, and
+these add আমরা-style longer words. The lexicon is compiled into the binary, so
+candidates work with nothing installed. **Word suggestions** off is phonetic mode: the word is
 transliterated exactly and no list is shown.
 
 The lookup table only ever holds the **current page** (`candidates_per_page`,
 3–9, default 9); the composer pages, wraps and remembers. The panel's own
 paging arrows, cursor buttons and mouse clicks are forwarded to the composer as
 Page Up/Down, Up/Down and `byakaron_composer_pick`.
+
+**The system-wide panel cannot be restyled from here.** IBus only hands GNOME
+Shell the list of words; the Shell draws that popup with its own theme, on Wayland
+as on X11. The compact pill panel exists inside the app (below), where the
+app draws it.
 
 Escape drops the word and the list together rather than dismissing the list
 first: a two-stage Escape would mean two different things depending on state the
@@ -291,6 +298,21 @@ locally and calls `byakaron_spell_is_correct` per word — which is what the mac
 and Windows apps do too. Only Bengali-block runs are checked, so latin,
 punctuation and emoji are left alone rather than reported as misspelled, and
 Bangla digits are skipped because `২০২৪` is not a misspelling.
+
+The issue list shows only the misspelled words; suggestions appear in the bar
+under the editor, one place for both ways of reaching a word.
+
+**Bangla typing**, the switch at the top left of the header (Spelling page only,
+on by default, remembered in the `spelling-typing` GSetting), makes the editor
+type Bangla with no system keyboard change and no effect on other apps. Keys go
+to a composer of the app's own, opened with `spell` on the same worker thread so
+corrections work and the first frame is not held up. The word being typed sits in
+the buffer underlined and is replaced on each key, because GtkTextView can only
+show preedit text from an input method; spell checks wait for the finished word.
+Its candidate panel is a pill-shaped overlay in the editor, drawn by the app, so it
+works the same on X11 and Wayland, where a popup window could not choose its
+position. If Byakaron is also the system keyboard, on Wayland GNOME Shell takes the
+keys first and on X11 the app does; either way the word is converted once.
 
 Suggestions use plain `byakaron_spell_suggest`, not the `_ctx` variant: context
 ranking reads bigram and trigram tables that the locally built `Byakaron.db` has
