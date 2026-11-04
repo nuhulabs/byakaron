@@ -1,6 +1,7 @@
 const Spell = @This();
 
 const std = @import("std");
+const builtin = @import("builtin");
 const tokenization = @import("tokenization");
 
 const Tokenizer = tokenization.Tokenizer;
@@ -548,10 +549,13 @@ fn rankScore(typed: []const u8, candidate: []const u8, milli: i64, freq: i64) i6
     // A word seen fewer than 5 times in the corpus is as likely a typo as a
     // word, but two cheap lookalike swaps let it beat a common word one vowel
     // sign away: "bangl" (বাংল) offered ভাঙল (seen once) before বাংলা (86,685).
-    if (freq < rare_word_frequency) score -= rare_word_penalty;
+    if (linux_ranking and freq < rare_word_frequency) score -= rare_word_penalty;
     return score;
 }
 
+/// The rare-word penalty above and the cheap vowel sign in insertMilli are
+/// desktop Linux only: every other platform's ranking stays as its owner left it.
+const linux_ranking = builtin.os.tag == .linux and !builtin.abi.isAndroid();
 const rare_word_frequency: i64 = 5;
 const rare_word_penalty: i64 = 600_000;
 
@@ -656,7 +660,7 @@ fn substitutionMilli(edges: []const ConfusionEdge, from_cp: u21, to_cp: u21) i64
 /// mistake got worse.
 fn insertMilli(cp: u21) i64 {
     const vowel_sign = (cp >= 0x09BE and cp <= 0x09CC) or cp == 0x09D7;
-    return if (vowel_sign) 500 else 1_000;
+    return if (linux_ranking and vowel_sign) 500 else 1_000;
 }
 
 fn weightedCodepointEditMilli(edges: []const ConfusionEdge, a: []const u8, b: []const u8) i64 {
