@@ -17,6 +17,7 @@ G_BEGIN_DECLS
 
 #define BYK_PREFS_SCHEMA                 "dev.nuhu.labs.Byakaron"
 #define BYK_PREFS_QT_CLICK_FIX           "qt-click-fix"
+#define BYK_PREFS_SPELLING_TYPING        "spelling-typing"
 
 /* Deprecated: read once to migrate into settings.json. */
 #define BYK_PREFS_OLD_PHONETIC_ONLY          "phonetic-only"
@@ -30,7 +31,11 @@ void byk_prefs_init_schema_dir (void);
 /* NULL when the schema is not installed. Never aborts. */
 GSettings *byk_prefs_try_open (void);
 
+/* `fallback` without a schema, or with one from before `key` existed. */
 gboolean byk_prefs_boolean (GSettings *settings, const gchar *key, gboolean fallback);
+
+/* Quietly does nothing in the same two cases. */
+void byk_prefs_set_boolean (GSettings *settings, const gchar *key, gboolean value);
 
 G_END_DECLS
 

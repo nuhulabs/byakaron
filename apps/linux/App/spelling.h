@@ -20,6 +20,18 @@ void byk_spell_page_engine_ready (BykSpellPage *self);
 /* Re-check the text now, e.g. after the personal dictionary changed. */
 void byk_spell_page_recheck (BykSpellPage *self);
 
+/* Type Bangla in the editor through engines->typing, not the system keyboard. */
+void byk_spell_page_set_typing (BykSpellPage *self, gboolean typing);
+
+/* Commit the word being typed, e.g. when the page is left. */
+void byk_spell_page_finish_word (BykSpellPage *self);
+
+/* Corrections arrived for the word being typed. Call on the main thread. */
+void byk_spell_page_typing_refresh (BykSpellPage *self);
+
+/* Put the caret in the editor, once it can take text. */
+void byk_spell_page_focus_editor (BykSpellPage *self);
+
 G_END_DECLS
 
 #endif /* BYAKARON_LINUX_APP_SPELLING_H */
