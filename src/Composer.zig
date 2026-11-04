@@ -32,6 +32,9 @@ pub const Corrector = @import("Composer/Corrector.zig");
 const user_word_limit = 5;
 /// Spelling corrections listed when Avro has no dictionary word.
 const correction_limit = 3;
+/// Dictionary words that start with what is typed, listed last: আম also
+/// offers আমি and আমরা, not just Avro's আম and এম.
+const prefix_limit = 8;
 
 pub const Key = union(enum) {
     /// A printable ASCII character (0x21–0x7e).
@@ -288,11 +291,22 @@ fn addExtras(self: *Composer) !void {
     const words = try self.user_words.prefix(arena, plain, user_word_limit);
     for (words) |w| if (!self.listed(w)) try self.items.append(self.gpa, w);
 
-    // Corrections only when Avro found no dictionary word: its list is just
-    // the plain transliteration.
+    // A single letter starts too many words to say anything yet.
+    if ((std.unicode.utf8CountCodepoints(plain) catch 0) < 2) return;
+    try self.addCorrections(arena, plain);
+
+    const longer = self.ac().prefixSuggest(arena, plain, prefix_limit) catch &.{};
+    for (longer) |entry| if (!self.listed(entry.word)) {
+        try self.items.append(self.gpa, try arena.dupe(u8, entry.word));
+    };
+}
+
+/// Corrections only when Avro found no dictionary word: its list is just the
+/// plain transliteration. Before the longer words, which a misspelling rarely
+/// starts.
+fn addCorrections(self: *Composer, arena: std.mem.Allocator, plain: []const u8) !void {
     if (!self.settings.spelling_corrections or self.avro_count > 1) return;
     const corrector = self.corrector orelse return;
-    if ((std.unicode.utf8CountCodepoints(plain) catch 0) < 2) return;
     if (self.user_words.contains(plain) or self.ac().contains(plain)) return;
     const fixes = corrector.get(plain) orelse return;
     var added: usize = 0;
@@ -586,6 +600,27 @@ test "personal words follow Avro's list; settings sync from the store" {
     // Another process turns suggestions off; the next word obeys.
     h.memory.store().save(Store.settings, "{\"suggestions\":false}");
     try h.typed("bangla");
+    try testing.expect(!h.c.panelVisible());
+}
+
+test "words that start with what is typed follow Avro's list" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    try h.typed("am");
+    const list = h.c.candidates();
+    try testing.expect(list.len > h.c.avro_count);
+    const typed = h.c.candidates()[0];
+    for (list[h.c.avro_count..]) |w| try testing.expect(std.mem.startsWith(u8, w, typed));
+    for (list, 0..) |a, i| for (list[i + 1..]) |b| try testing.expect(!std.mem.eql(u8, a, b));
+    _ = try h.c.key(.escape, .{});
+
+    // One letter says too little, and plain phonetic mode lists nothing.
+    try h.typed("a");
+    try testing.expectEqual(h.c.avro_count, h.c.candidates().len);
+    _ = try h.c.key(.escape, .{});
+    h.memory.store().save(Store.settings, "{\"suggestions\":false}");
+    try h.typed("am");
     try testing.expect(!h.c.panelVisible());
 }
 
