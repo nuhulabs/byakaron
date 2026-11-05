@@ -939,6 +939,11 @@ fn addLinux(
         "apps/linux/Resources/byakaron.svg",
         "apps/linux/Resources/dev.nuhu.labs.Byakaron.gschema.xml",
         "apps/linux/Resources/dev.nuhu.labs.Byakaron.metainfo.xml",
+        "apps/linux/Resources/gnome-shell/panel.css",
+        "apps/linux/Resources/gnome-shell/byakaron-panel@nuhulabs.com/metadata.json",
+        "apps/linux/Resources/gnome-shell/byakaron-panel@nuhulabs.com/extension.js",
+        "apps/linux/Resources/gnome-shell/byakaron-panel-legacy@nuhulabs.com/metadata.json",
+        "apps/linux/Resources/gnome-shell/byakaron-panel-legacy@nuhulabs.com/extension.js",
         "apps/linux/Fcitx5/byakaron-addon.conf",
         "apps/linux/Fcitx5/byakaron.conf",
     };
