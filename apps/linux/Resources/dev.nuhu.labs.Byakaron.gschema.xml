@@ -58,9 +58,17 @@
       <default>true</default>
       <summary>Type Bangla on the Spelling page</summary>
       <description>
-        The switch at the top left of the app. When true, the Spelling page
-        turns what is typed there into Bangla itself, whichever system keyboard
-        is selected. No effect on any other app.
+        The switch in the Spelling page's toolbar. When true, the page turns
+        what is typed there into Bangla itself, whichever system keyboard is
+        selected. No effect on any other app.
+      </description>
+    </key>
+    <key name="panel-extension-enabled" type="b">
+      <default>false</default>
+      <summary>The GNOME Shell suggestion panel has been switched on</summary>
+      <description>
+        Set once the keyboard has enabled the Byakaron panel extension for this
+        user, so that turning it off in the Extensions app stays off.
       </description>
     </key>
   </schema>

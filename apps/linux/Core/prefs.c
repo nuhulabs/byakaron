@@ -71,3 +71,49 @@ byk_prefs_set_boolean (GSettings *settings, const gchar *key, gboolean value)
     if (byk_prefs_has_key (settings, key))
         g_settings_set_boolean (settings, key, value);
 }
+
+static void
+byk_prefs_add_panel_extension (void)
+{
+    /* Two because GNOME 45 changed what extension.js is; Shell runs the one
+     * that lists its version and skips the other. */
+    static const gchar *const uuids[] = {
+        "byakaron-panel@nuhulabs.com", "byakaron-panel-legacy@nuhulabs.com", NULL
+    };
+    GSettings *shell = g_settings_new ("org.gnome.shell");
+    gchar **enabled = g_settings_get_strv (shell, "enabled-extensions");
+    GPtrArray *wanted = g_ptr_array_new ();
+
+    for (gchar **uuid = enabled; *uuid != NULL; uuid++)
+        g_ptr_array_add (wanted, *uuid);
+    for (guint i = 0; uuids[i] != NULL; i++)
+        if (!g_strv_contains ((const gchar *const *) enabled, uuids[i]))
+            g_ptr_array_add (wanted, (gpointer) uuids[i]);
+    g_ptr_array_add (wanted, NULL);
+
+    g_settings_set_strv (shell, "enabled-extensions",
+                         (const gchar *const *) wanted->pdata);
+    g_ptr_array_free (wanted, TRUE);
+    g_strfreev (enabled);
+    g_object_unref (shell);
+}
+
+void
+byk_prefs_enable_panel_extension (void)
+{
+    GSettings *prefs = byk_prefs_try_open ();
+    GSettingsSchemaSource *source = g_settings_schema_source_get_default ();
+    GSettingsSchema *shell = source != NULL
+        ? g_settings_schema_source_lookup (source, "org.gnome.shell", TRUE)
+        : NULL;
+
+    /* TRUE as the fallback: with no way to remember, do not ask every start. */
+    if (shell != NULL && !byk_prefs_boolean (prefs, BYK_PREFS_PANEL_ENABLED, TRUE)) {
+        byk_prefs_add_panel_extension ();
+        byk_prefs_set_boolean (prefs, BYK_PREFS_PANEL_ENABLED, TRUE);
+        g_settings_sync ();
+    }
+
+    g_clear_pointer (&shell, g_settings_schema_unref);
+    g_clear_object (&prefs);
+}

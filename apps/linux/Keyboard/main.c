@@ -64,6 +64,7 @@ main (int argc, char *argv[])
     g_option_context_free (context);
 
     ibus_init ();
+    byk_prefs_enable_panel_extension ();
 
     bus = ibus_bus_new ();
     if (!ibus_bus_is_connected (bus)) {

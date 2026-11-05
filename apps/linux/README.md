@@ -234,10 +234,16 @@ The lookup table only ever holds the **current page** (`candidates_per_page`,
 paging arrows, cursor buttons and mouse clicks are forwarded to the composer as
 Page Up/Down, Up/Down and `byakaron_composer_pick`.
 
-**The system-wide panel cannot be restyled from here.** IBus only hands GNOME
-Shell the list of words; the Shell draws that popup with its own theme, on Wayland
-as on X11. The compact pill panel exists inside the app (below), where the
-app draws it.
+**The same pill on GNOME.** IBus only hands GNOME Shell the list of words, and
+the Shell draws that popup with its own theme on Wayland as on X11, so the engine
+cannot style it. The package ships a small Shell extension instead
+(`Resources/gnome-shell/`): its stylesheet gives the popup the shape, size and blue
+of the app's panel, and its background stays the Shell theme's. There are two
+copies because GNOME 45 changed what `extension.js` is; Shell runs the one that
+lists its version. The engine turns them on once per user, and Shell finds a new
+extension at login, so the panel appears at the next login. The stylesheet applies
+to the popup for any input method. Other desktops (KDE, Xfce, Raspberry Pi OS) draw
+the list themselves and are not restyled.
 
 Escape drops the word and the list together rather than dismissing the list
 first: a two-stage Escape would mean two different things depending on state the
@@ -303,8 +309,8 @@ Bangla digits are skipped because `২০২৪` is not a misspelling.
 The issue list shows only the misspelled words; suggestions appear in the bar
 under the editor, one place for both ways of reaching a word.
 
-**Bangla typing**, the switch at the top left of the header (Spelling page only,
-on by default, remembered in the `spelling-typing` GSetting), makes the editor
+**Bangla typing**, the switch in the Spelling page's toolbar (on by default,
+remembered in the `spelling-typing` GSetting), makes the editor
 type Bangla with no system keyboard change and no effect on other apps. Keys go
 to a composer of the app's own, opened with `spell` on the same worker thread so
 corrections work and the first frame is not held up. The word being typed sits in

@@ -152,6 +152,9 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
         .{ "@BYK_SETUP@", "/usr/bin/byakaron --page=setup" },
     });
 
+    try installPanelExtensions(t, res, stage);
+    std.debug.print(">>> Packaged the GNOME Shell suggestion panel\n", .{});
+
     if (fcitx_so) |so| {
         try assertGlibc(t, so);
         const libdir = try fcitxLibdir(t);
@@ -269,6 +272,9 @@ const postinst =
     \\    # BYAKARON_INSTALLER so they do not appear twice.
     \\    if [ -n "$2" ]; then
     \\        echo "Byakaron updated from $2. Your input source stays as it is."
+    \\        if dpkg --compare-versions "$2" lt "1:0.1.5"; then
+    \\            echo "On GNOME, log out and back in once to get the new suggestion panel."
+    \\        fi
     \\    elif [ -z "${BYAKARON_INSTALLER:-}" ]; then
     \\        echo ""
     \\        echo "Byakaron installed. The package only registers the engine — add it:"
@@ -333,6 +339,24 @@ const desktopdir = "/usr/share/applications";
 const metainfo_dir = "/usr/share/metainfo";
 const datadir = "/usr/share/byakaron";
 const schemadir = "/usr/share/glib-2.0/schemas";
+const shell_extension_dir = "usr/share/gnome-shell/extensions";
+/// See byk_prefs_add_panel_extension for why there are two.
+const panel_extensions = [_][]const u8{ "byakaron-panel@nuhulabs.com", "byakaron-panel-legacy@nuhulabs.com" };
+
+/// The compact suggestion panel on GNOME: Shell draws that popup itself, and an
+/// extension's stylesheet is the one way to restyle it. `root` is the package
+/// stage, or "/" for a system install. Shell lists an extension by its folder,
+/// which must carry the UUID; both share panel.css.
+fn installPanelExtensions(t: *Tool, res: []const u8, root: []const u8) !void {
+    const source = try join(t, &.{ res, "gnome-shell" });
+    for (panel_extensions) |uuid| {
+        const dest = try join(t, &.{ root, shell_extension_dir, uuid });
+        for ([_][]const u8{ "metadata.json", "extension.js" }) |file| {
+            try installFile(t, "644", try join(t, &.{ source, uuid, file }), try join(t, &.{ dest, file }));
+        }
+        try installFile(t, "644", try join(t, &.{ source, "panel.css" }), try join(t, &.{ dest, "stylesheet.css" }));
+    }
+}
 
 /// A system install is the only kind ibus-daemon sees: it builds its registry
 /// from /usr/share/ibus/component alone (IBUS_COMPONENT_PATH is not honoured by
@@ -372,6 +396,9 @@ fn install(t: *Tool, a: []const []const u8) !void {
     try installFile(t, "644", try join(t, &.{ res, app_id ++ ".gschema.xml" }), schemadir ++ "/" ++ app_id ++ ".gschema.xml");
     try run(t, &.{ "glib-compile-schemas", schemadir });
     std.debug.print(">>> Installed: {s}/{s}.gschema.xml\n", .{ schemadir, app_id });
+
+    try installPanelExtensions(t, res, "/");
+    std.debug.print(">>> Installed: /{s}/byakaron-panel*\n", .{shell_extension_dir});
 
     // The app goes in /usr/bin, not /usr/libexec: it is something the user
     // launches, unlike the engine, which only ibus-daemon ever execs.
@@ -476,6 +503,9 @@ fn uninstall(t: *Tool) !void {
         "/usr/share/fcitx5/addon/byakaron.conf",
         "/usr/share/fcitx5/inputmethod/byakaron.conf",
     };
+    for (panel_extensions) |uuid| {
+        try run(t, &.{ "rm", "-rf", try join(t, &.{ "/", shell_extension_dir, uuid }) });
+    }
 
     const user = desktopUser(t);
     const daemon = ok(t, &.{ "pgrep", "-x", "ibus-daemon" });
@@ -1281,6 +1311,8 @@ fn tested(t: *Tool, a: []const []const u8) !u8 {
         icondir ++ "/byakaron.svg",
         desktopdir ++ "/" ++ app_id ++ ".desktop",
         schemadir ++ "/" ++ app_id ++ ".gschema.xml",
+        "/" ++ shell_extension_dir ++ "/" ++ panel_extensions[0] ++ "/stylesheet.css",
+        "/" ++ shell_extension_dir ++ "/" ++ panel_extensions[1] ++ "/stylesheet.css",
     }) |f| {
         if (exists(t.io, f)) pass("{s}", .{f}) else bad(&failures, "missing {s}", .{f});
     }
