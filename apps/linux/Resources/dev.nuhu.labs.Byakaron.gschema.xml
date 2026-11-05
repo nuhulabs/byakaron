@@ -54,5 +54,14 @@
         before Space. Ignored on newer IBus, which handles Qt automatically.
       </description>
     </key>
+    <key name="spelling-typing" type="b">
+      <default>true</default>
+      <summary>Type Bangla on the Spelling page</summary>
+      <description>
+        The switch at the top left of the app. When true, the Spelling page
+        turns what is typed there into Bangla itself, whichever system keyboard
+        is selected. No effect on any other app.
+      </description>
+    </key>
   </schema>
 </schemalist>

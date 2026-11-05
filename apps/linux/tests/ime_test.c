@@ -438,7 +438,13 @@ main (void)
     /* Corrections come from the engine's worker thread a moment after the
      * keystroke, with no further key: wait for the list rather than one pump.
      * "bangl" is Avro's বাংল alone (no dictionary word is close), which is
-     * when corrections are offered, after it. */
+     * when corrections are offered, after it.
+     *
+     * Wait for *that* list: shown, starting with বাংল, with something after
+     * it. "bang" one key earlier has its own list (ব্যাং first), and when the
+     * engine is slow (a Debug build, a busy machine) that stale list already
+     * had two candidates, so "at least two" read it: "Avro's word stays
+     * first -> ব্যাং", "correction বাংলা offered -> no". */
     g_print ("spelling corrections in the candidate list:\n");
     {
         const gchar *env_db = g_getenv ("BYAKARON_SPELL_DB");
@@ -449,7 +455,10 @@ main (void)
         } else {
             reset_state (ctx);
             send_string (ctx, "bangl");
-            for (guint waited = 0; waited < 5000 && candidate_count () < 2; waited += 100) {
+            for (guint waited = 0;
+                 waited < 5000 && !(g_table_visible && candidate_count () >= 2 &&
+                                    g_strcmp0 (candidate_at (0), "বাংল") == 0);
+                 waited += 100) {
                 g_usleep (100 * 1000);
                 pump ();
             }

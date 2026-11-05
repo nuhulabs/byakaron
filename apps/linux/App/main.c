@@ -39,7 +39,36 @@ static const char BYK_CSS[] =
     ".byk-layout-keys { color: mix(@theme_selected_bg_color, @theme_fg_color, 0.3); font-weight: 600; }\n"
     ".byk-toast { padding: 8px 12px; }\n"
     ".byk-issue-word { font-weight: 600; }\n"
-    ".byk-candidate { padding: 4px 8px; }\n"
+    /*
+     * The candidate pills. Compact on purpose: a word is the only thing in
+     * here, so the panel is barely taller than the word itself. The blue is
+     * fixed rather than the theme's accent so the panel looks like the macOS
+     * one on every theme; the rest follows light and dark.
+     */
+    ".byk-pill {\n"
+    "  background-color: mix(@theme_base_color, @theme_fg_color, 0.04);\n"
+    "  border: 1px solid alpha(@theme_fg_color, 0.12);\n"
+    "  border-radius: 999px;\n"
+    "  padding: 2px;\n"
+    "}\n"
+    ".byk-pill-floating {\n"
+    "  margin: 4px;\n"
+    "  box-shadow: 0 1px 4px alpha(black, 0.28);\n"
+    "}\n"
+    ".byk-pill-tall { border-radius: 12px; }\n"
+    "button.byk-pill-item, button.byk-pill-chevron {\n"
+    "  min-width: 0; min-height: 0;\n"
+    "  border: none; outline-color: transparent;\n"
+    "  background: none; box-shadow: none; text-shadow: none;\n"
+    "  color: @theme_fg_color;\n"
+    "}\n"
+    "button.byk-pill-item { padding: 0 9px; border-radius: 999px; font-size: 1.2rem; }\n"
+    "button.byk-pill-item:hover { background-color: alpha(@theme_fg_color, 0.09); }\n"
+    "button.byk-pill-item.byk-pill-selected { background-color: #0a84ff; color: #ffffff; }\n"
+    ".byk-pill-number { font-size: 0.72rem; opacity: 0.6; }\n"
+    ".byk-pill-selected .byk-pill-number { opacity: 0.9; }\n"
+    "button.byk-pill-chevron { padding: 0 3px; border-radius: 6px; opacity: 0.7; }\n"
+    "button.byk-pill-chevron:hover { opacity: 1; background-color: alpha(@theme_fg_color, 0.09); }\n"
     ".byk-step {\n"
     "  min-width: 24px; min-height: 24px;\n"
     "  border-radius: 999px;\n"

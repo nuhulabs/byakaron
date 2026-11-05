@@ -9,6 +9,12 @@
  * and building a row for each froze the window for seconds per keystroke;
  * nobody scrolls that list anyway. Squiggles still mark every one. */
 #define BYK_ISSUE_ROWS_MAX    200
+/* Keeps the candidate panel off the caret and off the editor's edges. */
+#define BYK_PILL_GAP          4
+#define BYK_HINT_KEYBOARD     "Type or paste Bangla text here. " \
+                              "Misspelled words are underlined in red."
+/* The macOS app's wording. */
+#define BYK_HINT_TYPING       "ইংরেজিতে লিখুন: ami banglay gan gai…"
 
 /* A misspelled span. Offsets are in characters, not bytes: GtkTextBuffer
  * counts that way and Bangla is three bytes per code point. */
@@ -28,6 +34,15 @@ struct _BykSpellPage {
     GtkWidget *placeholder; /* over the editor while it is empty */
     GtkTextBuffer *buffer;
     GtkTextTag *squiggle;
+
+    /* Typing Bangla here without the system keyboard. See "typing" below. */
+    gboolean typing;
+    GtkTextTag *word_tag;      /* underlines the word being typed */
+    GtkTextMark *word_start;   /* NULL unless a word is being typed */
+    gint word_chars;
+    GtkWidget *pill;           /* candidate panel, over the editor */
+    GtkWidget *pill_items;
+    GtkWidget *pill_pages;     /* the up/down chevrons */
 
     GtkWidget *issues_list;
     GtkWidget *issues_title;
@@ -66,6 +81,7 @@ G_DEFINE_TYPE (BykSpellPage, byk_spell_page, GTK_TYPE_BOX)
 static void byk_spell_page_check (BykSpellPage *self);
 static void byk_spell_page_select (BykSpellPage *self, gint index);
 static void on_suggestion_clicked (GtkButton *button, gpointer user_data);
+static void byk_spell_page_schedule_check (BykSpellPage *self);
 
 /* ── tokenising ──────────────────────────────────────────────────────────── */
 
@@ -179,63 +195,6 @@ byk_spell_page_set_list_visible (BykSpellPage *self, gboolean visible)
     }
 }
 
-static void
-byk_spell_page_fill_suggestions_box (BykSpellPage *self, GtkWidget *box, const BykIssue *issue)
-{
-    byk_container_clear (box);
-    if (issue == NULL)
-        return;
-
-    GtkWidget *hint = gtk_label_new ("Replace with");
-    byk_css_add (hint, "dim-label");
-    byk_css_add (hint, "caption");
-    gtk_label_set_xalign (GTK_LABEL (hint), 0.0);
-    byk_box_add (box, hint);
-
-    gchar **words = byk_spell_page_suggest (self, issue);
-    if (words == NULL || words[0] == NULL) {
-        GtkWidget *none = gtk_label_new ("No suggestions");
-        byk_css_add (none, "dim-label");
-        gtk_label_set_xalign (GTK_LABEL (none), 0.0);
-        byk_box_add (box, none);
-    } else {
-        for (guint i = 0; words[i] != NULL; i++) {
-            GtkWidget *button = gtk_button_new_with_label (words[i]);
-            gtk_widget_set_halign (button, GTK_ALIGN_FILL);
-            byk_css_add (button, "byk-candidate");
-            g_signal_connect (button, "clicked",
-                              G_CALLBACK (on_suggestion_clicked), self);
-            byk_box_add (box, button);
-        }
-    }
-    g_strfreev (words);
-}
-
-static void
-byk_spell_page_show_row_suggestions (BykSpellPage *self, gint index)
-{
-    for (gint i = 0;; i++) {
-        GtkListBoxRow *row = gtk_list_box_get_row_at_index (GTK_LIST_BOX (self->issues_list), i);
-        if (row == NULL)
-            break;
-
-        GtkWidget *box = g_object_get_data (G_OBJECT (row), "byk-suggestions");
-        if (box == NULL)
-            continue;
-
-        if (i == index) {
-            const BykIssue *issue = byk_spell_page_issue (self, index);
-            byk_spell_page_fill_suggestions_box (self, box, issue);
-            gtk_widget_set_no_show_all (box, FALSE);
-            gtk_widget_show_all (box);
-        } else {
-            byk_container_clear (box);
-            gtk_widget_set_no_show_all (box, TRUE);
-            gtk_widget_hide (box);
-        }
-    }
-}
-
 static GtkWidget *
 byk_spell_page_make_issue_row (const BykIssue *issue, gint index)
 {
@@ -251,29 +210,18 @@ byk_spell_page_make_issue_row (const BykIssue *issue, gint index)
     byk_css_add (label, "byk-bangla");
     byk_css_add (label, "byk-issue-word");
 
-    GtkWidget *header = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
-    gtk_widget_set_margin_top (header, 8);
-    gtk_widget_set_margin_bottom (header, 8);
-    gtk_widget_set_margin_start (header, 12);
-    gtk_widget_set_margin_end (header, 12);
-    byk_box_add (header, icon);
-    byk_box_add_expand (header, label);
-
-    GtkWidget *suggestions = gtk_box_new (GTK_ORIENTATION_VERTICAL, 4);
-    gtk_widget_set_margin_start (suggestions, 12);
-    gtk_widget_set_margin_end (suggestions, 12);
-    gtk_widget_set_margin_bottom (suggestions, 8);
-    byk_hide_until_shown (suggestions);
-
-    GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
-    byk_box_add (box, header);
-    byk_box_add (box, suggestions);
+    GtkWidget *box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_set_margin_top (box, 6);
+    gtk_widget_set_margin_bottom (box, 6);
+    gtk_widget_set_margin_start (box, 12);
+    gtk_widget_set_margin_end (box, 12);
+    byk_box_add (box, icon);
+    byk_box_add_expand (box, label);
 
     GtkWidget *listrow = gtk_list_box_row_new ();
     gtk_container_add (GTK_CONTAINER (listrow), box);
-    gtk_widget_set_tooltip_text (listrow, "Show suggestions");
+    gtk_widget_set_tooltip_text (listrow, "Show suggestions below the text");
     g_object_set_data (G_OBJECT (listrow), "byk-index", GINT_TO_POINTER (index));
-    g_object_set_data (G_OBJECT (listrow), "byk-suggestions", suggestions);
     return listrow;
 }
 
@@ -433,7 +381,9 @@ on_check_timeout (gpointer user_data)
     BykSpellPage *self = BYK_SPELL_PAGE (user_data);
 
     self->check_source = 0;
-    byk_spell_page_check (self);
+    /* The word being typed is not text yet; finishing it schedules another. */
+    if (self->word_start == NULL)
+        byk_spell_page_check (self);
     return G_SOURCE_REMOVE;
 }
 
@@ -453,6 +403,326 @@ byk_spell_page_check_now (BykSpellPage *self)
     byk_spell_page_check (self);
 }
 
+/* ── typing ──────────────────────────────────────────────────────────────── */
+
+/*
+ * With the header switch on, keys go to engines->typing instead of the system
+ * keyboard, so Bangla works here whatever input source is selected.
+ *
+ * GtkTextView has no way to show preedit text from outside an input method, so
+ * the word being typed sits in the buffer itself, underlined, from word_start
+ * for word_chars characters, and is replaced on every key. `syncing` keeps
+ * those edits from starting spell checks, which wait for the finished word.
+ *
+ * The panel is an overlay child, not a popup window: Wayland will not let a
+ * window choose where it opens, and this looks the same on X11.
+ *
+ * On Wayland with Byakaron already selected in the system, GNOME Shell takes
+ * the keys before the app does and this code never sees them. The result is
+ * the same Bangla, so nothing has to detect that.
+ */
+
+/* Remove the word being typed, add `commit`, then show `word` as the new one. */
+static void
+byk_spell_page_show_word (BykSpellPage *self, const gchar *commit, const gchar *word)
+{
+    const gboolean has_commit = commit != NULL && *commit != '\0';
+    const gboolean has_word = word != NULL && *word != '\0';
+    GtkTextIter at;
+
+    if (self->word_start == NULL && !has_commit && !has_word)
+        return;
+
+    /* The bar for a selected misspelling is out of date once typing starts.
+     * Before `syncing`: select clears it on the way out. */
+    if (self->word_start == NULL && self->selected >= 0)
+        byk_spell_page_select (self, -1);
+
+    const gboolean was_syncing = self->syncing;
+    self->syncing = TRUE;
+
+    if (self->word_start != NULL) {
+        GtkTextIter end;
+        gtk_text_buffer_get_iter_at_mark (self->buffer, &at, self->word_start);
+        end = at;
+        gtk_text_iter_forward_chars (&end, self->word_chars);
+        gtk_text_buffer_delete (self->buffer, &at, &end);
+    } else {
+        /* A new word replaces a selection, like any typing does. */
+        gtk_text_buffer_delete_selection (self->buffer, TRUE, TRUE);
+        gtk_text_buffer_get_iter_at_mark (self->buffer, &at,
+                                          gtk_text_buffer_get_insert (self->buffer));
+    }
+
+    if (has_commit)
+        gtk_text_buffer_insert (self->buffer, &at, commit, -1);
+
+    if (has_word) {
+        if (self->word_start == NULL)
+            self->word_start = gtk_text_buffer_create_mark (self->buffer, NULL, &at, TRUE);
+        else
+            gtk_text_buffer_move_mark (self->buffer, self->word_start, &at);
+        gtk_text_buffer_insert_with_tags (self->buffer, &at, word, -1, self->word_tag, NULL);
+        self->word_chars = (gint) g_utf8_strlen (word, -1);
+    } else if (self->word_start != NULL) {
+        gtk_text_buffer_delete_mark (self->buffer, self->word_start);
+        self->word_start = NULL;
+        self->word_chars = 0;
+    }
+
+    gtk_text_buffer_place_cursor (self->buffer, &at);
+    self->syncing = was_syncing;
+
+    gtk_text_view_scroll_mark_onscreen (GTK_TEXT_VIEW (self->editor),
+                                        gtk_text_buffer_get_insert (self->buffer));
+}
+
+static void on_pill_item_clicked (GtkButton *button, gpointer user_data);
+
+static void
+byk_spell_page_fill_pill (BykSpellPage *self, const ByakaronComposerState *state)
+{
+    byk_container_clear (self->pill_items);
+
+    if (!state->panel_visible || state->candidate_count == 0) {
+        gtk_widget_hide (self->pill);
+        return;
+    }
+
+    gtk_orientable_set_orientation (GTK_ORIENTABLE (self->pill_items),
+                                    state->vertical ? GTK_ORIENTATION_VERTICAL
+                                                    : GTK_ORIENTATION_HORIZONTAL);
+    if (state->vertical)
+        byk_css_add (self->pill, "byk-pill-tall");
+    else
+        byk_css_remove (self->pill, "byk-pill-tall");
+
+    for (size_t i = 0; i < state->candidate_count; i++) {
+        gchar *digit = g_strdup_printf ("%zu", i + 1);
+        GtkWidget *number = gtk_label_new (digit);
+        g_free (digit);
+        byk_css_add (number, "byk-pill-number");
+
+        GtkWidget *word = gtk_label_new (state->candidates[i]);
+        gtk_label_set_xalign (GTK_LABEL (word), 0.0);
+
+        GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 4);
+        byk_box_add (row, number);
+        byk_box_add (row, word);
+
+        /* Never focusable: a click must leave the word open in the editor. */
+        GtkWidget *button = gtk_button_new ();
+        gtk_container_add (GTK_CONTAINER (button), row);
+        gtk_widget_set_can_focus (button, FALSE);
+        byk_css_add (button, "byk-pill-item");
+        if (i == state->highlight)
+            byk_css_add (button, "byk-pill-selected");
+        g_object_set_data (G_OBJECT (button), "byk-index", GSIZE_TO_POINTER (i));
+        g_signal_connect (button, "clicked", G_CALLBACK (on_pill_item_clicked), self);
+        byk_box_add (self->pill_items, button);
+    }
+    gtk_widget_show_all (self->pill_items);
+
+    gtk_widget_set_visible (self->pill_pages, state->page_count > 1);
+    gtk_widget_show (self->pill);
+    gtk_widget_queue_resize (self->pill);
+}
+
+/* Draw what the composer says now, after inserting `commit`. */
+static void
+byk_spell_page_redraw_typing (BykSpellPage *self, const gchar *commit)
+{
+    ByakaronComposerState state;
+    const gboolean was_composing = self->word_start != NULL;
+    /* Valid only until the next composer call, which state is. */
+    gchar *text = g_strdup (commit);
+
+    byakaron_composer_state (self->engines->typing, &state);
+    byk_spell_page_show_word (self, text, state.composing ? state.preedit : NULL);
+    byk_spell_page_fill_pill (self, &state);
+
+    if ((text != NULL && *text != '\0') || (was_composing && self->word_start == NULL))
+        byk_spell_page_schedule_check (self);
+    g_free (text);
+}
+
+void
+byk_spell_page_finish_word (BykSpellPage *self)
+{
+    g_return_if_fail (BYK_IS_SPELL_PAGE (self));
+
+    if (self->engines->typing != NULL && self->word_start != NULL)
+        byk_spell_page_redraw_typing (self,
+                                      byakaron_composer_flush (self->engines->typing));
+}
+
+void
+byk_spell_page_typing_refresh (BykSpellPage *self)
+{
+    g_return_if_fail (BYK_IS_SPELL_PAGE (self));
+
+    if (self->engines->typing != NULL) {
+        byakaron_composer_refresh (self->engines->typing);
+        byk_spell_page_redraw_typing (self, NULL);
+    }
+}
+
+static unsigned int
+byk_gdk_mods (GdkModifierType state)
+{
+    unsigned int mods = 0;
+    if (state & GDK_SHIFT_MASK)
+        mods |= BYAKARON_MOD_SHIFT;
+    if (state & GDK_CONTROL_MASK)
+        mods |= BYAKARON_MOD_CTRL;
+    if (state & GDK_MOD1_MASK)
+        mods |= BYAKARON_MOD_ALT;
+    if (state & (GDK_MOD4_MASK | GDK_SUPER_MASK | GDK_HYPER_MASK | GDK_META_MASK))
+        mods |= BYAKARON_MOD_META;
+    return mods;
+}
+
+static gboolean
+byk_spell_page_type_key (BykSpellPage *self, const GdkEventKey *event)
+{
+    int kind;
+    unsigned int ch;
+
+    if (!self->typing || self->engines->typing == NULL ||
+        !byk_keysym_to_key (event->keyval, &kind, &ch))
+        return GDK_EVENT_PROPAGATE;
+
+    const ByakaronKeyResult result = byakaron_composer_key (self->engines->typing, kind, ch,
+                                                            byk_gdk_mods (event->state));
+    const gboolean handled = result.handled != 0;
+
+    byk_spell_page_redraw_typing (self, result.commit);
+    return handled ? GDK_EVENT_STOP : GDK_EVENT_PROPAGATE;
+}
+
+static void
+on_pill_item_clicked (GtkButton *button, gpointer user_data)
+{
+    BykSpellPage *self = BYK_SPELL_PAGE (user_data);
+    const gsize index = GPOINTER_TO_SIZE (g_object_get_data (G_OBJECT (button), "byk-index"));
+
+    if (self->engines->typing != NULL)
+        byk_spell_page_redraw_typing (
+            self, byakaron_composer_pick (self->engines->typing, index).commit);
+}
+
+static void
+byk_spell_page_turn_pill (BykSpellPage *self, int key)
+{
+    if (self->engines->typing != NULL)
+        byk_spell_page_redraw_typing (
+            self, byakaron_composer_key (self->engines->typing, key, 0, 0).commit);
+}
+
+static void
+on_pill_previous (GtkButton *button, gpointer user_data)
+{
+    (void) button;
+    byk_spell_page_turn_pill (BYK_SPELL_PAGE (user_data), BYAKARON_KEY_PAGE_UP);
+}
+
+static void
+on_pill_next (GtkButton *button, gpointer user_data)
+{
+    (void) button;
+    byk_spell_page_turn_pill (BYK_SPELL_PAGE (user_data), BYAKARON_KEY_PAGE_DOWN);
+}
+
+/* Under the word, or above it when the editor has no room left below. */
+static gboolean
+on_overlay_position (GtkOverlay *overlay,
+                     GtkWidget *child,
+                     GdkRectangle *out,
+                     gpointer user_data)
+{
+    BykSpellPage *self = BYK_SPELL_PAGE (user_data);
+    GtkTextView *view = GTK_TEXT_VIEW (self->editor);
+    GtkRequisition size;
+    GdkRectangle caret;
+    GtkTextIter iter;
+    gint x, y;
+
+    if (child != self->pill || self->word_start == NULL)
+        return FALSE;
+
+    gtk_widget_get_preferred_size (child, NULL, &size);
+    gtk_text_buffer_get_iter_at_mark (self->buffer, &iter, self->word_start);
+    gtk_text_view_get_iter_location (view, &iter, &caret);
+    gtk_text_view_buffer_to_window_coords (view, GTK_TEXT_WINDOW_WIDGET,
+                                           caret.x, caret.y, &x, &y);
+    gtk_widget_translate_coordinates (self->editor, GTK_WIDGET (overlay), x, y, &x, &y);
+
+    const gint width = gtk_widget_get_allocated_width (GTK_WIDGET (overlay));
+    const gint height = gtk_widget_get_allocated_height (GTK_WIDGET (overlay));
+
+    out->width = size.width;
+    out->height = size.height;
+    out->x = MAX (BYK_PILL_GAP, MIN (x, width - size.width - BYK_PILL_GAP));
+    out->y = y + caret.height;
+    if (out->y + size.height > height - BYK_PILL_GAP)
+        out->y = MAX (BYK_PILL_GAP, y - size.height);
+    return TRUE;
+}
+
+/* The word stays put in the text, so the panel follows it when the text moves. */
+static void
+on_editor_scrolled (GtkAdjustment *adjustment, gpointer user_data)
+{
+    BykSpellPage *self = BYK_SPELL_PAGE (user_data);
+    (void) adjustment;
+
+    if (gtk_widget_get_visible (self->pill))
+        gtk_widget_queue_resize (self->pill);
+}
+
+static GtkWidget *
+byk_spell_page_pill_chevron (BykSpellPage *self, const gchar *icon, GCallback clicked)
+{
+    GtkWidget *image = gtk_image_new_from_icon_name (icon, GTK_ICON_SIZE_MENU);
+    /* Two of these stack beside one word, and must not make the panel taller. */
+    gtk_image_set_pixel_size (GTK_IMAGE (image), 11);
+
+    GtkWidget *button = gtk_button_new ();
+    gtk_container_add (GTK_CONTAINER (button), image);
+    gtk_widget_set_can_focus (button, FALSE);
+    byk_css_add (button, "byk-pill-chevron");
+    g_signal_connect (button, "clicked", clicked, self);
+    return button;
+}
+
+static GtkWidget *
+byk_spell_page_build_pill (BykSpellPage *self)
+{
+    self->pill_items = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+
+    self->pill_pages = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_valign (self->pill_pages, GTK_ALIGN_CENTER);
+    byk_box_add (self->pill_pages,
+                 byk_spell_page_pill_chevron (self, "pan-up-symbolic",
+                                              G_CALLBACK (on_pill_previous)));
+    byk_box_add (self->pill_pages,
+                 byk_spell_page_pill_chevron (self, "pan-down-symbolic",
+                                              G_CALLBACK (on_pill_next)));
+    gtk_widget_show_all (self->pill_pages);
+
+    self->pill = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 2);
+    byk_css_add (self->pill, "byk-pill");
+    byk_css_add (self->pill, "byk-pill-floating");
+    gtk_widget_set_halign (self->pill, GTK_ALIGN_START);
+    gtk_widget_set_valign (self->pill, GTK_ALIGN_START);
+    byk_box_add (self->pill, self->pill_items);
+    byk_box_add (self->pill, self->pill_pages);
+    gtk_widget_show (self->pill_items);
+    byk_hide_until_shown (self->pill);
+
+    return self->pill;
+}
+
 /* ── correction bar ──────────────────────────────────────────────────────── */
 
 static void on_ignore_clicked (GtkButton *button, gpointer user_data);
@@ -469,11 +739,13 @@ byk_spell_page_build_correction (BykSpellPage *self, const BykIssue *issue)
     if (words == NULL || words[0] == NULL) {
         GtkWidget *none = gtk_label_new ("No suggestions");
         byk_css_add (none, "dim-label");
+        byk_css_remove (self->correction_options, "byk-pill");
         byk_box_add (self->correction_options, none);
     } else {
+        byk_css_add (self->correction_options, "byk-pill");
         for (guint i = 0; words[i] != NULL; i++) {
             GtkWidget *button = gtk_button_new_with_label (words[i]);
-            byk_css_add (button, "byk-candidate");
+            byk_css_add (button, "byk-pill-item");
             g_signal_connect (button, "clicked",
                               G_CALLBACK (on_suggestion_clicked), self);
             byk_box_add (self->correction_options, button);
@@ -490,7 +762,6 @@ byk_spell_page_select (BykSpellPage *self, gint index)
     const BykIssue *issue = byk_spell_page_issue (self, index);
 
     self->selected = issue != NULL ? index : -1;
-    byk_spell_page_show_row_suggestions (self, self->selected);
 
     if (issue == NULL) {
         gtk_revealer_set_reveal_child (GTK_REVEALER (self->correction), FALSE);
@@ -616,6 +887,11 @@ on_fix_all_clicked (GtkButton *button, gpointer user_data)
     BykSpellPage *self = BYK_SPELL_PAGE (user_data);
     (void) button;
 
+    byk_spell_page_finish_word (self);
+    /* `found` is out of date until the check that word asked for has run. */
+    if (self->check_source != 0)
+        byk_spell_page_check_now (self);
+
     if (self->found->len == 0)
         return;
 
@@ -673,6 +949,7 @@ on_copy_clicked (GtkButton *button, gpointer user_data)
     GtkTextIter start, end;
     (void) button;
 
+    byk_spell_page_finish_word (self);
     gtk_text_buffer_get_bounds (self->buffer, &start, &end);
     gchar *text = gtk_text_buffer_get_text (self->buffer, &start, &end, FALSE);
 
@@ -689,6 +966,7 @@ on_clear_clicked (GtkButton *button, gpointer user_data)
     BykSpellPage *self = BYK_SPELL_PAGE (user_data);
     (void) button;
 
+    byk_spell_page_finish_word (self);
     gtk_text_buffer_set_text (self->buffer, "", -1);
     /* Otherwise the next Save would silently empty the file that was open. */
     g_clear_pointer (&self->file_path, g_free);
@@ -759,6 +1037,8 @@ on_open_clicked (GtkButton *button, gpointer user_data)
     GError *error = NULL;
     (void) button;
 
+    byk_spell_page_finish_word (self);
+
     GtkWidget *dialog = gtk_file_chooser_dialog_new (
         "Open",
         byk_spell_page_window (self),
@@ -805,6 +1085,8 @@ on_save_clicked (GtkButton *button, gpointer user_data)
     BykSpellPage *self = BYK_SPELL_PAGE (user_data);
     (void) button;
 
+    byk_spell_page_finish_word (self);
+
     if (self->file_path != NULL) {
         byk_spell_page_write_file (self, self->file_path);
         return;
@@ -829,25 +1111,46 @@ on_save_clicked (GtkButton *button, gpointer user_data)
 }
 
 /* Ctrl+O / Ctrl+S while typing. On the editor rather than as app accels: they
- * mean nothing on the Layout or Setup pages. */
+ * mean nothing on the Layout or Setup pages. Every other key may be Bangla. */
 static gboolean
 on_editor_key_press (GtkWidget *widget, GdkEventKey *event, gpointer user_data)
 {
+    BykSpellPage *self = BYK_SPELL_PAGE (user_data);
     (void) widget;
 
-    if ((event->state & gtk_accelerator_get_default_mod_mask ()) != GDK_CONTROL_MASK)
-        return GDK_EVENT_PROPAGATE;
-
-    switch (gdk_keyval_to_lower (event->keyval)) {
-    case GDK_KEY_o:
-        on_open_clicked (NULL, user_data);
-        return GDK_EVENT_STOP;
-    case GDK_KEY_s:
-        on_save_clicked (NULL, user_data);
-        return GDK_EVENT_STOP;
-    default:
-        return GDK_EVENT_PROPAGATE;
+    if ((event->state & gtk_accelerator_get_default_mod_mask ()) == GDK_CONTROL_MASK) {
+        switch (gdk_keyval_to_lower (event->keyval)) {
+        case GDK_KEY_o:
+            on_open_clicked (NULL, self);
+            return GDK_EVENT_STOP;
+        case GDK_KEY_s:
+            on_save_clicked (NULL, self);
+            return GDK_EVENT_STOP;
+        default:
+            break;
+        }
     }
+
+    return byk_spell_page_type_key (self, event);
+}
+
+/* Before the click moves the caret, or the word lands where the click went. */
+static gboolean
+on_editor_button_press (GtkWidget *widget, GdkEventButton *event, gpointer user_data)
+{
+    (void) widget;
+    (void) event;
+    byk_spell_page_finish_word (BYK_SPELL_PAGE (user_data));
+    return GDK_EVENT_PROPAGATE;
+}
+
+static gboolean
+on_editor_focus_out (GtkWidget *widget, GdkEventFocus *event, gpointer user_data)
+{
+    (void) widget;
+    (void) event;
+    byk_spell_page_finish_word (BYK_SPELL_PAGE (user_data));
+    return GDK_EVENT_PROPAGATE;
 }
 
 /*
@@ -929,7 +1232,9 @@ on_cursor_moved (GtkTextBuffer *buffer, GParamSpec *pspec, gpointer user_data)
     BykSpellPage *self = BYK_SPELL_PAGE (user_data);
     (void) pspec;
 
-    if (self->syncing)
+    /* A selection is the user's own: Ctrl+A leaves the cursor at the start of
+     * the text, and picking the word there would undo it. */
+    if (self->syncing || gtk_text_buffer_get_has_selection (buffer))
         return;
 
     GtkTextIter iter;
@@ -1072,8 +1377,8 @@ static GtkWidget *
 byk_spell_page_build_correction_bar (BykSpellPage *self)
 {
     GtkWidget *bar = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
-    gtk_widget_set_margin_top (bar, 8);
-    gtk_widget_set_margin_bottom (bar, 8);
+    gtk_widget_set_margin_top (bar, 4);
+    gtk_widget_set_margin_bottom (bar, 4);
     gtk_widget_set_margin_start (bar, 12);
     gtk_widget_set_margin_end (bar, 12);
 
@@ -1083,7 +1388,9 @@ byk_spell_page_build_correction_bar (BykSpellPage *self)
     GtkWidget *arrow = gtk_label_new ("Replace with");
     byk_css_add (arrow, "dim-label");
 
-    self->correction_options = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
+    self->correction_options = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_halign (self->correction_options, GTK_ALIGN_START);
+    gtk_widget_set_valign (self->correction_options, GTK_ALIGN_CENTER);
 
     GtkWidget *scroller = byk_scroller (self->correction_options,
                                         GTK_POLICY_AUTOMATIC, GTK_POLICY_NEVER);
@@ -1168,21 +1475,28 @@ byk_spell_page_build_editor (BykSpellPage *self)
     self->squiggle = gtk_text_buffer_create_tag (self->buffer, "misspelled",
                                                  "underline", PANGO_UNDERLINE_ERROR,
                                                  NULL);
+    self->word_tag = gtk_text_buffer_create_tag (self->buffer, "typing",
+                                                 "underline", PANGO_UNDERLINE_SINGLE,
+                                                 NULL);
 
     g_signal_connect (self->buffer, "changed", G_CALLBACK (on_buffer_changed), self);
     g_signal_connect (self->buffer, "notify::cursor-position",
                       G_CALLBACK (on_cursor_moved), self);
     g_signal_connect (self->editor, "preedit-changed", G_CALLBACK (on_preedit_changed), self);
     g_signal_connect (self->editor, "key-press-event", G_CALLBACK (on_editor_key_press), self);
+    g_signal_connect (self->editor, "button-press-event",
+                      G_CALLBACK (on_editor_button_press), self);
+    g_signal_connect (self->editor, "focus-out-event", G_CALLBACK (on_editor_focus_out), self);
     g_signal_connect (self->editor, "style-updated", G_CALLBACK (on_editor_style_updated), self);
 
     GtkWidget *scroller = byk_scroller (self->editor, GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_widget_set_vexpand (scroller, TRUE);
+    g_signal_connect (gtk_scrollable_get_vadjustment (GTK_SCROLLABLE (self->editor)),
+                      "value-changed", G_CALLBACK (on_editor_scrolled), self);
 
     /* GtkTextView has no placeholder in GTK3. The label ignores the pointer,
      * so clicking the hint still lands in the editor underneath. */
-    self->placeholder = gtk_label_new ("Type or paste Bangla text here. "
-                                       "Misspelled words are underlined in red.");
+    self->placeholder = gtk_label_new (BYK_HINT_KEYBOARD);
     byk_css_add (self->placeholder, "dim-label");
     byk_css_add (self->placeholder, "byk-bangla");
     gtk_label_set_line_wrap (GTK_LABEL (self->placeholder), TRUE);
@@ -1197,6 +1511,8 @@ byk_spell_page_build_editor (BykSpellPage *self)
     gtk_container_add (GTK_CONTAINER (overlay), scroller);
     gtk_overlay_add_overlay (GTK_OVERLAY (overlay), self->placeholder);
     gtk_overlay_set_overlay_pass_through (GTK_OVERLAY (overlay), self->placeholder, TRUE);
+    gtk_overlay_add_overlay (GTK_OVERLAY (overlay), byk_spell_page_build_pill (self));
+    g_signal_connect (overlay, "get-child-position", G_CALLBACK (on_overlay_position), self);
 
     return overlay;
 }
@@ -1269,6 +1585,9 @@ byk_spell_page_dispose (GObject *object)
 {
     BykSpellPage *self = BYK_SPELL_PAGE (object);
 
+    /* Destroying the editor sends it a focus-out: nothing is left to finish. */
+    self->word_start = NULL;
+
     g_clear_handle_id (&self->check_source, g_source_remove);
     g_clear_pointer (&self->file_path, g_free);
     g_clear_pointer (&self->found, g_array_unref);
@@ -1300,6 +1619,28 @@ byk_spell_page_new (BykEngines *engines)
     byk_box_add_expand (GTK_WIDGET (self), self->stack);
 
     return GTK_WIDGET (self);
+}
+
+void
+byk_spell_page_set_typing (BykSpellPage *self, gboolean typing)
+{
+    g_return_if_fail (BYK_IS_SPELL_PAGE (self));
+
+    byk_spell_page_finish_word (self);
+    self->typing = typing;
+    gtk_label_set_text (GTK_LABEL (self->placeholder),
+                        typing ? BYK_HINT_TYPING : BYK_HINT_KEYBOARD);
+    /* The system keyboard may have a word open from before the switch. */
+    gtk_text_view_reset_im_context (GTK_TEXT_VIEW (self->editor));
+}
+
+void
+byk_spell_page_focus_editor (BykSpellPage *self)
+{
+    g_return_if_fail (BYK_IS_SPELL_PAGE (self));
+
+    if (self->engines->spell != NULL)
+        gtk_widget_grab_focus (self->editor);
 }
 
 void

@@ -15,7 +15,7 @@
 G_BEGIN_DECLS
 
 #define BYK_APP_ID      "dev.nuhu.labs.Byakaron"
-#define BYK_APP_VERSION "0.1.3"
+#define BYK_APP_VERSION "0.1.4"
 
 /* Public pages only: nuhulabs/byakaron is private, so a link to it is a 404
  * for everyone who installs the app. */
@@ -41,6 +41,12 @@ typedef struct {
      * could not be created; every use copes with that.
      */
     ByakaronComposer *composer;
+    /*
+     * The Spelling page's keyboard. Separate from `composer` because it opens
+     * Byakaron.db for corrections, so it arrives with `spell`, on the same
+     * worker thread, and is NULL until then. Main thread only afterwards.
+     */
+    ByakaronComposer *typing;
 } BykEngines;
 
 G_END_DECLS

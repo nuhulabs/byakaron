@@ -19,6 +19,11 @@
   <icon type="stock">byakaron</icon>
   <url type="homepage">https://nuhulabs.com/byakaron</url>
   <releases>
+    <release version="0.1.4" date="2026-11-05">
+      <description>
+        <p>Type Bangla on the Spelling page without changing the system keyboard, using the new switch at the top left. A compact suggestion panel in the app, more suggested words while typing (am now also offers আমা and আমি), and corrections only in the bar under the text.</p>
+      </description>
+    </release>
     <release version="0.1.3" date="2026-10-29">
       <description>
         <p>Works on Ubuntu 26.04 and Debian 13. The download is about half the size (90 MB instead of 172 MB) with the same spell-check. Updates cleanly from the earlier 0.2.x packages.</p>
