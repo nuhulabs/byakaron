@@ -62,15 +62,6 @@ const fcitx_cflags: []const []const u8 = &.{
     "-DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_64",
 };
 
-const fcitx_cxxflags: []const []const u8 = &.{
-    "-std=c++17",
-    "-Wall",
-    "-Wextra",
-    "-fPIC",
-    "-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_64",
-    "-DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_64",
-};
-
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -858,7 +849,7 @@ fn addLinux(
         // Fcitx loads $libdir/fcitx5/byakaron.so (no lib prefix), from the
         // Library=byakaron field in the addon conf.
         const install_fcitx_so = b.addInstallFileWithDir(
-            fcitx.getEmittedBin(),
+            fcitx,
             .lib,
             "fcitx5/byakaron.so",
         );
@@ -875,9 +866,9 @@ fn addLinux(
         fcitx_step.dependOn(&install_fcitx_so.step);
         fcitx_step.dependOn(&install_fcitx_addon.step);
         fcitx_step.dependOn(&install_fcitx_im.step);
-        fcitx_so = fcitx.getEmittedBin();
+        fcitx_so = fcitx;
         if (optimize != .fast) {
-            fcitx_release_so = linuxFcitx(b, linux_target, .fast, rel_core).getEmittedBin();
+            fcitx_release_so = linuxFcitx(b, linux_target, .fast, rel_core);
         } else {
             fcitx_release_so = fcitx_so;
         }
@@ -972,7 +963,9 @@ fn addLinux(
     package.addFileArg(rel_app.getEmittedBin());
     package.addFileArg(spell_db);
     const deb_dir = package.addOutputDirectoryArg("deb");
-    if (fcitx_release_so) |so| package.addFileArg(so);
+    // No Fcitx5 addon in the .deb: it is built against one Fcitx5's C++ API,
+    // and the .deb is one file for every release. `zig build linux-fcitx5` /
+    // install-linux build it on the machine that uses it.
     package.setEnvironmentVariable("BYK_DEB_ARCH", switch (arch) {
         .x86_64 => "amd64",
         .aarch64 => "arm64",
@@ -1184,34 +1177,39 @@ fn linuxApp(
     return app;
 }
 
-/// The Fcitx5 addon (C++ against the host's libFcitx5Core).
+/// The Fcitx5 addon (C++ against the host's libFcitx5Core). The system's g++
+/// compiles engine.cpp, not Zig: Fcitx5's API passes std::string and
+/// std::function, every distribution builds Fcitx5 against libstdc++, and
+/// Zig's C++ is libc++, so a Zig-built addon referenced std::__1 symbols that
+/// no Fcitx5 has (7 undefined; it never loaded). Zig still builds the engine
+/// and the C glue as static libraries with a C interface, and g++ links them
+/// with --no-undefined: a missing symbol is now a build error, not a .so that
+/// does not load.
 fn linuxFcitx(
     b: *std.Build,
     linux_target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     core: *std.Build.Module,
-) *std.Build.Step.Compile {
+) std.Build.LazyPath {
     const fcitx_core = b.addLibrary(.{
         .linkage = .static,
         .name = "byakaron_fcitx_core",
         .root_module = core,
     });
+    fcitx_core.bundle_compiler_rt = true;
+    fcitx_core.bundle_ubsan_rt = true;
 
-    const fcitx = b.addLibrary(.{
-        .linkage = .dynamic,
-        .name = "byakaronim",
+    const glue = b.addLibrary(.{
+        .linkage = .static,
+        .name = "byakaron_fcitx_glue",
         .root_module = b.createModule(.{
             .target = linux_target,
             .optimize = optimize,
             .link_libc = true,
-            .link_libcpp = true,
+            .pic = true,
         }),
     });
-    fcitx.root_module.addCSourceFiles(.{
-        .files = &.{"apps/linux/Fcitx5/engine.cpp"},
-        .flags = fcitx_cxxflags,
-    });
-    fcitx.root_module.addCSourceFiles(.{
+    glue.root_module.addCSourceFiles(.{
         .files = &.{
             "apps/linux/Core/composer.c",
             "apps/linux/Core/spell.c",
@@ -1219,19 +1217,40 @@ fn linuxFcitx(
         },
         .flags = fcitx_cflags,
     });
-    fcitx.root_module.addIncludePath(b.path("src/ffi"));
-    fcitx.root_module.addIncludePath(b.path("apps/linux/Core"));
-    fcitx.root_module.addIncludePath(b.path("apps/linux/Fcitx5"));
-    addHostLibdir(b, fcitx.root_module);
-    fcitx.root_module.linkSystemLibrary("Fcitx5Core", .{});
-    fcitx.root_module.linkSystemLibrary("glib-2.0", .{});
-    fcitx.root_module.linkSystemLibrary("gio-2.0", .{});
-    fcitx.root_module.linkLibrary(fcitx_core);
-    // Host libFcitx5Core was built against this machine's glibc. Same
-    // reason as the engine: a 2.31-targeted addon must not require the
-    // host library's newer undefined symbols.
-    fcitx.linker_allow_shlib_undefined = true;
-    return fcitx;
+    glue.root_module.addIncludePath(b.path("src/ffi"));
+    glue.root_module.addIncludePath(b.path("apps/linux/Core"));
+    addHostLibdir(b, glue.root_module);
+    glue.root_module.linkSystemLibrary("glib-2.0", .{});
+    glue.root_module.linkSystemLibrary("gio-2.0", .{});
+    glue.bundle_ubsan_rt = true;
+
+    // C++20: Fcitx5's headers on Ubuntu 26.04 use std::span and
+    // string_view::starts_with. GLib 2.64: Ubuntu 20.04's, as for the engine.
+    const gxx = b.addSystemCommand(&.{
+        "sh",             "-c",
+        \\set -e
+        \\pkgs="Fcitx5Core glib-2.0 gio-2.0"
+        \\g++ -std=c++20 -shared -fPIC $5 -Wall -Wextra -o "$4" "$1" \
+        \\    -DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_64 \
+        \\    -DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_64 \
+        \\    -I"$6" -I"$7" -I"$8" $(pkg-config --cflags $pkgs) \
+        \\    "$3" "$2" $(pkg-config --libs $pkgs) -lpthread -lm -ldl \
+        \\    -Wl,--no-undefined
+        ,
+        "byakaron-fcitx",
+    });
+    gxx.addFileArg(b.path("apps/linux/Fcitx5/engine.cpp"));
+    gxx.addFileArg(fcitx_core.getEmittedBin());
+    gxx.addFileArg(glue.getEmittedBin());
+    const so = gxx.addOutputFileArg("byakaron.so");
+    gxx.addArg(if (optimize == .debug) "-O0 -g" else "-O2");
+    gxx.addDirectoryArg(b.path("src/ffi"));
+    gxx.addDirectoryArg(b.path("apps/linux/Core"));
+    gxx.addDirectoryArg(b.path("apps/linux/Fcitx5"));
+    gxx.addFileInput(b.path("apps/linux/Fcitx5/engine.h"));
+    gxx.addFileInput(b.path("apps/linux/Core/composer.h"));
+    gxx.addFileInput(b.path("src/ffi/byakaron.h"));
+    return so;
 }
 
 const LinuxArch = enum { x86_64, aarch64 };

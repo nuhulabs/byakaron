@@ -20,6 +20,7 @@
 const Composer = @This();
 
 const std = @import("std");
+const builtin = @import("builtin");
 const AutoComplete = @import("autocomplete");
 const AutoCompleteMem = @import("autocomplete_mem");
 pub const Settings = @import("Composer/Settings.zig");
@@ -32,6 +33,11 @@ pub const Corrector = @import("Composer/Corrector.zig");
 const user_word_limit = 5;
 /// Spelling corrections listed when Avro has no dictionary word.
 const correction_limit = 3;
+/// Dictionary words that start with what is typed, listed last: `am` also
+/// offers আমা and আমি, not just Avro's আম and এম. Desktop Linux only: every other
+/// platform's list stays as its owner left it.
+const prefix_words = builtin.os.tag == .linux and !builtin.abi.isAndroid();
+const prefix_limit = 8;
 
 pub const Key = union(enum) {
     /// A printable ASCII character (0x21–0x7e).
@@ -271,7 +277,10 @@ pub fn refresh(self: *Composer) !void {
     self.avro_count = fresh.items.len;
     self.highlight = fresh.selected;
 
-    if (self.settings.suggestions) try self.addExtras();
+    if (self.settings.suggestions) {
+        try self.addExtras();
+        if (prefix_words) try self.addPrefixWords();
+    }
 
     // A refresh that only appended (corrections arriving) keeps the user's place.
     if (keep) |k| for (self.items.items, 0..) |item, i| if (std.mem.eql(u8, item, k)) {
@@ -302,6 +311,18 @@ fn addExtras(self: *Composer) !void {
         try self.items.append(self.gpa, try arena.dupe(u8, f));
         added += 1;
     }
+}
+
+/// After the corrections: a misspelling rarely starts a real word.
+fn addPrefixWords(self: *Composer) !void {
+    const arena = self.extras.allocator();
+    const plain = try self.ac().transliterate(self.gpa, arena, self.latin.items);
+    // A single letter starts too many words to say anything yet.
+    if ((std.unicode.utf8CountCodepoints(plain) catch 0) < 2) return;
+    const longer = self.ac().prefixSuggest(arena, plain, prefix_limit) catch &.{};
+    for (longer) |entry| if (!self.listed(entry.word)) {
+        try self.items.append(self.gpa, try arena.dupe(u8, entry.word));
+    };
 }
 
 fn listed(self: Composer, word: []const u8) bool {
@@ -586,6 +607,28 @@ test "personal words follow Avro's list; settings sync from the store" {
     // Another process turns suggestions off; the next word obeys.
     h.memory.store().save(Store.settings, "{\"suggestions\":false}");
     try h.typed("bangla");
+    try testing.expect(!h.c.panelVisible());
+}
+
+test "Linux: words that start with what is typed follow Avro's list" {
+    if (!prefix_words) return error.SkipZigTest;
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    try h.typed("am");
+    const list = h.c.candidates();
+    try testing.expect(list.len > h.c.avro_count);
+    const typed = h.c.candidates()[0];
+    for (list[h.c.avro_count..]) |w| try testing.expect(std.mem.startsWith(u8, w, typed));
+    for (list, 0..) |a, i| for (list[i + 1..]) |b| try testing.expect(!std.mem.eql(u8, a, b));
+    _ = try h.c.key(.escape, .{});
+
+    // One letter says too little, and plain phonetic mode lists nothing.
+    try h.typed("a");
+    try testing.expectEqual(h.c.avro_count, h.c.candidates().len);
+    _ = try h.c.key(.escape, .{});
+    h.memory.store().save(Store.settings, "{\"suggestions\":false}");
+    try h.typed("am");
     try testing.expect(!h.c.panelVisible());
 }
 

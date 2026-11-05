@@ -222,14 +222,22 @@ Electron/Monaco treats HidePreeditText as cancel.
 Avro's own list for the latin typed so far (autocorrect, dictionary words,
 suffix forms, the plain transliteration), then personal-dictionary words that
 start with the transliteration, then spelling corrections when Avro found no
-dictionary word. The lexicon is compiled into the binary, so candidates work
-with nothing installed. **Word suggestions** off is phonetic mode: the word is
+dictionary word, then up to 8 dictionary words that start with the
+transliteration (from two letters on): Avro alone gives `am` only আম and এম, and
+these add আমন, আমা, আমি and so on. That last step is a compile-time switch in
+`src/Composer.zig`, on for desktop Linux only. The lexicon is compiled into the binary, so
+candidates work with nothing installed. **Word suggestions** off is phonetic mode: the word is
 transliterated exactly and no list is shown.
 
 The lookup table only ever holds the **current page** (`candidates_per_page`,
 3–9, default 9); the composer pages, wraps and remembers. The panel's own
 paging arrows, cursor buttons and mouse clicks are forwarded to the composer as
 Page Up/Down, Up/Down and `byakaron_composer_pick`.
+
+**The system-wide panel cannot be restyled from here.** IBus only hands GNOME
+Shell the list of words; the Shell draws that popup with its own theme, on Wayland
+as on X11. The compact pill panel exists inside the app (below), where the
+app draws it.
 
 Escape drops the word and the list together rather than dismissing the list
 first: a two-stage Escape would mean two different things depending on state the
@@ -291,6 +299,21 @@ locally and calls `byakaron_spell_is_correct` per word — which is what the mac
 and Windows apps do too. Only Bengali-block runs are checked, so latin,
 punctuation and emoji are left alone rather than reported as misspelled, and
 Bangla digits are skipped because `২০২৪` is not a misspelling.
+
+The issue list shows only the misspelled words; suggestions appear in the bar
+under the editor, one place for both ways of reaching a word.
+
+**Bangla typing**, the switch at the top left of the header (Spelling page only,
+on by default, remembered in the `spelling-typing` GSetting), makes the editor
+type Bangla with no system keyboard change and no effect on other apps. Keys go
+to a composer of the app's own, opened with `spell` on the same worker thread so
+corrections work and the first frame is not held up. The word being typed sits in
+the buffer underlined and is replaced on each key, because GtkTextView can only
+show preedit text from an input method; spell checks wait for the finished word.
+Its candidate panel is a pill-shaped overlay in the editor, drawn by the app, so it
+works the same on X11 and Wayland, where a popup window could not choose its
+position. If Byakaron is also the system keyboard, on Wayland GNOME Shell takes the
+keys first and on X11 the app does; either way the word is converted once.
 
 Suggestions use plain `byakaron_spell_suggest`, not the `_ctx` variant: context
 ranking reads bigram and trigram tables that the locally built `Byakaron.db` has
@@ -501,27 +524,46 @@ The `.deb` Version carries epoch 1 (`1:0.1.3`): until 0.2.1 the Linux package
 had its own numbering, and without the epoch apt refuses the shared 0.1.x over
 0.2.1 as a downgrade. Keep it in every future version.
 
-The website installer is `apps/linux/web_install.sh`. Copy it by hand to
-`install.sh` in the nuhulabs.com repo (`app/public/byakaron`), plus the same
-file as `install-amd64.sh` and `install-arm64.sh` for links shared earlier. The
-page itself needs no version bump: the installer fetches the latest release.
-`bash apps/linux/tests/web_install_test.sh` checks what it decides on different
-systems.
+The public command, `curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash`,
+is served by the nuhulabs.com repo from copies in `app/public/byakaron/`:
+`install.sh` is `apps/web/app/public/install.sh` (Linux + macOS), and
+`install-amd64.sh` / `install-arm64.sh` (links shared earlier) are
+`apps/linux/web_install.sh`. Copy them there when they change (RELEASING.md).
+They download `byakaron_<arch>.deb` from the latest release, so a release needs
+no copy; the copies of 22/10 still asked for `byakaron_<version>_<arch>.deb` and
+failed for everyone from 0.1.0 (26/10) on. `release.yml` now runs the public
+command after each release. `bash apps/linux/tests/web_install_test.sh` checks
+what the installer decides on different systems.
 
 ## Fcitx5 (optional)
 
-A second IME framework, not a skin over IBus. `apps/linux/Fcitx5/` is a
-C++ `InputMethodEngineV2` over the same Zig composer as `Keyboard/engine.c`
-(one composer for the addon; a pending word is committed when its input
-context is reset or loses focus, since Fcitx5 does not commit the preedit by
-itself). Build with `zig build linux-fcitx5` when
-`libfcitx5core-dev` is installed (or `PKG_CONFIG_PATH` points at those
-headers). That does **not** switch the session to Fcitx5.
+A second IME framework, not a skin over IBus, and optional: IBus stays the
+Byakaron keyboard on Linux (the `.deb`, the install command, every test). For
+desktops that run Fcitx5 instead (often KDE), `apps/linux/Fcitx5/` is a C++
+`InputMethodEngineV2` over the same Zig composer as `Keyboard/engine.c` (a
+pending word is committed when its input context is reset or loses focus,
+since Fcitx5 does not commit the preedit by itself).
 
+Build it on the machine that uses it, with `libfcitx5core-dev` and `g++`
+installed (or `PKG_CONFIG_PATH` pointing at the Fcitx5 headers):
+`zig build linux-fcitx5`. That does **not** switch the session to Fcitx5.
 Install copies `byakaron.so` plus the addon/inputmethod `.conf` files if the
 addon was **rebuilt in that same run** (a leftover `zig-out` copy is not
-shipped). The addon is built for glibc 2.31 like the engine. Fcitx5 users then
-add **Byakaron** in the Fcitx5 config tool.
+shipped). Fcitx5 users then add **Byakaron** in the Fcitx5 config tool. The
+`.deb` does not ship it: the addon is built against one Fcitx5's C++ API.
+
+The system's g++ compiles `engine.cpp`, not Zig. Fcitx5's API passes
+`std::string` and `std::function`, distributions build Fcitx5 with libstdc++,
+and Zig's C++ is libc++, so the Zig-built addon referenced `std::__1` symbols
+no Fcitx5 has and never loaded ("undefined symbol" in Fcitx5's log). Zig still
+builds the engine and the C glue as static libraries with a C interface; g++
+links them with `--no-undefined`, and `zig build linux-ci` checks that every
+symbol resolves. It is C++20 (Fcitx5 5.1.19's headers use `std::span`), and
+the class is `BykFcitxEngine` (`ByakaronEngine` is the C API's handle type).
+
+Checked in clean containers with Fcitx5 5.1.7 (Ubuntu 24.04) and 5.1.19
+(26.04), typing through Fcitx5's D-Bus frontend: the addon loads, `ami ` gives
+আমি, `ami bangla ` gives আমি বাংলা, the preedit shows আমি.
 
 ## Flatpak (app only)
 
