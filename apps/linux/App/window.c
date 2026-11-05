@@ -2,7 +2,6 @@
 
 #include "dictionary.h"
 #include "layout.h"
-#include "prefs.h"
 #include "settings.h"
 #include "setup.h"
 #include "spelling.h"
@@ -17,9 +16,7 @@ struct _BykWindow {
     GtkWidget *spell_page;
     GtkWidget *setup_page;
     GtkWidget *settings_page;
-    GtkWidget *typing;       /* the Bangla typing switch and its label */
 
-    GSettings *prefs;        /* NULL when the schema is not installed */
     gint typing_update;      /* a refresh is queued on the main loop */
 };
 
@@ -97,8 +94,6 @@ on_spell_loaded (GObject *source_object, GAsyncResult *result, gpointer user_dat
     self->engines.spell = spell;
     self->engines.typing = typing;
     byk_spell_page_engine_ready (BYK_SPELL_PAGE (self->spell_page));
-    /* Without Byakaron.db the page has no editor to type in. */
-    gtk_widget_set_sensitive (self->typing, spell != NULL);
 
     if (gtk_stack_get_visible_child (GTK_STACK (self->stack)) == self->spell_page)
         byk_spell_page_focus_editor (BYK_SPELL_PAGE (self->spell_page));
@@ -153,14 +148,8 @@ on_visible_page_changed (GObject *object, GParamSpec *pspec, gpointer user_data)
                                       : "Spelling");
     g_free (title);
 
-    /* The switch only reaches the Spelling page's editor. */
     if (self->spell_page != NULL) {
-        const gboolean spelling =
-            gtk_stack_get_visible_child (GTK_STACK (self->stack)) == self->spell_page;
-
-        if (self->typing != NULL)
-            gtk_widget_set_visible (self->typing, spelling);
-        if (spelling)
+        if (gtk_stack_get_visible_child (GTK_STACK (self->stack)) == self->spell_page)
             byk_spell_page_focus_editor (BYK_SPELL_PAGE (self->spell_page));
         else
             byk_spell_page_finish_word (BYK_SPELL_PAGE (self->spell_page));
@@ -260,49 +249,12 @@ byk_window_build_menu_button (BykWindow *self)
 }
 
 static void
-on_typing_switched (GObject *object, GParamSpec *pspec, gpointer user_data)
-{
-    BykWindow *self = BYK_WINDOW (user_data);
-    const gboolean on = gtk_switch_get_active (GTK_SWITCH (object));
-    (void) pspec;
-
-    byk_prefs_set_boolean (self->prefs, BYK_PREFS_SPELLING_TYPING, on);
-    byk_spell_page_set_typing (BYK_SPELL_PAGE (self->spell_page), on);
-    byk_spell_page_focus_editor (BYK_SPELL_PAGE (self->spell_page));
-}
-
-static GtkWidget *
-byk_window_build_typing_switch (BykWindow *self)
-{
-    const gboolean on = byk_prefs_boolean (self->prefs, BYK_PREFS_SPELLING_TYPING, TRUE);
-
-    GtkWidget *label = gtk_label_new ("Bangla typing");
-
-    GtkWidget *toggle = gtk_switch_new ();
-    gtk_widget_set_valign (toggle, GTK_ALIGN_CENTER);
-    gtk_switch_set_active (GTK_SWITCH (toggle), on);
-    g_signal_connect (toggle, "notify::active", G_CALLBACK (on_typing_switched), self);
-
-    /* The page has to know without a click; the switch only reports changes. */
-    byk_spell_page_set_typing (BYK_SPELL_PAGE (self->spell_page), on);
-
-    self->typing = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
-    gtk_widget_set_tooltip_text (self->typing,
-                                 "Type Bangla in the Spelling page without "
-                                 "changing the system keyboard");
-    gtk_box_pack_start (GTK_BOX (self->typing), label, FALSE, FALSE, 0);
-    gtk_box_pack_start (GTK_BOX (self->typing), toggle, FALSE, FALSE, 0);
-    return self->typing;
-}
-
-static void
 byk_window_init (BykWindow *self)
 {
     /* Byakaron.db is the only handle worth a thread; the composer opens at once
      * (and moves old GSettings values into settings.json the first time). */
     self->engines.spell = NULL;
     self->engines.composer = byk_composer_open (FALSE, NULL, NULL);
-    self->prefs = byk_prefs_try_open ();
 
     self->stack = gtk_stack_new ();
     gtk_stack_set_transition_type (GTK_STACK (self->stack),
@@ -328,8 +280,6 @@ byk_window_init (BykWindow *self)
     gtk_header_bar_set_show_close_button (GTK_HEADER_BAR (self->header), TRUE);
     gtk_header_bar_set_title (GTK_HEADER_BAR (self->header), "Spelling");
     gtk_header_bar_set_subtitle (GTK_HEADER_BAR (self->header), "Byakaron");
-    gtk_header_bar_pack_start (GTK_HEADER_BAR (self->header),
-                               byk_window_build_typing_switch (self));
     gtk_header_bar_pack_end (GTK_HEADER_BAR (self->header),
                              byk_window_build_menu_button (self));
 
@@ -346,8 +296,6 @@ byk_window_init (BykWindow *self)
     gtk_widget_set_size_request (GTK_WIDGET (self), 360, 400);
 
     gtk_widget_show_all (GTK_WIDGET (self));
-    /* show_all just showed the switch, whichever page is up. */
-    on_visible_page_changed (NULL, NULL, self);
 
     byk_window_load_spell (self);
 }
@@ -362,7 +310,6 @@ byk_window_dispose (GObject *object)
     self->setup_page = NULL;
     self->settings_page = NULL;
     self->header = NULL;
-    self->typing = NULL;
 
     /* Pages only borrow these, and they are all gone by the time dispose has
      * chained up, so freeing after that is the safe order. */
@@ -371,7 +318,6 @@ byk_window_dispose (GObject *object)
     g_clear_pointer (&self->engines.spell, byk_spell_free);
     g_clear_pointer (&self->engines.composer, byakaron_composer_destroy);
     g_clear_pointer (&self->engines.typing, byakaron_composer_destroy);
-    g_clear_object (&self->prefs);
 }
 
 static void
