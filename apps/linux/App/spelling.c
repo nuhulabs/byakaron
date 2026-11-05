@@ -1,5 +1,6 @@
 #include "spelling.h"
 
+#include "prefs.h"
 #include "uiutil.h"
 
 /* Coalesce keystrokes into one pass, the same 250ms the macOS app debounces. */
@@ -36,6 +37,7 @@ struct _BykSpellPage {
     GtkTextTag *squiggle;
 
     /* Typing Bangla here without the system keyboard. See "typing" below. */
+    GSettings *prefs;          /* NULL when the schema is not installed */
     gboolean typing;
     GtkTextTag *word_tag;      /* underlines the word being typed */
     GtkTextMark *word_start;   /* NULL unless a word is being typed */
@@ -43,6 +45,7 @@ struct _BykSpellPage {
     GtkWidget *pill;           /* candidate panel, over the editor */
     GtkWidget *pill_items;
     GtkWidget *pill_pages;     /* the up/down chevrons */
+    GtkWidget *typing_switch;
 
     GtkWidget *issues_list;
     GtkWidget *issues_title;
@@ -943,24 +946,6 @@ on_fix_all_clicked (GtkButton *button, gpointer user_data)
 }
 
 static void
-on_copy_clicked (GtkButton *button, gpointer user_data)
-{
-    BykSpellPage *self = BYK_SPELL_PAGE (user_data);
-    GtkTextIter start, end;
-    (void) button;
-
-    byk_spell_page_finish_word (self);
-    gtk_text_buffer_get_bounds (self->buffer, &start, &end);
-    gchar *text = gtk_text_buffer_get_text (self->buffer, &start, &end, FALSE);
-
-    if (*text != '\0') {
-        byk_clipboard_set (GTK_WIDGET (self), text);
-        byk_toast_show (GTK_LABEL (self->toast), "Copied to clipboard");
-    }
-    g_free (text);
-}
-
-static void
 on_clear_clicked (GtkButton *button, gpointer user_data)
 {
     BykSpellPage *self = BYK_SPELL_PAGE (user_data);
@@ -1311,6 +1296,46 @@ byk_spell_page_build_sidebar (BykSpellPage *self)
     return box;
 }
 
+static void
+byk_spell_page_set_typing (BykSpellPage *self, gboolean typing)
+{
+    byk_spell_page_finish_word (self);
+    self->typing = typing;
+    gtk_label_set_text (GTK_LABEL (self->placeholder),
+                        typing ? BYK_HINT_TYPING : BYK_HINT_KEYBOARD);
+    /* The system keyboard may have a word open from before the switch. */
+    gtk_text_view_reset_im_context (GTK_TEXT_VIEW (self->editor));
+}
+
+static void
+on_typing_switched (GObject *object, GParamSpec *pspec, gpointer user_data)
+{
+    BykSpellPage *self = BYK_SPELL_PAGE (user_data);
+    const gboolean on = gtk_switch_get_active (GTK_SWITCH (object));
+    (void) pspec;
+
+    byk_prefs_set_boolean (self->prefs, BYK_PREFS_SPELLING_TYPING, on);
+    byk_spell_page_set_typing (self, on);
+    gtk_widget_grab_focus (self->editor);
+}
+
+static GtkWidget *
+byk_spell_page_build_typing_switch (BykSpellPage *self)
+{
+    GtkWidget *toggle = gtk_switch_new ();
+    gtk_widget_set_valign (toggle, GTK_ALIGN_CENTER);
+    gtk_switch_set_active (GTK_SWITCH (toggle),
+                           byk_prefs_boolean (self->prefs, BYK_PREFS_SPELLING_TYPING, TRUE));
+    g_signal_connect (toggle, "notify::active", G_CALLBACK (on_typing_switched), self);
+    self->typing_switch = toggle;
+
+    GtkWidget *box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_set_tooltip_text (box, "Type Bangla here without changing the system keyboard");
+    byk_box_add (box, gtk_label_new ("Bangla typing"));
+    byk_box_add (box, toggle);
+    return box;
+}
+
 static GtkWidget *
 byk_spell_page_build_toolbar (BykSpellPage *self)
 {
@@ -1344,30 +1369,21 @@ byk_spell_page_build_toolbar (BykSpellPage *self)
     gtk_widget_set_tooltip_text (save, "Save to a file (Ctrl+S)");
     g_signal_connect (save, "clicked", G_CALLBACK (on_save_clicked), self);
 
-    GtkWidget *copy = byk_icon_button ("edit-copy-symbolic");
-    gtk_widget_set_tooltip_text (copy, "Copy the full text to the clipboard");
-    g_signal_connect (copy, "clicked", G_CALLBACK (on_copy_clicked), self);
-
     GtkWidget *clear = byk_icon_button ("edit-clear-all-symbolic");
     gtk_widget_set_tooltip_text (clear, "Clear the editor");
     g_signal_connect (clear, "clicked", G_CALLBACK (on_clear_clicked), self);
 
-    /* Linked pairs: file in / out, and what to do with the text. Four loose
-     * icons of the same size read as one undifferentiated row. */
+    /* A linked pair: file in / out. */
     GtkWidget *file_group = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
     byk_css_add (file_group, "linked");
     byk_box_add (file_group, open);
     byk_box_add (file_group, save);
 
-    GtkWidget *text_group = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
-    byk_css_add (text_group, "linked");
-    byk_box_add (text_group, copy);
-    byk_box_add (text_group, clear);
-
     byk_box_add (bar, toggle);
     byk_box_add (bar, file_group);
     byk_box_add_expand (bar, spacer);
-    byk_box_add (bar, text_group);
+    byk_box_add (bar, byk_spell_page_build_typing_switch (self));
+    byk_box_add (bar, clear);
     byk_box_add (bar, self->fix_all);
 
     return bar;
@@ -1578,6 +1594,7 @@ byk_spell_page_init (BykSpellPage *self)
     g_array_set_clear_func (self->found, byk_issue_clear);
     self->ignored = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
     self->selected = -1;
+    self->prefs = byk_prefs_try_open ();
 }
 
 static void
@@ -1592,6 +1609,7 @@ byk_spell_page_dispose (GObject *object)
     g_clear_pointer (&self->file_path, g_free);
     g_clear_pointer (&self->found, g_array_unref);
     g_clear_pointer (&self->ignored, g_hash_table_unref);
+    g_clear_object (&self->prefs);
 
     G_OBJECT_CLASS (byk_spell_page_parent_class)->dispose (object);
 }
@@ -1618,20 +1636,11 @@ byk_spell_page_new (BykEngines *engines)
 
     byk_box_add_expand (GTK_WIDGET (self), self->stack);
 
+    /* The switch only reports changes; the page has to start in its state. */
+    byk_spell_page_set_typing (self,
+                               gtk_switch_get_active (GTK_SWITCH (self->typing_switch)));
+
     return GTK_WIDGET (self);
-}
-
-void
-byk_spell_page_set_typing (BykSpellPage *self, gboolean typing)
-{
-    g_return_if_fail (BYK_IS_SPELL_PAGE (self));
-
-    byk_spell_page_finish_word (self);
-    self->typing = typing;
-    gtk_label_set_text (GTK_LABEL (self->placeholder),
-                        typing ? BYK_HINT_TYPING : BYK_HINT_KEYBOARD);
-    /* The system keyboard may have a word open from before the switch. */
-    gtk_text_view_reset_im_context (GTK_TEXT_VIEW (self->editor));
 }
 
 void
