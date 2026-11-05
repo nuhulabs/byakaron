@@ -18,6 +18,7 @@ G_BEGIN_DECLS
 #define BYK_PREFS_SCHEMA                 "dev.nuhu.labs.Byakaron"
 #define BYK_PREFS_QT_CLICK_FIX           "qt-click-fix"
 #define BYK_PREFS_SPELLING_TYPING        "spelling-typing"
+#define BYK_PREFS_PANEL_ENABLED          "panel-extension-enabled"
 
 /* Deprecated: read once to migrate into settings.json. */
 #define BYK_PREFS_OLD_PHONETIC_ONLY          "phonetic-only"
@@ -36,6 +37,14 @@ gboolean byk_prefs_boolean (GSettings *settings, const gchar *key, gboolean fall
 
 /* Quietly does nothing in the same two cases. */
 void byk_prefs_set_boolean (GSettings *settings, const gchar *key, gboolean value);
+
+/*
+ * Turn on the GNOME Shell extension behind the compact suggestion panel for
+ * this user, once: turning it off afterwards in the Extensions app stays off.
+ * Does nothing away from GNOME. Shell finds a new extension when it starts, so
+ * the panel appears at the next login.
+ */
+void byk_prefs_enable_panel_extension (void);
 
 G_END_DECLS
 

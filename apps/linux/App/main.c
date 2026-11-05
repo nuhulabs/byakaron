@@ -22,10 +22,40 @@
 
 /*
  * Type sizes and the step badge, plus a few Adwaita-style names that GTK3's
- * stylesheet does not define. Accent colour comes from the theme so a user's
- * own colour and dark mode still apply.
+ * stylesheet does not define, and one accent blue for the whole app.
+ *
+ * Yaru writes its orange into each widget's rule, so redefining the theme's
+ * selected colour would change nothing: the widgets that show the accent are
+ * named here instead. This provider outranks the theme whatever the selector,
+ * so a plain `switch:checked` beats Yaru's longer ones. Light and dark still
+ * come from the theme.
  */
 static const char BYK_CSS[] =
+    "@define-color byk_accent #0a84ff;\n"
+    "@define-color byk_accent_dark #0870d8;\n"
+    "* { -gtk-secondary-caret-color: @byk_accent; }\n"
+    "*:focus { outline-color: alpha(@byk_accent, 0.7); }\n"
+    "selection { background-color: @byk_accent; color: #ffffff; }\n"
+    "switch:checked { background: @byk_accent; border-color: @byk_accent_dark; }\n"
+    "switch:checked > slider { border-color: @byk_accent_dark; }\n"
+    "check:checked, radio:checked, check:indeterminate, radio:indeterminate {\n"
+    "  background-image: image(@byk_accent); border-color: @byk_accent;\n"
+    "}\n"
+    "row:selected, row.activatable:selected, .view:selected, .view text:selected,\n"
+    "textview text:selected, treeview.view:selected, iconview:selected,\n"
+    "flowboxchild:selected, menu menuitem:hover, .context-menu menuitem:hover {\n"
+    "  background-color: @byk_accent; color: #ffffff;\n"
+    "}\n"
+    "entry:focus, spinbutton:focus {\n"
+    "  border-color: alpha(@byk_accent, 0.7);\n"
+    "  box-shadow: inset 0 0 0 1px alpha(@byk_accent, 0.7);\n"
+    "}\n"
+    "button:link > label, *:link { color: @byk_accent_dark; }\n"
+    "progressbar progress, scale highlight {\n"
+    "  background-color: @byk_accent; border-color: @byk_accent;\n"
+    "}\n"
+    "scrollbar slider:hover:active { background-color: @byk_accent; }\n"
+    ".rubberband { background-color: alpha(@byk_accent, 0.2); border: 1px solid @byk_accent; }\n"
     ".heading { font-weight: bold; }\n"
     ".caption { font-size: smaller; }\n"
     ".monospace { font-family: monospace; }\n"
@@ -36,14 +66,14 @@ static const char BYK_CSS[] =
     ".byk-bangla { font-size: 1.25rem; }\n"
     ".byk-layout-glyph { font-size: 1.4rem; }\n"
     /* Accent pulled toward the text colour: readable on light and dark. */
-    ".byk-layout-keys { color: mix(@theme_selected_bg_color, @theme_fg_color, 0.3); font-weight: 600; }\n"
+    ".byk-layout-keys { color: mix(@byk_accent, @theme_fg_color, 0.3); font-weight: 600; }\n"
     ".byk-toast { padding: 8px 12px; }\n"
     ".byk-issue-word { font-weight: 600; }\n"
     /*
      * The candidate pills. Compact on purpose: a word is the only thing in
-     * here, so the panel is barely taller than the word itself. The blue is
-     * fixed rather than the theme's accent so the panel looks like the macOS
-     * one on every theme; the rest follows light and dark.
+     * here, so the panel is barely taller than the word itself. The rest
+     * follows light and dark. Resources/gnome-shell/panel.css is this same
+     * look for the popup GNOME Shell draws: change both together.
      */
     ".byk-pill {\n"
     "  background-color: mix(@theme_base_color, @theme_fg_color, 0.04);\n"
@@ -64,7 +94,7 @@ static const char BYK_CSS[] =
     "}\n"
     "button.byk-pill-item { padding: 0 9px; border-radius: 999px; font-size: 1.2rem; }\n"
     "button.byk-pill-item:hover { background-color: alpha(@theme_fg_color, 0.09); }\n"
-    "button.byk-pill-item.byk-pill-selected { background-color: #0a84ff; color: #ffffff; }\n"
+    "button.byk-pill-item.byk-pill-selected { background-color: @byk_accent; color: #ffffff; }\n"
     ".byk-pill-number { font-size: 0.72rem; opacity: 0.6; }\n"
     ".byk-pill-selected .byk-pill-number { opacity: 0.9; }\n"
     "button.byk-pill-chevron { padding: 0 3px; border-radius: 6px; opacity: 0.7; }\n"
@@ -72,8 +102,8 @@ static const char BYK_CSS[] =
     ".byk-step {\n"
     "  min-width: 24px; min-height: 24px;\n"
     "  border-radius: 999px;\n"
-    "  background-color: @theme_selected_bg_color;\n"
-    "  color: @theme_selected_fg_color;\n"
+    "  background-color: @byk_accent;\n"
+    "  color: #ffffff;\n"
     "  font-weight: bold;\n"
     "}\n";
 

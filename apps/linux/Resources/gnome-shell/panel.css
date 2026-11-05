@@ -1,0 +1,48 @@
+/*
+ * The suggestion popup GNOME Shell draws for input methods, in the look of the
+ * app's pill panel (BYK_CSS in apps/linux/App/main.c): change both together.
+ * Shape, size and the selected colour only. Background and text stay the Shell
+ * theme's, so light and dark keep working.
+ */
+.candidate-popup-content {
+  padding: 2px;
+  spacing: 0;
+  border-radius: 14px;
+  font-size: 12pt;
+}
+
+.candidate-box {
+  padding: 1px 9px;
+  border-radius: 12px;
+}
+
+.candidate-box:selected {
+  background-color: #0a84ff;
+  color: #ffffff;
+}
+
+.candidate-index {
+  padding-top: 4px;
+  padding-right: 4px;
+  font-size: 8pt;
+}
+
+.candidate-box:selected .candidate-index {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.candidate-page-button-box {
+  height: 1.4em;
+}
+
+.horizontal .candidate-page-button-box {
+  padding-left: 4px;
+}
+
+.candidate-page-button {
+  padding: 0 3px;
+}
+
+.candidate-page-button StIcon {
+  icon-size: 11px;
+}
