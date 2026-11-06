@@ -13,17 +13,38 @@
 # The source repo gets a matching GitHub Release (notes + link to Assets, no
 # binary attachments). Web deploy stays on cd.yml — download links are stable.
 #
-# Tag: v${build.zig.zon.version}. Push a matching annotated tag, or dispatch
-# to dry-run (artifacts only).
+# Versions come from build.zig.zon's .version (27.0.0-dev between releases):
+#   - push tag v<zon version> (or v<zon version>-rc.1, or v<zon version>.N when
+#     the zon version is a prerelease such as 27.0.0-dev): build and publish it.
+#   - dispatch with `prerelease` and no `version`: CI tags the next
+#     v<zon version>.N (27.0.0-dev.1, .2, …), then builds and publishes it.
+#   - dispatch with `version`: CI tags v<version> (it must match the zon
+#     version as above), then builds and publishes it.
+#   - dispatch with neither: dry run, artifacts only.
+# The packages are built with that full version written into build.zig.zon.
 name: release
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      prerelease:
+        description: Publish a prerelease; with no version, the next <zon version>.N
+        type: boolean
+        default: false
+      version:
+        description: Version to tag and publish (empty = next prerelease, or a dry run)
+        type: string
+        default: ""
 
 permissions:
   contents: read
+
+# Two dispatched prereleases at once would pick the same N.
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && 'dispatch' || github.ref }}
+  cancel-in-progress: false
 
 jobs:
   prepare:
@@ -37,29 +58,73 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
       tag: ${{ steps.v.outputs.tag }}
+      publish: ${{ steps.v.outputs.publish }}
+      create_tag: ${{ steps.v.outputs.create_tag }}
     steps:
       - uses: actions/checkout@v4
       - id: v
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          version=$(sed -n 's/^[[:space:]]*\.version = "\([^"]*\)".*/\1/p' build.zig.zon | head -1)
-          [[ -n "$version" ]] || { echo "::error::no .version in build.zig.zon"; exit 1; }
-          tag="v${version}"
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            pushed="${{ github.ref_name }}"
-            # A mismatch used to publish anyway, and the Linux .deb and macOS app
-            # kept the old version (v0.1.1 and v0.1.2 shipped .debs saying 0.1.0).
-            if [[ "$pushed" != "$tag" && "$pushed" != "$tag"-* ]]; then
-              echo "::error::tag $pushed does not match build.zig.zon ($tag): bump the versions first (RELEASING.md)"
+          zon=$(sed -n 's/^[[:space:]]*\.version = "\([^"]*\)".*/\1/p' build.zig.zon | head -1)
+          [[ -n "$zon" ]] || { echo "::error::no .version in build.zig.zon"; exit 1; }
+
+          # A release version must be build.zig.zon's (bump it first, RELEASING.md):
+          # the zon version itself, a -suffix of it (0.3.0-rc.1), or, when the
+          # zon version is a prerelease (27.0.0-dev), a .N build of it. A
+          # mismatch used to publish anyway: v0.1.1 and v0.1.2 shipped .debs
+          # saying 0.1.0.
+          matches() {
+            [[ "$1" == "$zon" || "$1" == "$zon"-* ]] && return 0
+            [[ "$zon" == *-* && "$1" =~ ^"$zon"\.[0-9]+$ ]]
+          }
+
+          publish=true
+          create_tag=false
+          if [[ "$EVENT" == "push" && "$REF_TYPE" == "tag" ]]; then
+            version="${REF_NAME#v}"
+          elif [[ -n "$INPUT_VERSION" ]]; then
+            version="${INPUT_VERSION#v}"
+            create_tag=true
+          elif [[ "$INPUT_PRERELEASE" == "true" ]]; then
+            [[ "$zon" == *-* ]] || {
+              echo "::error::build.zig.zon is at release $zon; set .version to the next prerelease (e.g. $(( ${zon%%.*} + 1 )).0.0-dev) to publish dev builds"
               exit 1
-            fi
+            }
+            # Next N after the highest v<zon>.N tag on the remote.
+            last=$(git ls-remote --tags --refs origin "refs/tags/v${zon}.*" \
+              | sed -n "s|.*refs/tags/v${zon//./\\.}\.\([0-9][0-9]*\)$|\1|p" | sort -n | tail -1)
+            version="${zon}.$(( ${last:-0} + 1 ))"
+            create_tag=true
+          else
+            version="$zon"
+            publish=false
           fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "release tag: $tag (zon version $version)"
+
+          matches "$version" || {
+            echo "::error::version $version does not match build.zig.zon ($zon): bump the versions first (RELEASING.md)"
+            exit 1
+          }
+          tag="v${version}"
+          if [[ "$create_tag" == "true" ]] && git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "::error::tag $tag already exists"
+            exit 1
+          fi
+
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "publish=$publish"
+            echo "create_tag=$create_tag"
+          } >> "$GITHUB_OUTPUT"
+          echo "release $tag (build.zig.zon $zon) publish=$publish create_tag=$create_tag"
 
   pkg:
     name: pkg
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     needs: [prepare, version]
     uses: ./.github/workflows/pkg.yml
     secrets: inherit
@@ -72,7 +137,7 @@ jobs:
 
   publish:
     name: publish
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: needs.version.outputs.publish == 'true'
     needs: [prepare, version, pkg]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -81,6 +146,31 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Dispatched releases: tag the commit that was built. GITHUB_TOKEN pushes
+      # do not trigger workflows, so this does not start a second release.
+      - name: tag
+        if: needs.version.outputs.create_tag == 'true'
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          prev=$(git describe --tags --abbrev=0 --match 'v*' HEAD 2>/dev/null || true)
+          {
+            echo "Byakaron ${VERSION}"
+            echo
+            if [[ -n "$prev" ]]; then
+              echo "Changes since ${prev}:"
+              echo
+              git log --no-merges --format='- %s' "${prev}..HEAD"
+            fi
+          } > "$RUNNER_TEMP/tag.md"
+          git tag -a "$TAG" -F "$RUNNER_TEMP/tag.md" "$GITHUB_SHA"
+          git push origin "refs/tags/$TAG"
 
       - uses: actions/download-artifact@v4
         with:
@@ -161,7 +251,7 @@ jobs:
   # latest, so they are skipped.
   live-install:
     name: live install (${{ matrix.image }}, ${{ matrix.runner }})
-    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+    if: needs.version.outputs.publish == 'true' && !contains(needs.version.outputs.version, '-')
     needs: [version, publish]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
@@ -175,7 +265,7 @@ jobs:
     steps:
       - name: curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash
         env:
-          WANT: "1:${{ needs.version.outputs.version }}"
+          WANT: "1:${{ needs.version.outputs.version }}"  # a release: no -prerelease to map to ~
           IMAGE: ${{ matrix.image }}
         run: |
           docker run --rm -e WANT "$IMAGE" bash -c '
@@ -188,10 +278,10 @@ jobs:
 
   play-store:
     name: play-store
-    needs: [publish, pkg]
+    needs: [version, publish, pkg]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: needs.version.outputs.publish == 'true'
 
     steps:
       - name: checkout

@@ -1,6 +1,6 @@
 # pkg: platform packages (linux / macos / windows / android).
 # Caller must have uploaded `byakaron-db` (see prepare.yml).
-# Used by release (all four; + version for the Windows installer).
+# Used by release (all four; + the release version, written into build.zig.zon).
 #
 # Linux amd64/arm64 package in parallel. Install-matrix lives in ci/cd e2e,
 # not here — release only ships artifacts.
@@ -22,7 +22,7 @@ on:
         type: boolean
         default: false
       version:
-        description: Installer version for Windows (build.zig.zon when empty)
+        description: Release version, written into build.zig.zon before packaging (build.zig.zon's own when empty)
         type: string
         default: ""
 
@@ -46,6 +46,18 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: version
+        if: inputs.version != ''
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        # The packages read build.zig.zon's .version (Linux .deb, app, IBus
+        # component, metainfo), so a release tag's version goes there first.
+        run: |
+          sed -i.bak -E "s/^([[:space:]]*\.version = \")[^\"]*(\".*)$/\1${VERSION}\2/" build.zig.zon
+          rm build.zig.zon.bak
+          grep -m1 '\.version = ' build.zig.zon
 
       - uses: mlugg/setup-zig@v2
         with:
@@ -81,6 +93,18 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: version
+        if: inputs.version != ''
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        # The packages read build.zig.zon's .version (Linux .deb, app, IBus
+        # component, metainfo), so a release tag's version goes there first.
+        run: |
+          sed -i.bak -E "s/^([[:space:]]*\.version = \")[^\"]*(\".*)$/\1${VERSION}\2/" build.zig.zon
+          rm build.zig.zon.bak
+          grep -m1 '\.version = ' build.zig.zon
 
       - uses: mlugg/setup-zig@v2
         with:
@@ -160,6 +184,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: version
+        if: inputs.version != ''
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        # The packages read build.zig.zon's .version (Linux .deb, app, IBus
+        # component, metainfo), so a release tag's version goes there first.
+        run: |
+          sed -i.bak -E "s/^([[:space:]]*\.version = \")[^\"]*(\".*)$/\1${VERSION}\2/" build.zig.zon
+          rm build.zig.zon.bak
+          grep -m1 '\.version = ' build.zig.zon
+
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.17.0
@@ -212,6 +248,18 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: version
+        if: inputs.version != ''
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        # The packages read build.zig.zon's .version (Linux .deb, app, IBus
+        # component, metainfo), so a release tag's version goes there first.
+        run: |
+          sed -i.bak -E "s/^([[:space:]]*\.version = \")[^\"]*(\".*)$/\1${VERSION}\2/" build.zig.zon
+          rm build.zig.zon.bak
+          grep -m1 '\.version = ' build.zig.zon
 
       - name: keyboard
         id: keyboard

@@ -7,12 +7,21 @@ link to Assets).
 
 ## Cut a release
 
+Between releases `build.zig.zon`'s `.version` is the next version's prerelease,
+`27.0.0-dev`. To publish a dev build, run the `release` workflow with
+**prerelease** checked and **version** empty (`gh workflow run release.yml -f
+prerelease=true`): it tags the next `v27.0.0-dev.N` (one above the highest
+existing N), builds every platform with that version and publishes it as a
+prerelease. Nothing needs bumping.
+
+For a real release:
+
 1. Bump the version where each platform writes it (the tag does not do this):
-   - Linux, by hand (there is no release script): `.version` in
-     `build.zig.zon` (the `.deb` control Version), `BYK_APP_VERSION` in
-     `apps/linux/App/app.h`, `<version>` in `apps/linux/Resources/byakaron.xml.in`,
-     and a `<release>` entry in the AppStream metainfo. `zig build linux-ci`
-     fails when these disagree; the `.deb` adds epoch 1 itself (`1:0.1.3`).
+   - Linux: `.version` in `build.zig.zon` (e.g. `27.0.0-dev` → `27.0.0`), plus a
+     `<release>` entry with notes in the AppStream metainfo. The `.deb`,
+     `byakaron --version` and the IBus component all take the zon version; the
+     `.deb` adds epoch 1 itself (`1:27.0.0`). After the release, set it to the
+     next prerelease (`28.0.0-dev`).
    - macOS: `CFBundleShortVersionString` in the Xcode project (`MARKETING_VERSION`).
    - Android: `versionName` / `versionCode` in `apps/android/keyboard/app/build.gradle.kts`
      (in the submodule; push it, then commit the submodule bump here).
@@ -26,7 +35,8 @@ link to Assets).
 
    A tag with a `-` (`v0.3.0-rc.1`) is published as a prerelease; any other
    tag becomes the Latest release. A tag that does not match `build.zig.zon`
-   stops the release in its `version` job.
+   stops the release in its `version` job. Dispatching the workflow with a
+   **version** instead tags that version at the dispatched commit.
 3. Watch the `release` run. When every job passes:
 
    - **Byakaron-Assets** gets release `v0.3.0` with stable asset names (so
@@ -48,9 +58,10 @@ link to Assets).
 
 ### Dry run
 
-Run the `release` workflow by hand (Actions → release → Run workflow, or
-`gh workflow run release.yml --ref <branch>`). It builds everything and leaves
-the assets as the run's artifacts; nothing is published.
+Run the `release` workflow by hand with **prerelease** unchecked and **version**
+empty (Actions → release → Run workflow, or `gh workflow run release.yml --ref
+<branch>`). It builds everything and leaves the assets as the run's artifacts;
+nothing is tagged or published.
 
 ### Website installers
 
