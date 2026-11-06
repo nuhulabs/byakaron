@@ -136,7 +136,7 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
 
     try installFile(t, "644", try join(t, &.{ res, "byakaron.svg" }), try join(t, &.{ stage, "usr/share/icons/hicolor/scalable/apps/byakaron.svg" }));
     try installFile(t, "644", try join(t, &.{ res, app_id ++ ".gschema.xml" }), try join(t, &.{ stage, "usr/share/glib-2.0/schemas/" ++ app_id ++ ".gschema.xml" }));
-    try installFile(t, "644", try join(t, &.{ res, app_id ++ ".metainfo.xml" }), try join(t, &.{ stage, "usr/share/metainfo/" ++ app_id ++ ".metainfo.xml" }));
+    try renderMetainfo(t, try join(t, &.{ res, app_id ++ ".metainfo.xml" }), try join(t, &.{ stage, "usr/share/metainfo/" ++ app_id ++ ".metainfo.xml" }), version);
     try render(t, try join(t, &.{ res, "byakaron-app.desktop.in" }), try join(t, &.{ stage, "usr/share/applications/" ++ app_id ++ ".desktop" }), &.{
         .{ "@BYK_APP_EXEC@", "/usr/bin/byakaron" },
     });
@@ -150,6 +150,7 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
         .{ "@BYK_EXEC@", "/usr/libexec/byakaron-ibus" },
         .{ "@BYK_ICON@", "/usr/share/icons/hicolor/scalable/apps/byakaron.svg" },
         .{ "@BYK_SETUP@", "/usr/bin/byakaron --page=setup" },
+        .{ "@BYK_VERSION@", version },
     });
 
     try installPanelExtensions(t, res, stage);
@@ -172,13 +173,14 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
         break :blk du[0..end];
     };
 
-    // Control metadata. Epoch 1: the Linux .deb had its own numbering up to
+    // Control metadata. `debVersion`: a prerelease (27.0.0-dev.3) must sort
+    // before its release in dpkg. Epoch 1: the Linux .deb had its own numbering up to
     // 0.2.1; the shared Byakaron version restarted at 0.1.0, and apt refuses
     // 0.1.x over 0.2.1 as a downgrade. 1:0.1.x is newer than all of those. An
     // epoch can never be dropped again.
     const control = try std.fmt.allocPrint(t.arena,
         \\Package: byakaron
-        \\Version: 1:{s}
+        \\Version: 1:{f}
         \\Architecture: {s}
         \\Maintainer: Byakaron contributors <byakaron@example.com>
         \\Installed-Size: {s}
@@ -200,7 +202,7 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
         \\ Ubuntu 20.04, 22.04, 24.04 and 26.04 and Debian 12 and 13, and the
         \\ spell-check dictionary.
         \\
-    , .{ version, arch, installed_kb });
+    , .{ debVersion(version), arch, installed_kb });
     try writeFile(t, try join(t, &.{ stage, "DEBIAN/control" }), control, "644");
     try writeFile(t, try join(t, &.{ stage, "DEBIAN/postinst" }), postinst, "755");
     try writeFile(t, try join(t, &.{ stage, "DEBIAN/postrm" }), postrm, "755");
@@ -407,7 +409,7 @@ fn install(t: *Tool, a: []const []const u8) !void {
     try render(t, try join(t, &.{ res, "byakaron-app.desktop.in" }), desktopdir ++ "/" ++ app_id ++ ".desktop", &.{
         .{ "@BYK_APP_EXEC@", bindir ++ "/byakaron" },
     });
-    try installFile(t, "644", try join(t, &.{ res, app_id ++ ".metainfo.xml" }), metainfo_dir ++ "/" ++ app_id ++ ".metainfo.xml");
+    try renderMetainfo(t, try join(t, &.{ res, app_id ++ ".metainfo.xml" }), metainfo_dir ++ "/" ++ app_id ++ ".metainfo.xml", try readVersion(t, repo));
     std.debug.print(">>> Installed: {s}/{s}.desktop\n", .{ desktopdir, app_id });
     std.debug.print(">>> Installed: {s}/{s}.metainfo.xml\n", .{ metainfo_dir, app_id });
 
@@ -426,6 +428,7 @@ fn install(t: *Tool, a: []const []const u8) !void {
         .{ "@BYK_EXEC@", libexecdir ++ "/byakaron-ibus" },
         .{ "@BYK_ICON@", icondir ++ "/byakaron.svg" },
         .{ "@BYK_SETUP@", bindir ++ "/byakaron --page=setup" },
+        .{ "@BYK_VERSION@", try readVersion(t, repo) },
     });
     std.debug.print(">>> Installed: {s}/byakaron.xml\n", .{xmldir});
 
@@ -676,6 +679,7 @@ fn writeComponentXml(t: *Tool, repo: []const u8, ime: []const u8) ![]const u8 {
         .{ "@BYK_EXEC@", ime },
         .{ "@BYK_ICON@", "input-keyboard" },
         .{ "@BYK_SETUP@", "" },
+        .{ "@BYK_VERSION@", try readVersion(t, repo) },
     });
     return xml;
 }
@@ -820,15 +824,12 @@ fn ci(t: *Tool, repo: []const u8, prefix_arg: ?[]const u8) !u8 {
         if (exists(t.io, db)) try t.env.put("BYAKARON_SPELL_DB", db);
     }
 
-    std.debug.print("\n=== one version everywhere ===\n", .{});
-    try checkVersions(t, repo);
-
     std.debug.print("\n=== glibc 2.31 compatibility ===\n", .{});
     try assertGlibc(t, ime);
     try assertGlibc(t, app);
 
     std.debug.print("\n=== GTK3 app --help / --version (no display needed) ===\n", .{});
-    try checkAppCli(t, app, linux_dir);
+    try checkAppCli(t, app, try readVersion(t, repo));
 
     const smoke = try join(t, &.{ bin, "byakaron-smoke" });
     std.debug.print("\n=== smoke (C ABI + Core glue) ===\n", .{});
@@ -915,31 +916,9 @@ fn ci(t: *Tool, repo: []const u8, prefix_arg: ?[]const u8) !u8 {
     return 0;
 }
 
-/// The .deb's Version (build.zig.zon), `byakaron --version` (App/app.h), the
-/// IBus component and the newest AppStream release must agree: v0.1.1 and
-/// v0.1.2 were tagged without bumping them, and their .debs said 0.1.0.
-fn checkVersions(t: *Tool, repo: []const u8) !void {
-    const sources = [_]struct { file: []const u8, before: []const u8 }{
-        .{ .file = "build.zig.zon", .before = ".version = \"" },
-        .{ .file = "apps/linux/App/app.h", .before = "#define BYK_APP_VERSION \"" },
-        .{ .file = "apps/linux/Resources/byakaron.xml.in", .before = "<version>" },
-        .{ .file = "apps/linux/Resources/" ++ app_id ++ ".metainfo.xml", .before = "<release version=\"" },
-    };
-    var first: ?[]const u8 = null;
-    var differ = false;
-    for (sources) |s| {
-        const text = try Io.Dir.cwd().readFileAlloc(t.io, try join(t, &.{ repo, s.file }), t.arena, .limited(4 * 1024 * 1024));
-        const at = std.mem.indexOf(u8, text, s.before) orelse return fail("no version in {s}", .{s.file});
-        const start = at + s.before.len;
-        const end = std.mem.indexOfAnyPos(u8, text, start, "\"<") orelse return fail("malformed version in {s}", .{s.file});
-        const version = text[start..end];
-        std.debug.print("  {s:<10} {s}\n", .{ version, s.file });
-        if (first) |f| differ = differ or !std.mem.eql(u8, f, version) else first = version;
-    }
-    if (differ) return fail("the versions above differ: bump them together (RELEASING.md)", .{});
-}
-
-fn checkAppCli(t: *Tool, app: []const u8, linux_dir: []const u8) !void {
+/// `byakaron --help` lists its flags, and `--version` prints build.zig.zon's
+/// version (build.zig compiles it in as BYK_APP_VERSION).
+fn checkAppCli(t: *Tool, app: []const u8, version: []const u8) !void {
     const help = std.process.run(t.arena, t.io, .{ .argv = &.{ app, "--help" }, .environ_map = t.env }) catch |err| {
         return fail("cannot run {s} --help: {t}", .{ app, err });
     };
@@ -951,12 +930,7 @@ fn checkAppCli(t: *Tool, app: []const u8, linux_dir: []const u8) !void {
         }
     }
 
-    const header = try Io.Dir.cwd().readFileAlloc(t.io, try join(t, &.{ linux_dir, "App/app.h" }), t.arena, .limited(1024 * 1024));
-    const define = "#define BYK_APP_VERSION \"";
-    const at = std.mem.indexOf(u8, header, define) orelse return fail("BYK_APP_VERSION not found in App/app.h", .{});
-    const ver_start = at + define.len;
-    const ver_end = std.mem.indexOfScalarPos(u8, header, ver_start, '"') orelse return fail("malformed BYK_APP_VERSION", .{});
-    const expected = try std.fmt.allocPrint(t.arena, "byakaron {s}", .{header[ver_start..ver_end]});
+    const expected = try std.fmt.allocPrint(t.arena, "byakaron {s}", .{version});
 
     const got = capture(t, &.{ app, "--version" }) orelse return fail("{s} --version failed", .{app});
     var lines = std.mem.splitScalar(u8, got, '\n');
@@ -1642,6 +1616,7 @@ fn waylandE2e(t: *Tool, repo: []const u8, engine: []const u8) !u8 {
         .{ "@BYK_EXEC@", engine },
         .{ "@BYK_ICON@", "input-keyboard" },
         .{ "@BYK_SETUP@", "" },
+        .{ "@BYK_VERSION@", try readVersion(t, repo) },
     });
 
     // The spelling-correction case needs a Byakaron.db the engine can open.
@@ -1788,7 +1763,9 @@ fn packageFlatpak(t: *Tool, a: []const []const u8) !void {
     const desktop_file = try join(t, &.{ build_dir, app_id ++ ".desktop" });
     try writeFile(t, desktop_file, desktop, "644");
     try flatpakInstall(t, appdir, "644", desktop_file, "/app/share/applications/" ++ app_id ++ ".desktop");
-    try flatpakInstall(t, appdir, "644", try join(t, &.{ res, app_id ++ ".metainfo.xml" }), "/app/share/metainfo/" ++ app_id ++ ".metainfo.xml");
+    const metainfo = try join(t, &.{ build_dir, app_id ++ ".metainfo.xml" });
+    try renderMetainfo(t, try join(t, &.{ res, app_id ++ ".metainfo.xml" }), metainfo, try readVersion(t, repo));
+    try flatpakInstall(t, appdir, "644", metainfo, "/app/share/metainfo/" ++ app_id ++ ".metainfo.xml");
 
     // Flatpak's export validator often rejects this SVG (gdk-pixbuf in the
     // export environment has no SVG loader). A PNG is what GNOME Software shows.
@@ -1985,6 +1962,48 @@ fn readVersion(t: *Tool, repo: []const u8) ![]const u8 {
         return line[open + 1 .. close];
     }
     return fail("no .version in {s}/build.zig.zon", .{repo});
+}
+
+/// build.zig.zon's version as a Debian upstream version: SemVer's `-` before
+/// a prerelease becomes `~`, which dpkg sorts before the release
+/// (27.0.0~dev.3 < 27.0.0), where `-` would start the Debian revision.
+fn debVersion(version: []const u8) DebVersion {
+    return .{ .v = version };
+}
+
+const DebVersion = struct {
+    v: []const u8,
+
+    pub fn format(self: DebVersion, w: *Io.Writer) Io.Writer.Error!void {
+        const dash = std.mem.indexOfScalar(u8, self.v, '-') orelse return w.writeAll(self.v);
+        try w.print("{s}~{s}", .{ self.v[0..dash], self.v[dash + 1 ..] });
+    }
+};
+
+test debVersion {
+    var buf: [64]u8 = undefined;
+    try std.testing.expectEqualStrings("27.0.0~dev.3", try std.fmt.bufPrint(&buf, "{f}", .{debVersion("27.0.0-dev.3")}));
+    try std.testing.expectEqualStrings("0.1.5", try std.fmt.bufPrint(&buf, "{f}", .{debVersion("0.1.5")}));
+}
+
+/// The AppStream metainfo with build.zig.zon's version as its newest release.
+/// Releases with notes are written by hand; a version without an entry (a
+/// prerelease) gets a `development` release dated today.
+fn renderMetainfo(t: *Tool, template: []const u8, dst: []const u8, version: []const u8) !void {
+    const text = try Io.Dir.cwd().readFileAlloc(t.io, template, t.arena, .limited(1024 * 1024));
+    const listed = try std.fmt.allocPrint(t.arena, "<release version=\"{s}\"", .{version});
+    if (std.mem.indexOf(u8, text, listed) != null) return writeFile(t, dst, text, "644");
+
+    const releases = "<releases>\n";
+    const at = (std.mem.indexOf(u8, text, releases) orelse return fail("no <releases> in {s}", .{template})) + releases.len;
+    const now = Io.Clock.real.now(t.io);
+    const day = std.time.epoch.EpochSeconds{ .secs = @intCast(now.toSeconds()) };
+    const ymd = day.getEpochDay().calculateYearDay();
+    const md = ymd.calculateMonthDay();
+    const entry = try std.fmt.allocPrint(t.arena, "    <release version=\"{s}\" date=\"{d}-{d:0>2}-{d:0>2}\" type=\"development\"/>\n", .{
+        version, ymd.year, md.month.numeric(), @as(u32, md.day_index) + 1,
+    });
+    try writeFile(t, dst, try std.mem.concat(t.arena, u8, &.{ text[0..at], entry, text[at..] }), "644");
 }
 
 /// The Debian architecture the package is for: BYK_DEB_ARCH (set by the build

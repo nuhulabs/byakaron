@@ -1191,6 +1191,7 @@ fn linuxApp(
     app.root_module.addIncludePath(b.path("src/ffi"));
     app.root_module.addIncludePath(b.path("apps/linux/Core"));
     app.root_module.addIncludePath(b.path("apps/linux/App"));
+    app.root_module.addCMacro("BYK_APP_VERSION", "\"" ++ @import("build.zig.zon").version ++ "\"");
     linkLinux(b, app.root_module, sysroot, &.{ "gtk+-3.0", "glib-2.0", "gobject-2.0", "gio-2.0" });
     // Host libgtk was built against this machine's glibc. Same reason as
     // the engine: a 2.31-targeted binary must not require the host

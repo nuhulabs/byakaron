@@ -519,12 +519,17 @@ and an arm64 runner, installs and types through each `.deb`, and attaches them
 to the release. See [RELEASING.md](../../RELEASING.md) for the steps. There is
 no local release script.
 
-Bump the version by hand before tagging: `.version` in `build.zig.zon` (the
-`.deb` version), `BYK_APP_VERSION` in `App/app.h`, `<version>` in
-`Resources/byakaron.xml.in`, and a
-`<release>` entry in the AppStream metainfo. `zig build linux-ci` fails when
-these four disagree, and the release fails when the tag does not match
-`build.zig.zon`.
+Every Linux version comes from `.version` in `build.zig.zon`: the `.deb`,
+`byakaron --version` (build.zig compiles it in as `BYK_APP_VERSION`), the IBus
+component's `<version>` (`@BYK_VERSION@` in `Resources/byakaron.xml.in`) and the
+newest AppStream release. Write a `<release>` entry with notes in the metainfo
+for a real release; a version without one (a `27.0.0-dev.N` build) gets a
+`development` release dated the day it is packaged. The release fails when the
+tag does not match `build.zig.zon`, and CI writes the release's full version
+(e.g. `27.0.0-dev.3`) into `build.zig.zon` before packaging.
+
+A prerelease's `-` becomes `~` in the `.deb` Version (`1:27.0.0~dev.3`), so
+dpkg sorts it before the release it leads to; the file name keeps the `-`.
 
 The `.deb` Version carries epoch 1 (`1:0.1.3`): until 0.2.1 the Linux package
 had its own numbering, and without the epoch apt refuses the shared 0.1.x over

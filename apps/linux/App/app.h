@@ -15,7 +15,10 @@
 G_BEGIN_DECLS
 
 #define BYK_APP_ID      "dev.nuhu.labs.Byakaron"
-#define BYK_APP_VERSION "0.1.5"
+/* build.zig.zon's .version, compiled in by build.zig. */
+#ifndef BYK_APP_VERSION
+#error "BYK_APP_VERSION comes from build.zig (build.zig.zon .version)"
+#endif
 
 /* Public pages only: nuhulabs/byakaron is private, so a link to it is a 404
  * for everyone who installs the app. */
