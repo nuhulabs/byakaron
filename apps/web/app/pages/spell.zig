@@ -33,14 +33,13 @@ pub fn openLocalDb() !void {
     const allocator = std.heap.page_allocator;
     const root: []const u8 = if (std.c.getenv("ZIEX_ROOT_DIR")) |r| std.mem.span(r) else "zig-out";
     const path = try std.fs.path.join(allocator, &.{ root, "db", "Byakaron.db" });
-    std.Io.Dir.cwd().access(zx.io(), path, .{}) catch {
+    std.Io.Dir.cwd().access(zx.Io.default(), path, .{}) catch {
         std.log.warn("byakaron: no {s}; spell check is off (run `zig build db`)", .{path});
         return;
     };
-    zx.db = zx.Db.Sqlite.open(allocator, zx.io(), path, .{
+    zx.db = zx.Db.Sqlite.open(allocator, zx.Io.default(), path, .{
         .readonly = true,
         .create = false,
-        .readwrite = false,
         // ziex's pooled mode forces `journal_mode=wal`, which a read-only
         // connection rejects; one serialized connection is plenty here.
         .max_pool_size = 1,

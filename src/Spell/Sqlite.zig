@@ -30,7 +30,6 @@ pub fn init(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !*Sqlite
         .owned_db = try zx.Db.Sqlite.open(allocator, io, path, .{
             .readonly = true,
             .create = false,
-            .readwrite = false,
             .max_pool_size = 1,
         }),
         .owns_db = true,

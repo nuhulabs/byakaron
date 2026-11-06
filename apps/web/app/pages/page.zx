@@ -1,4 +1,4 @@
-//! Interactive Bangla spell checker — client-side UI with `zx.fetch` to `/api/spell`.
+//! Interactive Bangla spell checker — client-side UI with `zx.http.Client` to `/api/spell`.
 //! Typing, issue selection, and applying suggestions do not full-page refresh.
 //! Avro typing runs in the browser (wasm) through the same `Composer` every
 //! native keyboard drives, so keys, candidates, settings and learned choices
@@ -26,9 +26,9 @@ var check_seq: u32 = 0;
 var check_in_flight: bool = false;
 var ignored: std.StringHashMapUnmanaged(void) = .empty;
 
-/// Trailing throttle: at most one `/api/spell` per `check_throttle_ms` while typing.
+/// Trailing throttle: at most one `/api/spell` per `check_throttle` while typing.
 /// (zx.client has setTimeout but no clearTimeout, so we coalesce with an armed flag.)
-const check_throttle_ms: u32 = 400;
+const check_throttle: std.Io.Duration = .fromMilliseconds(400);
 var check_dirty: bool = false;
 var check_timer_armed: bool = false;
 
@@ -494,7 +494,7 @@ fn blobSave(_: *anyopaque, name: []const u8, bytes: []const u8) void {
     blobs_dirty[slot] = true;
     if (blob_flush_armed) return;
     blob_flush_armed = true;
-    _ = zx.client.setTimeout(&flushBlobs, 0);
+    _ = zx.client.setTimeout(&flushBlobs, .zero);
 }
 
 fn flushBlobs() void {
@@ -523,15 +523,15 @@ const WebCorrector = struct {
             return fixes;
         }
         if (self.pending) return null;
-        self.pending = requestWords(&.{word}, &onCorrections);
+        self.pending = requestWords(&.{word}, onCorrections);
         return null;
     }
 };
 var web_corrector: WebCorrector = .{};
 
-fn onCorrections(res: ?*zx.Fetch.Response, err: ?zx.Fetch.FetchError) void {
+fn onCorrections(_: void, result: zx.http.Client.Error!zx.http.Client.Result) void {
     web_corrector.pending = false;
-    if (!storeResponse(res, err)) return;
+    if (!storeResponse(result)) return;
     const c = ensureComposer() orelse return;
     if (!c.composing()) return;
     c.refresh() catch return;
@@ -568,7 +568,7 @@ const SpellCache = struct {
         self.dirty = true;
         if (self.save_armed) return;
         self.save_armed = true;
-        _ = zx.client.setTimeout(&saveSpellCache, 1000);
+        _ = zx.client.setTimeout(&saveSpellCache, .fromSeconds(1));
     }
 
     fn load(self: *SpellCache) void {
@@ -604,28 +604,32 @@ fn nowMs() i64 {
     return @intFromFloat(ms);
 }
 
-fn requestWords(words: []const []const u8, callback: zx.Fetch.ResponseCallback) bool {
+const FetchCallback = fn (void, zx.http.Client.Error!zx.http.Client.Result) void;
+
+fn requestWords(words: []const []const u8, comptime callback: FetchCallback) bool {
     var body: std.Io.Writer.Allocating = .init(zx.allocator);
+    defer body.deinit();
     zx.util.zxon.serialize(schema.Request{ .words = words }, &body.writer, .{}) catch return false;
-    _ = zx.fetch(.wasm(callback), zx.allocator, "/api/spell", .{
+    var client: zx.http.Client = .{ .io = zx.Io.default(), .allocator = zx.allocator };
+    // The browser copies the payload into JS `fetch()` synchronously.
+    client.fetchThen(.{
+        .url = "/api/spell",
         .method = .POST,
         .headers = &.{
             .{ .name = "content-type", .value = schema.content_type },
             .{ .name = "accept", .value = schema.content_type },
         },
-        .body = body.written(),
-    }) catch return false;
+        .payload = body.written(),
+    }, {}, callback);
     return true;
 }
 
-fn storeResponse(res: ?*zx.Fetch.Response, err: ?zx.Fetch.FetchError) bool {
-    if (err != null) return false;
-    const r = res orelse return false;
-    defer r.deinit();
-    if (!r.ok()) return false;
-    const body = r.text() catch return false;
-    const parsed = zx.util.zxon.parse(schema.Response, zx.allocator, body, .{}) catch return false;
-    for (parsed.results) |result| spell_cache.put(result);
+/// `result` is only valid during the fetch callback; zxon.parse copies what it keeps.
+fn storeResponse(result: zx.http.Client.Error!zx.http.Client.Result) bool {
+    const r = result catch return false;
+    if (r.status.class() != .success) return false;
+    const parsed = zx.util.zxon.parse(schema.Response, zx.allocator, r.body, .{}) catch return false;
+    for (parsed.results) |token_result| spell_cache.put(token_result);
     return true;
 }
 
@@ -963,7 +967,7 @@ fn loadStore() void {
         }
     }
     // The textarea is not in the DOM yet during this first render.
-    _ = zx.client.setTimeout(&onStoreLoaded, 0);
+    _ = zx.client.setTimeout(&onStoreLoaded, .zero);
 }
 
 fn sharedQuery(allocator: std.mem.Allocator) ?[]const u8 {
@@ -1037,7 +1041,7 @@ fn scheduleCheck() void {
     check_dirty = true;
     if (check_timer_armed) return;
     check_timer_armed = true;
-    _ = zx.client.setTimeout(&onThrottleFire, check_throttle_ms);
+    _ = zx.client.setTimeout(&onThrottleFire, check_throttle);
 }
 
 fn onThrottleFire() void {
@@ -1065,16 +1069,16 @@ fn startFetch() void {
     }
     if (missing.items.len == 0) return showResults(tokens);
 
-    check_in_flight = requestWords(missing.items, &onCheckResponse);
+    check_in_flight = requestWords(missing.items, onCheckResponse);
     checking = check_in_flight;
     zx.client.rerender();
 }
 
-fn onCheckResponse(res: ?*zx.Fetch.Response, err: ?zx.Fetch.FetchError) void {
+fn onCheckResponse(_: void, result: zx.http.Client.Error!zx.http.Client.Result) void {
     check_in_flight = false;
     checking = false;
     defer zx.client.rerender();
-    if (!storeResponse(res, err)) return;
+    if (!storeResponse(result)) return;
     showResults(draftWords() orelse return);
     if (check_dirty) scheduleCheck();
 }

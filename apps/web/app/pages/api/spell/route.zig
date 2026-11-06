@@ -31,7 +31,7 @@ pub fn POST(ctx: zx.RouteContext) !void {
 
     var w: std.Io.Writer.Allocating = .init(ctx.arena);
     try zx.util.zxon.serialize(schema.Response{ .results = out }, &w.writer, .{});
-    ctx.response.setHeader("content-type", schema.content_type);
+    ctx.response.headers.set("content-type", schema.content_type);
     ctx.response.text(w.written());
 }
 
