@@ -32,6 +32,9 @@ bangla_digits: bool = true,
 newline_on_enter: bool = false,
 candidate_orientation: Orientation = .horizontal,
 candidates_per_page: u8 = max_candidates_per_page,
+/// Strip mode for mobile keyboards: candidate panel stays active while composing,
+/// even for single candidate results, and prefix autocompletions are included.
+strip_mode: bool = false,
 
 /// Settings from JSON. Unknown fields are ignored, missing ones take their
 /// default, and out-of-range values are clamped, so any older or newer file

@@ -141,6 +141,7 @@ pub fn preedit(self: Composer) []const u8 {
 }
 
 pub fn panelVisible(self: Composer) bool {
+    if (self.settings.strip_mode) return self.composing() and self.settings.suggestions and self.items.items.len > 0;
     return self.composing() and self.settings.suggestions and self.items.items.len > 1;
 }
 
@@ -656,3 +657,27 @@ test "corrections arrive later and are appended" {
     try c.refresh();
     try testing.expect(c.candidates().len > before);
 }
+
+test "strip mode: prefix suggestions and panel visibility" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    try h.c.setSettings(.{ .strip_mode = true });
+
+    // Type "am"
+    try h.typed("am");
+    try testing.expect(h.c.panelVisible());
+    const cands = h.c.candidates();
+    try testing.expect(cands.len > 1);
+    var has_prefix = false;
+    for (cands) |item| {
+        if (std.mem.eql(u8, item, "আমি") or std.mem.eql(u8, item, "আমার")) has_prefix = true;
+    }
+    try testing.expect(has_prefix);
+
+    // Type "i" -> "ami"
+    _ = try h.c.key(.{ .char = 'i' }, .{});
+    try testing.expect(h.c.panelVisible());
+    try testing.expectEqualStrings("আমি", h.c.preedit());
+}
+

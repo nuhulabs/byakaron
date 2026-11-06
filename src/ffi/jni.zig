@@ -808,6 +808,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeComposerCreate(
         allocator.destroy(jc);
         return 0;
     };
+    composer.composer.settings.strip_mode = true;
     jc.composer = composer;
     return @intCast(@intFromPtr(jc));
 }
