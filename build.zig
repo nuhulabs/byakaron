@@ -1501,8 +1501,7 @@ fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
             \\crt_dir={s}
             \\msvc_lib_dir=
             \\kernel32_lib_dir=
-            \\cc_dir={s}
-            \\darwin_sdk_dir=
+            \\gcc_dir={s}
             \\
         , .{ sysroot, sysroot, a.triple, crt, crt }));
 
