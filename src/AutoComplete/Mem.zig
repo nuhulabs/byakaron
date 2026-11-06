@@ -1,8 +1,8 @@
 //! In-memory AutoComplete backend: iAvro's dictionary, suffix and autocorrect
 //! tables compiled into the binary.
 //!
-//! `lexicon.zon` (shape in `Lexicon.zig`) is generated at build time from the
-//! pinned iAvro data and imported at compile time, already sorted, so there is
+//! `lexicon.zon` (shape in `Lexicon.zig`) is committed, regenerated from the
+//! pinned iAvro data by `zig build grammars -Diavro`, and imported at compile time, already sorted, so there is
 //! nothing to parse, index or allocate at startup: every lookup is a binary
 //! search over the compiled-in slices.
 

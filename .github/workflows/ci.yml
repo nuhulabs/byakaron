@@ -47,7 +47,7 @@ jobs:
 
       - name: test
         if: ${{ !matrix.placeholder }}
-        run: zig build test
+        run: zig build test -Diavro
 
       - name: placeholder
         if: ${{ matrix.placeholder }}

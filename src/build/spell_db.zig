@@ -5,15 +5,19 @@
 
 const std = @import("std");
 const Io = std.Io;
+const sql = @import("sql");
 
 // D1 limits a statement to 100 KB, and runs each migration as one query.
 const max_statement = 64 * 1024;
 const max_file = 4 * 1024 * 1024;
 
+var gpa: std.mem.Allocator = undefined;
+
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
     const io = init.io;
     const args = try init.minimal.args.toSlice(arena);
+    gpa = init.gpa;
 
     if (args.len == 5 and std.mem.eql(u8, args[1], "trim")) {
         const words = try std.fmt.parseInt(u32, args[3], 10);
@@ -37,16 +41,16 @@ fn trim(arena: std.mem.Allocator, io: Io, src: []const u8, words: u32, out: []co
         error.FileNotFound => {},
         else => return err,
     };
-    const db = try open(arena, out, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
-    defer _ = sqlite3_close(db);
+    var db = try sql.open(gpa, io, out, .read_write);
+    defer db.deinit();
 
-    try exec(arena, db, try std.fmt.allocPrint(arena, "ATTACH {f} AS src", .{quoted(src)}));
-    try exec(arena, db, "PRAGMA journal_mode = OFF");
-    try exec(arena, db, "BEGIN");
-    for (try column(arena, db, "SELECT sql FROM src.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")) |sql| {
-        try exec(arena, db, sql);
+    try sql.run(db, "ATTACH ? AS src", .{src});
+    try sql.exec(arena, db, "PRAGMA journal_mode = OFF");
+    try sql.exec(arena, db, "BEGIN");
+    for (try sql.column(arena, db, "SELECT sql FROM src.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")) |ddl| {
+        try sql.exec(arena, db, ddl);
     }
-    try exec(arena, db, try std.fmt.allocPrint(arena,
+    try sql.exec(arena, db, try std.fmt.allocPrint(arena,
         \\INSERT INTO dictionary SELECT * FROM src.dictionary ORDER BY frequency DESC LIMIT {d};
         \\INSERT INTO deletes SELECT * FROM src.deletes WHERE word_id IN (SELECT id FROM dictionary);
         \\INSERT INTO bigrams SELECT * FROM src.bigrams
@@ -56,12 +60,13 @@ fn trim(arena: std.mem.Allocator, io: Io, src: []const u8, words: u32, out: []co
         \\    AND w3_id IN (SELECT id FROM dictionary);
         \\INSERT INTO confusions SELECT * FROM src.confusions;
     , .{words}));
-    for (try column(arena, db, "SELECT sql FROM src.sqlite_master WHERE type = 'index' AND sql IS NOT NULL")) |sql| {
-        try exec(arena, db, sql);
+    for (try sql.column(arena, db, "SELECT sql FROM src.sqlite_master WHERE type = 'index' AND sql IS NOT NULL")) |ddl| {
+        try sql.exec(arena, db, ddl);
     }
-    try exec(arena, db, "COMMIT");
-    try exec(arena, db, "DETACH src");
-    try exec(arena, db, "ANALYZE");
+    try sql.exec(arena, db, "COMMIT");
+    try sql.exec(arena, db, "DETACH src");
+    try sql.exec(arena, db, "ANALYZE");
+    try sql.makeReadable(io, out);
 }
 
 /// The copy apps ship. `deletes` (the SymSpell keys) is 93% of Byakaron.db:
@@ -76,42 +81,43 @@ fn pack(arena: std.mem.Allocator, io: Io, src: []const u8, out: []const u8) !voi
         error.FileNotFound => {},
         else => return err,
     };
-    const db = try open(arena, out, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
-    defer _ = sqlite3_close(db);
+    var db = try sql.open(gpa, io, out, .read_write);
+    defer db.deinit();
 
-    try exec(arena, db, try std.fmt.allocPrint(arena, "ATTACH {f} AS src", .{quoted(src)}));
-    try exec(arena, db, "PRAGMA journal_mode = OFF");
-    try exec(arena, db, "BEGIN");
-    const tables = try column(arena, db, "SELECT name FROM src.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY rowid");
-    for (try column(arena, db, "SELECT sql FROM src.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY rowid"), tables) |sql, t| {
-        try exec(arena, db, if (std.mem.eql(u8, t, "deletes"))
+    try sql.run(db, "ATTACH ? AS src", .{src});
+    try sql.exec(arena, db, "PRAGMA journal_mode = OFF");
+    try sql.exec(arena, db, "BEGIN");
+    const tables = try sql.column(arena, db, "SELECT name FROM src.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY rowid");
+    for (try sql.column(arena, db, "SELECT sql FROM src.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY rowid"), tables) |ddl, t| {
+        try sql.exec(arena, db, if (std.mem.eql(u8, t, "deletes"))
             \\CREATE TABLE deletes (
             \\    delete_key TEXT NOT NULL,
             \\    word_id INTEGER NOT NULL,
             \\    PRIMARY KEY (delete_key, word_id)
             \\) WITHOUT ROWID
         else
-            sql);
+            ddl);
     }
     for (tables) |t| {
         // OR IGNORE: a repeated (key, word) pair would only repeat a candidate
         // the speller keeps once per word anyway.
-        try exec(arena, db, if (std.mem.eql(u8, t, "deletes"))
+        try sql.exec(arena, db, if (std.mem.eql(u8, t, "deletes"))
             "INSERT OR IGNORE INTO deletes SELECT delete_key, word_id FROM src.deletes ORDER BY delete_key, word_id"
         else
             try std.fmt.allocPrint(arena, "INSERT INTO {f} SELECT * FROM src.{f} ORDER BY rowid", .{ quotedIdent(t), quotedIdent(t) }));
     }
-    for (try column(arena, db, "SELECT sql FROM src.sqlite_master WHERE type = 'index' AND sql IS NOT NULL AND tbl_name <> 'deletes' ORDER BY rowid")) |sql| {
-        try exec(arena, db, sql);
+    for (try sql.column(arena, db, "SELECT sql FROM src.sqlite_master WHERE type = 'index' AND sql IS NOT NULL AND tbl_name <> 'deletes' ORDER BY rowid")) |ddl| {
+        try sql.exec(arena, db, ddl);
     }
-    try exec(arena, db, "COMMIT");
-    try exec(arena, db, "DETACH src");
-    try exec(arena, db, "ANALYZE");
+    try sql.exec(arena, db, "COMMIT");
+    try sql.exec(arena, db, "DETACH src");
+    try sql.exec(arena, db, "ANALYZE");
+    try sql.makeReadable(io, out);
 }
 
 fn d1(arena: std.mem.Allocator, io: Io, src: []const u8, out_dir: []const u8) !void {
-    const db = try open(arena, src, SQLITE_OPEN_READONLY);
-    defer _ = sqlite3_close(db);
+    var db = try sql.open(gpa, io, src, .read_only);
+    defer db.deinit();
 
     const cwd = Io.Dir.cwd();
     try cwd.createDirPath(io, out_dir);
@@ -119,27 +125,27 @@ fn d1(arena: std.mem.Allocator, io: Io, src: []const u8, out_dir: []const u8) !v
     defer dir.close(io);
 
     var files: Files = .{ .arena = arena, .io = io, .dir = dir };
-    const tables = try column(arena, db, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name");
+    const tables = try sql.column(arena, db, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name");
     for (tables) |t| try files.print("DROP TABLE IF EXISTS {f};\n", .{quoted(t)});
-    for (try column(arena, db, "SELECT sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")) |sql| {
-        try files.print("{s};\n", .{sql});
+    for (try sql.column(arena, db, "SELECT sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")) |ddl| {
+        try files.print("{s};\n", .{ddl});
     }
     try files.next();
 
     for (tables) |t| {
         // Explicit rowids let each file start with `DELETE ... >= first row`,
         // so a migration that failed halfway can be rerun.
-        const pk = try column(arena, db, try std.fmt.allocPrint(arena,
+        const pk = try sql.column(arena, db, try std.fmt.allocPrint(arena,
             \\SELECT name FROM pragma_table_info({f}) WHERE pk = 1 AND upper(type) = 'INTEGER'
             \\    AND (SELECT count(*) FROM pragma_table_info({f}) WHERE pk > 0) = 1
         , .{ quoted(t), quoted(t) }));
-        const cols = try column(arena, db, try std.fmt.allocPrint(arena, "SELECT name FROM pragma_table_info({f}) ORDER BY cid", .{quoted(t)}));
+        const cols = try sql.column(arena, db, try std.fmt.allocPrint(arena, "SELECT name FROM pragma_table_info({f}) ORDER BY cid", .{quoted(t)}));
 
         var head: Io.Writer.Allocating = .init(arena);
         var select: Io.Writer.Allocating = .init(arena);
         try head.writer.print("INSERT INTO {f} (", .{quotedIdent(t)});
         if (pk.len == 0) try head.writer.writeAll("rowid, ");
-        try select.writer.writeAll("SELECT rowid, '(' || ");
+        try select.writer.writeAll("SELECT rowid AS id, '(' || ");
         if (pk.len == 0) try select.writer.writeAll("rowid || ',' || ");
         for (cols, 0..) |c, i| {
             const sep = if (i == 0) "" else ", ";
@@ -147,16 +153,18 @@ fn d1(arena: std.mem.Allocator, io: Io, src: []const u8, out_dir: []const u8) !v
             try select.writer.print("{s}quote({f})", .{ if (i == 0) "" else " || ',' || ", quotedIdent(c) });
         }
         try head.writer.writeAll(") VALUES ");
-        try select.writer.print(" || ')' FROM {f} ORDER BY rowid", .{quotedIdent(t)});
+        try select.writer.print(" || ')' AS row FROM {f} ORDER BY rowid", .{quotedIdent(t)});
         const rowid = if (pk.len == 0) "rowid" else pk[0];
 
-        const stmt = try prepare(db, select.written());
-        defer _ = sqlite3_finalize(stmt);
+        var stmt = try db.prepare(select.written());
+        defer stmt.deinit();
+        var rows = try stmt.iterate(.{});
+        defer rows.deinit();
         var in_statement: usize = 0;
         var started = false;
-        while (try step(db, stmt)) {
-            const id = sqlite3_column_int64(stmt, 0);
-            const row = text(stmt, 1);
+        while (try rows.next()) |r| {
+            const id = r.int("id");
+            const row = r.text("row");
             if (in_statement > 0 and (in_statement + row.len + 2 > max_statement or files.size + row.len + 2 > max_file)) {
                 try files.writeAll(";\n");
                 in_statement = 0;
@@ -183,8 +191,8 @@ fn d1(arena: std.mem.Allocator, io: Io, src: []const u8, out_dir: []const u8) !v
     }
     try files.next();
 
-    for (try column(arena, db, "SELECT sql FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL ORDER BY name")) |sql| {
-        try files.print("{s};\n", .{sql});
+    for (try sql.column(arena, db, "SELECT sql FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL ORDER BY name")) |ddl| {
+        try files.print("{s};\n", .{ddl});
     }
     try files.writeAll("PRAGMA optimize;\n");
     try files.next();
@@ -290,74 +298,3 @@ const Quoted = struct {
         try w.writeByte(self.q);
     }
 };
-
-fn open(arena: std.mem.Allocator, path: []const u8, flags: c_int) !*sqlite3 {
-    var db: ?*sqlite3 = null;
-    if (sqlite3_open_v2(try arena.dupeSentinel(u8, path, 0), &db, flags, null) != SQLITE_OK) {
-        std.debug.print("error: cannot open {s}: {s}\n", .{ path, sqlite3_errmsg(db) });
-        return error.SqliteOpenFailed;
-    }
-    return db.?;
-}
-
-fn exec(arena: std.mem.Allocator, db: *sqlite3, sql: []const u8) !void {
-    var err: ?[*:0]u8 = null;
-    if (sqlite3_exec(db, try arena.dupeSentinel(u8, sql, 0), null, null, &err) != SQLITE_OK) {
-        std.debug.print("error: {s}\n  {s}\n", .{ err orelse sqlite3_errmsg(db), sql });
-        return error.SqliteExecFailed;
-    }
-}
-
-fn prepare(db: *sqlite3, sql: []const u8) !*sqlite3_stmt {
-    var stmt: ?*sqlite3_stmt = null;
-    if (sqlite3_prepare_v2(db, sql.ptr, @intCast(sql.len), &stmt, null) != SQLITE_OK) {
-        std.debug.print("error: {s}\n  {s}\n", .{ sqlite3_errmsg(db), sql });
-        return error.SqlitePrepareFailed;
-    }
-    return stmt.?;
-}
-
-fn step(db: *sqlite3, stmt: *sqlite3_stmt) !bool {
-    return switch (sqlite3_step(stmt)) {
-        SQLITE_ROW => true,
-        SQLITE_DONE => false,
-        else => {
-            std.debug.print("error: {s}\n", .{sqlite3_errmsg(db)});
-            return error.SqliteStepFailed;
-        },
-    };
-}
-
-fn text(stmt: *sqlite3_stmt, col: c_int) []const u8 {
-    const ptr = sqlite3_column_text(stmt, col) orelse return "";
-    return ptr[0..@intCast(sqlite3_column_bytes(stmt, col))];
-}
-
-fn column(arena: std.mem.Allocator, db: *sqlite3, sql: []const u8) ![]const []const u8 {
-    const stmt = try prepare(db, sql);
-    defer _ = sqlite3_finalize(stmt);
-    var out: std.ArrayList([]const u8) = .empty;
-    while (try step(db, stmt)) try out.append(arena, try arena.dupe(u8, text(stmt, 0)));
-    return out.items;
-}
-
-const sqlite3 = opaque {};
-const sqlite3_stmt = opaque {};
-
-const SQLITE_OK = 0;
-const SQLITE_ROW = 100;
-const SQLITE_DONE = 101;
-const SQLITE_OPEN_READONLY = 0x00000001;
-const SQLITE_OPEN_READWRITE = 0x00000002;
-const SQLITE_OPEN_CREATE = 0x00000004;
-
-extern fn sqlite3_open_v2(filename: [*:0]const u8, db: *?*sqlite3, flags: c_int, vfs: ?[*:0]const u8) c_int;
-extern fn sqlite3_close(db: ?*sqlite3) c_int;
-extern fn sqlite3_errmsg(db: ?*sqlite3) [*:0]const u8;
-extern fn sqlite3_exec(db: *sqlite3, sql: [*:0]const u8, callback: ?*const anyopaque, arg: ?*anyopaque, errmsg: *?[*:0]u8) c_int;
-extern fn sqlite3_prepare_v2(db: *sqlite3, sql: [*]const u8, len: c_int, stmt: *?*sqlite3_stmt, tail: ?*[*]const u8) c_int;
-extern fn sqlite3_step(stmt: ?*sqlite3_stmt) c_int;
-extern fn sqlite3_column_int64(stmt: ?*sqlite3_stmt, col: c_int) i64;
-extern fn sqlite3_column_text(stmt: ?*sqlite3_stmt, col: c_int) ?[*]const u8;
-extern fn sqlite3_column_bytes(stmt: ?*sqlite3_stmt, col: c_int) c_int;
-extern fn sqlite3_finalize(stmt: ?*sqlite3_stmt) c_int;

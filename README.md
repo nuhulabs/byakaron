@@ -21,7 +21,7 @@ Requires Zig **0.17.0** (pinned in `.tool-versions`).
 
 Nothing derived is committed: every data file comes out of the Zig build graph and is cached in `.zig-cache`.
 
-- **Autocomplete lexicon** (`AutoComplete/Mem.zig`, the default backend): `zig build` reads OmicronLab's Avro word database ([`iAvro/database.db3`](https://github.com/omicronlab/iAvro), hash-pinned in `build.zig.zon`) with `src/build/avro_dictionary.zig`, embeds the sorted word list, and installs `zig-out/db/{avro_dictionary.txt,Dictionary.json}` (the JSON is bundled by the macOS keyboard).
+- **Autocomplete lexicon** (`AutoComplete/Mem.zig`, the default backend): OmicronLab's Avro word database ([`iAvro/database.db3`](https://github.com/omicronlab/iAvro), hash-pinned in `build.zig.zon`) is committed as `src/AutoComplete/lexicon.zon` and embedded at compile time; `zig build` derives `zig-out/db/{avro_dictionary.txt,Dictionary.json}` from it (the JSON is bundled by the macOS keyboard). iAvro is a lazy dependency, fetched only by `zig build grammars -Diavro` (resync `lexicon.zon`, `rules.zon`, `search.zon`) and `zig build test -Diavro` (the iAvro parity test). The host data tools use SQLite through ziex's `zx.Db`.
 - **Spell DB**: `zig build db` downloads the bnwiki dump, then runs `sentences → triplets → export → prepare` (merging in the Avro lexicon) and installs `zig-out/db/Byakaron.db`. Each stage is its own cached build step, so a re-run only redoes what changed. `zig build db-debug` builds the larger text-keyed `spell_debug.db`.
 
   ```sh
