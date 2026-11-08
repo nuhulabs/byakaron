@@ -1,6 +1,9 @@
 name: android-internal
 
 on:
+  push:
+    branches:
+      - feat/android
   workflow_dispatch:
     inputs:
       track:
