@@ -316,6 +316,10 @@ fn compute(self: *AutoComplete, gpa: std.mem.Allocator, arena: std.mem.Allocator
             run.remembered = i;
             break;
         };
+        if (run.remembered == null and p.len > 0) {
+            try list.insert(arena, 0, try arena.dupe(u8, p));
+            run.remembered = 0;
+        }
     }
     for (list.items) |*item| item.* = try std.mem.concat(arena, u8, &.{ run.prefix, item.*, run.suffix });
     if (options.dictionary and !std.mem.eql(u8, buffer, parts.term)) {

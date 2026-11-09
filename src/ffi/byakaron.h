@@ -325,6 +325,8 @@ ByakaronKeyResult byakaron_composer_key(ByakaronComposer *composer, int kind,
                                         unsigned int ch, unsigned int modifiers);
 /* Choose the index-th candidate of the current page (a click) and commit it. */
 ByakaronKeyResult byakaron_composer_pick(ByakaronComposer *composer, size_t index);
+/* Choose a candidate word directly (from the panel or an external strip) and commit it. */
+ByakaronKeyResult byakaron_composer_pick_word(ByakaronComposer *composer, const char *word);
 /* Commit the word being typed (focus out); returns the text, valid until the next call. */
 const char *byakaron_composer_flush(ByakaronComposer *composer);
 /* Drop the word being typed. */
