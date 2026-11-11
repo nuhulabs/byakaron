@@ -27,7 +27,7 @@ fake_system() {
     local dir="$1" sys="$2" machine="$3" arch="$4" name="$5"
     mkdir -p "$dir/bin"
     local tool
-    for tool in bash sed head grep curl mktemp rm cat tail; do
+    for tool in bash sed head grep curl mktemp rm cat tail awk sha256sum cut; do
         ln -sf "$(command -v "$tool")" "$dir/bin/$tool"
     done
     printf '#!/bin/bash\ncase "$1" in -m) echo %s ;; *) echo %s ;; esac\n' "$machine" "$sys" > "$dir/bin/uname"
@@ -83,6 +83,56 @@ check "fedora-no-apt"        install.sh       Linux  x86_64  ""    "Fedora Linux
       "This is Fedora Linux 40 (Workstation Edition), which has no apt"
 check "mac"                  install.sh       Darwin arm64   ""    "macOS" \
       "For a Mac: curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash"
+
+# Where the .deb comes from, against a fake Byakaron-Assets on file:// URLs:
+# latest/, or the newest prerelease while there is no latest, and the
+# download checked against SHA256SUMS. apt-get is the fake that does nothing.
+#
+# download <label> <installer> <scenario: latest|preview|damaged|none> <expected substring>
+download() {
+    local label="$1" installer="$2" scenario="$3" expect="$4"
+    local dir="$WORK/dl-$label" deb_name="byakaron_amd64.deb"
+    fake_system "$dir" Linux x86_64 amd64 "Ubuntu 24.04.1 LTS"
+    mkdir -p "$dir/latest" "$dir/pre"
+    printf 'not really a deb\n' > "$dir/pre/$deb_name"
+    (cd "$dir/pre" && sha256sum "$deb_name" > SHA256SUMS)
+    printf '[{"tag_name": "v27.0.0-dev.1", "assets": [{"name": "%s", "browser_download_url": "file://%s/pre/%s"}]}]\n' \
+        "$deb_name" "$dir" "$deb_name" > "$dir/releases.json"
+    case "$scenario" in
+        latest)  cp "$dir/pre/$deb_name" "$dir/pre/SHA256SUMS" "$dir/latest/" ;;
+        damaged) printf '%064d  %s\n' 0 "$deb_name" > "$dir/pre/SHA256SUMS" ;;
+        none)    printf '[]\n' > "$dir/releases.json" ;;
+    esac
+    local out
+    out="$(PATH="$dir/bin" BYAKARON_OS_RELEASE="$dir/os-release" \
+           BYAKARON_ASSETS_URL="file://$dir/latest" BYAKARON_API_URL="file://$dir/releases.json" \
+           "$dir/bin/bash" "$installer" 2>&1 || true)"
+    local ok=1
+    [[ "$out" == *"$expect"* ]] || ok=0
+    # Only the preview scenarios may say "preview".
+    [[ "$scenario" == latest && "$out" == *preview* ]] && ok=0
+    if [[ $ok -eq 1 ]]; then
+        printf '  ok   %-30s -> %s\n' "$label" "$expect"
+    else
+        printf '  FAIL %-30s -> %s\n       expected: %s\n' "$label" "$out" "$expect"
+        failures=$((failures + 1))
+    fi
+}
+
+# The public command runs apps/web/app/public/install.sh (Linux + macOS);
+# the per-CPU links run apps/linux/web_install.sh. Both share this logic.
+PUBLIC="$(cd "$HERE/../../.." && pwd)/apps/web/app/public/install.sh"
+echo
+echo "where the .deb comes from:"
+for installer in "$SRC" "$PUBLIC"; do
+    [[ -f "$installer" ]] || { echo "  FAIL missing $installer"; failures=$((failures + 1)); continue; }
+    tag="$(basename "$(dirname "$installer")")"
+    download "$tag-latest"  "$installer" latest  "checksum OK"
+    download "$tag-preview" "$installer" preview "no stable release yet: installing the newest preview build"
+    download "$tag-preview-sum" "$installer" preview "checksum OK"
+    download "$tag-damaged" "$installer" damaged "does not match SHA256SUMS"
+    download "$tag-none"    "$installer" none    "no release has it yet"
+done
 
 echo
 if [[ $failures -gt 0 ]]; then

@@ -40,14 +40,44 @@ install_linux() {
     echo ">>> Detected: $OS_NAME, $CPU_NAME"
 
     deb_name="byakaron_${ARCH}.deb"
-    deb_url="${BYAKARON_DEB_URL:-${ASSETS}/${deb_name}}"
+    local assets="${BYAKARON_ASSETS_URL:-$ASSETS}"
+    local api="${BYAKARON_API_URL:-https://api.github.com/repos/${REPO}/releases?per_page=20}"
+    deb_url="${BYAKARON_DEB_URL:-${assets}/${deb_name}}"
+    local sums_url="${assets}/SHA256SUMS"
     tmp="$(mktemp -d)"
     trap 'rm -rf "$tmp"' RETURN
     deb="$tmp/byakaron.deb"
 
+    # GitHub's latest/ skips prereleases, so while there are only prereleases
+    # (27.0.0-dev.1, say) it has nothing: take the newest release with this .deb.
+    if [[ -z "${BYAKARON_DEB_URL:-}" ]] && ! curl -fsL -r 0-0 -o /dev/null "$deb_url" 2>/dev/null; then
+        local preview
+        preview="$(curl -fsL "$api" 2>/dev/null \
+            | grep -o "\"browser_download_url\": *\"[^\"]*/${deb_name}\"" | head -n 1 \
+            | sed 's/.*"\([^"]*\)"$/\1/' || true)"
+        [[ -n "$preview" ]] || die "could not find ${deb_name} on ${REPO} (no release has it yet)"
+        echo ">>> no stable release yet: installing the newest preview build"
+        deb_url="$preview"
+        sums_url="${preview%/*}/SHA256SUMS"
+    fi
+
     echo ">>> downloading $deb_url"
     curl -fL --progress-bar -o "$deb" "$deb_url" \
         || die "could not download $deb_url (publish ${deb_name} on ${REPO}, or set BYAKARON_DEB_URL)"
+
+    # Same release's SHA256SUMS: a cut-off or damaged download stops here.
+    if [[ -z "${BYAKARON_DEB_URL:-}" ]]; then
+        if curl -fsL -o "$tmp/SHA256SUMS" "$sums_url" 2>/dev/null; then
+            local want got
+            want="$(awk -v n="$deb_name" '$2 == n || $2 == "*" n { print $1; exit }' "$tmp/SHA256SUMS")"
+            got="$(sha256sum "$deb" | cut -d ' ' -f 1)"
+            [[ -n "$want" && "$want" == "$got" ]] \
+                || die "the download does not match SHA256SUMS ($deb_name). Run the command again."
+            echo ">>> checksum OK"
+        else
+            echo ">>> no SHA256SUMS next to the .deb, so the download is not checked"
+        fi
+    fi
 
     echo ">>> installing (keyboard + app + spell-check)"
     export DEBIAN_FRONTEND=noninteractive
@@ -63,6 +93,8 @@ install_linux() {
     # Shown without the epoch: the .deb is 1:0.1.x so it is newer than the
     # old Linux-only 0.2.x; people know the version as 0.1.x.
     was_shown="${was_installed#*:}" now_shown="${now_installed#*:}"
+    # A prerelease is 27.0.0~dev.1 in dpkg; people know it as 27.0.0-dev.1.
+    was_shown="${was_shown//\~/-}" now_shown="${now_shown//\~/-}"
     if [[ -n "$was_installed" && "$was_installed" == "$now_installed" ]]; then
         echo; echo "=== Byakaron $now_shown is already the latest ==="; echo
         return 0
@@ -79,6 +111,8 @@ install_linux() {
         echo "  2. Bangla → Byakaron (Bangla Phonetic) → Add"
         echo "  3. Switch with Super+Space and type ami then Space (আমি )"
         echo "  Or open the Byakaron app → Setup."
+        command -v gnome-shell >/dev/null \
+            && echo "  Then log out and back in once to get Byakaron's suggestion panel."
     else
         echo "  1. im-config -n ibus   then log out and back in"
         echo "  2. ibus-setup → Input Method → Add → Bangla → Byakaron"

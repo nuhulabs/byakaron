@@ -285,6 +285,9 @@ const postinst =
     \\            echo "  2. Choose Bangla, then Byakaron (Bangla Phonetic) -> Add"
     \\            echo "  3. Switch with Super+Space"
     \\            echo "  If Byakaron is missing from the Bangla list, log out and back in."
+    \\            if command -v gnome-shell >/dev/null; then
+    \\                echo "  Log out and back in once anyway to get Byakaron's suggestion panel."
+    \\            fi
     \\        else
     \\            echo "  1. As yourself: im-config -n ibus   (then log out and back in)"
     \\            echo "  2. ibus-setup -> Input Method -> Add -> Bangla -> Byakaron"
