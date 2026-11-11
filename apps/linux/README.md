@@ -202,7 +202,7 @@ time for that input, else the first).
 | --- | --- |
 | `a`–`z`, `A`–`Z` | Appended to the latin buffer; candidates and preedit update |
 | `0`–`9` | Bangla numerals (`1` → `১`, `2024` → `২০২৪`) with **Bangla digits** on, else 0–9 typed by the app; `1`–`9` pick a candidate while the list is on screen |
-| `.` `,` `:` `$` `^` backtick and other printable ASCII | Appended; Avro maps `.` → `।`, `:` → `ঃ`, `$` → `৳`, `^` → `ঁ` |
+| `.` `,` `:` `$` `^` backtick and other printable ASCII | Appended; Avro maps `.` → `।`, `:` → `ঃ`, `$` → `৳`, `^` → `ঁ`. Between two digits Linux keeps `.` and `:` as they are, so `3.14` → `৩.১৪` and `10:30` → `১০:৩০`; `25.` is still `২৫।` (`src/Composer.zig`, desktop Linux only) |
 | Backspace | Drops one latin character and re-transliterates |
 | Space | Commits the highlighted candidate plus the space, in one commit |
 | Enter | Commits the highlighted candidate only (Enter consumed); with **New line on Enter** it also reaches the app |
@@ -371,6 +371,31 @@ keyboard or the app) copies the old GSettings keys into it once:
 `bangla_digits = bangla-digits`, `candidate_orientation` from
 `candidates-horizontal`. Those keys stay in the schema, marked deprecated, only
 so they can still be read for that; nothing else reads them.
+
+### Updates
+
+The app offers new releases itself (`App/updates.c`, `Core/update.c`). Once a
+day when **Settings → Updates → Check for updates** is on (`check-updates`,
+default on; the time is in `last-update-check`), or on **Check Now**:
+
+1. `curl` asks for `Byakaron-Assets/releases/latest` without following it. The
+   redirect names the newest normal release (`…/releases/tag/v27.0.0`); GitHub
+   skips prereleases, so a dev build is never offered. While there is no
+   normal release the redirect has no tag and nothing is offered.
+2. The tag becomes the `.deb` version as the packaging writes it (`v27.0.0` →
+   `1:27.0.0`, `v27.0.0-dev.2` → `1:27.0.0~dev.2`) and is compared with what
+   `dpkg-query` says is installed, in dpkg's order. A build that dpkg did not
+   install (run from `zig-out`) never checks.
+3. If it is newer, a bar says **Byakaron 27.0.0 is available**. **Update**
+   downloads `byakaron_<arch>.deb` and `SHA256SUMS` from that release, checks
+   the hash, and runs `pkexec apt-get install -y` on it (the system password
+   prompt). postinst restarts IBus, so the keyboard is new at once; the bar
+   then offers **Restart** for the app.
+
+The hash catches a broken download; it is not a signature, since both files
+come from the same release. `BYAKARON_UPDATE_BASE` points the check at
+another server and `BYAKARON_INSTALLED_VERSION` overrides the installed
+version, for tests.
 
 ## Installing permanently
 

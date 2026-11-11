@@ -184,7 +184,7 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
         \\Architecture: {s}
         \\Maintainer: Byakaron contributors <byakaron@example.com>
         \\Installed-Size: {s}
-        \\Depends: libc6 (>= 2.31), ibus (>= 1.5), libibus-1.0-5, libglib2.0-0t64 | libglib2.0-0, libgtk-3-0t64 | libgtk-3-0, libglib2.0-bin
+        \\Depends: libc6 (>= 2.31), ibus (>= 1.5), libibus-1.0-5, libglib2.0-0t64 | libglib2.0-0, libgtk-3-0t64 | libgtk-3-0, libglib2.0-bin, curl
         \\Recommends: ibus-gtk3 | ibus-gtk, ibus-gtk4
         \\Suggests: fcitx5
         \\Replaces: byakaron-app, byakaron-data
@@ -285,6 +285,9 @@ const postinst =
     \\            echo "  2. Choose Bangla, then Byakaron (Bangla Phonetic) -> Add"
     \\            echo "  3. Switch with Super+Space"
     \\            echo "  If Byakaron is missing from the Bangla list, log out and back in."
+    \\            if command -v gnome-shell >/dev/null; then
+    \\                echo "  Log out and back in once anyway to get Byakaron's suggestion panel."
+    \\            fi
     \\        else
     \\            echo "  1. As yourself: im-config -n ibus   (then log out and back in)"
     \\            echo "  2. ibus-setup -> Input Method -> Add -> Bangla -> Byakaron"

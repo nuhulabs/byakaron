@@ -5,6 +5,7 @@
 #include "settings.h"
 #include "setup.h"
 #include "spelling.h"
+#include "updates.h"
 
 struct _BykWindow {
     GtkApplicationWindow parent_instance;
@@ -16,6 +17,7 @@ struct _BykWindow {
     GtkWidget *spell_page;
     GtkWidget *setup_page;
     GtkWidget *settings_page;
+    GtkWidget *updates;      /* the "Byakaron X is available" bar */
 
     gint typing_update;      /* a refresh is queued on the main loop */
 };
@@ -202,9 +204,24 @@ on_dictionary_activate (GSimpleAction *action, GVariant *parameter, gpointer use
                          G_CALLBACK (on_dictionary_changed), self);
 }
 
+static void
+on_check_updates_activate (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+    BykWindow *self = BYK_WINDOW (user_data);
+    (void) action;
+    (void) parameter;
+    if (self->updates != NULL)
+        byk_updates_check (self->updates, TRUE);
+}
+
 static GtkWidget *
 byk_window_build_menu_button (BykWindow *self)
 {
+    GSimpleAction *check = g_simple_action_new ("check-updates", NULL);
+    g_signal_connect (check, "activate", G_CALLBACK (on_check_updates_activate), self);
+    g_action_map_add_action (G_ACTION_MAP (self), G_ACTION (check));
+    g_object_unref (check);
+
     GSimpleAction *dictionary = g_simple_action_new ("dictionary", NULL);
     g_signal_connect (dictionary, "activate", G_CALLBACK (on_dictionary_activate), self);
     g_action_map_add_action (G_ACTION_MAP (self), G_ACTION (dictionary));
@@ -286,6 +303,8 @@ byk_window_init (BykWindow *self)
     byk_window_show_page (self, "spelling");
 
     GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+    self->updates = byk_updates_bar_new ();
+    gtk_box_pack_start (GTK_BOX (box), self->updates, FALSE, FALSE, 0);
     gtk_box_pack_start (GTK_BOX (box), self->stack, TRUE, TRUE, 0);
 
     gtk_window_set_titlebar (GTK_WINDOW (self), self->header);
@@ -298,6 +317,7 @@ byk_window_init (BykWindow *self)
     gtk_widget_show_all (GTK_WIDGET (self));
 
     byk_window_load_spell (self);
+    byk_updates_check_if_due (self->updates);
 }
 
 static void
@@ -310,6 +330,7 @@ byk_window_dispose (GObject *object)
     self->setup_page = NULL;
     self->settings_page = NULL;
     self->header = NULL;
+    self->updates = NULL;
 
     /* Pages only borrow these, and they are all gone by the time dispose has
      * chained up, so freeing after that is the safe order. */

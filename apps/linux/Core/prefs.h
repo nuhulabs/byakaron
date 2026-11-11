@@ -19,6 +19,8 @@ G_BEGIN_DECLS
 #define BYK_PREFS_QT_CLICK_FIX           "qt-click-fix"
 #define BYK_PREFS_SPELLING_TYPING        "spelling-typing"
 #define BYK_PREFS_PANEL_ENABLED          "panel-extension-enabled"
+#define BYK_PREFS_CHECK_UPDATES          "check-updates"
+#define BYK_PREFS_LAST_UPDATE_CHECK      "last-update-check"
 
 /* Deprecated: read once to migrate into settings.json. */
 #define BYK_PREFS_OLD_PHONETIC_ONLY          "phonetic-only"
@@ -32,11 +34,18 @@ void byk_prefs_init_schema_dir (void);
 /* NULL when the schema is not installed. Never aborts. */
 GSettings *byk_prefs_try_open (void);
 
+/* FALSE without a schema, or with one from before `key` existed. */
+gboolean byk_prefs_has_key (GSettings *settings, const gchar *key);
+
 /* `fallback` without a schema, or with one from before `key` existed. */
 gboolean byk_prefs_boolean (GSettings *settings, const gchar *key, gboolean fallback);
 
 /* Quietly does nothing in the same two cases. */
 void byk_prefs_set_boolean (GSettings *settings, const gchar *key, gboolean value);
+
+/* The same for an int64 key. */
+gint64 byk_prefs_int64 (GSettings *settings, const gchar *key, gint64 fallback);
+void byk_prefs_set_int64 (GSettings *settings, const gchar *key, gint64 value);
 
 /*
  * Turn on the GNOME Shell extension behind the compact suggestion panel for

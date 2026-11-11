@@ -54,6 +54,19 @@
         before Space. Ignored on newer IBus, which handles Qt automatically.
       </description>
     </key>
+    <key name="check-updates" type="b">
+      <default>true</default>
+      <summary>Check for updates</summary>
+      <description>
+        When true, the app asks github.com once a day whether a newer Byakaron
+        has been released, and offers to install it. Nothing else is sent.
+      </description>
+    </key>
+    <key name="last-update-check" type="x">
+      <default>0</default>
+      <summary>When the app last checked for updates</summary>
+      <description>Seconds since 1970. Written by the app.</description>
+    </key>
     <key name="spelling-typing" type="b">
       <default>true</default>
       <summary>Type Bangla on the Spelling page</summary>

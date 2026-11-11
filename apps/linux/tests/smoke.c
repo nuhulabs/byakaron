@@ -15,6 +15,7 @@
 #include "byakaron.h"
 #include "composer.h"
 #include "spell.h"
+#include "update.h"
 #include <glib/gstdio.h>
 
 /* Expected outputs are pinned so a regression in the engine is visible here. */
@@ -300,6 +301,71 @@ int main(void)
         }
         expect(ok, JSON_CASES[i].json, shown);
         g_strfreev(got);
+    }
+
+    printf("update check (Core/update.c):\n");
+    {
+        static const struct { const char *in, *want; } TAGS[] = {
+            { "https://github.com/nuhulabs/Byakaron-Assets/releases/tag/v27.0.0", "v27.0.0" },
+            { "https://github.com/x/y/releases/tag/v27.0.0-dev.2\r\n", "v27.0.0-dev.2" },
+            /* No normal release: GitHub redirects to the list instead. */
+            { "https://github.com/nuhulabs/Byakaron-Assets/releases", NULL },
+            { "", NULL },
+        };
+        for (size_t i = 0; i < sizeof TAGS / sizeof TAGS[0]; i++) {
+            gchar *got = byk_update_tag_from_url(TAGS[i].in);
+            expect(g_strcmp0(got, TAGS[i].want) == 0, "tag from redirect", got ? got : "(none)");
+            g_free(got);
+        }
+
+        static const struct { const char *tag, *deb, *shown; } VERSIONS[] = {
+            { "v27.0.0", "1:27.0.0", "27.0.0" },
+            { "v27.0.0-dev.2", "1:27.0.0~dev.2", "27.0.0-dev.2" },
+            { "v0.1.5", "1:0.1.5", "0.1.5" },
+            { "latest", NULL, NULL },
+            { "v27.0.0;rm", NULL, NULL },
+        };
+        for (size_t i = 0; i < sizeof VERSIONS / sizeof VERSIONS[0]; i++) {
+            gchar *deb = byk_update_deb_version(VERSIONS[i].tag);
+            gchar *shown = byk_update_shown_version(deb);
+            expect(g_strcmp0(deb, VERSIONS[i].deb) == 0 && g_strcmp0(shown, VERSIONS[i].shown) == 0,
+                   VERSIONS[i].tag, deb ? deb : "(none)");
+            g_free(deb);
+            g_free(shown);
+        }
+
+        /* dpkg's order, as apt will see it. */
+        gchar *dpkg = g_find_program_in_path("dpkg");
+        if (dpkg != NULL) {
+            expect(byk_update_newer("1:27.0.0", "1:0.1.5"), "27.0.0 newer than 0.1.5", "yes");
+            expect(byk_update_newer("1:27.0.0", "1:27.0.0~dev.3"), "27.0.0 newer than its dev.3", "yes");
+            expect(!byk_update_newer("1:27.0.0~dev.3", "1:27.0.0"), "dev.3 not newer than 27.0.0", "no");
+            expect(!byk_update_newer("1:27.0.0", "1:27.0.0"), "same version is not newer", "no");
+            expect(byk_update_newer("1:0.1.5", "0.2.1"), "epoch 1 beats the old 0.2.1", "yes");
+        }
+        g_free(dpkg);
+
+        const char *sums =
+            "1111111111111111111111111111111111111111111111111111111111111111  byakaron_arm64.deb\n"
+            "ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef0123456789 *byakaron_amd64.deb\n"
+            "short  Byakaron.dmg\n";
+        gchar *sum = byk_update_sum_for(sums, "byakaron_amd64.deb");
+        expect(g_strcmp0(sum, "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789") == 0,
+               "SHA256SUMS lookup", sum ? sum : "(none)");
+        g_free(sum);
+        sum = byk_update_sum_for(sums, "Byakaron.dmg");
+        expect(sum == NULL, "a malformed line is skipped", sum ? sum : "(none)");
+        g_free(sum);
+
+        g_setenv("BYAKARON_INSTALLED_VERSION", "1:0.1.5", TRUE);
+        gchar *installed = byk_update_installed_version();
+        expect(g_strcmp0(installed, "1:0.1.5") == 0, "installed version (override)", installed);
+        g_free(installed);
+        g_setenv("BYAKARON_INSTALLED_VERSION", "", TRUE);
+        installed = byk_update_installed_version();
+        expect(installed == NULL, "not installed from a .deb", installed ? installed : "(none)");
+        g_free(installed);
+        g_unsetenv("BYAKARON_INSTALLED_VERSION");
     }
 
     rm_rf(data_dir);
