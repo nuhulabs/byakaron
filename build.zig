@@ -794,6 +794,7 @@ fn addLinux(
             "apps/linux/Core/composer.c",
             "apps/linux/Core/prefs.c",
             "apps/linux/Core/spell.c",
+            "apps/linux/Core/update.c",
         },
         .flags = engine_cflags,
     });
@@ -1182,9 +1183,11 @@ fn linuxApp(
             "apps/linux/App/uiutil.c",
             "apps/linux/App/dictionary.c",
             "apps/linux/App/settings.c",
+            "apps/linux/App/updates.c",
             "apps/linux/Core/spell.c",
             "apps/linux/Core/composer.c",
             "apps/linux/Core/prefs.c",
+            "apps/linux/Core/update.c",
         },
         .flags = app_cflags,
     });

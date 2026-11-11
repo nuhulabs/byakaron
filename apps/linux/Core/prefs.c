@@ -44,7 +44,7 @@ byk_prefs_try_open (void)
 }
 
 /* g_settings_get_boolean aborts on a key the installed schema does not have. */
-static gboolean
+gboolean
 byk_prefs_has_key (GSettings *settings, const gchar *key)
 {
     GSettingsSchema *schema = NULL;
@@ -70,6 +70,19 @@ byk_prefs_set_boolean (GSettings *settings, const gchar *key, gboolean value)
 {
     if (byk_prefs_has_key (settings, key))
         g_settings_set_boolean (settings, key, value);
+}
+
+gint64
+byk_prefs_int64 (GSettings *settings, const gchar *key, gint64 fallback)
+{
+    return byk_prefs_has_key (settings, key) ? g_settings_get_int64 (settings, key) : fallback;
+}
+
+void
+byk_prefs_set_int64 (GSettings *settings, const gchar *key, gint64 value)
+{
+    if (byk_prefs_has_key (settings, key))
+        g_settings_set_int64 (settings, key, value);
 }
 
 static void

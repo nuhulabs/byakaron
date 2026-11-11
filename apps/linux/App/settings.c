@@ -152,6 +152,28 @@ byk_settings_build_typing (BykSettingsPage *self)
     return group;
 }
 
+/* Linux only, in GSettings: the app's own update check (updates.c). */
+static GtkWidget *
+byk_settings_build_updates (BykSettingsPage *self)
+{
+    GtkWidget *list = NULL;
+    GtkWidget *group = byk_framed_list ("Updates", NULL, &list);
+
+    GtkWidget *sw = gtk_switch_new ();
+    g_settings_bind (self->prefs, BYK_PREFS_CHECK_UPDATES, sw, "active", G_SETTINGS_BIND_DEFAULT);
+    byk_settings_add_row (list, "Check for updates",
+                          "Once a day, ask github.com whether a newer Byakaron is out, "
+                          "and offer to install it. Nothing about you or what you type is sent.",
+                          sw);
+
+    GtkWidget *now = gtk_button_new_with_label ("Check Now");
+    gtk_actionable_set_action_name (GTK_ACTIONABLE (now), "win.check-updates");
+    gchar *version = g_strdup_printf ("This is Byakaron %s.", BYK_APP_VERSION);
+    byk_settings_add_row (list, "Check now", version, now);
+    g_free (version);
+    return group;
+}
+
 /* Linux only, and only for IBus older than 1.5.27: kept in GSettings. */
 static GtkWidget *
 byk_settings_build_compat (BykSettingsPage *self)
@@ -253,6 +275,8 @@ byk_settings_page_new (BykEngines *engines, GCallback on_dictionary_changed_cb, 
     byk_box_add (column, byk_settings_build_typing (self));
     if (self->prefs != NULL)
         byk_box_add (column, byk_settings_build_compat (self));
+    if (byk_prefs_has_key (self->prefs, BYK_PREFS_CHECK_UPDATES))
+        byk_box_add (column, byk_settings_build_updates (self));
     byk_box_add (column, byk_settings_build_dictionary (self));
 
     GtkWidget *scroller = byk_scroller (column, GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
