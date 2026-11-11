@@ -38,6 +38,10 @@ const correction_limit = 3;
 /// platform's list stays as its owner left it.
 const prefix_words = builtin.os.tag == .linux and !builtin.abi.isAndroid();
 const prefix_limit = 8;
+/// A `.` or `:` typed between two digits stays one: ৩.১৪, ১০:৩০. Avro makes
+/// every `.` a দাঁড়ি and every `:` a বিসর্গ, which no number has. A দাঁড়ি
+/// after a number (২৫।) is kept. Desktop Linux only, like `prefix_words`.
+const number_marks = builtin.os.tag == .linux and !builtin.abi.isAndroid();
 
 pub const Key = union(enum) {
     /// A printable ASCII character (0x21–0x7e).
@@ -276,6 +280,9 @@ pub fn refresh(self: *Composer) !void {
     try self.items.appendSlice(self.gpa, fresh.items);
     self.avro_count = fresh.items.len;
     self.highlight = fresh.selected;
+    if (number_marks) for (self.items.items) |*item| {
+        if (try numberMarks(self.extras.allocator(), item.*)) |fixed| item.* = fixed;
+    };
 
     if (self.settings.suggestions) {
         try self.addExtras();
@@ -323,6 +330,37 @@ fn addPrefixWords(self: *Composer) !void {
     for (longer) |entry| if (!self.listed(entry.word)) {
         try self.items.append(self.gpa, try arena.dupe(u8, entry.word));
     };
+}
+
+fn isBanglaDigit(c: u21) bool {
+    return c >= 0x09E6 and c <= 0x09EF; // ০–৯
+}
+
+/// `word` with each । or ঃ between two Bangla digits made . or :, or null
+/// when there is none. The copy lives in `arena`.
+fn numberMarks(arena: std.mem.Allocator, word: []const u8) !?[]const u8 {
+    const view = std.unicode.Utf8View.init(word) catch return null;
+    var cps: std.ArrayList(u21) = .empty;
+    var it = view.iterator();
+    while (it.nextCodepoint()) |c| try cps.append(arena, c);
+
+    var changed = false;
+    for (cps.items, 0..) |*c, i| {
+        if (c.* != 0x0964 and c.* != 0x0983) continue; // । ঃ
+        if (i == 0 or i + 1 == cps.items.len) continue;
+        if (!isBanglaDigit(cps.items[i - 1]) or !isBanglaDigit(cps.items[i + 1])) continue;
+        c.* = if (c.* == 0x0964) '.' else ':';
+        changed = true;
+    }
+    if (!changed) return null;
+
+    var out: std.ArrayList(u8) = .empty;
+    for (cps.items) |c| {
+        var buf: [4]u8 = undefined;
+        const n = try std.unicode.utf8Encode(c, &buf);
+        try out.appendSlice(arena, buf[0..n]);
+    }
+    return out.items;
 }
 
 fn listed(self: Composer, word: []const u8) bool {
@@ -630,6 +668,30 @@ test "Linux: words that start with what is typed follow Avro's list" {
     h.memory.store().save(Store.settings, "{\"suggestions\":false}");
     try h.typed("am");
     try testing.expect(!h.c.panelVisible());
+}
+
+test "Linux: a . or : between digits stays one, a দাঁড়ি after a number stays" {
+    if (!number_marks) return error.SkipZigTest;
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    const cases = [_][2][]const u8{
+        .{ "3.14 ", "৩.১৪ " },
+        .{ "10:30 ", "১০:৩০ " },
+        .{ "1.2.3 ", "১.২.৩ " },
+        .{ "25. ", "২৫। " },
+        .{ "ami. ", "আমি। " },
+        .{ "2024 ", "২০২৪ " },
+    };
+    for (cases) |c| {
+        try h.typed(c[0][0 .. c[0].len - 1]);
+        try testing.expectEqualStrings(c[1], (try h.c.key(.space, .{})).commit);
+    }
+    // While typing, the দাঁড়ি turns into a point once a digit follows it.
+    try h.typed("3.");
+    try testing.expectEqualStrings("৩।", h.c.preedit());
+    try h.typed("5");
+    try testing.expectEqualStrings("৩.৫", h.c.preedit());
 }
 
 const FakeCorrector = struct {

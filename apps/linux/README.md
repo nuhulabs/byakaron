@@ -202,7 +202,7 @@ time for that input, else the first).
 | --- | --- |
 | `a`–`z`, `A`–`Z` | Appended to the latin buffer; candidates and preedit update |
 | `0`–`9` | Bangla numerals (`1` → `১`, `2024` → `২০২৪`) with **Bangla digits** on, else 0–9 typed by the app; `1`–`9` pick a candidate while the list is on screen |
-| `.` `,` `:` `$` `^` backtick and other printable ASCII | Appended; Avro maps `.` → `।`, `:` → `ঃ`, `$` → `৳`, `^` → `ঁ` |
+| `.` `,` `:` `$` `^` backtick and other printable ASCII | Appended; Avro maps `.` → `।`, `:` → `ঃ`, `$` → `৳`, `^` → `ঁ`. Between two digits Linux keeps `.` and `:` as they are, so `3.14` → `৩.১৪` and `10:30` → `১০:৩০`; `25.` is still `২৫।` (`src/Composer.zig`, desktop Linux only) |
 | Backspace | Drops one latin character and re-transliterates |
 | Space | Commits the highlighted candidate plus the space, in one commit |
 | Enter | Commits the highlighted candidate only (Enter consumed); with **New line on Enter** it also reaches the app |

@@ -558,6 +558,23 @@ main (void)
     send_string (ctx, "2024");
     check ("type \"2024\"", g_preedit, "২০২৪");
     reset_state (ctx);
+    send_string (ctx, "100000");
+    check ("type \"100000\"", g_preedit, "১০০০০০");
+    reset_state (ctx);
+    send_string (ctx, "01712345678");
+    check ("a phone number", g_preedit, "০১৭১২৩৪৫৬৭৮");
+    reset_state (ctx);
+    /* Between digits, . and : stay a point and a colon (Avro would make them
+     * । and ঃ); after a number, . is still a দাঁড়ি. */
+    send_string (ctx, "3.14");
+    check ("type \"3.14\"", g_preedit, "৩.১৪");
+    reset_state (ctx);
+    send_string (ctx, "10:30");
+    check ("type \"10:30\"", g_preedit, "১০:৩০");
+    reset_state (ctx);
+    send_string (ctx, "25.");
+    check ("type \"25.\"", g_preedit, "২৫।");
+    reset_state (ctx);
     /* `0` is not a candidate selector, so it still types a numeral even while
      * the list is up (`1`–`9` would pick instead). */
     send_string (ctx, "ami0");
