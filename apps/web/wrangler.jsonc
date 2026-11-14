@@ -22,7 +22,7 @@
 	],
 	"build": {
 		"watch_dir": "./app",
-		"command": "zig build zx -- build --target=wasm32-wasi --release=small --prerender"
+		"command": "cd ../.. && zig build zx -- build --target=wasm32-wasi --release=small --prerender"
 	},
 	"assets": {
 		"directory": "../../zig-out/static",
