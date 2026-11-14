@@ -23,10 +23,22 @@ class ByakaronInputController: IMKInputController {
     /// The controller of the focused client, redrawn when corrections arrive.
     fileprivate static weak var active: ByakaronInputController?
 
-    private var candidatesWindow: IMKCandidates?
+    /// The one candidate panel, kept for the process lifetime. IMKServer holds
+    /// the panel it last showed without retaining it and messages it on later
+    /// key events and deactivations (`_serverGetsFirstShotAtWindowEvents`,
+    /// `deactivateServer_Common…`). A panel owned by a controller dies with that
+    /// controller when its client goes away, and the next event then crashes
+    /// the keyboard process: macOS falls back to plain English typing until it
+    /// relaunches. One shared panel, as Apple's IMK sample does, never dies.
+    private static var sharedCandidates: IMKCandidates?
+
+    private var candidatesWindow: IMKCandidates? { Self.sharedCandidates }
     /// The current page of candidates, as the composer last drew it.
     private var pageCandidates: [String] = []
     private var hasMarkedText = false
+    /// Where the next marked text goes when the client's selection moved away
+    /// from the word (see `dropStaleComposition`); nil means the marked range.
+    private var pendingReplacement: NSRange?
 
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
@@ -65,7 +77,31 @@ class ByakaronInputController: IMKInputController {
             let composer = Composer.handle,
             let client = sender as? (any IMKTextInput)
         else { return false }
+        dropStaleComposition(composer, client: client)
         return apply(ComposerKeys.send(event, to: composer), client: client)
+    }
+
+    /// Key equivalents like ⌘A are handled by the app's menu before the input
+    /// method sees them, so the word can still be composing while the app has
+    /// selected past it. The next key then belongs to that selection, not the
+    /// word: Backspace must delete what is selected, and a letter must replace
+    /// it. So drop the word (it lies inside the selection) and let the key act
+    /// as if nothing were being typed.
+    private func dropStaleComposition(_ composer: OpaquePointer, client: any IMKTextInput) {
+        guard hasMarkedText else { return }
+        let selected = client.selectedRange()
+        let marked = client.markedRange()
+        guard selected.location != NSNotFound, selected.length > 0 else { return }
+        if marked.location != NSNotFound,
+            selected.location >= marked.location,
+            NSMaxRange(selected) <= NSMaxRange(marked)
+        {
+            return
+        }
+        byakaron_composer_reset(composer)
+        hasMarkedText = false
+        pendingReplacement = selected
+        candidatesWindow?.hide()
     }
 
     // MARK: - Composer glue
@@ -103,6 +139,8 @@ class ByakaronInputController: IMKInputController {
                 clearMarkedText(client: client)
             }
         }
+        // Only the key right after a stale word replaces the selection.
+        pendingReplacement = nil
 
         pageCandidates = state.candidates
         guard state.panelVisible, !pageCandidates.isEmpty,
@@ -130,6 +168,7 @@ class ByakaronInputController: IMKInputController {
         guard let server = self.server(),
             let panel = IMKCandidates(server: server, panelType: Self.panelType(vertical: vertical))
         else { return nil }
+        Self.sharedCandidates = panel
         // Keys come to `handle` first and are all consumed there while the panel
         // shows, so the composer, not the panel, moves the highlight and pages.
         panel.setAttributes([
@@ -137,7 +176,6 @@ class ByakaronInputController: IMKInputController {
             NSAttributedString.Key.font.rawValue: NSFont.systemFont(ofSize: 16),
         ])
         panel.setDismissesAutomatically(false)
-        candidatesWindow = panel
         return panel
     }
 
@@ -157,7 +195,7 @@ class ByakaronInputController: IMKInputController {
         client.setMarkedText(
             NSAttributedString(string: bangla, attributes: attrs),
             selectionRange: NSRange(location: bangla.utf16.count, length: 0),
-            replacementRange: NSRange(location: NSNotFound, length: NSNotFound)
+            replacementRange: pendingReplacement ?? NSRange(location: NSNotFound, length: NSNotFound)
         )
         hasMarkedText = true
     }
