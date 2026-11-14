@@ -1,4 +1,8 @@
 import InputMethodKit
+import os
+
+/// `log stream --predicate 'subsystem == "dev.nuhu.labs.inputmethod.Byakaron"' --level info`
+private let timing = Logger(subsystem: "dev.nuhu.labs.inputmethod.Byakaron", category: "timing")
 
 /// The process's one composer (src/Composer.zig): it owns the word being typed,
 /// the candidate list, the highlight, paging, learning and the personal
@@ -41,6 +45,7 @@ class ByakaronInputController: IMKInputController {
     private var pendingReplacement: NSRange?
 
     override func activateServer(_ sender: Any!) {
+        timing.info("activate")
         super.activateServer(sender)
         Self.active = self
         // The composer is shared: drop any word left from another client.
@@ -77,6 +82,11 @@ class ByakaronInputController: IMKInputController {
             let composer = Composer.handle,
             let client = sender as? (any IMKTextInput)
         else { return false }
+        let start = DispatchTime.now().uptimeNanoseconds
+        defer {
+            let ms = Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6
+            if ms > 30 { timing.notice("slow key: \(ms, format: .fixed(precision: 1)) ms") }
+        }
         dropStaleComposition(composer, client: client)
         return apply(ComposerKeys.send(event, to: composer), client: client)
     }

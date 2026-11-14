@@ -69,6 +69,16 @@ func installMainMenu() {
 
 installMainMenu()
 
+// An idle LSUIElement app with no visible windows is App Napped: macOS drops it
+// to background CPU and I/O priority and lets its memory be compressed and
+// swapped. Switching to Byakaron then waits for the napped process to wake and
+// page itself back in, and the keys typed meanwhile reach the app as plain
+// English. An input method answers keystrokes, so it opts out for its lifetime
+// (idle system sleep stays allowed).
+let appNapActivity = ProcessInfo.processInfo.beginActivity(
+    options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical],
+    reason: "Byakaron input method answers keystrokes")
+
 // Register menu bar icon as template BEFORE IMKServer loads it —
 // PDF template icon: macOS auto-inverts for dark menu bars + Globe key overlay
 if let iconPath = Bundle.main.path(forResource: "MenuIcon", ofType: "pdf"),
