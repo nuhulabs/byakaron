@@ -1,0 +1,60 @@
+# e2e: the slow Linux end-to-end checks, run by hand (Actions → e2e → Run).
+#   wayland        type into GTK3/GTK4 apps on a headless GNOME Shell
+#   install-matrix package a .deb and install it in clean Docker images
+name: e2e
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wayland:
+    name: e2e (wayland)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: deps
+        run: |
+          sudo -E env "PATH=$PATH" \
+            ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
+            zig build linux-deps -- --test
+          sudo apt-get install -y --no-install-recommends \
+            gnome-shell mutter dbus-x11 ibus python3-gi \
+            gir1.2-gtk-3.0 gir1.2-gtk-4.0 libgl1-mesa-dri \
+            xdg-desktop-portal gsettings-desktop-schemas
+      - name: e2e
+        run: zig build linux-wayland-e2e
+
+  install-matrix:
+    name: e2e (install-matrix)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: deps
+        run: |
+          sudo -E env "PATH=$PATH" \
+            ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
+            zig build linux-deps
+          sudo apt-get install -y --no-install-recommends \
+            xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
+      # Tiny wiki dump keeps Byakaron.db cheap.
+      - name: e2e
+        run: |
+          zig build package-linux \
+            -Dlinux-arch=x86_64 \
+            -Dwiki-dump=.github/ci/bnwiki-tiny.xml
+          deb=$(echo zig-out/pkg/byakaron_*_amd64.deb)
+          zig build linux-install-test \
+            -Dlinux-arch=x86_64 \
+            -Dspell-db=zig-out/db/Byakaron.db \
+            -Dlinux-deb="$deb"

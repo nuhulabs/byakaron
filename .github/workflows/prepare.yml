@@ -1,4 +1,4 @@
-# prepare: Byakaron.db only. Shared by cd and release.
+# prepare: Byakaron.db only. Used by release.
 # D1 migrations (zig build d1 + wrangler apply) are run locally when the DB changes.
 name: prepare
 

@@ -1,4 +1,5 @@
-# release: prepare → pkg (all os) → Byakaron-Assets (binaries) + byakaron (notes)
+# release (the CD): prepare → pkg (all os) → Byakaron-Assets (binaries) + byakaron (notes)
+#   → web deploy → live install
 #
 # Artifacts on nuhulabs/Byakaron-Assets (stable names → /releases/latest/download/…):
 #   byakaron-linux-amd64 / byakaron-linux-arm64  → byakaron_{amd64,arm64}.deb
@@ -11,7 +12,8 @@
 # versioned URL. Byakaron.db is baked into packages, not uploaded to Assets.
 #
 # The source repo gets a matching GitHub Release (notes + link to Assets, no
-# binary attachments). Web deploy stays on cd.yml — download links are stable.
+# binary attachments). The website deploys after publish (job `web`); its
+# download links are stable.
 #
 # Versions come from build.zig.zon's .version (27.0.0-dev between releases):
 #   - push tag v<zon version> (or v<zon version>-rc.1, or v<zon version>.N when
@@ -245,14 +247,46 @@ jobs:
             --title "Byakaron ${TAG#v}" --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}"
           echo "https://github.com/$SOURCE_REPO/releases/tag/$TAG"
 
+  # The website (and the install.sh it serves) ships with each published
+  # release, after the binaries are up. D1 migrations stay local:
+  #   zig build d1 -Dspell-db=zig-out/db/Byakaron.db
+  #   cd apps/web && npx wrangler d1 migrations apply DB --remote
+  web:
+    name: deploy (web)
+    if: needs.version.outputs.publish == 'true'
+    needs: [version, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: byakaron-web
+    concurrency:
+      group: deploy-web
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      # wrangler.jsonc runs `zig build zx …` as a custom build before deploy.
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: deploy
+        working-directory: apps/web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [[ -z "$CLOUDFLARE_API_TOKEN" ]]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN unset; skip deploy"
+            exit 0
+          fi
+          npx --yes wrangler@4.100.0 deploy
+
   # The command the website shows pulls releases/latest, so right after publish
-  # it must install this release. A stale installer on nuhulabs.com broke it for
-  # everyone from 26/10 to 01/11 without any job failing. Prereleases are not
-  # latest, so they are skipped.
+  # and the web deploy it must install this release. A stale installer on
+  # nuhulabs.com broke it for everyone from 26/10 to 01/11 without any job
+  # failing. Prereleases are not latest, so they are skipped.
   live-install:
     name: live install (${{ matrix.image }}, ${{ matrix.runner }})
     if: needs.version.outputs.publish == 'true' && !contains(needs.version.outputs.version, '-')
-    needs: [version, publish]
+    needs: [version, publish, web]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:

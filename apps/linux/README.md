@@ -501,32 +501,23 @@ motion needs no screen-cast stream).
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every branch push and pull request, on
-`ubuntu-latest` (amd64) and `ubuntu-24.04-arm` (arm64):
+`.github/workflows/ci.yml` runs on every branch push. For Linux it installs
+`zig build linux-deps`, runs `zig build test` and builds `zig build linux`;
+the other platforms build in their own jobs alongside. It stays quick on
+purpose: nothing is packaged, installed or typed into there.
 
-1. `zig build linux-deps -- --test` plus `libfcitx5core-dev`, `xvfb`, `appstream`, …
-2. Zig **0.17.0** via `mlugg/setup-zig`
-3. `zig build linux-ci` — builds `linux`, `linux-test`, the smoke test and
-   (when the headers exist) `linux-fcitx5` / `linux-wayland` against the
-   pinned sysroot (glibc 2.31), then checks the glibc ceiling, `byakaron --help` / `--version`,
-   smoke test, IME integration test against a throwaway Xvfb+ibus-daemon,
-   display-path probe, Fcitx5 addon (system headers; same glibc 2.31
-   ceiling), GtkEntry typing through the IBus IM module
+The slow checks run by hand from `.github/workflows/e2e.yml` (Actions → e2e →
+Run): **GNOME Wayland typing** (`zig build linux-wayland-e2e`, see
+[Wayland](#wayland): GTK3 and GTK4 apps on a headless GNOME Shell, typed into
+through `org.gnome.Mutter.RemoteDesktop`) and the **install matrix** (package a
+`.deb` and `zig build linux-install-test` it in clean Ubuntu/Debian
+containers). `zig build linux-ci` (glibc ceiling, smoke test, IME integration
+test against a throwaway Xvfb+ibus-daemon, Fcitx5 addon, GtkEntry typing) is
+for local runs before a release.
 
-`Byakaron.db` is not built there. Smoke skips those assertions when the file is
-missing; typing and candidates do not need it.
-
-A second job, **GNOME Wayland typing**, installs `gnome-shell` and runs
-`zig build linux-wayland-e2e` (see [Wayland](#wayland)): GTK3 and GTK4 apps
-on a headless GNOME Shell, typed into through `org.gnome.Mutter.RemoteDesktop`.
-On the runner GNOME Shell does not give a new window keyboard focus, so the test
-clicks into the window before typing, as a user would.
-
-`.github/workflows/cd.yml` runs on every push to `main`: it builds `Byakaron.db`
-once (cached on its inputs), packages, installs and types through both `.deb`s,
-and runs the website installer in clean Ubuntu 20.04–26.04 / Debian 12–13
-containers. `.github/workflows/release.yml` runs the same for a `linux-*` tag or
-a published release (see Releasing).
+`.github/workflows/release.yml` is the CD: it builds `Byakaron.db`, packages
+both `.deb`s, publishes them, deploys the website and then runs the website
+installer in clean Ubuntu containers (see Releasing).
 
 To run the same steps locally:
 
@@ -538,11 +529,10 @@ zig build linux-install-test  # the local .deb in clean Ubuntu/Debian containers
 
 ## Releasing
 
-Releases are built and published by GitHub Actions (`release.yml`, with
-`cd.yml` doing the Linux part): CI runs `zig build package-linux` on an amd64
-and an arm64 runner, installs and types through each `.deb`, and attaches them
-to the release. See [RELEASING.md](../../RELEASING.md) for the steps. There is
-no local release script.
+Releases are built and published by GitHub Actions (`release.yml`): it runs
+`zig build package-linux` on an amd64 and an arm64 runner and publishes both
+`.deb`s. Run `e2e.yml` first to install and type through a `.deb`. There is no
+local release script.
 
 Every Linux version comes from `.version` in `build.zig.zon`: the `.deb`,
 `byakaron --version` (build.zig compiles it in as `BYK_APP_VERSION`), the IBus

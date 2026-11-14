@@ -1,10 +1,12 @@
-# ci: test → integration → e2e (each os; placeholders where missing)
+# ci: unit tests + a build of every platform, one job each, on every push.
+#
+# Kept fast on purpose: no packaging, installers, e2e or install-matrix here.
+# Those run in release.yml (packages, live install) and e2e.yml (by hand).
 name: ci
 
 on:
   push:
     branches: ["**"]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -15,215 +17,84 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: test (${{ matrix.os }})
-    runs-on: ${{ matrix.runner }}
+  linux:
+    name: linux
+    runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: linux
-            runner: ubuntu-latest
-          - os: macos
-            runner: xcode-27
-          - os: windows
-            runner: windows-latest
-            placeholder: true
-          - os: android
-            runner: ubuntu-latest
-            placeholder: true
-          - os: web
-            runner: ubuntu-latest
-            placeholder: true
-
     steps:
       - uses: actions/checkout@v4
-
-      - uses: mlugg/setup-zig@v2
-        if: ${{ !matrix.placeholder }}
-        with:
-          version: 0.17.0
-
-      - name: test
-        if: ${{ !matrix.placeholder }}
-        run: zig build test -Diavro
-
-      - name: placeholder
-        if: ${{ matrix.placeholder }}
-        run: echo "placeholder — no ${{ matrix.os }} unit tests yet"
-
-  integration:
-    name: integration (${{ matrix.os }})
-    needs: [test]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: linux
-            runner: ubuntu-latest
-          - os: macos
-            runner: xcode-27
-          - os: windows
-            runner: windows-latest
-          - os: android
-            runner: ubuntu-latest
-          - os: web
-            runner: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.17.0
-
-      # —— linux ——
       - name: deps
-        if: matrix.os == 'linux'
-        run: |
-          sudo -E env "PATH=$PATH" \
-            ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
-            zig build linux-deps -- --test
-          sudo apt-get install -y --no-install-recommends \
-            libfcitx5core-dev ibus-gtk4 xvfb dbus-x11 appstream \
-            python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
-
-      - name: integration
-        if: matrix.os == 'linux'
-        run: zig build linux-ci -Dshared=true
-
-      # —— macos ——
-      - name: integration
-        if: matrix.os == 'macos'
-        run: |
-          zig build macos -Dwiki-dump=.github/ci/bnwiki-tiny.xml
-          codesign --verify --deep --strict zig-out/bin/Byakaron.app
-
-      # —— windows ——
-      - name: inno
-        if: matrix.os == 'windows'
-        run: choco install innosetup --no-progress -y
-
-      - name: integration
-        if: matrix.os == 'windows'
-        shell: pwsh
-        run: zig build windows "-Dwiki-dump=.github/ci/bnwiki-tiny.xml"
-
-      - name: upload
-        if: matrix.os == 'windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-setup
-          path: zig-out/pkg/Byakaron-Setup.exe
-          retention-days: 7
-          if-no-files-found: error
-
-      # —— android: compile libs only; APK/AAB packaging is release (pkg.yml) ——
-      - name: ndk
-        if: matrix.os == 'android'
-        id: ndk
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r27c
-          add-to-path: false
-
-      - name: integration (libs)
-        if: matrix.os == 'android'
-        run: zig build android-libs -Dandroid-ndk="${{ steps.ndk.outputs.ndk-path }}"
-
-      - name: upload libs
-        if: matrix.os == 'android'
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-jniLibs
-          path: zig-out/lib/android/jniLibs
-          retention-days: 7
-          if-no-files-found: error
-
-      # —— web ——
-      - name: integration
-        if: matrix.os == 'web'
-        run: zig build -Doptimize=ReleaseSmall
-
-  e2e:
-    name: e2e (${{ matrix.kind || matrix.os }})
-    # Run even when one integration matrix leg failed (e.g. windows), so other
-    # platforms still get e2e. Skip only on cancel.
-    if: ${{ !cancelled() }}
-    needs: [integration]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: linux
-            runner: ubuntu-24.04
-            kind: wayland
-          - os: linux
-            runner: ubuntu-latest
-            kind: install-matrix
-          - os: macos
-            runner: ubuntu-latest
-            placeholder: true
-          - os: windows
-            runner: ubuntu-latest
-            placeholder: true
-          - os: android
-            runner: ubuntu-latest
-            placeholder: true
-          - os: web
-            runner: ubuntu-latest
-            placeholder: true
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: placeholder
-        if: ${{ matrix.placeholder }}
-        run: echo "placeholder — no ${{ matrix.os }} e2e yet"
-
-      - uses: mlugg/setup-zig@v2
-        if: ${{ !matrix.placeholder }}
-        with:
-          version: 0.17.0
-
-      - name: deps (wayland)
-        if: matrix.kind == 'wayland'
-        run: |
-          sudo -E env "PATH=$PATH" \
-            ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
-            zig build linux-deps -- --test
-          sudo apt-get install -y --no-install-recommends \
-            gnome-shell mutter dbus-x11 ibus python3-gi \
-            gir1.2-gtk-3.0 gir1.2-gtk-4.0 libgl1-mesa-dri \
-            xdg-desktop-portal gsettings-desktop-schemas
-
-      - name: e2e (wayland)
-        if: matrix.kind == 'wayland'
-        run: zig build linux-wayland-e2e
-
-      - name: deps (install-matrix)
-        if: matrix.kind == 'install-matrix'
         run: |
           sudo -E env "PATH=$PATH" \
             ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
             zig build linux-deps
-          sudo apt-get install -y --no-install-recommends \
-            xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
+      - name: test
+        run: zig build test -Diavro
+      - name: build
+        run: zig build linux
 
-      # Tiny wiki dump keeps Byakaron.db cheap; packages once then matrix-tests that .deb.
-      - name: e2e (install-matrix)
-        if: matrix.kind == 'install-matrix'
+  macos:
+    name: macos
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: test
+        run: zig build test -Diavro
+      # Tiny wiki dump keeps Byakaron.db cheap.
+      - name: build
         run: |
-          zig build package-linux \
-            -Dlinux-arch=x86_64 \
-            -Dwiki-dump=.github/ci/bnwiki-tiny.xml
-          deb=$(echo zig-out/pkg/byakaron_*_amd64.deb)
-          zig build linux-install-test \
-            -Dlinux-arch=x86_64 \
-            -Dspell-db=zig-out/db/Byakaron.db \
-            -Dlinux-deb="$deb"
+          zig build macos -Dwiki-dump=.github/ci/bnwiki-tiny.xml
+          codesign --verify --deep --strict zig-out/bin/Byakaron.app
+
+  # The IME DLLs and a Debug build of the app. The installer (dotnet publish +
+  # Inno Setup) is release-only: the csproj copies native files only when present.
+  windows:
+    name: windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: build (ime)
+        run: zig build windows-ime
+      - name: build (app)
+        run: dotnet build apps/windows/Byakaron/Byakaron.csproj -c Debug -p:Platform=x64
+
+  # Native libs for every ABI; APK/AAB packaging is release-only (pkg.yml).
+  android:
+    name: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r27c
+          add-to-path: false
+      - name: build
+        run: zig build android-libs -Dandroid-ndk="${{ steps.ndk.outputs.ndk-path }}"
+
+  web:
+    name: web
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: build
+        run: zig build -Doptimize=ReleaseSmall

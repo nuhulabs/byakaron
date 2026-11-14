@@ -2,8 +2,8 @@
 # Caller must have uploaded `byakaron-db` (see prepare.yml).
 # Used by release (all four; + the release version, written into build.zig.zon).
 #
-# Linux amd64/arm64 package in parallel. Install-matrix lives in ci/cd e2e,
-# not here — release only ships artifacts.
+# Linux amd64/arm64 package in parallel. The install-matrix is e2e.yml (run by
+# hand), not here: release only ships artifacts.
 name: pkg
 
 on:

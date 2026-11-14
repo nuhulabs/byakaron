@@ -34,7 +34,7 @@ The page splits its text into words with the same tokenizer the server uses (`to
 - **Size:** at most 20 000 words (`SpellCache.max_entries`); the oldest go first.
 - **Schema:** the value is written with `zx.kv.putAs`, so a change to the result types also invalidates it.
 
-The build command is `zig build -Dtarget=wasm32-wasi --release=small -Dziex-config=.{.prerender=true}`. It builds the Worker to `zig-out/bin/web.wasm`, the Cloudflare bindings to `zig-out/bindings/` and the assets to `zig-out/static/`. Then, because of `prerender`, ziex builds the app for this machine, runs it without a database and saves the prerendered page into `zig-out/static/`. The `web` job in `.github/workflows/cd.yml` deploys on every push to `main` (or by hand).
+The build command is `zig build -Dtarget=wasm32-wasi --release=small -Dziex-config=.{.prerender=true}`. It builds the Worker to `zig-out/bin/web.wasm`, the Cloudflare bindings to `zig-out/bindings/` and the assets to `zig-out/static/`. Then, because of `prerender`, ziex builds the app for this machine, runs it without a database and saves the prerendered page into `zig-out/static/`. The `web` job in `.github/workflows/release.yml` deploys it with every published release.
 
 Natively (`run-web`, `serve-web`) the server still renders the page itself.
 
