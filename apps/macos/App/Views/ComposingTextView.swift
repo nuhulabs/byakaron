@@ -55,6 +55,15 @@ final class ComposingTextView: NSTextView {
         super.mouseDown(with: event)
     }
 
+    /// ⌘A comes through the menu, not `keyDown`, so the word would stay marked
+    /// and composing under the new selection: Backspace then deleted the rest
+    /// and the composer redrew the word. Commit it first, so what is selected
+    /// is all plain text and the next key acts on it.
+    override func selectAll(_ sender: Any?) {
+        flush()
+        super.selectAll(sender)
+    }
+
     override func resignFirstResponder() -> Bool {
         flush()
         return super.resignFirstResponder()
@@ -182,7 +191,10 @@ private final class CandidateListView: NSView {
             string: "\(i + 1) ",
             attributes: [.font: numberFont, .foregroundColor: NSColor.secondaryLabelColor]
         )
-        s.append(NSAttributedString(string: state.candidates[i], attributes: [.font: font]))
+        // labelColor, not the default black, so dark mode stays readable.
+        s.append(
+            NSAttributedString(
+                string: state.candidates[i], attributes: [.font: font, .foregroundColor: NSColor.labelColor]))
         return s
     }
 

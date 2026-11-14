@@ -162,7 +162,13 @@ class ByakaronInputController: IMKInputController {
         panel.setPanelType(Self.panelType(vertical: state.vertical))
         panel.update()
         panel.show(IMKCandidatesLocationHint(kIMKLocateCandidatesBelowHint))
-        panel.selectCandidate(withIdentifier: panel.candidateIdentifier(atLineNumber: state.highlight))
+        // Select by the candidate itself: `candidateIdentifier(atLineNumber:)`
+        // counts rows, and a horizontal panel has one, so the highlight stayed
+        // on the first candidate while the arrows moved the marked text.
+        if pageCandidates.indices.contains(state.highlight) {
+            panel.selectCandidate(
+                withIdentifier: panel.candidateStringIdentifier(pageCandidates[state.highlight]))
+        }
     }
 
     // MARK: - Drawing
