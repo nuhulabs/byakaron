@@ -190,11 +190,19 @@ pub fn build(b: *std.Build) !void {
     //   zig build macos            → zig-out/bin/Byakaron.app
     //   zig build run-macos        → build, quit the running copy, launch the build
     //   zig build install-macos    → build, install into /Applications, launch
+    //                                 (--release or -Dmacos-config=release for an optimized build)
     //   zig build uninstall-macos  → remove the app and keyboard (-Dmacos-remove-user-data)
     //   zig build release-macos    → Release build → zig-out/pkg/Byakaron.dmg
     //   zig build macos-icons      → regenerate Resources/MenuIcon.{pdf,tiff}
     if (builtin.os.tag == .macos) {
-        const config = b.option(MacosConfig, "macos-config", "Xcode configuration for macos / run-macos / install-macos") orelse .debug;
+        // Unset, it follows --release: any mode (fast, safe or small) is Xcode's
+        // one Release configuration; none is Debug. The engine is always
+        // ReleaseFast (below), whatever this is.
+        const config = b.option(
+            MacosConfig,
+            "macos-config",
+            "Xcode configuration for macos / run-macos / install-macos (default: release with --release, else debug)",
+        ) orelse if (b.graph.release_mode != .off) MacosConfig.release else MacosConfig.debug;
         const remove_user_data = b.option(bool, "macos-remove-user-data", "uninstall-macos: also remove settings and learned words") orelse false;
 
         // ReleaseFast always: a Debug build compiles sqlite3.c with UBSan, whose
