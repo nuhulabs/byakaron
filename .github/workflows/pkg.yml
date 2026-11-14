@@ -73,6 +73,8 @@ jobs:
           sudo -E env "PATH=$PATH" \
             ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
             zig build linux-deps
+          # sudo fetched packages into zig-pkg/ as root; later builds run as the runner.
+          if [ -d zig-pkg ]; then sudo chown -R "$USER" zig-pkg; fi
 
       - name: pkg
         run: zig build package-linux -Dlinux-arch=${{ matrix.zig_arch }} -Dspell-db=zig-out/db/Byakaron.db
