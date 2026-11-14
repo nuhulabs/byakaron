@@ -24,6 +24,8 @@ jobs:
           sudo -E env "PATH=$PATH" \
             ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
             zig build linux-deps -- --test
+          # sudo fetched packages into zig-pkg/ as root; later builds run as the runner.
+          if [ -d zig-pkg ]; then sudo chown -R "$USER" zig-pkg; fi
           sudo apt-get install -y --no-install-recommends \
             gnome-shell mutter dbus-x11 ibus python3-gi \
             gir1.2-gtk-3.0 gir1.2-gtk-4.0 libgl1-mesa-dri \
@@ -45,6 +47,8 @@ jobs:
           sudo -E env "PATH=$PATH" \
             ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
             zig build linux-deps
+          # sudo fetched packages into zig-pkg/ as root; later builds run as the runner.
+          if [ -d zig-pkg ]; then sudo chown -R "$USER" zig-pkg; fi
           sudo apt-get install -y --no-install-recommends \
             xvfb dbus-x11 python3-gi gir1.2-gdkpixbuf-2.0 librsvg2-common
       # Tiny wiki dump keeps Byakaron.db cheap.

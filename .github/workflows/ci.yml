@@ -31,6 +31,8 @@ jobs:
           sudo -E env "PATH=$PATH" \
             ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
             zig build linux-deps
+          # sudo fetched packages into zig-pkg/ as root; later builds run as the runner.
+          if [ -d zig-pkg ]; then sudo chown -R "$USER" zig-pkg; fi
       - name: test
         run: zig build test -Diavro
       - name: build
