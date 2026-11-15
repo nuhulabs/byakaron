@@ -16,6 +16,7 @@ Requires Zig **0.17.0** (pinned in `.tool-versions`).
 | `apps/windows`     | WinUI app + TSF IME                                               |
 | `apps/linux`       | IBus engine, GTK 3 app, optional Fcitx5 (C over the FFI)          |
 | `apps/android`     | Android `.so` build script (`libbyakaron.so` + JNI)               |
+| `apps/ios`         | iOS keyboard (giellakbd-ios fork, `byakaron-ios` submodule)       |
 
 ## Data
 

@@ -2,3 +2,7 @@
 	path = apps/android/keyboard
 	url = https://github.com/nuhulabs/byakaron-android.git
 	branch = dev
+[submodule "apps/ios/keyboard"]
+	path = apps/ios/keyboard
+	url = https://github.com/nuhulabs/byakaron-ios.git
+	branch = dev
