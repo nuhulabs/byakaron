@@ -428,9 +428,6 @@ pub fn build(b: *std.Build) !void {
 
     // Testing
     {
-        const lib_unit_tests = b.addTest(.{
-            .root_module = mod,
-        });
         const t_mod = b.createModule(.{
             .root_source_file = b.path("src/root.zig"),
             .target = target,
@@ -445,26 +442,22 @@ pub fn build(b: *std.Build) !void {
                 .{ .name = "composer", .module = composer_mod },
             },
         });
-        const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
-        const exe_unit_tests = b.addTest(.{
-            .root_module = t_mod,
-            .test_runner = .{
-                .path = b.path("test/runner.zig"),
-                .mode = .simple,
-            },
-        });
-        const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
-        const test_step = b.step("test", "Run unit tests");
-        test_step.dependOn(&run_lib_unit_tests.step);
-        test_step.dependOn(&run_exe_unit_tests.step);
-        // Tests in other modules are not part of root.zig's test build.
-        for ([_]*std.Build.Module{ transliteration_mod, autocomplete_mod, autocomplete_mem_mod, composer_mod }) |m| {
-            test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = m })).step);
+        const test_step = b.step("test", "Run unit tests (-Dlog-level=debug|info|warn|err, default info)");
+        // One run over every test binary: test/main.zig runs each one and
+        // prints a single list and summary (see addTestRun).
+        const log_level = b.option(std.log.Level, "log-level", "std.log level for `zig build test` (default: info)") orelse .info;
+        const tests_run = b.addRunArtifact(hostExe(b, "test-main", "test/main.zig"));
+        tests_run.addArg(b.fmt("--log-level={t}", .{log_level}));
+        test_step.dependOn(&tests_run.step);
+        // A test build runs only its root module's tests, so every module gets
+        // its own, all through test/runner.zig so each test is listed.
+        for ([_]*std.Build.Module{ t_mod, transliteration_mod, tokenization_mod, spell_mod, autocomplete_mod, autocomplete_mem_mod, composer_mod }) |m| {
+            addTestRun(b, tests_run, m);
         }
         // Every locale file has every key (src/locale/Locale.zig).
-        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = localeModule(b, target, optimize) })).step);
+        addTestRun(b, tests_run, localeModule(b, target, optimize));
         // Host build tools (SQL splitter, CSV import).
-        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = host_sql })).step);
+        addTestRun(b, tests_run, host_sql);
         {
             const prepare_mod = b.createModule(.{
                 .root_source_file = b.path("src/data/prepare.zig"),
@@ -472,7 +465,7 @@ pub fn build(b: *std.Build) !void {
                 .optimize = .ReleaseFast,
                 .imports = &.{.{ .name = "sql", .module = host_sql }},
             });
-            test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = prepare_mod })).step);
+            addTestRun(b, tests_run, prepare_mod);
         }
         // Transliteration vs iAvro's AvroParser over every dictionary word
         // (`zig build test -Diavro`).
@@ -485,9 +478,19 @@ pub fn build(b: *std.Build) !void {
             parity.addAnonymousImport("iavro_data", .{ .root_source_file = dep.path("data.json") });
             parity.addAnonymousImport("autodict", .{ .root_source_file = dep.path("autodict.dct") });
             parity.addAnonymousImport("avro_words", .{ .root_source_file = avro.words });
-            test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = parity })).step);
+            addTestRun(b, tests_run, parity);
         }
     }
+}
+
+/// Adds `m`'s tests to the single `zig build test` run: a test binary (Zig
+/// runs only a build's root-module tests, so one per module) with
+/// test/runner.zig, run by test/main.zig.
+fn addTestRun(b: *std.Build, run: *std.Build.Step.Run, m: *std.Build.Module) void {
+    run.addArtifactArg(b.addTest(.{
+        .root_module = m,
+        .test_runner = .{ .path = b.path("test/runner.zig"), .mode = .simple },
+    }));
 }
 
 fn addWindows(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void {

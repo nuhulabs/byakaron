@@ -1,3 +1,13 @@
+// Runs one test binary's tests. `zig build test` builds one binary per module
+// (Zig runs only a build's root-module tests) and runs them all through
+// test/main.zig, which passes `--report` and `--log-level=<level>`: this then
+// lists each test as it runs (from `info`), leaves the summary to main.zig and
+// writes one `<status>\t<ns>\t<scope>\t<name>` line per test to stdout.
+// Without `--report` it prints its own summary, as before.
+//
+// Logging: tests log with std.log; `logFn` prints what is at or above the
+// level given (`zig build test -Dlog-level=debug|info|warn|err`, default info).
+//
 // This is for the Zig 0.15.
 // See https://gist.github.com/karlseguin/c6bea5b35e4e8d26af6f81c22cb5d76b/1f317ebc9cd09bc50fd5591d09c34255e15d1d85
 // for a version that workson Zig 0.14.1.
@@ -12,7 +22,9 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 pub const std_options = std.Options{
-    .log_level = .warn, // Suppress debug and info logs
+    // Everything is compiled in; `logFn` filters by `--log-level` at runtime.
+    .log_level = .debug,
+    .logFn = logFn,
     .log_scope_levels = &[_]std.log.ScopeLevel{
         .{ .scope = .zx_transpiler, .level = .warn }, // Only show warnings and errors for zx_transpiler
     },
@@ -25,8 +37,51 @@ const BORDER: [80]u8 = @splat('=');
 // use in custom panic handler
 var current_test: ?[]const u8 = null;
 
+/// `--log-level=<level>`: std.log messages below it are dropped.
+var log_level: std.log.Level = .info;
+/// `--report`: run under test/main.zig (see the top of this file).
+var report = false;
+
+fn shows(level: std.log.Level) bool {
+    return @intFromEnum(level) <= @intFromEnum(log_level);
+}
+
+fn logFn(
+    comptime level: std.log.Level,
+    comptime scope: @EnumLiteral(),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    if (!shows(level)) return;
+    const color = switch (level) {
+        .err => "\x1b[31m",
+        .warn => "\x1b[33m",
+        .info => "\x1b[36m",
+        .debug => "\x1b[90m",
+    };
+    const prefix = if (scope == .default) "" else "(" ++ @tagName(scope) ++ ") ";
+    std.debug.print("  " ++ color ++ level.asText() ++ "\x1b[0m " ++ prefix ++ format ++ "\n", args);
+}
+
+const Result = struct { status: Status, ns: u64, scope: []const u8, name: []const u8 };
+
 pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
+    {
+        var args = try init.minimal.args.iterateAllocator(allocator);
+        _ = args.skip();
+        while (args.next()) |arg| {
+            if (std.mem.eql(u8, arg, "--report")) {
+                report = true;
+            } else if (std.mem.startsWith(u8, arg, "--log-level=")) {
+                log_level = std.meta.stringToEnum(std.log.Level, arg["--log-level=".len..]) orelse {
+                    std.debug.print("unknown log level {s} (debug, info, warn, err)\n", .{arg["--log-level=".len..]});
+                    std.process.exit(2);
+                };
+            }
+        }
+    }
+    var results: std.ArrayList(Result) = .empty;
     // std.testing.io is undefined until the runner sets it up (Zig's default
     // runner does); using it uninitialized hung the tests on Linux. Backed by
     // the page allocator so its allocations are not counted as test leaks.
@@ -52,7 +107,7 @@ pub fn main(init: std.process.Init) !void {
     var header_printed: bool = false;
     var total_ns: u64 = 0;
 
-    Printer.fmt("\r\x1b[0K", .{}); // beginning of line and clear to end of line
+    if (!report) Printer.fmt("\r\x1b[0K", .{}); // beginning of line and clear to end of line
 
     for (builtin.test_functions) |t| {
         if (isSetup(t)) {
@@ -167,9 +222,12 @@ pub fn main(init: std.process.Init) !void {
         }
 
         const ns_taken = final_ns_taken;
+        try results.append(allocator, .{ .status = status, .ns = ns_taken, .scope = scope_name, .name = friendly_name });
 
-        if (env.verbose) {
-            if (!header_printed) {
+        if (!shows(.info) and status != .fail) {
+            // Below info only failures (printed above) are shown.
+        } else if (env.verbose) {
+            if (!header_printed and !report) {
                 Printer.fmt("\x1b[1mRunning:\x1b[0m \n", .{});
                 header_printed = true;
             }
@@ -201,6 +259,14 @@ pub fn main(init: std.process.Init) !void {
                 return err;
             };
         }
+    }
+
+    if (report) {
+        var out: std.Io.Writer.Allocating = .init(allocator);
+        for (results.items) |r| try out.writer.print("{t}\t{d}\t{s}\t{s}\n", .{ r.status, r.ns, r.scope, r.name });
+        if (leak > 0) try out.writer.print("leak\t{d}\t\t\n", .{leak});
+        try std.Io.File.stdout().writeStreamingAll(io, out.written());
+        std.process.exit(if (fail == 0 and leak == 0) 0 else 1);
     }
 
     const total_tests = pass + fail + skip + todo;

@@ -193,11 +193,11 @@ test "Transliteration matches iAvro AvroParser on every dictionary word" {
         const got = avro.transliterate(latin);
         defer testing.allocator.free(got);
         if (!std.mem.eql(u8, want, got)) {
-            if (mismatches < 25) std.debug.print("mismatch {s}: iAvro {s}, ours {s}\n", .{ latin, want, got });
+            if (mismatches < 25) std.log.err("mismatch {s}: iAvro {s}, ours {s}", .{ latin, want, got });
             mismatches += 1;
         }
     }
-    if (mismatches > 0) std.debug.print("{d} of {d} inputs differ from iAvro\n", .{ mismatches, checked });
+    if (mismatches > 0) std.log.err("{d} of {d} inputs differ from iAvro", .{ mismatches, checked });
     try testing.expect(checked > 150_000);
     try testing.expectEqual(@as(usize, 0), mismatches);
 }

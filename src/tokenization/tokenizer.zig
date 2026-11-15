@@ -715,8 +715,8 @@ test "tokenizer parse and print" {
     const json = try tokenizer.print(.json);
     defer allocator.free(json);
 
-    std.debug.print("Readable: {s}\n", .{readable});
-    std.debug.print("JSON: {s}\n", .{json});
+    std.log.debug("readable: {s}", .{readable});
+    std.log.debug("json: {s}", .{json});
 
     // Verify AST structure
     try std.testing.expectEqual(@as(usize, 2), ast.tokens.len);
@@ -737,12 +737,12 @@ test "tokenizer parse and print wiki" {
     const readable = try tokenizer.print(.readable);
     defer allocator.free(readable);
 
-    // std.debug.print("Readable: {s}\n", .{readable});
+    // std.log.debug("readable: {s}", .{readable});
 
     const json = try tokenizer.print(.json);
     defer allocator.free(json);
 
-    std.debug.print("JSON: {s}\n", .{json});
+    std.log.debug("json: {s}", .{json});
 
     const words = try tokenizer.getWords(.{});
     defer allocator.free(words);
@@ -928,7 +928,7 @@ test "wordsFromText single bangla word" {
         for (words) |w| allocator.free(w);
         allocator.free(words);
     }
-    std.debug.print("\nsingle-word count={d}\n", .{words.len});
+    std.log.debug("single-word count={d}", .{words.len});
     try std.testing.expectEqual(@as(usize, 1), words.len);
 }
 
@@ -1045,10 +1045,7 @@ test "performance test - should handle large text quickly" {
     // Note: threshold is higher because std.testing.allocator (SafeAllocator) has debug overhead
     const ALLOWED_TIME_PER_THOUSAND_CHARS: f64 = 5.0;
 
-    std.debug.print("\nTokenizer Performance Test Results:\n", .{});
-    std.debug.print("Average Time Taken per 1000 chars: {d:.2}ms\n", .{avg_execution_time_per_thousand_chars});
-    std.debug.print("Total Text Length: {d} chars\n", .{large_text.items.len});
-    std.debug.print("Number of Runs: {d}\n", .{NUM_RUNS});
+    std.log.debug("tokenizer: {d:.2}ms per 1000 chars ({d} chars, {d} runs)", .{ avg_execution_time_per_thousand_chars, large_text.items.len, NUM_RUNS });
 
     try std.testing.expect(avg_execution_time_per_thousand_chars < ALLOWED_TIME_PER_THOUSAND_CHARS);
 }

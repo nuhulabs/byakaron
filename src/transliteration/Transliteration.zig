@@ -867,14 +867,11 @@ test "mode: avro ligature cases" {
         // }
         if (!isSame) {
             total_failed += 1;
-            // Print in red color
-            std.debug.print("\n\n==> {s} ➜ {s}", .{ key, value });
-
-            std.debug.print("\n\x1b[31mExpect: {s}\nGot:    {s}\nMatched: {}\x1b[0m", .{ value, result, isSame });
+            std.log.debug("ligature {s} ➜ {s}: got {s}", .{ key, value, result });
         }
     }
 
-    std.debug.print("\n\nTotal: {d}\nFailed: {d}\n", .{ total_ligatures, total_failed });
+    std.log.debug("ligatures: {d}, differing: {d}", .{ total_ligatures, total_failed });
 }
 
 test "performance test - should handle large text quickly" {
@@ -919,7 +916,7 @@ test "performance test - should handle large text quickly" {
     // The function should process large text in reasonable time. Unoptimized
     // builds run about 10x slower, so they get a proportionally larger budget.
     const ALLOWED_TIME_PER_THOUSAND_CHARS: f64 = if (@import("builtin").mode == .debug) 2.0 else 0.2;
-    std.debug.print("\nAverage Time Taken per 1000 chars: {d:.2}ms\n", .{avg_execution_time_per_thousand_chars});
+    std.log.debug("transliteration: {d:.2}ms per 1000 chars", .{avg_execution_time_per_thousand_chars});
     try expect(avg_execution_time_per_thousand_chars < ALLOWED_TIME_PER_THOUSAND_CHARS);
 }
 
