@@ -45,6 +45,9 @@ jobs:
           # Tiny wiki dump keeps Byakaron.db cheap.
           - platform: macos
             runs-on: xcode-27
+          # The engine for the iOS keyboard: Byakaron.xcframework.
+          - platform: ios
+            runs-on: xcode-27
           # The IME DLLs and a Debug build of the app. The installer (dotnet
           # publish + Inno Setup) is release-only: `zig build package-windows`.
           - platform: windows
@@ -84,6 +87,9 @@ jobs:
         run: |
           zig build macos -Dwiki-dump=.github/ci/bnwiki-tiny.xml
           codesign --verify --deep --strict zig-out/bin/Byakaron.app
+      - name: build (ios)
+        if: matrix.platform == 'ios'
+        run: zig build ios-libs
       - name: build (windows)
         if: matrix.platform == 'windows'
         run: zig build windows

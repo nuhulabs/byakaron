@@ -237,6 +237,7 @@ pub fn build(b: *std.Build) !void {
         };
         const xcode_exe = hostExe(b, "xcode", "src/build/xcode.zig");
         const tool = hostExe(b, "macos", "src/build/macos.zig");
+        addIos(b, avro, locale);
 
         const app = struct {
             /// Build Byakaron.app for `cfg` into a directory containing it. Each
@@ -702,7 +703,6 @@ fn addEngine(
         // strings can be freed across the FFI boundary; that needs libc.
         .link_libc = true,
         .imports = &.{
-            .{ .name = "zx", .module = zx_mod },
             .{ .name = "tokenization", .module = tokenization_mod },
             .{ .name = "spell", .module = spell_mod },
             .{ .name = "autocomplete", .module = autocomplete_mod },
@@ -711,6 +711,9 @@ fn addEngine(
             .{ .name = "composer", .module = composer_mod },
         },
     });
+    // SQLite (zx.Db) for the spell engine; not on iOS, where the FFI leaves the
+    // spell engine out (src/ffi/ffi.zig `sqlite`), so sqlite3.c is not built.
+    if (target.result.os.tag != .ios) mod.addImport("zx", zx_mod);
     if (jni_mod) |m| mod.addImport("jni", m);
 
     return .{
@@ -1516,6 +1519,55 @@ fn firstDir(b: *std.Build, paths: []const ?[]const u8) ?[]const u8 {
         return p;
     }
     return null;
+}
+
+/// iOS keyboard (apps/ios/keyboard, the byakaron-ios submodule): the engine as
+/// Byakaron.xcframework (device + simulator static libraries, byakaron.h and
+/// byakaron_strings.h with a `Byakaron` module map) for its Xcode project.
+///   zig build ios-libs → zig-out/lib/ios/Byakaron.xcframework
+fn addIos(b: *std.Build, avro: AvroData, locale: LocaleStrings) void {
+    const step = b.step("ios-libs", "Build Byakaron.xcframework (device + simulator) → zig-out/lib/ios/");
+    const headers = b.addWriteFiles();
+    _ = headers.addCopyFile(b.path("src/ffi/byakaron.h"), "byakaron.h");
+    _ = headers.addCopyFile(locale.header, "byakaron_strings.h");
+    _ = headers.add("module.modulemap",
+        \\module Byakaron {
+        \\    header "byakaron.h"
+        \\    header "byakaron_strings.h"
+        \\    export *
+        \\}
+        \\
+    );
+    // xcodebuild wants an output path ending in .xcframework that does not
+    // exist yet: a subdirectory of the step's (fresh) output directory.
+    const xcf = b.addSystemCommand(&.{ "sh", "-c", "out=$1; shift; exec xcodebuild -create-xcframework \"$@\" -output \"$out/Byakaron.xcframework\" >/dev/null", "sh" });
+    const xcf_dir = xcf.addOutputDirectoryArg("xcf");
+    // iOS 15: the keyboard's deployment target (upstream giellakbd-ios).
+    const ios15: std.Target.Query.OsVersion = .{ .semver = .{ .major = 15, .minor = 0, .patch = 0 } };
+    const lib = struct {
+        fn build(bb: *std.Build, av: AvroData, q: std.Target.Query) std.Build.LazyPath {
+            // ReleaseFast, as for macOS: Xcode's linker has no UBSan runtime.
+            const engine = addEngine(bb, bb.resolveTargetQuery(q), .ReleaseFast, av, false);
+            const l = bb.addLibrary(.{ .linkage = .static, .name = "byakaron", .root_module = engine.root });
+            l.bundle_compiler_rt = true;
+            return l.getEmittedBin();
+        }
+    }.build;
+    const device = lib(b, avro, .{ .cpu_arch = .aarch64, .os_tag = .ios, .os_version_min = ios15 });
+    // One simulator library for Apple silicon and Intel Macs.
+    const lipo = b.addSystemCommand(&.{ "lipo", "-create" });
+    lipo.addFileArg(lib(b, avro, .{ .cpu_arch = .aarch64, .os_tag = .ios, .abi = .simulator, .os_version_min = ios15 }));
+    lipo.addFileArg(lib(b, avro, .{ .cpu_arch = .x86_64, .os_tag = .ios, .abi = .simulator, .os_version_min = ios15 }));
+    lipo.addArg("-output");
+    const simulator = lipo.addOutputFileArg("libbyakaron.a");
+    for ([_]std.Build.LazyPath{ device, simulator }) |path| {
+        xcf.addArg("-library");
+        xcf.addFileArg(path);
+        xcf.addArg("-headers");
+        xcf.addDirectoryArg(headers.getDirectory());
+    }
+    const out = xcf_dir.path(b, "Byakaron.xcframework");
+    step.dependOn(&b.addInstallDirectory(.{ .source_dir = out, .install_dir = .lib, .install_subdir = "ios/Byakaron.xcframework" }).step);
 }
 
 fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath, locale: LocaleStrings) void {
