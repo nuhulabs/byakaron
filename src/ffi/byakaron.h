@@ -306,6 +306,7 @@ typedef struct {
     size_t highlight;               /* index within the page */
     size_t page;
     size_t page_count;
+    const char *latin;              /* the Latin being composed, "" when idle */
 } ByakaronComposerState;
 
 typedef void (*ByakaronUpdateFn)(void *userdata);
@@ -317,6 +318,13 @@ typedef void (*ByakaronUpdateFn)(void *userdata);
  * called from that thread when they arrive: then call
  * byakaron_composer_refresh on the composer's thread and redraw.
  */
+/*
+ * Next-word predictions without a database (embedded from the Wikipedia
+ * corpus): up to max_out words that most often follow `previous`, most likely
+ * first, into out. The strings are static: do not free them. Returns how many.
+ */
+size_t byakaron_next_words(const char *previous, const char **out, size_t max_out);
+
 ByakaronComposer *byakaron_composer_create(const char *data_dir, const char *spell_db,
                                            ByakaronUpdateFn on_update, void *userdata);
 void byakaron_composer_destroy(ByakaronComposer *composer);

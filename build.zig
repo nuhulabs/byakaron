@@ -110,6 +110,17 @@ pub fn build(b: *std.Build) !void {
         update.addCopyFileToSource(run.addOutputFileArg("o_words.zon"), "src/AutoComplete/o_words.zon");
         b.step("o-words", "Regenerate src/AutoComplete/o_words.zon from Byakaron.db (-Dspell-db=… to reuse one)").dependOn(&update.step);
     }
+    // Regenerate the committed `src/ffi/next_words.zon` (next-word predictions
+    // for keyboards without the database) from Byakaron.db's bigrams.
+    {
+        const gen = hostExe(b, "next_words", "src/build/next_words.zig");
+        gen.root_module.addImport("sql", host_sql);
+        const run = b.addRunArtifact(gen);
+        run.addFileArg(full_db);
+        const update = b.addUpdateSourceFiles();
+        update.addCopyFileToSource(run.addOutputFileArg("next_words.zon"), "src/ffi/next_words.zon");
+        b.step("next-words", "Regenerate src/ffi/next_words.zon from Byakaron.db (-Dspell-db=… to reuse one)").dependOn(&update.step);
+    }
     b.step("db-debug", "Build the text-keyed spell_debug.db (large) → zig-out/db/")
         .dependOn(&b.addInstallFile(spell.debug_db, "db/spell_debug.db").step);
 

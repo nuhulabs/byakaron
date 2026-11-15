@@ -425,7 +425,37 @@ pub const ByakaronComposerState = extern struct {
     highlight: usize,
     page: usize,
     page_count: usize,
+    /// The Latin being composed (what was typed), "" when idle.
+    latin: [*:0]const u8,
 };
+
+// ── Next-word predictions (embedded, no database) ─────────────────────────────
+
+const NextWords = struct { word: []const u8, next: []const []const u8 };
+/// Byte-sorted by `word`; `zig build next-words` regenerates it.
+const next_words: []const NextWords = @import("next_words.zon");
+
+/// Up to `max_out` words that most often follow `previous` in the Wikipedia
+/// corpus, most likely first, into `out` (static strings: do not free).
+/// Returns how many. For keyboards without Byakaron.db (iOS).
+pub export fn byakaron_next_words(previous: [*:0]const u8, out: [*][*:0]const u8, max_out: usize) usize {
+    var buf: [256]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const raw = std.mem.span(previous);
+    const word = (Composer.UserWords.normalize(fba.allocator(), raw) catch null) orelse raw;
+    const index = std.sort.binarySearch(NextWords, next_words, word, struct {
+        fn order(w: []const u8, e: NextWords) std.math.Order {
+            return std.mem.order(u8, w, e.word);
+        }
+    }.order) orelse return 0;
+    var n: usize = 0;
+    for (next_words[index].next) |next| {
+        if (n >= max_out) break;
+        out[n] = @ptrCast(next.ptr);
+        n += 1;
+    }
+    return n;
+}
 
 pub const BYAKARON_MOD_SHIFT: c_uint = 1;
 pub const BYAKARON_MOD_CTRL: c_uint = 2;
@@ -582,6 +612,7 @@ pub export fn byakaron_composer_state(composer: ?*ComposerHandle, out: ?*Byakaro
         .highlight = c.pageHighlight(),
         .page = c.page(),
         .page_count = c.pageCount(),
+        .latin = outString(h, c.latin.items),
     };
 }
 
@@ -633,6 +664,16 @@ pub export fn byakaron_userdict_remove(composer: ?*ComposerHandle, word: [*:0]co
 
 test {
     _ = @import("CFileStore.zig");
+}
+
+test "next words: sorted for the binary search, and found for a common word" {
+    for (next_words[1..], next_words[0 .. next_words.len - 1]) |e, prev| {
+        try std.testing.expect(std.mem.order(u8, prev.word, e.word) == .lt);
+    }
+    var out: [3][*:0]const u8 = undefined;
+    const n = byakaron_next_words("আমি", &out, out.len);
+    try std.testing.expect(n > 0);
+    try std.testing.expectEqual(@as(usize, 0), byakaron_next_words("xyzzy", &out, out.len));
 }
 
 test "composer ABI: type, draw, commit, settings, personal words" {
