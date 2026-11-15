@@ -28,6 +28,17 @@ bundle exec pod install
 open GiellaKeyboard.xcworkspace   # run the HostingApp scheme
 ```
 
+## App
+
+`HostingApp/App/` is a SwiftUI app like the macOS one, in the iOS 26 style
+(stock tab bar, navigation stacks and lists, which take Liquid Glass, plus
+glass on the status card and buttons): Setup, Try (a Notes style page to type
+with the keyboard), Layout (the Avro key map) and Settings (the shared
+settings that apply on iOS, and the personal dictionary). It opens its own
+composer on the keyboard's App Group data, so what it saves applies from the
+keyboard's next word. It needs iOS 17; the keyboard extension runs on iOS 15.
+`-tab setup|try|layout|settings` at launch opens a tab.
+
 ## Engine
 
 Typing goes through the Byakaron composer, as on every other platform:
