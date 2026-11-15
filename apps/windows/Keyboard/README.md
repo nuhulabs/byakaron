@@ -11,7 +11,7 @@ e.g. `choco install innosetup`; `-Dwindows-iscc=<path>` if ISCC.exe is not under
 Program Files or on PATH):
 
 ```powershell
-zig build windows
+zig build package-windows
 ```
 
 Output:
@@ -27,10 +27,11 @@ Version: `-Dwindows-version=1.2.3`, else `BYAKARON_VERSION`, else 1.0.0.
 Byakaron.db is built as by `zig build db`; `-Dspell-db=<path>` stages a prebuilt
 one instead, `-Ddb-words=N` a smaller one.
 
-## Development run
+## Development build and run
 
 ```powershell
-zig build run-win
+zig build windows   # IME DLLs + a Debug build of the app (what CI builds)
+zig build run-win   # build (Debug, with Byakaron.db) and run the app
 ```
 
 ## IME-only build
@@ -41,10 +42,10 @@ Cross-compiled with Zig (x86_64-windows-gnu), so this works from any host:
 zig build windows-ime
 ```
 
-Produces `zig-out/lib/windows/ime/ByakaronIME.dll` and `byakaron.dll`. `windows`
-and `run-win` stage the same pair into `apps/windows/Byakaron/ime/` (and
-byakaron.dll + Byakaron.db into `Native/`), which Byakaron.csproj copies next to
-the app.
+Produces `zig-out/lib/windows/ime/ByakaronIME.dll` and `byakaron.dll`. `windows`,
+`run-win` and `package-windows` stage the same pair into `apps/windows/Byakaron/ime/`
+(and byakaron.dll into `Native/`, plus Byakaron.db for `run-win` and
+`package-windows`), which Byakaron.csproj copies next to the app.
 
 ## Manual IME register
 

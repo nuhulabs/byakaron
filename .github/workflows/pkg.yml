@@ -214,7 +214,7 @@ jobs:
         env:
           BYAKARON_VERSION: ${{ inputs.version }}
         shell: pwsh
-        run: zig build windows "-Dspell-db=zig-out/db/Byakaron.db"
+        run: zig build package-windows "-Dspell-db=zig-out/db/Byakaron.db"
 
       - name: sign
         if: env.WINDOWS_CERTIFICATE != ''

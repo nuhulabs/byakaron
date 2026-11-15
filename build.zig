@@ -521,10 +521,18 @@ fn addWindows(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
     ime_step.dependOn(&b.addInstallFileWithDir(ime.getEmittedBin(), .{ .custom = "lib/windows/ime" }, "ByakaronIME.dll").step);
     ime_step.dependOn(&b.addInstallFileWithDir(ffi.getEmittedBin(), .{ .custom = "lib/windows/ime" }, "byakaron.dll").step);
 
-    if (builtin.os.tag != .windows) return;
+    // `windows`: the IME DLLs and a Debug build of the WinUI app (what CI
+    // builds), like `linux` and `macos`. The app needs .NET on Windows; from
+    // another host the step says so (`windows-ime` cross-compiles anywhere).
+    const windows_step = b.step("windows", "Build the IME DLLs and the WinUI app (Debug; the app on Windows only)");
+    windows_step.dependOn(ime_step);
+    if (builtin.os.tag != .windows) {
+        windows_step.dependOn(&b.addFail("`zig build windows` builds the WinUI app, which needs Windows; `zig build windows-ime` cross-compiles the IME from here").step);
+        return;
+    }
 
-    const version = b.option([]const u8, "windows-version", "Installer version for `windows` (default: $BYAKARON_VERSION, else 1.0.0)");
-    const iscc_exe = b.option(std.Build.LazyPath, "windows-iscc", "Inno Setup's ISCC.exe for `windows` (default: Program Files, then PATH)") orelse
+    const version = b.option([]const u8, "windows-version", "Installer version for `package-windows` (default: $BYAKARON_VERSION, else 1.0.0)");
+    const iscc_exe = b.option(std.Build.LazyPath, "windows-iscc", "Inno Setup's ISCC.exe for `package-windows` (default: Program Files, then PATH)") orelse
         b.findProgramLazy(.{ .names = &.{
             "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe",
             "C:\\Program Files\\Inno Setup 6\\ISCC.exe",
@@ -532,11 +540,23 @@ fn addWindows(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
         } });
     const proj = b.path("apps/windows/Byakaron/Byakaron.csproj");
 
+    // The DLLs Byakaron.csproj copies next to the app; Byakaron.db only for
+    // `run-win` and the installer, so `windows` does not build the spell DB.
+    const stage_dlls = b.addUpdateSourceFiles();
+    stage_dlls.addCopyFileToSource(ffi.getEmittedBin(), "apps/windows/Byakaron/Native/byakaron.dll");
+    stage_dlls.addCopyFileToSource(ime.getEmittedBin(), "apps/windows/Byakaron/ime/ByakaronIME.dll");
+    stage_dlls.addCopyFileToSource(ffi.getEmittedBin(), "apps/windows/Byakaron/ime/byakaron.dll");
     const stage = b.addUpdateSourceFiles();
-    stage.addCopyFileToSource(ffi.getEmittedBin(), "apps/windows/Byakaron/Native/byakaron.dll");
     stage.addCopyFileToSource(spell_db, "apps/windows/Byakaron/Native/Byakaron.db");
-    stage.addCopyFileToSource(ime.getEmittedBin(), "apps/windows/Byakaron/ime/ByakaronIME.dll");
-    stage.addCopyFileToSource(ffi.getEmittedBin(), "apps/windows/Byakaron/ime/byakaron.dll");
+    stage.step.dependOn(&stage_dlls.step);
+
+    // MSBuild tracks its own inputs; always let it run.
+    const app = b.addSystemCommand(&.{ "dotnet", "build" });
+    app.addFileArg(proj);
+    app.addArgs(&.{ "-c", "Debug", "-p:Platform=x64" });
+    app.has_side_effects = true;
+    app.step.dependOn(&stage_dlls.step);
+    windows_step.dependOn(&app.step);
 
     // MSBuild and ISCC track their own inputs; always let them run.
     const publish = b.addSystemCommand(&.{ "dotnet", "publish" });
@@ -554,9 +574,9 @@ fn addWindows(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
     if (version) |v| iscc.addArg(b.fmt("/DAppVersion={s}", .{v}));
     iscc.addFileArg(b.path("apps/windows/installer/Byakaron.iss"));
     iscc.has_side_effects = true;
-    const windows_step = b.step("windows", "Build the installer → zig-out/pkg/Byakaron-Setup.exe");
-    windows_step.dependOn(&b.addInstallFileWithDir(setup_dir.path(b, "Byakaron-Setup.exe"), .{ .custom = "pkg" }, "Byakaron-Setup.exe").step);
-    windows_step.dependOn(&b.addInstallDirectory(.{ .source_dir = payload, .install_dir = .{ .custom = "bin" }, .install_subdir = "Byakaron" }).step);
+    const package_step = b.step("package-windows", "Build the installer → zig-out/pkg/Byakaron-Setup.exe (on Windows)");
+    package_step.dependOn(&b.addInstallFileWithDir(setup_dir.path(b, "Byakaron-Setup.exe"), .{ .custom = "pkg" }, "Byakaron-Setup.exe").step);
+    package_step.dependOn(&b.addInstallDirectory(.{ .source_dir = payload, .install_dir = .{ .custom = "bin" }, .install_subdir = "Byakaron" }).step);
 
     const run = b.addSystemCommand(&.{ "dotnet", "run", "--project" });
     run.addFileArg(proj);

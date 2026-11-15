@@ -1,4 +1,5 @@
-# ci: unit tests + a build of every platform, one job each, on every push.
+# ci: on every push, the unit tests once, then a build of every platform (a
+# matrix, one job each) once they pass.
 #
 # Kept fast on purpose: no packaging, installers, e2e or install-matrix here.
 # Those run in release.yml (packages, live install) and e2e.yml (by hand).
@@ -17,8 +18,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  linux:
-    name: linux
+  # Every module's tests in one run (test/main.zig), plus iAvro parity.
+  test:
+    name: test
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -26,77 +28,68 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.17.0
-      - name: deps
+      - name: test
+        run: zig build test -Diavro
+
+  build:
+    name: build (${{ matrix.platform }})
+    needs: test
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            runs-on: ubuntu-latest
+          # Tiny wiki dump keeps Byakaron.db cheap.
+          - platform: macos
+            runs-on: xcode-27
+          # The IME DLLs and a Debug build of the app. The installer (dotnet
+          # publish + Inno Setup) is release-only: `zig build package-windows`.
+          - platform: windows
+            runs-on: windows-latest
+          # Native libs for every ABI; APK/AAB packaging is release-only (pkg.yml).
+          - platform: android
+            runs-on: ubuntu-latest
+          - platform: web
+            runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      - name: deps (linux)
+        if: matrix.platform == 'linux'
         run: |
           sudo -E env "PATH=$PATH" \
             ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
             zig build linux-deps
           # sudo fetched packages into zig-pkg/ as root; later builds run as the runner.
           if [ -d zig-pkg ]; then sudo chown -R "$USER" zig-pkg; fi
-      - name: test
-        run: zig build test -Diavro
-      - name: build
-        run: zig build linux
-
-  macos:
-    name: macos
-    runs-on: xcode-27
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-      - name: test
-        run: zig build test -Diavro
-      # Tiny wiki dump keeps Byakaron.db cheap.
-      - name: build
-        run: |
-          zig build macos -Dwiki-dump=.github/ci/bnwiki-tiny.xml
-          codesign --verify --deep --strict zig-out/bin/Byakaron.app
-
-  # The IME DLLs and a Debug build of the app. The installer (dotnet publish +
-  # Inno Setup) is release-only: the csproj copies native files only when present.
-  windows:
-    name: windows
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-      - name: build (ime)
-        run: zig build windows-ime
-      - name: build (app)
-        run: dotnet build apps/windows/Byakaron/Byakaron.csproj -c Debug -p:Platform=x64
-
-  # Native libs for every ABI; APK/AAB packaging is release-only (pkg.yml).
-  android:
-    name: android
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-      - uses: nttld/setup-ndk@v1
+      - name: ndk (android)
+        if: matrix.platform == 'android'
+        uses: nttld/setup-ndk@v1
         id: ndk
         with:
           ndk-version: r27c
           add-to-path: false
-      - name: build
-        run: zig build android-libs -Dandroid-ndk="${{ steps.ndk.outputs.ndk-path }}"
 
-  web:
-    name: web
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-      - name: build
+      - name: build (linux)
+        if: matrix.platform == 'linux'
+        run: zig build linux
+      - name: build (macos)
+        if: matrix.platform == 'macos'
+        run: |
+          zig build macos -Dwiki-dump=.github/ci/bnwiki-tiny.xml
+          codesign --verify --deep --strict zig-out/bin/Byakaron.app
+      - name: build (windows)
+        if: matrix.platform == 'windows'
+        run: zig build windows
+      - name: build (android)
+        if: matrix.platform == 'android'
+        run: zig build android-libs -Dandroid-ndk="${{ steps.ndk.outputs.ndk-path }}"
+      - name: build (web)
+        if: matrix.platform == 'web'
         run: zig build -Doptimize=ReleaseSmall
