@@ -1526,8 +1526,10 @@ fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath, local
         b.step("release-android", "Release build with Byakaron.db → zig-out/pkg/Byakaron.apk + Byakaron.aab"),
     };
     for (app_steps) |s| s.dependOn(step);
-    // Byakaron's own labels (ByakaronScreen.kt) as R.string.byakaron_*. Written
-    // into the keyboard checkout so Android Studio builds have them too.
+    // The shared labels as R.string.byakaron_* (used for the settings the Zig
+    // composer implements, settings/screens/TextCorrectionScreen.kt). Written
+    // into the keyboard checkout and committed there, so Android Studio builds
+    // have them too.
     {
         const strings = b.addUpdateSourceFiles();
         for (localeFiles()) |f| {
