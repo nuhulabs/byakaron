@@ -16,20 +16,38 @@ git submodule update --init apps/ios/keyboard
 
 ## Build
 
-Needs Xcode and CocoaPods. See `apps/ios/keyboard/README.md`:
+Needs Zig, Xcode and CocoaPods (`bundle install` once; CocoaPods wants a UTF-8
+locale). The keyboard links the engine from `zig-out/lib/ios/Byakaron.xcframework`
+(device and simulator static libraries with `byakaron.h` as the `Byakaron`
+module), so build that first:
 
 ```sh
+zig build ios-libs
 cd apps/ios/keyboard
-pod install
+bundle exec pod install
 open GiellaKeyboard.xcworkspace   # run the HostingApp scheme
 ```
 
-## Status
+## Engine
 
-The keyboard does not use the Byakaron engine yet. Building the engine for iOS
-(`libbyakaron` as an xcframework, like `libbyakaron.a` for macOS) is blocked on
-Zig 0.17's `std.Io.Threaded`, which does not compile for iOS: its process-spawn
-code references a field the iOS `NullFile` does not have.
+Typing goes through the Byakaron composer, as on every other platform:
+`Keyboard/Controllers/BanglaComposer.swift` wraps the C ABI, the word being
+typed is marked text and its candidates fill `CandidateBanner`. Settings and
+learned choices are files in the App Group container.
+
+The iOS engine has no SQLite, so no spelling corrections: candidates come from
+the in-memory Avro lexicon. Zig 0.17's `std.Io.Threaded` (which SQLite and the
+spell corrector need) does not compile for iOS, so `src/ffi/ffi.zig` leaves the
+spell engine out there and the composer stores its files with libc
+(`src/ffi/CFileStore.zig`).
+
+## Known issues
+
+- Built with the iOS 27 SDK, the app stops at launch in UIKit's
+  `_UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`: upstream's
+  app has not adopted the UIScene lifecycle yet. The keyboard extension does
+  not start through UIApplication, but it has not been tried on a device or a
+  working simulator yet.
 
 ## Updating from upstream
 
