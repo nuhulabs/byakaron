@@ -12,6 +12,8 @@ const Composer = @import("composer");
 const AutoComplete = @import("autocomplete");
 const Tokenizer = @import("tokenization").Tokenizer;
 const schema = @import("api/spell/schema.zig");
+/// Settings labels shared with every app (src/locale/en.zon).
+const L = @import("strings").default;
 
 // —— Client-side model (WASM module globals) ——
 
@@ -649,24 +651,24 @@ pub fn SettingsPanel(ctx: *zx.ComponentContext) zx.Component {
     const per_page = std.fmt.allocPrint(ctx.allocator, "{d}", .{s.candidates_per_page}) catch "";
     return (
         <section @allocator={ctx.allocator} class="settings-panel" aria-label="Keyboard settings">
-            <h2 class="settings-title">Keyboard</h2>
-            <SettingRow name="suggestions" label="Word suggestions" hint="Avro dictionary mode. Off: phonetic only — type every word exactly." on={s.suggestions} />
-            <SettingRow name="spelling_corrections" label="Spelling corrections" hint="Suggest corrections when Avro finds no dictionary word." on={s.spelling_corrections} />
-            <SettingRow name="learn_choices" label="Remember my choices" hint="Highlight the candidate you picked last time." on={s.learn_choices} />
-            <SettingRow name="bangla_digits" label="Bangla digits" hint="Digits typed on their own become ০–৯." on={s.bangla_digits} />
-            <SettingRow name="newline_on_enter" label="New line on Enter" hint="Enter commits the word and starts a new line." on={s.newline_on_enter} />
+            <h2 class="settings-title">{L.typing}</h2>
+            <SettingRow name="suggestions" label={L.suggestions} hint={L.suggestions_hint} on={s.suggestions} />
+            <SettingRow name="spelling_corrections" label={L.spelling_corrections} hint={L.spelling_corrections_hint} on={s.spelling_corrections} />
+            <SettingRow name="learn_choices" label={L.learn_choices} hint={L.learn_choices_hint} on={s.learn_choices} />
+            <SettingRow name="bangla_digits" label={L.bangla_digits} hint={L.bangla_digits_hint} on={s.bangla_digits} />
+            <SettingRow name="newline_on_enter" label={L.newline_on_enter} hint={L.newline_on_enter_hint} on={s.newline_on_enter} />
             <div class="setting-row">
                 <div class="setting-text">
-                    <span class="setting-label">Candidate list</span>
+                    <span class="setting-label">{L.candidate_orientation}</span>
                 </div>
                 <div class="segmented">
-                    <button type="button" class={if (s.candidate_orientation == .horizontal) "seg is-on" else "seg"} value="horizontal" onclick={onSetOrientation}>Horizontal</button>
-                    <button type="button" class={if (s.candidate_orientation == .vertical) "seg is-on" else "seg"} value="vertical" onclick={onSetOrientation}>Vertical</button>
+                    <button type="button" class={if (s.candidate_orientation == .horizontal) "seg is-on" else "seg"} value="horizontal" onclick={onSetOrientation}>{L.horizontal}</button>
+                    <button type="button" class={if (s.candidate_orientation == .vertical) "seg is-on" else "seg"} value="vertical" onclick={onSetOrientation}>{L.vertical}</button>
                 </div>
             </div>
             <div class="setting-row">
                 <div class="setting-text">
-                    <span class="setting-label">Candidates per page</span>
+                    <span class="setting-label">{L.candidates_per_page}</span>
                 </div>
                 <div class="stepper">
                     <button type="button" class="seg" value="-1" onclick={onStepPerPage}>−</button>
@@ -674,19 +676,19 @@ pub fn SettingsPanel(ctx: *zx.ComponentContext) zx.Component {
                     <button type="button" class="seg" value="1" onclick={onStepPerPage}>+</button>
                 </div>
             </div>
-            <h2 class="settings-title">Personal dictionary</h2>
+            <h2 class="settings-title">{L.personal_dictionary}</h2>
             <div class="userdict-add">
                 <input id="userdict-word" class="userdict-input" type="text" placeholder="নতুন শব্দ" autocomplete="off" spellcheck="false" />
-                <button type="button" class="seg is-on" onclick={onAddUserWord}>Add</button>
+                <button type="button" class="seg is-on" onclick={onAddUserWord}>{L.add}</button>
             </div>
             <ul class="userdict-list">
                 {if (words.len == 0) (
-                    <li class="userdict-empty">No words yet</li>
+                    <li class="userdict-empty">{L.no_words}</li>
                 )}
                 {for (words) |w| (
                     <li class="userdict-item">
                         <span>{w}</span>
-                        <button type="button" class="userdict-remove" value={w} onclick={onRemoveUserWord} aria-label="Remove">×</button>
+                        <button type="button" class="userdict-remove" value={w} onclick={onRemoveUserWord} aria-label={L.remove}>×</button>
                     </li>
                 )}
             </ul>

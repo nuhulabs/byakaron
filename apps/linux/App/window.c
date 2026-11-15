@@ -1,5 +1,6 @@
 #include "window.h"
 
+#include "byakaron_strings.h"
 #include "dictionary.h"
 #include "layout.h"
 #include "settings.h"
@@ -284,11 +285,11 @@ byk_window_init (BykWindow *self)
     gtk_stack_add_titled (GTK_STACK (self->stack), self->spell_page,
                           "spelling", "Spelling");
     gtk_stack_add_titled (GTK_STACK (self->stack), byk_layout_page_new (),
-                          "layout", "Layout");
+                          "layout", byk_str (BYK_STR_LAYOUT));
     gtk_stack_add_titled (GTK_STACK (self->stack), self->setup_page,
-                          "setup", "Setup");
+                          "setup", byk_str (BYK_STR_SETUP));
     gtk_stack_add_titled (GTK_STACK (self->stack), self->settings_page,
-                          "settings", "Settings");
+                          "settings", byk_str (BYK_STR_SETTINGS));
 
     g_signal_connect (self->stack, "notify::visible-child",
                       G_CALLBACK (on_visible_page_changed), self);

@@ -117,6 +117,9 @@ pub fn build(b: *std.Build) !void {
         b.step("d1", "Byakaron.db as D1 migrations → zig-out/d1/ (-Ddb-words, -Dspell-db)").dependOn(&sync.step);
     }
 
+    // Shared UI labels (src/locale/*.zon) → every platform's strings.
+    const locale = localeStrings(b);
+
     const engine = addEngine(b, target, optimize, avro, true);
     const zx_mod = engine.zx;
     const tokenization_mod = engine.tokenization;
@@ -154,7 +157,7 @@ pub fn build(b: *std.Build) !void {
 
     // Linux: IBus engine, GTK app, optional Fcitx5, against a pinned Ubuntu
     // sysroot on every host (see `addLinux`).
-    addLinux(b, target, optimize, mod, avro, packSpellDb(b, spell_db_tool, spell_db), &install_spell_db.step);
+    addLinux(b, target, optimize, mod, avro, packSpellDb(b, spell_db_tool, spell_db), &install_spell_db.step, locale);
 
     // Executable (only built for non-Android, non-wasm targets)
     if (!is_android and !is_wasi) {
@@ -215,6 +218,9 @@ pub fn build(b: *std.Build) !void {
         const inputs = [_]*std.Build.Step{
             &b.addInstallFileWithDir(mac_lib.getEmittedBin(), .{ .custom = "lib/macos" }, "libbyakaron.a").step,
             &b.addInstallFileWithDir(b.path("src/ffi/byakaron.h"), .{ .custom = "lib/macos" }, "byakaron.h").step,
+            // Imported by Core/Transliteration/BridgeHeader.h; Swift reads the
+            // labels through tr(_:) in Core/Settings/ByakaronSettings.swift.
+            &b.addInstallFileWithDir(locale.header, .{ .custom = "lib/macos" }, "byakaron_strings.h").step,
             install_lexicon,
             &install_spell_db.step,
         };
@@ -292,7 +298,7 @@ pub fn build(b: *std.Build) !void {
         b.step("macos-icons", "Regenerate apps/macos/Resources/MenuIcon.{pdf,tiff}").dependOn(&icons.step);
     }
 
-    addAndroid(b, avro, spell_db);
+    addAndroid(b, avro, spell_db, locale);
 
     // Web app (apps/web): a ziex app in this build graph, so it shares the cache.
     //   zig build run-web    dev server (hot reload)
@@ -335,6 +341,7 @@ pub fn build(b: *std.Build) !void {
                     .{ .name = "autocomplete_mem", .module = web_autocomplete_mem },
                     .{ .name = "transliteration", .module = web_transliteration },
                     .{ .name = "composer", .module = web_composer },
+                    .{ .name = "strings", .module = b.createModule(.{ .root_source_file = locale.zig }) },
                 },
             }),
         });
@@ -443,6 +450,8 @@ pub fn build(b: *std.Build) !void {
         for ([_]*std.Build.Module{ transliteration_mod, autocomplete_mod, autocomplete_mem_mod, composer_mod }) |m| {
             test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = m })).step);
         }
+        // Every locale file has every key (src/locale/Locale.zig).
+        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = localeModule(b, target, optimize) })).step);
         // Host build tools (SQL splitter, CSV import).
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = host_sql })).step);
         {
@@ -723,6 +732,7 @@ fn addLinux(
     avro: AvroData,
     spell_db: std.Build.LazyPath,
     install_spell_db: *std.Build.Step,
+    locale: LocaleStrings,
 ) void {
     const host_linux = builtin.os.tag == .linux;
     const system_libs = b.option(bool, "linux-system-libs", "Link the Linux targets against system IBus/GTK via pkg-config (Linux host)") orelse false;
@@ -820,7 +830,7 @@ fn addLinux(
     // the pinned sysroot like the engine, so no libgtk-3-dev is required.
     // GTK3 3.24 is on Ubuntu 20.04, 22.04, and 24.04; GTK4 / libadwaita 1.4
     // are not.
-    const app = linuxApp(b, linux_target, optimize, core, sysroot);
+    const app = linuxApp(b, linux_target, optimize, core, sysroot, locale);
 
     const install_app = b.addInstallArtifact(app, .{});
     linux_step.dependOn(&install_app.step);
@@ -981,7 +991,7 @@ fn addLinux(
     // What gets packaged or installed is always ReleaseFast (`rel_*`), whatever
     // -Doptimize says for the development steps.
     const rel_ime = if (optimize == .fast) ime else linuxIme(b, linux_target, .fast, rel_core, sysroot);
-    const rel_app = if (optimize == .fast) app else linuxApp(b, linux_target, .fast, rel_core, sysroot);
+    const rel_app = if (optimize == .fast) app else linuxApp(b, linux_target, .fast, rel_core, sysroot, locale);
 
     const run_smoke = b.addRunArtifact(smoke);
     run_smoke.step.dependOn(&install_smoke.step);
@@ -1166,6 +1176,7 @@ fn linuxApp(
     optimize: std.builtin.OptimizeMode,
     core: *std.Build.Module,
     sysroot: ?Sysroot,
+    locale: LocaleStrings,
 ) *std.Build.Step.Compile {
     const app_core = b.addLibrary(.{
         .linkage = .static,
@@ -1202,6 +1213,7 @@ fn linuxApp(
     app.root_module.addIncludePath(b.path("src/ffi"));
     app.root_module.addIncludePath(b.path("apps/linux/Core"));
     app.root_module.addIncludePath(b.path("apps/linux/App"));
+    app.root_module.addIncludePath(locale.dir);
     app.root_module.addCMacro("BYK_APP_VERSION", "\"" ++ @import("build.zig.zon").version ++ "\"");
     linkLinux(b, app.root_module, sysroot, &.{ "gtk+-3.0", "glib-2.0", "gobject-2.0", "gio-2.0" });
     // Host libgtk was built against this machine's glibc. Same reason as
@@ -1472,7 +1484,7 @@ fn firstDir(b: *std.Build, paths: []const ?[]const u8) ?[]const u8 {
     return null;
 }
 
-fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void {
+fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath, locale: LocaleStrings) void {
     const step = b.step("android-libs", "Build libbyakaron.so for every Android ABI → zig-out/lib/android/jniLibs + keyboard jniLibs");
     const app_steps = [_]*std.Build.Step{
         b.step("android", "Build the Android keyboard (debug) → zig-out/pkg/Byakaron-debug.apk"),
@@ -1480,6 +1492,19 @@ fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
         b.step("release-android", "Release build with Byakaron.db → zig-out/pkg/Byakaron.apk + Byakaron.aab"),
     };
     for (app_steps) |s| s.dependOn(step);
+    // Byakaron's own labels (ByakaronScreen.kt) as R.string.byakaron_*. Written
+    // into the keyboard checkout so Android Studio builds have them too.
+    {
+        const strings = b.addUpdateSourceFiles();
+        for (localeFiles()) |f| {
+            const dir = if (std.mem.eql(u8, f.code, "en")) "values" else b.fmt("values-{s}", .{f.code});
+            strings.addCopyFileToSource(
+                locale.android.path(b, b.fmt("{s}/byakaron_strings.xml", .{dir})),
+                b.fmt("apps/android/keyboard/app/src/main/res/{s}/byakaron_strings.xml", .{dir}),
+            );
+        }
+        step.dependOn(&strings.step);
+    }
     const api = b.option(u32, "android-api", "Minimum Android API level for the Android steps (default 21)") orelse 21;
     const ndk = androidNdk(b) orelse {
         step.dependOn(&b.addFail("Android NDK not found: pass -Dandroid-ndk=<dir> or set ANDROID_NDK_ROOT").step);
@@ -1570,6 +1595,38 @@ fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
     release_aab_run.addArg(b.pathJoin(&.{ keyboard, "app/build/outputs/bundle/release" }));
     const release_aab = release_aab_run.addOutputFileArg("Byakaron.aab");
     app_steps[2].dependOn(&b.addInstallFileWithDir(release_aab, .prefix, "pkg/Byakaron.aab").step);
+}
+
+/// What src/build/locale.zig generates from src/locale/*.zon.
+const LocaleStrings = struct {
+    /// The directory holding `byakaron_strings.h`, for include paths.
+    dir: std.Build.LazyPath,
+    header: std.Build.LazyPath,
+    /// `Strings.zig`, the web app's `strings` module.
+    zig: std.Build.LazyPath,
+    /// `values[-<code>]/byakaron_strings.xml`.
+    android: std.Build.LazyPath,
+};
+
+fn localeModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Module {
+    return b.createModule(.{ .root_source_file = b.path("src/locale/Locale.zig"), .target = target, .optimize = optimize });
+}
+
+fn localeFiles() []const @import("src/locale/Locale.zig").File {
+    return &@import("src/locale/Locale.zig").files;
+}
+
+fn localeStrings(b: *std.Build) LocaleStrings {
+    const gen = hostExe(b, "locale", "src/build/locale.zig");
+    gen.root_module.addImport("locale", localeModule(b, b.graph.host, .Debug));
+    const run = b.addRunArtifact(gen);
+    const dir = run.addOutputDirectoryArg("strings");
+    return .{
+        .dir = dir,
+        .header = dir.path(b, "byakaron_strings.h"),
+        .zig = dir.path(b, "Strings.zig"),
+        .android = dir.path(b, "android"),
+    };
 }
 
 /// iAvro's data: the committed lexicon.zon (src/build/lexicon.zig resyncs it) and what lexicon_files.zig derives from it.

@@ -1,5 +1,6 @@
 #include "settings.h"
 
+#include "byakaron_strings.h"
 #include "dictionary.h"
 #include "prefs.h"
 #include "uiutil.h"
@@ -111,41 +112,35 @@ byk_settings_build_typing (BykSettingsPage *self)
 {
     GtkWidget *list = NULL;
     GtkWidget *group = byk_framed_list (
-        "Typing",
-        "The keyboard picks these up from the next word you type.",
+        byk_str (BYK_STR_TYPING), byk_str (BYK_STR_TYPING_HINT),
         &list);
 
     BykSettings s;
     byk_settings_load (self->engines->composer, &s);
 
     byk_settings_switch (self, list, &s, BYK_FIELD_SUGGESTIONS,
-                         "Word suggestions",
-                         "Avro's dictionary words while typing. Off is phonetic mode: "
-                         "everything is typed exactly as transliterated, with no list.");
+                         byk_str (BYK_STR_SUGGESTIONS), byk_str (BYK_STR_SUGGESTIONS_HINT));
     byk_settings_switch (self, list, &s, BYK_FIELD_SPELLING,
-                         "Spelling corrections",
-                         "When a word comes out misspelled (sonar → সনার), suggest the correct one (সোনার).");
+                         byk_str (BYK_STR_SPELLING_CORRECTIONS), byk_str (BYK_STR_SPELLING_CORRECTIONS_HINT));
     byk_settings_switch (self, list, &s, BYK_FIELD_LEARN,
-                         "Remember my choices",
-                         "The suggestion you picked for a word is highlighted first next time.");
+                         byk_str (BYK_STR_LEARN_CHOICES), byk_str (BYK_STR_LEARN_CHOICES_HINT));
     byk_settings_switch (self, list, &s, BYK_FIELD_DIGITS,
-                         "Bangla digits",
-                         "0–9 type ০–৯. Off keeps 0–9. Number keys still pick a suggestion while the list is showing.");
+                         byk_str (BYK_STR_BANGLA_DIGITS), byk_str (BYK_STR_BANGLA_DIGITS_HINT));
     byk_settings_switch (self, list, &s, BYK_FIELD_NEWLINE,
-                         "New line on Enter",
-                         "Enter commits the word and also starts a new line. Off commits only.");
+                         byk_str (BYK_STR_NEWLINE_ON_ENTER), byk_str (BYK_STR_NEWLINE_ON_ENTER_HINT));
 
     GtkWidget *orientation = gtk_combo_box_text_new ();
-    gtk_combo_box_text_append_text (GTK_COMBO_BOX_TEXT (orientation), "Horizontal");
-    gtk_combo_box_text_append_text (GTK_COMBO_BOX_TEXT (orientation), "Vertical");
+    gtk_combo_box_text_append_text (GTK_COMBO_BOX_TEXT (orientation), byk_str (BYK_STR_HORIZONTAL));
+    gtk_combo_box_text_append_text (GTK_COMBO_BOX_TEXT (orientation), byk_str (BYK_STR_VERTICAL));
     gtk_combo_box_set_active (GTK_COMBO_BOX (orientation), s.vertical ? 1 : 0);
     g_signal_connect (orientation, "changed", G_CALLBACK (on_orientation_changed), self);
-    byk_settings_add_row (list, "Suggestion list", "How the candidates are laid out.", orientation);
+    byk_settings_add_row (list, byk_str (BYK_STR_CANDIDATE_ORIENTATION), byk_str (BYK_STR_CANDIDATE_ORIENTATION_HINT),
+                          orientation);
 
     GtkWidget *per_page = gtk_spin_button_new_with_range (3, 9, 1);
     gtk_spin_button_set_value (GTK_SPIN_BUTTON (per_page), s.candidates_per_page);
     g_signal_connect (per_page, "value-changed", G_CALLBACK (on_per_page_changed), self);
-    byk_settings_add_row (list, "Suggestions per page", "Page Up / Page Down show the rest.", per_page);
+    byk_settings_add_row (list, byk_str (BYK_STR_CANDIDATES_PER_PAGE), "Page Up / Page Down show the rest.", per_page);
 
     if (self->engines->composer == NULL)
         gtk_widget_set_sensitive (list, FALSE);
@@ -226,8 +221,7 @@ byk_settings_build_dictionary (BykSettingsPage *self)
 {
     GtkWidget *list = NULL;
     GtkWidget *group = byk_framed_list (
-        "Personal dictionary",
-        "Words you saved as correct. They are never marked as misspelled and the keyboard suggests them.",
+        byk_str (BYK_STR_PERSONAL_DICTIONARY), byk_str (BYK_STR_PERSONAL_DICTIONARY_HINT),
         &list);
 
     GtkWidget *manage = gtk_button_new_with_label ("Manage…");

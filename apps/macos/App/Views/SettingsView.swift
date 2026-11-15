@@ -21,23 +21,23 @@ struct SettingsView: View {
     var body: some View {
         TabView(selection: $selection) {
             GettingStartedTab()
-                .tabItem { Label("Setup", systemImage: "sparkles") }
+                .tabItem { Label(tr(BYK_STR_SETUP), systemImage: "sparkles") }
                 .tag(SettingsTab.setup.rawValue)
 
             TypingSettings(model: model)
-                .tabItem { Label("Typing", systemImage: "keyboard") }
+                .tabItem { Label(tr(BYK_STR_TYPING), systemImage: "keyboard") }
                 .tag(SettingsTab.typing.rawValue)
 
             CandidateSettings(model: model)
-                .tabItem { Label("Suggestions", systemImage: "list.bullet.rectangle") }
+                .tabItem { Label(tr(BYK_STR_CANDIDATES), systemImage: "list.bullet.rectangle") }
                 .tag(SettingsTab.suggestions.rawValue)
 
             PersonalDictionarySettings(model: model)
-                .tabItem { Label("Dictionary", systemImage: "character.book.closed") }
+                .tabItem { Label(tr(BYK_STR_PERSONAL_DICTIONARY), systemImage: "character.book.closed") }
                 .tag(SettingsTab.dictionary.rawValue)
 
             LayoutTab()
-                .tabItem { Label("Layout", systemImage: "keyboard.badge.ellipsis") }
+                .tabItem { Label(tr(BYK_STR_LAYOUT), systemImage: "keyboard.badge.ellipsis") }
                 .tag(SettingsTab.layout.rawValue)
         }
         .frame(width: 580, height: 620)
@@ -109,29 +109,30 @@ private struct TypingSettings: View {
         Form {
             Section {
                 Toggle(isOn: $model.values.suggestions) {
-                    Text("Word suggestions")
-                    Text("Avro dictionary mode. Off types exactly what you spell, with no list.")
+                    Text(tr(BYK_STR_SUGGESTIONS))
+                    Text(tr(BYK_STR_SUGGESTIONS_HINT))
                 }
                 Toggle(isOn: $model.values.spellingCorrections) {
-                    Text("Spelling corrections")
-                    Text("Suggest corrections when the dictionary has no match.")
+                    Text(tr(BYK_STR_SPELLING_CORRECTIONS))
+                    Text(tr(BYK_STR_SPELLING_CORRECTIONS_HINT))
                 }
                 Toggle(isOn: $model.values.learnChoices) {
-                    Text("Remember my choices")
-                    Text("Highlight the word you chose last time for the same input.")
+                    Text(tr(BYK_STR_LEARN_CHOICES))
+                    Text(tr(BYK_STR_LEARN_CHOICES_HINT))
                 }
-            } header: {
-                Text("Suggestions")
-            }
-
-            Section {
-                Toggle("Bangla digits (০–৯)", isOn: $model.values.banglaDigits)
+                Toggle(isOn: $model.values.banglaDigits) {
+                    Text(tr(BYK_STR_BANGLA_DIGITS))
+                    Text(tr(BYK_STR_BANGLA_DIGITS_HINT))
+                }
                 Toggle(isOn: $model.values.newlineOnEnter) {
-                    Text("New line on Enter")
-                    Text("Enter commits the word and starts a new line.")
+                    Text(tr(BYK_STR_NEWLINE_ON_ENTER))
+                    Text(tr(BYK_STR_NEWLINE_ON_ENTER_HINT))
                 }
             } header: {
-                Text("Typing")
+                Text(tr(BYK_STR_TYPING))
+            } footer: {
+                Text(tr(BYK_STR_TYPING_HINT))
+                    .font(.caption).foregroundStyle(.tertiary)
             }
         }
         .formStyle(.grouped)
@@ -146,23 +147,23 @@ private struct CandidateSettings: View {
     var body: some View {
         Form {
             Section {
-                Picker("List orientation", selection: $model.values.candidateOrientation) {
+                Picker(tr(BYK_STR_CANDIDATE_ORIENTATION), selection: $model.values.candidateOrientation) {
                     ForEach(ByakaronSettings.Orientation.allCases) { o in
                         Text(o.label).tag(o)
                     }
                 }
                 .pickerStyle(.segmented)
 
-                LabeledContent("Candidates per page") {
+                LabeledContent(tr(BYK_STR_CANDIDATES_PER_PAGE)) {
                     Stepper(
                         "\(model.values.candidatesPerPage)",
                         value: $model.values.candidatesPerPage,
                         in: ByakaronSettings.candidatesPerPageRange)
                 }
             } header: {
-                Text("Candidate list")
+                Text(tr(BYK_STR_CANDIDATES))
             } footer: {
-                Text("Applies to the candidate popup the keyboard shows while you type.")
+                Text(tr(BYK_STR_CANDIDATES_HINT))
                     .font(.caption).foregroundStyle(.tertiary)
             }
         }
@@ -180,19 +181,19 @@ private struct PersonalDictionarySettings: View {
         Form {
             Section {
                 HStack {
-                    TextField("Add a word", text: $newWord)
+                    TextField(tr(BYK_STR_ADD_WORD), text: $newWord)
                         .onSubmit(add)
-                    Button("Add", action: add)
+                    Button(tr(BYK_STR_ADD), action: add)
                         .disabled(trimmed.isEmpty)
                 }
             } footer: {
-                Text("Your words are suggested while you type, after Avro's.")
+                Text(tr(BYK_STR_PERSONAL_DICTIONARY_HINT))
                     .font(.caption).foregroundStyle(.tertiary)
             }
 
             Section("Words") {
                 if model.userWords.isEmpty {
-                    Text("No words yet").foregroundStyle(.secondary)
+                    Text(tr(BYK_STR_NO_WORDS)).foregroundStyle(.secondary)
                 }
                 ForEach(model.userWords, id: \.self) { word in
                     HStack {
@@ -204,7 +205,7 @@ private struct PersonalDictionarySettings: View {
                             Image(systemName: "minus.circle")
                         }
                         .buttonStyle(.borderless)
-                        .help("Remove \(word)")
+                        .help("\(tr(BYK_STR_REMOVE)) \(word)")
                     }
                 }
             }

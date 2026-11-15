@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "byakaron_strings.h"
 #include "uiutil.h"
 
 typedef struct {
@@ -123,7 +124,7 @@ byk_dictionary_show (GtkWindow *parent, ByakaronComposer *composer,
     view->changed = changed;
     view->changed_data = changed_data;
 
-    view->dialog = gtk_dialog_new_with_buttons ("Personal Dictionary", parent,
+    view->dialog = gtk_dialog_new_with_buttons (byk_str (BYK_STR_PERSONAL_DICTIONARY), parent,
                                                 GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT |
                                                 GTK_DIALOG_USE_HEADER_BAR,
                                                 NULL, NULL);
@@ -139,7 +140,7 @@ byk_dictionary_show (GtkWindow *parent, ByakaronComposer *composer,
     view->entry = gtk_entry_new ();
     gtk_entry_set_placeholder_text (GTK_ENTRY (view->entry), "Add a word, e.g. বাংলায়");
     g_signal_connect (view->entry, "activate", G_CALLBACK (on_add_activated), view);
-    GtkWidget *add = gtk_button_new_with_label ("Add");
+    GtkWidget *add = gtk_button_new_with_label (byk_str (BYK_STR_ADD));
     g_signal_connect (add, "clicked", G_CALLBACK (on_add_activated), view);
     GtkWidget *add_row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
     byk_box_add_expand (add_row, view->entry);

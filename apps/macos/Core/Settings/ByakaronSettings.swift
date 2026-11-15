@@ -86,8 +86,8 @@ enum ByakaronSettings {
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .horizontal: return "Horizontal"
-            case .vertical: return "Vertical"
+            case .horizontal: return tr(BYK_STR_HORIZONTAL)
+            case .vertical: return tr(BYK_STR_VERTICAL)
             }
         }
     }
@@ -149,3 +149,12 @@ enum ByakaronSettings {
         }
     }
 }
+
+/// A settings label shared with every Byakaron app (src/locale/*.zon, generated
+/// into byakaron_strings.h), in the user's first preferred language when there
+/// is a locale for it, else English.
+func tr(_ id: BykStr) -> String {
+    String(cString: byk_str_in(byakaronLocale, id))
+}
+
+private let byakaronLocale = byk_locale_for(Locale.preferredLanguages.first ?? "en")

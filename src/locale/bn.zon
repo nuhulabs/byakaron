@@ -1,0 +1,38 @@
+// Bangla. Same keys as en.zon (see there).
+.{
+    // Pages and tabs.
+    .setup = "সেটআপ",
+    .layout = "লেআউট",
+    .settings = "সেটিংস",
+
+    // Typing settings.
+    .typing = "টাইপিং",
+    .typing_hint = "পরের শব্দ টাইপ করার সময় থেকেই কিবোর্ড এগুলো মেনে চলে।",
+    .suggestions = "শব্দের পরামর্শ",
+    .suggestions_hint = "অভ্র অভিধান মোড। বন্ধ থাকলে ফোনেটিক মোড: প্রতিটি শব্দ ঠিক যেমন বানান করেন তেমনই টাইপ হয়, কোনো তালিকা ছাড়া।",
+    .spelling_corrections = "বানান সংশোধন",
+    .spelling_corrections_hint = "কোনো শব্দ ভুল বানানে এলে (sonar → সনার), সঠিক শব্দটি (সোনার) পরামর্শ দেয়।",
+    .learn_choices = "আমার বাছাই মনে রাখুন",
+    .learn_choices_hint = "কোনো শব্দের জন্য যে পরামর্শটি বেছে নিয়েছিলেন, পরের বার সেটিই প্রথমে হাইলাইট হয়।",
+    .bangla_digits = "বাংলা অঙ্ক",
+    .bangla_digits_hint = "0–9 চাপলে ০–৯ টাইপ হয়। তালিকা দেখানোর সময় সংখ্যা চেপে এখনও পরামর্শ বাছাই করা যায়।",
+    .newline_on_enter = "এন্টারে নতুন লাইন",
+    .newline_on_enter_hint = "এন্টার শব্দটি বসিয়ে নতুন লাইনও শুরু করে। বন্ধ থাকলে শুধু শব্দটি বসায়।",
+
+    // Candidate list.
+    .candidates = "পরামর্শ",
+    .candidates_hint = "টাইপ করার সময় কিবোর্ড যে পরামর্শ তালিকা দেখায়, তাতে প্রযোজ্য।",
+    .candidate_orientation = "পরামর্শ তালিকা",
+    .candidate_orientation_hint = "পরামর্শগুলো কীভাবে সাজানো থাকবে।",
+    .horizontal = "আনুভূমিক",
+    .vertical = "উল্লম্ব",
+    .candidates_per_page = "প্রতি পাতায় পরামর্শ",
+
+    // Personal dictionary.
+    .personal_dictionary = "ব্যক্তিগত অভিধান",
+    .personal_dictionary_hint = "যে শব্দগুলো আপনি সঠিক বলে সংরক্ষণ করেছেন। এগুলো কখনো ভুল বানান হিসেবে চিহ্নিত হয় না, আর কিবোর্ড এগুলো পরামর্শ দেয়।",
+    .add_word = "শব্দ যোগ করুন",
+    .add = "যোগ করুন",
+    .remove = "সরান",
+    .no_words = "এখনো কোনো শব্দ নেই",
+}
