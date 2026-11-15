@@ -43,11 +43,9 @@ spell engine out there and the composer stores its files with libc
 
 ## Known issues
 
-- Built with the iOS 27 SDK, the app stops at launch in UIKit's
-  `_UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`: upstream's
-  app has not adopted the UIScene lifecycle yet. The keyboard extension does
-  not start through UIApplication, but it has not been tried on a device or a
-  working simulator yet.
+- The keyboard extension has not been tried on a device yet. The app launches
+  in the simulator, but typing with the keyboard there needs it enabled in
+  Settings, which has not been done.
 
 ## Updating from upstream
 
