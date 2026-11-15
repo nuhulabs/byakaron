@@ -99,6 +99,17 @@ pub fn build(b: *std.Build) !void {
     b.addNamedLazyPath("spell_db", spell_db);
     const install_spell_db = b.addInstallFile(spell_db, "db/Byakaron.db");
     b.step("db", "Download bnwiki + build Byakaron.db → zig-out/db/").dependOn(&install_spell_db.step);
+    // Regenerate the committed `src/AutoComplete/o_words.zon` from Byakaron.db
+    // (see src/build/o_words.zig). Builds the spell DB first, like `zig build db`.
+    {
+        const gen = hostExe(b, "o_words", "src/build/o_words.zig");
+        gen.root_module.addImport("sql", host_sql);
+        const run = b.addRunArtifact(gen);
+        run.addFileArg(full_db);
+        const update = b.addUpdateSourceFiles();
+        update.addCopyFileToSource(run.addOutputFileArg("o_words.zon"), "src/AutoComplete/o_words.zon");
+        b.step("o-words", "Regenerate src/AutoComplete/o_words.zon from Byakaron.db (-Dspell-db=… to reuse one)").dependOn(&update.step);
+    }
     b.step("db-debug", "Build the text-keyed spell_debug.db (large) → zig-out/db/")
         .dependOn(&b.addInstallFile(spell.debug_db, "db/spell_debug.db").step);
 

@@ -415,7 +415,60 @@ fn termList(
         }
     }
 
+    try keepTypedO(self, arena, term, list.items);
     if (!listHas(list.items, parsed)) try list.append(arena, parsed);
+}
+
+/// A word typed with a final `o` (`jodio`, `bhalo`, `amadero`): a dictionary
+/// word that keeps it (যদিও, ভালো, আমাদেরও) goes right before the same word
+/// where it vanished as Avro's silent inherent vowel (যদি, ভাল, আমাদের). A word
+/// keeps the `o` if it ends in ো or ও and is a real word: in Avro's lexicon or
+/// in `o_words` (from the Wikipedia corpus). Anything else keeps Avro's order:
+/// `keno` stays কেন (কেনও is not a word), `jonno` জন্য (জন্মো is barely one).
+/// With nothing in the dictionary, the transliteration is all there is, as
+/// before.
+fn keepTypedO(self: *AutoComplete, arena: std.mem.Allocator, term: []const u8, items: [][]const u8) !void {
+    if (term.len == 0 or std.ascii.toLower(term[term.len - 1]) != 'o') return;
+    const out = try arena.alloc([]const u8, items.len);
+    const placed = try arena.alloc(bool, items.len);
+    @memset(placed, false);
+    var n: usize = 0;
+    for (items, 0..) |w, i| {
+        if (placed[i]) continue;
+        for (items, 0..) |k, j| {
+            if (placed[j] or j == i or !keepsO(self, k)) continue;
+            if (!std.mem.startsWith(u8, k, w) or !isO(k[w.len..])) continue;
+            out[n] = k;
+            n += 1;
+            placed[j] = true;
+            break;
+        }
+        out[n] = w;
+        n += 1;
+        placed[i] = true;
+    }
+    @memcpy(items, out[0..n]);
+}
+
+const o_vowel = "\u{0993}"; // ও
+const o_kar = "\u{09CB}"; // ো
+
+fn isO(s: []const u8) bool {
+    return std.mem.eql(u8, s, o_vowel) or std.mem.eql(u8, s, o_kar);
+}
+
+/// Words in ও / ো attested in the Wikipedia corpus that Avro's lexicon mostly
+/// lacks (যদিও, তবুও, আমাদেরও), byte-sorted. `zig build o-words` regenerates it.
+const o_words: []const []const u8 = @import("AutoComplete/o_words.zon");
+
+fn keepsO(self: *const AutoComplete, word: []const u8) bool {
+    if (!std.mem.endsWith(u8, word, o_vowel) and !std.mem.endsWith(u8, word, o_kar)) return false;
+    if (self.contains(word)) return true;
+    return std.sort.binarySearch([]const u8, o_words, word, struct {
+        fn order(w: []const u8, item: []const u8) std.math.Order {
+            return std.mem.order(u8, w, item);
+        }
+    }.order) != null;
 }
 
 fn listHas(items: []const []const u8, word: []const u8) bool {
@@ -620,6 +673,10 @@ test "joinSuffix" {
     const y = try joinSuffix(a, "বাংলা", "র");
     defer a.free(y);
     try testing.expectEqualStrings("বাংলার", y);
+}
+
+test "o_words is byte-sorted, for keepsO's binary search" {
+    for (o_words[1..], o_words[0 .. o_words.len - 1]) |w, prev| try testing.expect(std.mem.order(u8, prev, w) == .lt);
 }
 
 test "levenshtein" {

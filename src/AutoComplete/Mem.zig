@@ -228,24 +228,3 @@ test "Avro suggestions: emoticon autocorrect" {
     defer c.deinit();
     try testing.expectEqualStrings(":)", c.items[0]);
 }
-
-
-test "Avro suggestions: golden first candidates for common words" {
-    const m = try Mem.create(testing.allocator);
-    defer m.destroy(testing.allocator);
-    const cases = [_][2][]const u8{
-        .{ "ami", "আমি" },       .{ "tumi", "তুমি" },     .{ "bangla", "বাংলা" },
-        .{ "kemon", "কেমন" },    .{ "bhalo", "ভাল" },     .{ "ki", "কি" },
-        .{ "amar", "আমার" },     .{ "desh", "দেশ" },      .{ "bhasha", "ভাষা" },
-        .{ "shonar", "সোনার" },  .{ "gan", "গান" },       .{ "ekhon", "এখন" },
-        .{ "kotha", "কথা" },     .{ "manush", "মানুষ" },  .{ "dhonnobad", "ধন্যবাদ" },
-    };
-    for (cases) |c| {
-        var got = try expectSuggest(m, c[0]);
-        defer got.deinit();
-        testing.expectEqualStrings(c[1], got.items[0]) catch |err| {
-            std.debug.print("{s}: want {s}, got {s}\n", .{ c[0], c[1], got.items[0] });
-            return err;
-        };
-    }
-}

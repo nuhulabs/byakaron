@@ -53,9 +53,15 @@ fn isPunctuationAscii(c: u8) bool {
 pub fn regexFor(allocator: std.mem.Allocator, term: []const u8) ![]u8 {
     var fixed: std.ArrayList(u8) = .empty;
     defer fixed.deinit(allocator);
+    // `fixed` as typed. Avro always types a capital `O` as a vowel (ো after a
+    // consonant, else ও), where `o` may be silent. iAvro lowercases it, so its
+    // search made the O optional and `taderoO` / `taderoOOO` still found তাদের.
+    var typed: std.ArrayList(u8) = .empty;
+    defer typed.deinit(allocator);
     for (term) |c| {
         if (c < 0x80 and inSet(grammar.casesensitive, c)) continue;
         try fixed.append(allocator, if (c < 0x80) std.ascii.toLower(c) else c);
+        try typed.append(allocator, c);
     }
     const s = fixed.items;
 
@@ -64,8 +70,20 @@ pub fn regexFor(allocator: std.mem.Allocator, term: []const u8) ![]u8 {
     var cur: usize = 0;
     while (cur < s.len) : (cur += 1) {
         const start = cur;
+        const next: u8 = if (start + 1 < s.len) typed.items[start + 1] else 0;
+        if (typed.items[start] == 'O' and next != 'I' and next != 'U') {
+            // A capital `O` (not Avro's `OI` / `OU`): the vowel, required.
+            try out.appendSlice(allocator, capital_o);
+            try out.appendSlice(allocator, pattern_tail);
+            continue;
+        }
         var matched = false;
         var chunk_len: usize = @min(max_pattern_len, s.len - start);
+        // A chunk never swallows a later capital `O`.
+        for (start + 1..start + chunk_len) |p| if (typed.items[p] == 'O') {
+            chunk_len = p - start;
+            break;
+        };
         while (chunk_len > 0 and !matched) : (chunk_len -= 1) {
             const end = start + chunk_len;
             const pattern = grammar.patterns[pattern_index.get(s[start..end]) orelse continue];
@@ -86,6 +104,9 @@ pub fn regexFor(allocator: std.mem.Allocator, term: []const u8) ![]u8 {
     }
     return out.toOwnedSlice(allocator);
 }
+
+/// What a capital `O` searches for: `o`'s spellings, not optional and without অ.
+const capital_o = "([ওো]|(য়ো?))";
 
 fn ruleApplies(rule: Grammar.Rule, s: []const u8, start: usize, end: usize) bool {
     const len: isize = @intCast(s.len);

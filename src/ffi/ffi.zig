@@ -907,13 +907,13 @@ test "composer ABI: type, draw, commit, settings, personal words" {
     byakaron_composer_state(c, &st);
     try testing.expectEqual(@as(c_int, 1), st.composing);
     try testing.expectEqual(@as(c_int, 1), st.panel_visible);
-    try testing.expectEqualStrings("ভাল", std.mem.span(st.preedit));
+    try testing.expectEqualStrings("ভালো", std.mem.span(st.preedit));
     try testing.expect(st.candidate_count > 1);
-    try testing.expectEqualStrings("ভাল", std.mem.span(st.candidates[0]));
+    try testing.expectEqualStrings("ভালো", std.mem.span(st.candidates[0]));
 
     const r = byakaron_composer_key(c, 1, 0, 0); // space
     try testing.expectEqual(@as(c_int, 1), r.handled);
-    try testing.expectEqualStrings("ভাল ", std.mem.span(r.commit));
+    try testing.expectEqualStrings("ভালো ", std.mem.span(r.commit));
 
     try testing.expectEqual(@as(c_int, 0), byakaron_settings_set(c, "{\"suggestions\":false}"));
     const json = byakaron_settings_get(c).?;

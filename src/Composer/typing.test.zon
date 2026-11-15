@@ -1,0 +1,45 @@
+// What typing a word and pressing space commits, with word suggestions on
+// (Avro dictionary mode: the highlighted candidate) and off (phonetic mode: the
+// exact transliteration). Run by `zig build test` (Composer.zig), both modes.
+.{
+    // Common words.
+    .{ .typed = "ami", .suggestions = "আমি", .phonetic = "আমি" },
+    .{ .typed = "tumi", .suggestions = "তুমি", .phonetic = "তুমি" },
+    .{ .typed = "bangla", .suggestions = "বাংলা", .phonetic = "বাংলা" },
+    .{ .typed = "kemon", .suggestions = "কেমন", .phonetic = "কেমন" },
+    .{ .typed = "bhalo", .suggestions = "ভালো", .phonetic = "ভাল" },
+    .{ .typed = "bhalO", .suggestions = "ভালো", .phonetic = "ভালো" },
+    .{ .typed = "ki", .suggestions = "কি", .phonetic = "কি" },
+    .{ .typed = "amar", .suggestions = "আমার", .phonetic = "আমার" },
+    .{ .typed = "desh", .suggestions = "দেশ", .phonetic = "দেশ" },
+    .{ .typed = "bhasha", .suggestions = "ভাষা", .phonetic = "ভাশা" },
+    .{ .typed = "shonar", .suggestions = "সোনার", .phonetic = "শনার" },
+    .{ .typed = "gan", .suggestions = "গান", .phonetic = "গান" },
+    .{ .typed = "ekhon", .suggestions = "এখন", .phonetic = "এখন" },
+    .{ .typed = "kotha", .suggestions = "কথা", .phonetic = "কথা" },
+    .{ .typed = "manush", .suggestions = "মানুষ", .phonetic = "মানুশ" },
+    .{ .typed = "dhonnobad", .suggestions = "ধন্যবাদ", .phonetic = "ধন্নবাদ" },
+    
+    // A final typed `o` is kept when a real word keeps it (as ো or ও), and
+    // otherwise is Avro's silent inherent vowel. A capital `O` is always a
+    // vowel, however many are typed.
+    .{ .typed = "jodi", .suggestions = "যদি", .phonetic = "জদি" },
+    .{ .typed = "jodio", .suggestions = "যদিও", .phonetic = "জদিও" },
+    .{ .typed = "koro", .suggestions = "করো", .phonetic = "কর" },
+    .{ .typed = "kalo", .suggestions = "কালো", .phonetic = "কাল" },
+    .{ .typed = "gelo", .suggestions = "গেলো", .phonetic = "গেল" },
+    .{ .typed = "hoyto", .suggestions = "হয়তো", .phonetic = "হয়ত" },
+    .{ .typed = "keno", .suggestions = "কেন", .phonetic = "কেন" },
+    .{ .typed = "amader", .suggestions = "আমাদের", .phonetic = "আমাদের" },
+    .{ .typed = "amadero", .suggestions = "আমাদেরও", .phonetic = "আমাদের" },
+    .{ .typed = "amaderO", .suggestions = "আমাদেরও", .phonetic = "আমাদেরো" },
+    .{ .typed = "amaderoO", .suggestions = "আমাদেরও", .phonetic = "আমাদেরও" },
+    .{ .typed = "amaderoOO", .suggestions = "আমাদেরওও", .phonetic = "আমাদেরওও" },
+    .{ .typed = "tader", .suggestions = "তাদের", .phonetic = "তাদের" },
+    .{ .typed = "tadero", .suggestions = "তাদেরও", .phonetic = "তাদের" },
+    .{ .typed = "taderoO", .suggestions = "তাদেরও", .phonetic = "তাদেরও" },
+    .{ .typed = "taderoOOO", .suggestions = "তাদেরওওও", .phonetic = "তাদেরওওও" },
+    .{ .typed = "deshero", .suggestions = "দেশেরও", .phonetic = "দেশের" },
+    .{ .typed = "Ora", .suggestions = "ওরা", .phonetic = "ওরা" },
+    .{ .typed = "OI", .suggestions = "ঐ", .phonetic = "ঐ" },
+}

@@ -509,7 +509,7 @@ test "typing shows Avro's candidates, highlighted one inline" {
     defer h.deinit();
     try h.typed("bhalo");
     try testing.expect(h.c.panelVisible());
-    try testing.expectEqualStrings("ভাল", h.c.preedit());
+    try testing.expectEqualStrings("ভালো", h.c.preedit());
     try testing.expect(h.c.candidates().len > 5);
 }
 
@@ -607,6 +607,29 @@ test "phonetic mode: exact transliteration, no panel" {
     try testing.expect(!h.c.panelVisible());
     try testing.expectEqualStrings("ভালো", h.c.preedit());
     try testing.expectEqualStrings("ভালো ", (try h.c.key(.space, .{})).commit);
+}
+
+const Typing = struct { typed: []const u8, suggestions: []const u8, phonetic: []const u8 };
+const typing_cases: []const Typing = @import("Composer/typing.test.zon");
+
+test "space commits each word in typing.test.zon, suggestions on and off" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    var failed: usize = 0;
+    for ([_]bool{ true, false }) |suggestions| {
+        try h.c.setSettings(.{ .suggestions = suggestions });
+        for (typing_cases) |c| {
+            try h.typed(c.typed);
+            const commit = (try h.c.key(.space, .{})).commit;
+            const want = if (suggestions) c.suggestions else c.phonetic;
+            if (!std.mem.endsWith(u8, commit, " ") or !std.mem.eql(u8, want, commit[0 .. commit.len - 1])) {
+                std.log.err("{s} (suggestions {}): want {s}, got {s}", .{ c.typed, suggestions, want, commit });
+                failed += 1;
+            }
+        }
+    }
+    try testing.expectEqual(@as(usize, 0), failed);
 }
 
 test "digits: Bangla inside and outside words, or raw outside" {
