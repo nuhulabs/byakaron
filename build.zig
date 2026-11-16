@@ -756,6 +756,7 @@ fn module(b: *std.Build, exported: bool, name: []const u8, options: std.Build.Mo
 /// On a Linux host, src/build/linux.zig drives the rest (it replaces
 /// the old apps/linux/scripts/*.sh):
 ///   zig build package-linux    → zig-out/pkg/byakaron_<ver>_<arch>.deb (alias linux-deb)
+///   zig build package-linux-arch → zig-out/pkg/byakaron-<ver>-1-<arch>.pkg.tar.zst (Arch)
 ///   zig build install-linux    → sudo: install into /usr
 ///   zig build uninstall-linux  → sudo: remove it
 ///   zig build linux-deps       → sudo: apt packages (`-- --test` adds the test toolchain)
@@ -1002,6 +1003,7 @@ fn addLinux(
     // `zig build` itself.
     const package_step = b.step("package-linux", "Build zig-out/pkg/byakaron_<ver>_<arch>.deb (always ReleaseFast)");
     const deb_alias_step = b.step("linux-deb", "Alias for package-linux");
+    const arch_package_step = b.step("package-linux-arch", "Build zig-out/pkg/byakaron-<ver>-1-<arch>.pkg.tar.zst for Arch Linux (always ReleaseFast)");
     const flatpak_step = b.step("package-linux-flatpak", "Build zig-out/pkg/dev.nuhu.labs.Byakaron.flatpak, the GTK app only (needs flatpak)");
     const install_step = b.step("install-linux", "Install the IBus engine + GTK app into /usr (sudo -E; ReleaseFast; -Dlinux-install-db for Byakaron.db)");
     const uninstall_step = b.step("uninstall-linux", "Remove the system install (sudo)");
@@ -1013,7 +1015,7 @@ fn addLinux(
     deb_alias_step.dependOn(package_step);
 
     if (!host_linux) {
-        for ([_]*std.Build.Step{ package_step, flatpak_step, install_step, uninstall_step, deps_step, run_step, ci_step, e2e_step, install_test_step, linux_smoke_step }) |s| {
+        for ([_]*std.Build.Step{ package_step, arch_package_step, flatpak_step, install_step, uninstall_step, deps_step, run_step, ci_step, e2e_step, install_test_step, linux_smoke_step }) |s| {
             s.dependOn(&b.addFail("this step needs a Linux host").step);
         }
         return;
@@ -1067,6 +1069,22 @@ fn addLinux(
     package.step.dependOn(install_spell_db);
     package_step.dependOn(&b.addInstallDirectory(.{ .source_dir = deb_dir, .install_dir = .prefix, .install_subdir = "pkg" }).step);
 
+    // The same payload as a pacman package, for Arch Linux and the systems
+    // built on it. Like the .deb, no Fcitx5 addon.
+    const arch_package = b.addRunArtifact(tool);
+    arch_package.addArgs(&.{ "package-arch", root });
+    arch_package.addFileArg(rel_ime.getEmittedBin());
+    arch_package.addFileArg(rel_app.getEmittedBin());
+    arch_package.addFileArg(spell_db);
+    const arch_dir = arch_package.addOutputDirectoryArg("arch");
+    arch_package.setEnvironmentVariable("BYK_PACMAN_ARCH", switch (arch) {
+        .x86_64 => "x86_64",
+        .aarch64 => "aarch64",
+    });
+    for (resources) |r| arch_package.addFileInput(b.path(r));
+    arch_package.step.dependOn(install_spell_db);
+    arch_package_step.dependOn(&b.addInstallDirectory(.{ .source_dir = arch_dir, .install_dir = .prefix, .install_subdir = "pkg" }).step);
+
     const install_db = b.option(bool, "linux-install-db", "install-linux: build Byakaron.db and install it too (default: only if zig-out/db/Byakaron.db exists)") orelse false;
     const install = b.addRunArtifact(tool);
     install.addArgs(&.{ "install", root });
@@ -1111,6 +1129,10 @@ fn addLinux(
     ci.step.dependOn(linux_test_step);
     ci.step.dependOn(&install_smoke.step);
     if (fcitx_so != null) ci.step.dependOn(fcitx_step);
+    // Without Fcitx5's headers the addon is not built, and a byakaron.so left in
+    // zig-out by an earlier build (against a Fcitx5 since removed) is not this
+    // build's: linux-ci must not check it.
+    ci.setEnvironmentVariable("BYK_FCITX_BUILT", if (fcitx_so != null) "1" else "0");
     if (have_wayland) ci.step.dependOn(wayland_step);
     ci_step.dependOn(&ci.step);
 
@@ -1139,6 +1161,7 @@ fn addLinux(
     // `-Dlinux-deb=` reuses an already-packaged .deb (cd/release) instead of
     // building another one via the package step.
     const external_deb = b.option([]const u8, "linux-deb", "Existing .deb (or dir) for linux-install-test; skip re-packaging");
+    const external_arch_pkg = b.option([]const u8, "linux-arch-pkg", "Existing Arch .pkg.tar.zst (or dir) for linux-install-test; skip re-packaging");
     const static_tool = b.addExecutable(.{
         .name = "linux-static",
         .root_module = b.createModule(.{
@@ -1161,6 +1184,12 @@ fn addLinux(
         matrix.addArg(p);
     } else {
         matrix.addDirectoryArg(deb_dir);
+    }
+    // Arch Linux has x86_64 images only, so the Arch package is tested there.
+    if (external_arch_pkg) |p| {
+        matrix.addArg(b.fmt("--arch-pkg={s}", .{p}));
+    } else if (arch == .x86_64) {
+        matrix.addPrefixedDirectoryArg("--arch-pkg=", arch_dir);
     }
     matrix.addPrefixedFileArg("--tool=", static_tool.getEmittedBin());
     matrix.addPassthruArgs(); // optional docker images after `--`

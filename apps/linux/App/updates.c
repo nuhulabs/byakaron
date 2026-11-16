@@ -27,10 +27,11 @@ typedef struct {
     gboolean gone;        /* the window is closing: no more UI */
     gboolean asked;
     gchar *base;
-    gchar *installed;     /* dpkg version, e.g. 1:0.1.5 */
+    BykPackage package;   /* which package manager installed it */
+    gchar *installed;     /* its version, e.g. 1:0.1.5 (deb) or 27.0.0-1 (Arch) */
     gchar *tag;           /* v27.0.0 */
-    gchar *version;       /* 1:27.0.0 */
-    gchar *deb_name;      /* byakaron_amd64.deb */
+    gchar *version;       /* 1:27.0.0 or 27.0.0-1 */
+    gchar *file_name;     /* the release file: byakaron_amd64.deb, byakaron_x86_64.pkg.tar.zst */
     gchar *dir;           /* the download's temporary folder */
 } BykUpdates;
 
@@ -39,7 +40,7 @@ byk_updates_clear_download (BykUpdates *u)
 {
     if (u->dir == NULL)
         return;
-    gchar *deb = g_build_filename (u->dir, u->deb_name, NULL);
+    gchar *deb = g_build_filename (u->dir, u->file_name, NULL);
     gchar *sums = g_build_filename (u->dir, "SHA256SUMS", NULL);
     g_unlink (deb);
     g_unlink (sums);
@@ -59,7 +60,7 @@ byk_updates_free (gpointer data)
     g_free (u->installed);
     g_free (u->tag);
     g_free (u->version);
-    g_free (u->deb_name);
+    g_free (u->file_name);
     g_free (u);
 }
 
@@ -164,13 +165,24 @@ byk_last_line (const gchar *output)
     return last != NULL ? last : g_strdup ("no output");
 }
 
+/* "<what> needs curl: <the command that installs it here>", in a static
+ * buffer that the next call overwrites. */
+static const gchar *
+byk_updates_curl_hint (BykUpdates *u, const gchar *what)
+{
+    static gchar text[128];
+    g_snprintf (text, sizeof text, "%s needs curl: %s", what,
+                u->package == BYK_PACKAGE_ARCH ? "sudo pacman -S curl" : "sudo apt install curl");
+    return text;
+}
+
 /* ── 4. installed ────────────────────────────────────────────────────────── */
 
 static void
 on_installed (BykUpdates *u, gint status, const gchar *output)
 {
-    gchar *now = byk_update_installed_version ();
-    gchar *shown = byk_update_shown_version (u->version);
+    gchar *now = byk_update_installed_version (NULL);
+    gchar *shown = byk_update_shown_version (u->package, u->version);
     gchar *text;
 
     byk_updates_clear_download (u);
@@ -202,20 +214,26 @@ on_installed (BykUpdates *u, gint status, const gchar *output)
 static void
 byk_updates_install (BykUpdates *u)
 {
-    gchar *deb = g_build_filename (u->dir, u->deb_name, NULL);
+    gchar *deb = g_build_filename (u->dir, u->file_name, NULL);
     gchar *apt = g_find_program_in_path ("apt-get");
+    gchar *pacman = g_find_program_in_path ("pacman");
     gchar *pkexec = g_find_program_in_path ("pkexec");
     gboolean root = geteuid () == 0;
     gboolean started = FALSE;
 
-    /* pkexec's prompt names the program, so it is apt-get itself (not env):
-     * "Authentication is needed to run /usr/bin/apt-get as the super user".
-     * The lock timeout waits out Software Updater instead of failing. */
-    if (apt != NULL && (root || pkexec != NULL)) {
+    /* pkexec's prompt names the program, so it is apt-get or pacman itself
+     * (not env): "Authentication is needed to run /usr/bin/apt-get as the
+     * super user". apt's lock timeout waits out Software Updater instead of
+     * failing; pacman has none, and says so if another pacman holds the lock. */
+    if (u->package == BYK_PACKAGE_DEB && apt != NULL && (root || pkexec != NULL)) {
         const gchar *as_root[] = { apt, "-o", "DPkg::Lock::Timeout=120",
                                    "install", "-y", deb, NULL };
         const gchar *with_prompt[] = { pkexec, apt, "-o", "DPkg::Lock::Timeout=120",
                                        "install", "-y", deb, NULL };
+        started = byk_updates_run (u, root ? as_root : with_prompt, on_installed);
+    } else if (u->package == BYK_PACKAGE_ARCH && pacman != NULL && (root || pkexec != NULL)) {
+        const gchar *as_root[] = { pacman, "-U", "--noconfirm", deb, NULL };
+        const gchar *with_prompt[] = { pkexec, pacman, "-U", "--noconfirm", deb, NULL };
         started = byk_updates_run (u, root ? as_root : with_prompt, on_installed);
     }
     if (started) {
@@ -233,6 +251,7 @@ byk_updates_install (BykUpdates *u)
     }
     g_free (deb);
     g_free (apt);
+    g_free (pacman);
     g_free (pkexec);
 }
 
@@ -261,14 +280,14 @@ verify_in_thread (GTask *task, gpointer source, gpointer task_data, GCancellable
 {
     BykUpdates *u = task_data;
     gchar *sums_path = g_build_filename (u->dir, "SHA256SUMS", NULL);
-    gchar *deb_path = g_build_filename (u->dir, u->deb_name, NULL);
+    gchar *deb_path = g_build_filename (u->dir, u->file_name, NULL);
     gchar *sums = NULL;
     gchar *want = NULL, *got = NULL;
     (void) source;
     (void) cancel;
 
     if (g_file_get_contents (sums_path, &sums, NULL, NULL))
-        want = byk_update_sum_for (sums, u->deb_name);
+        want = byk_update_sum_for (sums, u->file_name);
     if (want != NULL)
         got = byk_file_sha256 (deb_path);
     g_task_return_boolean (task, want != NULL && g_strcmp0 (want, got) == 0);
@@ -340,9 +359,9 @@ byk_updates_download (BykUpdates *u)
         g_error_free (error);
         return;
     }
-    deb_url = g_strdup_printf ("%s/releases/download/%s/%s", u->base, u->tag, u->deb_name);
+    deb_url = g_strdup_printf ("%s/releases/download/%s/%s", u->base, u->tag, u->file_name);
     sums_url = g_strdup_printf ("%s/releases/download/%s/SHA256SUMS", u->base, u->tag);
-    deb_path = g_build_filename (u->dir, u->deb_name, NULL);
+    deb_path = g_build_filename (u->dir, u->file_name, NULL);
     sums_path = g_build_filename (u->dir, "SHA256SUMS", NULL);
     const gchar *argv[] = { "curl", "-fsSL", "--max-time", "900",
                             "-o", deb_path, deb_url, "-o", sums_path, sums_url, NULL };
@@ -350,7 +369,7 @@ byk_updates_download (BykUpdates *u)
     u->busy = TRUE;
     g_object_ref (u->bar);
     if (byk_updates_run (u, argv, on_downloaded)) {
-        shown = byk_update_shown_version (u->version);
+        shown = byk_update_shown_version (u->package, u->version);
         text = g_strdup_printf ("Downloading Byakaron %s (about 90 MB)…", shown);
         byk_updates_show (u, GTK_MESSAGE_INFO, text, FALSE, FALSE, FALSE);
         g_free (text);
@@ -358,8 +377,8 @@ byk_updates_download (BykUpdates *u)
     } else {
         byk_updates_clear_download (u);
         byk_updates_done (u);
-        byk_updates_show (u, GTK_MESSAGE_WARNING,
-                          "Updating needs curl: sudo apt install curl", FALSE, TRUE, FALSE);
+        byk_updates_show (u, GTK_MESSAGE_WARNING, byk_updates_curl_hint (u, "Updating"),
+                          FALSE, TRUE, FALSE);
     }
     g_free (deb_url);
     g_free (sums_url);
@@ -373,8 +392,8 @@ static void
 on_checked (BykUpdates *u, gint status, const gchar *output)
 {
     gchar *tag = status == 0 ? byk_update_tag_from_url (g_strstrip ((gchar *) output)) : NULL;
-    gchar *version = byk_update_deb_version (tag);
-    gchar *mine = byk_update_shown_version (u->installed);
+    gchar *version = byk_update_package_version (u->package, tag);
+    gchar *mine = byk_update_shown_version (u->package, u->installed);
     GSettings *prefs = byk_prefs_try_open ();
 
     u->busy = FALSE;
@@ -383,8 +402,8 @@ on_checked (BykUpdates *u, gint status, const gchar *output)
                              g_get_real_time () / G_USEC_PER_SEC);
     g_clear_object (&prefs);
 
-    if (version != NULL && byk_update_newer (version, u->installed)) {
-        gchar *shown = byk_update_shown_version (version);
+    if (version != NULL && byk_update_newer (u->package, version, u->installed)) {
+        gchar *shown = byk_update_shown_version (u->package, version);
         gchar *text = g_strdup_printf ("Byakaron %s is available. You have %s.", shown, mine);
         g_free (u->tag);
         g_free (u->version);
@@ -419,18 +438,24 @@ byk_updates_check (GtkWidget *bar, gboolean asked)
     u->asked = asked;
 
     g_free (u->installed);
-    u->installed = byk_update_installed_version ();
+    u->installed = byk_update_installed_version (&u->package);
     if (u->installed == NULL) {
         if (asked)
             byk_updates_show (u, GTK_MESSAGE_INFO,
-                              "This Byakaron was not installed from a .deb, so it cannot update itself.",
+                              "This Byakaron was not installed from a package (.deb or Arch), "
+                              "so it cannot update itself.",
                               FALSE, TRUE, FALSE);
         return;
     }
-    if (u->deb_name == NULL)
-        u->deb_name = byk_update_deb_name ();
-    if (u->deb_name == NULL)
+    if (u->file_name == NULL)
+        u->file_name = byk_update_package_name (u->package);
+    if (u->file_name == NULL) {
+        if (asked)
+            byk_updates_show (u, GTK_MESSAGE_INFO,
+                              "There is no Byakaron package for this computer to update from yet.",
+                              FALSE, TRUE, FALSE);
         return;
+    }
 
     /* /releases/latest redirects to /releases/tag/<newest normal release>;
      * the redirect itself is the answer, so it is not followed. */
@@ -442,8 +467,7 @@ byk_updates_check (GtkWidget *bar, gboolean asked)
     if (!byk_updates_run (u, argv, on_checked)) {
         byk_updates_done (u);
         if (asked)
-            byk_updates_show (u, GTK_MESSAGE_WARNING,
-                              "Checking for updates needs curl: sudo apt install curl",
+            byk_updates_show (u, GTK_MESSAGE_WARNING, byk_updates_curl_hint (u, "Checking for updates"),
                               FALSE, TRUE, FALSE);
     }
     g_free (latest);
@@ -473,7 +497,7 @@ static void
 byk_updates_restart (void)
 {
     gchar *self = g_file_read_link ("/proc/self/exe", NULL);
-    /* dpkg has just replaced the file: the link now ends in " (deleted)". */
+    /* dpkg or pacman has just replaced the file: the link now ends in " (deleted)". */
     if (self != NULL && g_str_has_suffix (self, " (deleted)"))
         self[strlen (self) - strlen (" (deleted)")] = '\0';
     if (self != NULL && !g_file_test (self, G_FILE_TEST_IS_EXECUTABLE))

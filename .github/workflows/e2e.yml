@@ -1,6 +1,7 @@
 # e2e: the slow Linux end-to-end checks, run by hand (Actions → e2e → Run).
 #   wayland        type into GTK3/GTK4 apps on a headless GNOME Shell
-#   install-matrix package a .deb and install it in clean Docker images
+#   install-matrix package the .deb and the Arch package, install them in clean
+#                  Docker images (Ubuntu, Debian, archlinux)
 name: e2e
 
 on:
@@ -54,11 +55,13 @@ jobs:
       # Tiny wiki dump keeps Byakaron.db cheap.
       - name: e2e
         run: |
-          zig build package-linux \
+          zig build package-linux package-linux-arch \
             -Dlinux-arch=x86_64 \
             -Dwiki-dump=.github/ci/bnwiki-tiny.xml
           deb=$(echo zig-out/pkg/byakaron_*_amd64.deb)
+          pkg=$(echo zig-out/pkg/byakaron-*-x86_64.pkg.tar.zst)
           zig build linux-install-test \
             -Dlinux-arch=x86_64 \
             -Dspell-db=zig-out/db/Byakaron.db \
-            -Dlinux-deb="$deb"
+            -Dlinux-deb="$deb" \
+            -Dlinux-arch-pkg="$pkg"

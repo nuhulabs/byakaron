@@ -35,6 +35,41 @@ struct _BykSetupPage {
 
 G_DEFINE_TYPE (BykSetupPage, byk_setup_page, GTK_TYPE_BOX)
 
+/* How to make IBus start with a desktop that is not GNOME. Debian and Ubuntu
+ * have im-config; Arch has none, and there KDE Plasma picks the input method
+ * in its own settings, other desktops start the daemon at login. */
+static const gchar *
+byk_setup_ibus_start_hint (void)
+{
+    gchar *im_config = g_find_program_in_path ("im-config");
+    const gchar *desktop = g_getenv ("XDG_CURRENT_DESKTOP");
+    const gchar *hint;
+
+    if (im_config != NULL)
+        hint = "In a terminal: im-config -n ibus, then log out and back in";
+    else if (desktop != NULL && strstr (desktop, "KDE") != NULL)
+        hint = "System Settings → Keyboard → Virtual Keyboard → IBus Wayland, "
+               "then log out and back in";
+    else
+        hint = "Start ibus-daemon -drxR when you log in (your desktop’s autostart), "
+               "then log out and back in";
+    g_free (im_config);
+    return hint;
+}
+
+/* The command that installs IBus here: pacman on Arch, apt elsewhere. */
+static const gchar *
+byk_setup_ibus_install_hint (void)
+{
+    gchar *apt = g_find_program_in_path ("apt-get");
+    gchar *pacman = g_find_program_in_path ("pacman");
+    const gboolean arch = apt == NULL && pacman != NULL;
+    g_free (apt);
+    g_free (pacman);
+    return arch ? "ibus-setup not found: sudo pacman -S ibus"
+                : "ibus-setup not found: sudo apt install ibus";
+}
+
 /* ── detection ───────────────────────────────────────────────────────────── */
 
 /*
@@ -201,7 +236,7 @@ on_open_settings_clicked (GtkButton *button, gpointer user_data)
     if (found == NULL) {
         byk_toast_show (GTK_LABEL (self->toast),
                         self->gnome ? "GNOME Settings not found"
-                                    : "ibus-setup not found: sudo apt install ibus");
+                                    : byk_setup_ibus_install_hint ());
         return;
     }
     g_free (found);
@@ -302,7 +337,7 @@ byk_setup_page_build_status (BykSetupPage *self)
     self->install_hint = byk_row (
         NULL,
         "Install the input method",
-        "Paste the command into a terminal, or install the .deb",
+        "Paste the command into a terminal: it installs the package for this system",
         copy);
     byk_hide_until_shown (self->install_hint);
     byk_box_add (list, self->install_hint);
@@ -328,8 +363,7 @@ byk_setup_page_build_steps (BykSetupPage *self)
         /* Raspberry Pi OS, KDE, Xfce: IBus is not started by default and has
          * its own preferences window. */
         byk_box_add (list, byk_setup_step_row (
-            1, "Make IBus start with your desktop",
-            "In a terminal: im-config -n ibus, then log out and back in"));
+            1, "Make IBus start with your desktop", byk_setup_ibus_start_hint ()));
         byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
         byk_box_add (list, byk_setup_step_row (
             2, "IBus Preferences \u2192 Input Method \u2192 Add \u2192 Bangla \u2192 Byakaron",
@@ -466,7 +500,7 @@ byk_setup_page_refresh (BykSetupPage *self)
     case BYK_KEYBOARD_NO_IBUS:
         icon = "dialog-warning-symbolic";
         title = "IBus isn\u2019t running";
-        subtitle = "Run im-config -n ibus in a terminal, then log out and back in.";
+        subtitle = byk_setup_ibus_start_hint ();
         css = "warning";
         break;
     case BYK_KEYBOARD_MISSING:

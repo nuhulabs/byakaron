@@ -20,7 +20,8 @@ For a real release:
    - Linux: `.version` in `build.zig.zon` (e.g. `27.0.0-dev` → `27.0.0`), plus a
      `<release>` entry with notes in the AppStream metainfo. The `.deb`,
      `byakaron --version` and the IBus component all take the zon version; the
-     `.deb` adds epoch 1 itself (`1:27.0.0`). After the release, set it to the
+     `.deb` adds epoch 1 itself (`1:27.0.0`), the Arch package its pkgrel
+     (`27.0.0-1`). After the release, set it to the
      next prerelease (`28.0.0-dev`).
    - macOS: `CFBundleShortVersionString` in the Xcode project (`MARKETING_VERSION`).
    - Android: `versionName` / `versionCode` in `apps/android/keyboard/app/build.gradle.kts`
@@ -45,6 +46,7 @@ For a real release:
    | Asset | Built by |
    | --- | --- |
    | `byakaron_amd64.deb`, `byakaron_arm64.deb` | `zig build package-linux` (renamed at publish) |
+   | `byakaron_x86_64.pkg.tar.zst` (Arch Linux) | `zig build package-linux-arch` (renamed at publish) |
    | `Byakaron.dmg` | `zig build release-macos` |
    | `Byakaron-Setup.exe` | `zig build windows` |
    | `Byakaron.apk`, `Byakaron.aab` | `zig build release-android` |
