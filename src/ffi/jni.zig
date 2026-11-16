@@ -3,12 +3,13 @@
 
 const std = @import("std");
 const ffi = @import("ffi.zig");
+const spell_ffi = @import("spell.zig");
 const jni = @import("jni");
 
 pub const NativeEngineSession = struct {
     allocator: std.mem.Allocator,
     transliteration_engine: ?*ffi.Engine,
-    spell_engine: ?*ffi.SpellHandle,
+    spell_engine: ?*spell_ffi.SpellHandle,
     autocomplete_engine: ?*ffi.AutoCompleteHandle,
 };
 
@@ -77,12 +78,12 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeCreate(
     const engine_mode: c_int = @intCast(mode);
     const trans_engine = ffi.byakaron_engine_create(engine_mode);
 
-    var spell_engine: ?*ffi.SpellHandle = null;
+    var spell_engine: ?*spell_ffi.SpellHandle = null;
     if (db_path != null and !j_env.isSameObject(db_path, null)) {
         var is_copy: bool = false;
         const path_cstr = j_env.getStringUTFChars(db_path, &is_copy);
         defer j_env.releaseStringUTFChars(db_path, path_cstr);
-        spell_engine = ffi.byakaron_spell_create(path_cstr);
+        spell_engine = spell_ffi.byakaron_spell_create(path_cstr);
     }
 
     // Embedded autocomplete (Avro dictionary + iAvro suggestions). Always created,
@@ -110,7 +111,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeDestroy(
 
     const session = sessionFromHandle(handle);
     if (session.transliteration_engine) |e| ffi.byakaron_engine_destroy(e);
-    if (session.spell_engine) |s| ffi.byakaron_spell_destroy(s);
+    if (session.spell_engine) |s| spell_ffi.byakaron_spell_destroy(s);
     if (session.autocomplete_engine) |a| ffi.byakaron_ac_destroy(a);
     session.allocator.destroy(session);
 }
@@ -156,7 +157,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeProcessKeystroke(
 
     var suggestions: [16][*:0]u8 = undefined;
     const count: usize = if (session.spell_engine != null and suggestion_limit > 0)
-        ffi.byakaron_spell_suggest_list(
+        spell_ffi.byakaron_spell_suggest_list(
             session.spell_engine,
             composed,
             @intCast(suggestion_limit),
@@ -237,7 +238,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeProcessKeystrokeCtx(
 
     var suggestions: [32][*:0]u8 = undefined;
     const count: usize = if (session.spell_engine != null and suggestion_limit > 0)
-        ffi.byakaron_spell_suggest_ctx_list(
+        spell_ffi.byakaron_spell_suggest_ctx_list(
             session.spell_engine,
             composed,
             s_prev2,
@@ -305,7 +306,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeSuggestCtx(
     defer releaseNullableCStr(&j_env, next, s_next, ownedn);
 
     var suggestions: [32][*:0]u8 = undefined;
-    const count = ffi.byakaron_spell_suggest_ctx_list(
+    const count = spell_ffi.byakaron_spell_suggest_ctx_list(
         session.spell_engine,
         w,
         s_prev2,
@@ -335,7 +336,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeCheck(
     const c_text = jstrToC(&j_env, text, &is_copy);
     defer j_env.releaseStringUTFChars(text, c_text);
 
-    const json = ffi.byakaron_spell_check(session.spell_engine, c_text) orelse return null;
+    const json = spell_ffi.byakaron_spell_check(session.spell_engine, c_text) orelse return null;
     defer ffi.byakaron_string_free(json);
     return j_env.newStringUTF(json);
 }
@@ -356,7 +357,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeIsCorrect(
     var is_copy: bool = false;
     const w = jstrToC(&j_env, word, &is_copy);
     defer j_env.releaseStringUTFChars(word, w);
-    return ffi.byakaron_spell_is_correct(session.spell_engine, w);
+    return spell_ffi.byakaron_spell_is_correct(session.spell_engine, w);
 }
 
 // ── P1: embedded autocomplete ───────────────────────────────────────────────
@@ -387,7 +388,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeAcPrefix(
 
     var out: [32][*:0]u8 = undefined;
     const count: usize = if (session.spell_engine != null and suggestion_limit > 0)
-        ffi.byakaron_spell_prefix_list(
+        spell_ffi.byakaron_spell_prefix_list(
             session.spell_engine,
             p,
             @intCast(suggestion_limit),
@@ -425,7 +426,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeAcContains(
     const w = jstrToC(&j_env, word, &is_copy);
     defer j_env.releaseStringUTFChars(word, w);
     if (session.spell_engine != null) {
-        return ffi.byakaron_spell_is_correct(session.spell_engine, w);
+        return spell_ffi.byakaron_spell_is_correct(session.spell_engine, w);
     }
     if (session.autocomplete_engine != null) {
         return ffi.byakaron_ac_contains(session.autocomplete_engine, w);
@@ -593,7 +594,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativePrefixSuggest(
     defer j_env.releaseStringUTFChars(prefix, p);
 
     var out: [32][*:0]u8 = undefined;
-    const count = ffi.byakaron_spell_prefix_list(
+    const count = spell_ffi.byakaron_spell_prefix_list(
         session.spell_engine,
         p,
         @intCast(suggestion_limit),
@@ -627,7 +628,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeNextWordSuggest(
     defer j_env.releaseStringUTFChars(prev_word, p);
 
     var out: [32][*:0]u8 = undefined;
-    const count = ffi.byakaron_spell_next_word_list(
+    const count = spell_ffi.byakaron_spell_next_word_list(
         session.spell_engine,
         p,
         @intCast(suggestion_limit),
@@ -666,7 +667,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeTrigramNextWordSuggest(
     defer j_env.releaseStringUTFChars(prev1, p2);
 
     var out: [32][*:0]u8 = undefined;
-    const count = ffi.byakaron_spell_trigram_next_word_list(
+    const count = spell_ffi.byakaron_spell_trigram_next_word_list(
         session.spell_engine,
         p1,
         p2,
