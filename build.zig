@@ -1636,7 +1636,9 @@ fn addIos(b: *std.Build, avro: AvroData, locale: LocaleStrings) void {
 }
 
 fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath, locale: LocaleStrings) void {
-    const step = b.step("android-libs", "Build libbyakaron.so for every Android ABI → zig-out/lib/android/jniLibs + keyboard jniLibs");
+    // Not a named step: `android`, `install-android` and `release-android` run it.
+    // Builds libbyakaron.so for every ABI → zig-out/lib/android/jniLibs + the keyboard's jniLibs.
+    const step = &b.addWriteFiles().step;
     const app_steps = [_]*std.Build.Step{
         b.step("android", "Build the Android keyboard (debug) → zig-out/pkg/Byakaron-debug.apk"),
         b.step("install-android", "Build the Android keyboard (debug) and install it on the connected device"),
