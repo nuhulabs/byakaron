@@ -3,11 +3,13 @@
 #
 # Artifacts on nuhulabs/Byakaron-Assets (stable names → /releases/latest/download/…):
 #   byakaron-linux-amd64 / byakaron-linux-arm64  → byakaron_{amd64,arm64}.deb
+#   byakaron-linux-amd64                         → byakaron_x86_64.pkg.tar.zst (Arch)
 #   byakaron-macos                               → Byakaron.dmg
 #   byakaron-windows                             → Byakaron-Setup.exe
 #   byakaron-android                             → Byakaron.apk + Byakaron.aab
 #
-# Local `zig build package-linux` still writes byakaron_<ver>_<arch>.deb; publish
+# Local `zig build package-linux` still writes byakaron_<ver>_<arch>.deb (and
+# package-linux-arch byakaron-<ver>-1-x86_64.pkg.tar.zst); publish
 # renames for the public Assets release so the website/installer never need a
 # versioned URL. Byakaron.db is baked into packages, not uploaded to Assets.
 #
@@ -205,6 +207,13 @@ jobs:
             # Stable public name so /releases/latest/download/byakaron_${arch}.deb works.
             mv -f "${matches[0]}" "byakaron_${arch}.deb"
           done
+          # The Arch Linux package (x86_64 only), under a stable name as well.
+          mapfile -t matches < <(compgen -G "byakaron-*-x86_64.pkg.tar.zst" || true)
+          [[ ${#matches[@]} -eq 1 ]] || {
+            echo "::error::expected one byakaron-*-x86_64.pkg.tar.zst, got: ${matches[*]-<none>}"
+            exit 1
+          }
+          mv -f "${matches[0]}" "byakaron_x86_64.pkg.tar.zst"
           [[ -f Byakaron.apk ]] || echo "::warning::publishing without Byakaron.apk"
           [[ -f Byakaron.aab ]] || echo "::warning::publishing without Byakaron.aab (Play Store bundle)"
           sha256sum -- * > SHA256SUMS
@@ -296,13 +305,24 @@ jobs:
           - { runner: ubuntu-latest, image: "ubuntu:20.04" }
           - { runner: ubuntu-latest, image: "ubuntu:26.04" }
           - { runner: ubuntu-24.04-arm, image: "ubuntu:24.04" }
+          - { runner: ubuntu-latest, image: "archlinux:latest" }
     steps:
       - name: curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash
         env:
           WANT: "1:${{ needs.version.outputs.version }}"  # a release: no -prerelease to map to ~
+          WANT_ARCH: "${{ needs.version.outputs.version }}-1"  # pacman's pkgver-pkgrel
           IMAGE: ${{ matrix.image }}
         run: |
-          docker run --rm -e WANT "$IMAGE" bash -c '
+          docker run --rm -e WANT -e WANT_ARCH "$IMAGE" bash -c '
+            if command -v pacman >/dev/null; then
+              # The image is behind its repositories: a full upgrade, never a partial one.
+              pacman -Syu --noconfirm -q curl >/dev/null
+              curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash
+              got=$(pacman -Q byakaron 2>/dev/null | cut -d" " -f2)
+              echo "installed: ${got:-nothing}, released: $WANT_ARCH"
+              [ "$got" = "$WANT_ARCH" ]
+              exit
+            fi
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq >/dev/null && apt-get install -y -qq curl ca-certificates >/dev/null
             curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash

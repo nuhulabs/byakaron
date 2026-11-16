@@ -79,10 +79,18 @@ jobs:
       - name: pkg
         run: zig build package-linux -Dlinux-arch=${{ matrix.zig_arch }} -Dspell-db=zig-out/db/Byakaron.db
 
+      # The same payload as a pacman package. x86_64 only: Arch Linux has no
+      # ARM images to test one in.
+      - name: pkg (arch linux)
+        if: matrix.zig_arch == 'x86_64'
+        run: zig build package-linux-arch -Dlinux-arch=x86_64 -Dspell-db=zig-out/db/Byakaron.db
+
       - uses: actions/upload-artifact@v4
         with:
           name: byakaron-linux-${{ matrix.deb_arch }}
-          path: zig-out/pkg/byakaron_*_${{ matrix.deb_arch }}.deb
+          path: |
+            zig-out/pkg/byakaron_*_${{ matrix.deb_arch }}.deb
+            zig-out/pkg/byakaron-*-x86_64.pkg.tar.zst
           if-no-files-found: error
 
   macos:
