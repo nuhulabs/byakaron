@@ -1577,7 +1577,10 @@ fn firstDir(b: *std.Build, paths: []const ?[]const u8) ?[]const u8 {
 /// byakaron_strings.h with a `Byakaron` module map) for its Xcode project.
 ///   zig build ios-libs → zig-out/lib/ios/Byakaron.xcframework
 fn addIos(b: *std.Build, avro: AvroData, locale: LocaleStrings) void {
-    const step = b.step("ios-libs", "Build Byakaron.xcframework (device + simulator) → zig-out/lib/ios/");
+    // Not a named step: `ios` runs it. Builds the engine as
+    // zig-out/lib/ios/Byakaron.xcframework.
+    const step = &b.addWriteFiles().step;
+    const ios = b.step("ios", "Build the iOS keyboard for the simulator (unsigned) → zig-out/pkg/Byakaron-ios.app");
     const headers = b.addWriteFiles();
     _ = headers.addCopyFile(b.path("src/ffi/byakaron.h"), "byakaron.h");
     _ = headers.addCopyFile(locale.header, "byakaron_strings.h");
@@ -1633,6 +1636,33 @@ fn addIos(b: *std.Build, avro: AvroData, locale: LocaleStrings) void {
     }
     const out = xcf_dir.path(b, "Byakaron.xcframework");
     step.dependOn(&b.addInstallDirectory(.{ .source_dir = out, .install_dir = .lib, .install_subdir = "ios/Byakaron.xcframework" }).step);
+
+    const keyboard = rootPath(b, "apps/ios/keyboard");
+    std.Io.Dir.cwd().access(b.graph.io, b.pathJoin(&.{ keyboard, "GiellaKeyboard.xcworkspace" }), .{}) catch {
+        ios.dependOn(&b.addFail("apps/ios/keyboard is not checked out: git submodule update --init apps/ios/keyboard").step);
+        return;
+    };
+    std.Io.Dir.cwd().access(b.graph.io, b.pathJoin(&.{ keyboard, "Pods/Manifest.lock" }), .{}) catch {
+        ios.dependOn(&b.addFail("CocoaPods are not installed: run `pod install` in apps/ios/keyboard").step);
+        return;
+    };
+    // The app embeds the keyboard extension. Unsigned simulator build; Xcode
+    // tracks its own inputs, so it always runs.
+    const xcb = b.addSystemCommand(&.{
+        "sh", "-c",
+        \\out=$1; dd=$2; kb=$3
+        \\mkdir -p "$dd" "$out" && dd=$(cd "$dd" && pwd) && out=$(cd "$out" && pwd)
+        \\cd "$kb" && xcodebuild -workspace GiellaKeyboard.xcworkspace -scheme HostingApp -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO -quiet build >"$dd/build.log" 2>&1 || { grep -E "error:" "$dd/build.log" | sort -u | head -30; echo "full log: $dd/build.log"; exit 1; }
+        \\cp -R "$dd/Build/Products/Debug-iphonesimulator/HostingApp.app" "$out/Byakaron-ios.app"
+        ,
+        "sh",
+    });
+    const app_out = xcb.addOutputDirectoryArg("app");
+    xcb.addDirectoryArg(b.graph.path(.local_cache, "xcode/ios"));
+    xcb.addArg(keyboard);
+    xcb.has_side_effects = true;
+    xcb.step.dependOn(step);
+    ios.dependOn(&b.addInstallDirectory(.{ .source_dir = app_out, .install_dir = .prefix, .install_subdir = "pkg" }).step);
 }
 
 fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath, locale: LocaleStrings) void {
