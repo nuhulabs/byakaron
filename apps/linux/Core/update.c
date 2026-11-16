@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <sys/utsname.h>
 #include <sys/wait.h>
 
 gchar *
@@ -30,16 +31,25 @@ byk_update_tag_from_url (const gchar *url)
     return n > 0 ? g_strndup (p, n) : NULL;
 }
 
+/* v<digit> and then only version characters. */
+static gboolean
+byk_update_tag_ok (const gchar *tag)
+{
+    if (tag == NULL || tag[0] != 'v' || !g_ascii_isdigit (tag[1]))
+        return FALSE;
+    for (const gchar *c = tag + 1; *c != '\0'; c++)
+        if (!g_ascii_isalnum (*c) && *c != '.' && *c != '-' && *c != '+')
+            return FALSE;
+    return TRUE;
+}
+
 gchar *
 byk_update_deb_version (const gchar *tag)
 {
     gchar *v, *dash;
 
-    if (tag == NULL || tag[0] != 'v' || !g_ascii_isdigit (tag[1]))
+    if (!byk_update_tag_ok (tag))
         return NULL;
-    for (const gchar *c = tag + 1; *c != '\0'; c++)
-        if (!g_ascii_isalnum (*c) && *c != '.' && *c != '-' && *c != '+')
-            return NULL;
 
     /* src/build/linux.zig's debVersion: only the first `-` (the SemVer
      * prerelease) becomes `~`, so dpkg sorts 27.0.0~dev.2 before 27.0.0. */
@@ -51,15 +61,68 @@ byk_update_deb_version (const gchar *tag)
 }
 
 gchar *
-byk_update_shown_version (const gchar *deb_version)
+byk_update_arch_version (const gchar *tag)
 {
-    const gchar *colon;
-    gchar *v, *tilde;
+    const gchar *dash;
+    GString *v;
 
-    if (deb_version == NULL)
+    if (!byk_update_tag_ok (tag))
         return NULL;
-    colon = strchr (deb_version, ':');
-    v = g_strdup (colon != NULL ? colon + 1 : deb_version);
+    dash = strchr (tag, '-');
+    if (dash != NULL && !g_ascii_isalpha (dash[1]))
+        return NULL;
+
+    /* src/build/linux.zig's archVersion: the first `-` is dropped (vercmp sorts
+     * 27.0.0dev.2 before 27.0.0), a later one becomes `_`; pkgrel is 1. */
+    v = g_string_new (NULL);
+    for (const gchar *c = tag + 1; *c != '\0'; c++) {
+        if (*c != '-')
+            g_string_append_c (v, *c);
+        else if (c != dash)
+            g_string_append_c (v, '_');
+    }
+    g_string_append (v, "-1");
+    return g_string_free (v, FALSE);
+}
+
+gchar *
+byk_update_package_version (BykPackage package, const gchar *tag)
+{
+    switch (package) {
+    case BYK_PACKAGE_DEB:
+        return byk_update_deb_version (tag);
+    case BYK_PACKAGE_ARCH:
+        return byk_update_arch_version (tag);
+    default:
+        return NULL;
+    }
+}
+
+gchar *
+byk_update_shown_version (BykPackage package, const gchar *version)
+{
+    gchar *v;
+
+    if (version == NULL)
+        return NULL;
+    if (package == BYK_PACKAGE_ARCH) {
+        /* 27.0.0dev.2-1: drop the pkgrel, put the `-` back before the first
+         * letter. */
+        gchar *rel = strrchr (version, '-');
+        gchar *pkgver = rel != NULL ? g_strndup (version, (gsize) (rel - version)) : g_strdup (version);
+        const gchar *letter = pkgver;
+        while (*letter != '\0' && !g_ascii_isalpha (*letter))
+            letter++;
+        if (*letter == '\0' || letter == pkgver)
+            return pkgver;
+        v = g_strdup_printf ("%.*s-%s", (int) (letter - pkgver), pkgver, letter);
+        g_free (pkgver);
+        return v;
+    }
+
+    const gchar *colon = strchr (version, ':');
+    gchar *tilde;
+    v = g_strdup (colon != NULL ? colon + 1 : version);
     tilde = strchr (v, '~');
     if (tilde != NULL)
         *tilde = '-';
@@ -116,37 +179,73 @@ byk_update_run (const gchar *const *argv, gint *exit_status)
 }
 
 gchar *
-byk_update_installed_version (void)
+byk_update_installed_version (BykPackage *package)
 {
-    static const gchar *const argv[] = { "dpkg-query", "-W", "-f=${Version}", "byakaron", NULL };
+    static const gchar *const dpkg[] = { "dpkg-query", "-W", "-f=${Version}", "byakaron", NULL };
+    static const gchar *const pacman[] = { "pacman", "-Q", "byakaron", NULL };
     const gchar *env = g_getenv ("BYAKARON_INSTALLED_VERSION");
+    BykPackage found = BYK_PACKAGE_NONE;
     gchar *v;
 
-    if (env != NULL)
-        return *env != '\0' ? g_strdup (env) : NULL;
-    v = byk_update_run (argv, NULL);
-    if (v != NULL && *v == '\0')
+    if (env != NULL) {
+        v = *env != '\0' ? g_strdup (env) : NULL;
+        if (v != NULL)
+            found = g_strcmp0 (g_getenv ("BYAKARON_INSTALLED_PACKAGE"), "arch") == 0
+                ? BYK_PACKAGE_ARCH : BYK_PACKAGE_DEB;
+    } else if ((v = byk_update_run (dpkg, NULL)) != NULL && *v != '\0') {
+        found = BYK_PACKAGE_DEB;
+    } else {
         g_clear_pointer (&v, g_free);
+        /* "byakaron 27.0.0dev.2-1" */
+        gchar *line = byk_update_run (pacman, NULL);
+        gchar *space = line != NULL ? strchr (line, ' ') : NULL;
+        if (space != NULL && space[1] != '\0') {
+            v = g_strdup (space + 1);
+            found = BYK_PACKAGE_ARCH;
+        }
+        g_free (line);
+    }
+    if (package != NULL)
+        *package = found;
     return v;
 }
 
 gboolean
-byk_update_newer (const gchar *a, const gchar *b)
+byk_update_newer (BykPackage package, const gchar *a, const gchar *b)
 {
-    const gchar *argv[] = { "dpkg", "--compare-versions", a, "gt", b, NULL };
     gint status = -1;
     gchar *out;
 
     if (a == NULL || b == NULL)
         return FALSE;
+    if (package == BYK_PACKAGE_ARCH) {
+        /* vercmp prints -1, 0 or 1. */
+        const gchar *argv[] = { "vercmp", a, b, NULL };
+        out = byk_update_run (argv, &status);
+        const gboolean newer = out != NULL && strcmp (out, "1") == 0;
+        g_free (out);
+        return newer;
+    }
+    const gchar *argv[] = { "dpkg", "--compare-versions", a, "gt", b, NULL };
     out = byk_update_run (argv, &status);
     g_free (out);
     return status == 0;
 }
 
 gchar *
-byk_update_deb_name (void)
+byk_update_package_name (BykPackage package)
 {
+    if (package == BYK_PACKAGE_ARCH) {
+        /* Only an x86_64 Arch package is published (Arch has no ARM images
+         * to test one in). */
+        struct utsname u;
+        if (uname (&u) != 0 || strcmp (u.machine, "x86_64") != 0)
+            return NULL;
+        return g_strdup ("byakaron_x86_64.pkg.tar.zst");
+    }
+    if (package != BYK_PACKAGE_DEB)
+        return NULL;
+
     static const gchar *const argv[] = { "dpkg", "--print-architecture", NULL };
     gchar *arch = byk_update_run (argv, NULL);
     gchar *name;

@@ -11,6 +11,7 @@
  */
 #include <stdio.h>
 #include <string.h>
+#include <sys/utsname.h>
 
 #include "byakaron.h"
 #include "composer.h"
@@ -327,23 +328,53 @@ int main(void)
         };
         for (size_t i = 0; i < sizeof VERSIONS / sizeof VERSIONS[0]; i++) {
             gchar *deb = byk_update_deb_version(VERSIONS[i].tag);
-            gchar *shown = byk_update_shown_version(deb);
+            gchar *shown = byk_update_shown_version(BYK_PACKAGE_DEB, deb);
             expect(g_strcmp0(deb, VERSIONS[i].deb) == 0 && g_strcmp0(shown, VERSIONS[i].shown) == 0,
                    VERSIONS[i].tag, deb ? deb : "(none)");
             g_free(deb);
             g_free(shown);
         }
 
+        /* The Arch package's version, as src/build/linux.zig's archVersion
+         * writes it. */
+        static const struct { const char *tag, *arch, *shown; } ARCH_VERSIONS[] = {
+            { "v27.0.0", "27.0.0-1", "27.0.0" },
+            { "v27.0.0-dev.2", "27.0.0dev.2-1", "27.0.0-dev.2" },
+            { "v27.0.0-rc.1-x", "27.0.0rc.1_x-1", "27.0.0-rc.1_x" },
+            { "v27.0.0-1", NULL, NULL },  /* would glue two numbers together */
+            { "latest", NULL, NULL },
+            { "v27.0.0;rm", NULL, NULL },
+        };
+        for (size_t i = 0; i < sizeof ARCH_VERSIONS / sizeof ARCH_VERSIONS[0]; i++) {
+            gchar *arch = byk_update_package_version(BYK_PACKAGE_ARCH, ARCH_VERSIONS[i].tag);
+            gchar *shown = byk_update_shown_version(BYK_PACKAGE_ARCH, arch);
+            expect(g_strcmp0(arch, ARCH_VERSIONS[i].arch) == 0 &&
+                   g_strcmp0(shown, ARCH_VERSIONS[i].shown) == 0,
+                   ARCH_VERSIONS[i].tag, arch ? arch : "(none)");
+            g_free(arch);
+            g_free(shown);
+        }
+
         /* dpkg's order, as apt will see it. */
         gchar *dpkg = g_find_program_in_path("dpkg");
         if (dpkg != NULL) {
-            expect(byk_update_newer("1:27.0.0", "1:0.1.5"), "27.0.0 newer than 0.1.5", "yes");
-            expect(byk_update_newer("1:27.0.0", "1:27.0.0~dev.3"), "27.0.0 newer than its dev.3", "yes");
-            expect(!byk_update_newer("1:27.0.0~dev.3", "1:27.0.0"), "dev.3 not newer than 27.0.0", "no");
-            expect(!byk_update_newer("1:27.0.0", "1:27.0.0"), "same version is not newer", "no");
-            expect(byk_update_newer("1:0.1.5", "0.2.1"), "epoch 1 beats the old 0.2.1", "yes");
+            expect(byk_update_newer(BYK_PACKAGE_DEB, "1:27.0.0", "1:0.1.5"), "27.0.0 newer than 0.1.5", "yes");
+            expect(byk_update_newer(BYK_PACKAGE_DEB, "1:27.0.0", "1:27.0.0~dev.3"), "27.0.0 newer than its dev.3", "yes");
+            expect(!byk_update_newer(BYK_PACKAGE_DEB, "1:27.0.0~dev.3", "1:27.0.0"), "dev.3 not newer than 27.0.0", "no");
+            expect(!byk_update_newer(BYK_PACKAGE_DEB, "1:27.0.0", "1:27.0.0"), "same version is not newer", "no");
+            expect(byk_update_newer(BYK_PACKAGE_DEB, "1:0.1.5", "0.2.1"), "epoch 1 beats the old 0.2.1", "yes");
         }
         g_free(dpkg);
+
+        /* pacman's order (vercmp is only on Arch). */
+        gchar *vercmp = g_find_program_in_path("vercmp");
+        if (vercmp != NULL) {
+            expect(byk_update_newer(BYK_PACKAGE_ARCH, "27.0.0-1", "27.0.0dev.3-1"), "Arch: 27.0.0 newer than its dev.3", "yes");
+            expect(!byk_update_newer(BYK_PACKAGE_ARCH, "27.0.0dev.3-1", "27.0.0-1"), "Arch: dev.3 not newer than 27.0.0", "no");
+            expect(byk_update_newer(BYK_PACKAGE_ARCH, "27.0.0dev.10-1", "27.0.0dev.9-1"), "Arch: dev.10 newer than dev.9", "yes");
+            expect(!byk_update_newer(BYK_PACKAGE_ARCH, "27.0.0-1", "27.0.0-1"), "Arch: same version is not newer", "no");
+        }
+        g_free(vercmp);
 
         const char *sums =
             "1111111111111111111111111111111111111111111111111111111111111111  byakaron_arm64.deb\n"
@@ -357,15 +388,37 @@ int main(void)
         expect(sum == NULL, "a malformed line is skipped", sum ? sum : "(none)");
         g_free(sum);
 
+        BykPackage package = BYK_PACKAGE_NONE;
         g_setenv("BYAKARON_INSTALLED_VERSION", "1:0.1.5", TRUE);
-        gchar *installed = byk_update_installed_version();
-        expect(g_strcmp0(installed, "1:0.1.5") == 0, "installed version (override)", installed);
+        gchar *installed = byk_update_installed_version(&package);
+        expect(g_strcmp0(installed, "1:0.1.5") == 0 && package == BYK_PACKAGE_DEB,
+               "installed version (override)", installed);
         g_free(installed);
+        g_setenv("BYAKARON_INSTALLED_PACKAGE", "arch", TRUE);
+        g_setenv("BYAKARON_INSTALLED_VERSION", "27.0.0dev.2-1", TRUE);
+        installed = byk_update_installed_version(&package);
+        expect(g_strcmp0(installed, "27.0.0dev.2-1") == 0 && package == BYK_PACKAGE_ARCH,
+               "installed by pacman (override)", installed);
+        g_free(installed);
+        g_unsetenv("BYAKARON_INSTALLED_PACKAGE");
         g_setenv("BYAKARON_INSTALLED_VERSION", "", TRUE);
-        installed = byk_update_installed_version();
-        expect(installed == NULL, "not installed from a .deb", installed ? installed : "(none)");
+        installed = byk_update_installed_version(&package);
+        expect(installed == NULL && package == BYK_PACKAGE_NONE, "not installed from a package",
+               installed ? installed : "(none)");
         g_free(installed);
         g_unsetenv("BYAKARON_INSTALLED_VERSION");
+
+        /* Only an x86_64 Arch package is published. */
+        struct utsname host;
+        gchar *name = byk_update_package_name(BYK_PACKAGE_ARCH);
+        if (uname(&host) == 0 && strcmp(host.machine, "x86_64") == 0)
+            expect(g_strcmp0(name, "byakaron_x86_64.pkg.tar.zst") == 0, "Arch package name", name ? name : "(none)");
+        else
+            expect(name == NULL, "no Arch package for this CPU", name ? name : "(none)");
+        g_free(name);
+        name = byk_update_package_name(BYK_PACKAGE_NONE);
+        expect(name == NULL, "no package name without a package", name ? name : "(none)");
+        g_free(name);
     }
 
     rm_rf(data_dir);
