@@ -937,6 +937,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeComposerState(
         .highlight = 0,
         .page = 0,
         .page_count = 0,
+        .latin = "",
     };
     if (composerFromHandle(handle)) |jc| ffi.byakaron_composer_state(jc.composer, &st);
 

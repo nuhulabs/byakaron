@@ -23,6 +23,7 @@ const spell_ffi = if (sqlite) @import("spell.zig") else struct {};
 comptime {
     if (sqlite) _ = spell_ffi;
 }
+pub const SpellHandle = if (sqlite) spell_ffi.SpellHandle else opaque {};
 
 /// Transliteration mode selector for the C ABI. Mirrors `Mode` but as a stable
 /// integer so the value is meaningful from C/Swift.

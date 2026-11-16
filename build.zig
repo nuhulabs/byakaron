@@ -1578,9 +1578,25 @@ fn addIos(b: *std.Build, avro: AvroData, locale: LocaleStrings) void {
         \\}
         \\
     );
-    // xcodebuild wants an output path ending in .xcframework that does not
-    // exist yet: a subdirectory of the step's (fresh) output directory.
-    const xcf = b.addSystemCommand(&.{ "sh", "-c", "out=$1; shift; exec xcodebuild -create-xcframework \"$@\" -output \"$out/Byakaron.xcframework\" >/dev/null", "sh" });
+    // Assembled by hand: `xcodebuild -create-xcframework` reads the platform
+    // from the library, and Zig's archives carry none, so on some Xcode
+    // versions it files the simulator slice under ios-arm64 too and fails.
+    // Args: out, then (library, headers) for the device and the simulator.
+    const xcf = b.addSystemCommand(&.{ "sh", "-c",
+        \\out="$1/Byakaron.xcframework"; mkdir -p "$out/ios-arm64" "$out/ios-arm64_x86_64-simulator"
+        \\cp "$2" "$out/ios-arm64/libbyakaron.a"; cp -R "$3" "$out/ios-arm64/Headers"
+        \\cp "$4" "$out/ios-arm64_x86_64-simulator/libbyakaron.a"; cp -R "$5" "$out/ios-arm64_x86_64-simulator/Headers"
+        \\cat > "$out/Info.plist" <<'PLIST'
+        \\<?xml version="1.0" encoding="UTF-8"?>
+        \\<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        \\<plist version="1.0"><dict>
+        \\<key>AvailableLibraries</key><array>
+        \\<dict><key>HeadersPath</key><string>Headers</string><key>LibraryIdentifier</key><string>ios-arm64</string><key>LibraryPath</key><string>libbyakaron.a</string><key>SupportedArchitectures</key><array><string>arm64</string></array><key>SupportedPlatform</key><string>ios</string></dict>
+        \\<dict><key>HeadersPath</key><string>Headers</string><key>LibraryIdentifier</key><string>ios-arm64_x86_64-simulator</string><key>LibraryPath</key><string>libbyakaron.a</string><key>SupportedArchitectures</key><array><string>arm64</string><string>x86_64</string></array><key>SupportedPlatform</key><string>ios</string><key>SupportedPlatformVariant</key><string>simulator</string></dict>
+        \\</array><key>CFBundlePackageType</key><string>XFWK</string><key>XCFrameworkFormatVersion</key><string>1.0</string></dict></plist>
+        \\PLIST
+        \\
+        , "sh" });
     const xcf_dir = xcf.addOutputDirectoryArg("xcf");
     // iOS 15: the keyboard's deployment target (upstream giellakbd-ios).
     const ios15: std.Target.Query.OsVersion = .{ .semver = .{ .major = 15, .minor = 0, .patch = 0 } };
@@ -1601,9 +1617,7 @@ fn addIos(b: *std.Build, avro: AvroData, locale: LocaleStrings) void {
     lipo.addArg("-output");
     const simulator = lipo.addOutputFileArg("libbyakaron.a");
     for ([_]std.Build.LazyPath{ device, simulator }) |path| {
-        xcf.addArg("-library");
         xcf.addFileArg(path);
-        xcf.addArg("-headers");
         xcf.addDirectoryArg(headers.getDirectory());
     }
     const out = xcf_dir.path(b, "Byakaron.xcframework");
