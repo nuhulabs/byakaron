@@ -108,7 +108,7 @@ jobs:
           if [ -d zig-pkg ]; then sudo chown -R "$USER" zig-pkg; fi
       - name: build (linux)
         if: matrix.platform == 'linux'
-        run: zig build linux
+        run: zig build linux -Dwiki-dump=.github/ci/bnwiki-tiny.xml
       - name: build (macos)
         if: matrix.platform == 'macos'
         run: |
