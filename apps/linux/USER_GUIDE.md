@@ -14,9 +14,16 @@ Open a terminal and run:
 curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash
 ```
 
-It asks for your password once. It works on Ubuntu 20.04, 22.04, 24.04 and
-26.04, on Debian 12 and 13, and on Raspberry Pi OS (64-bit), on Intel/AMD and
-on 64-bit ARM computers.
+It asks for your password once, and finds out by itself which Linux it is on.
+It works on:
+
+- Ubuntu 20.04, 22.04, 24.04 and 26.04, Debian 12 and 13, and Raspberry Pi OS
+  (64-bit), on Intel/AMD and on 64-bit ARM computers
+- Arch Linux, and the systems built on it such as Manjaro and EndeavourOS, on
+  Intel/AMD computers
+
+On Arch, bring the system up to date first (`sudo pacman -Syu`), so pacman
+can fetch IBus and GTK if they are missing.
 
 ## Turn it on
 
@@ -30,7 +37,12 @@ on 64-bit ARM computers.
 
 **KDE, Xfce, Raspberry Pi OS and others**
 
-1. In a terminal: `im-config -n ibus`, then log out and back in.
+1. Make IBus start with your desktop, then log out and back in:
+   - Ubuntu, Debian, Raspberry Pi OS: in a terminal, `im-config -n ibus`.
+   - Arch with KDE Plasma: **System Settings → Keyboard → Virtual Keyboard →
+     IBus Wayland**.
+   - Arch with another desktop: start `ibus-daemon -drxR` when you log in (see
+     the Arch wiki's [IBus page](https://wiki.archlinux.org/title/IBus)).
 2. Run `ibus-setup`, open **Input Method**, press **Add**, and choose
    **Bangla → Byakaron**.
 3. Press **Super+Space** to switch.
@@ -81,7 +93,8 @@ updates** there.
 ## Uninstall
 
 ```sh
-sudo apt remove byakaron
+sudo apt remove byakaron       # Ubuntu, Debian, Raspberry Pi OS
+sudo pacman -R byakaron        # Arch, Manjaro, EndeavourOS
 ```
 
 Your own words and choices stay in `~/.local/share/byakaron`. Delete that
@@ -96,6 +109,7 @@ folder to remove them too.
 | Numbers come out as 0–9 | Byakaron app → **Settings** → turn on **Bangla digits**. |
 | `.` between numbers types । | Update Byakaron: newer versions keep the point (৩.১৪). |
 | Nothing types in Bangla | Press **Super+Space** until Byakaron is selected. |
+| On Arch, the install stops because pacman cannot download ibus or gtk3 | Run `sudo pacman -Syu`, then the install command again. |
 | In Telegram, VLC or KDE apps on Ubuntu 20.04 or 22.04, a word disappears when you click | Byakaron app → **Settings** → turn on **Qt apps: type a word once on click**. |
 
 More: https://nuhulabs.com/byakaron

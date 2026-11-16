@@ -382,15 +382,18 @@ default on; the time is in `last-update-check`), or on **Check Now**:
    redirect names the newest normal release (`…/releases/tag/v27.0.0`); GitHub
    skips prereleases, so a dev build is never offered. While there is no
    normal release the redirect has no tag and nothing is offered.
-2. The tag becomes the `.deb` version as the packaging writes it (`v27.0.0` →
-   `1:27.0.0`, `v27.0.0-dev.2` → `1:27.0.0~dev.2`) and is compared with what
-   `dpkg-query` says is installed, in dpkg's order. A build that dpkg did not
-   install (run from `zig-out`) never checks.
+2. The tag becomes the version as the packaging writes it and is compared
+   with what is installed. dpkg is asked first: `.deb` versions (`v27.0.0` →
+   `1:27.0.0`, `v27.0.0-dev.2` → `1:27.0.0~dev.2`) in dpkg's order. Then
+   pacman (`pacman -Q byakaron`): Arch versions (`v27.0.0` → `27.0.0-1`,
+   `v27.0.0-dev.2` → `27.0.0dev.2-1`) in `vercmp`'s order. A build that
+   neither installed (run from `zig-out`, or `install-linux`) never checks.
 3. If it is newer, a bar says **Byakaron 27.0.0 is available**. **Update**
-   downloads `byakaron_<arch>.deb` and `SHA256SUMS` from that release, checks
-   the hash, and runs `pkexec apt-get install -y` on it (the system password
-   prompt). postinst restarts IBus, so the keyboard is new at once; the bar
-   then offers **Restart** for the app.
+   downloads `byakaron_<arch>.deb` (or `byakaron_x86_64.pkg.tar.zst` on Arch)
+   and `SHA256SUMS` from that release, checks the hash, and runs
+   `pkexec apt-get install -y` (or `pkexec pacman -U --noconfirm`) on it, the
+   system password prompt. postinst (`.INSTALL` on Arch) restarts IBus, so the
+   keyboard is new at once; the bar then offers **Restart** for the app.
 
 The hash catches a broken download; it is not a signature, since both files
 come from the same release. `BYAKARON_UPDATE_BASE` points the check at
@@ -509,30 +512,32 @@ purpose: nothing is packaged, installed or typed into there.
 The slow checks run by hand from `.github/workflows/e2e.yml` (Actions → e2e →
 Run): **GNOME Wayland typing** (`zig build linux-wayland-e2e`, see
 [Wayland](#wayland): GTK3 and GTK4 apps on a headless GNOME Shell, typed into
-through `org.gnome.Mutter.RemoteDesktop`) and the **install matrix** (package a
-`.deb` and `zig build linux-install-test` it in clean Ubuntu/Debian
-containers). `zig build linux-ci` (glibc ceiling, smoke test, IME integration
+through `org.gnome.Mutter.RemoteDesktop`) and the **install matrix** (package
+the `.deb` and the Arch package and `zig build linux-install-test` them in
+clean Ubuntu/Debian containers and `archlinux:latest`). `zig build linux-ci` (glibc ceiling, smoke test, IME integration
 test against a throwaway Xvfb+ibus-daemon, Fcitx5 addon, GtkEntry typing) is
 for local runs before a release.
 
 `.github/workflows/release.yml` is the CD: it builds `Byakaron.db`, packages
-both `.deb`s, publishes them, deploys the website and then runs the website
-installer in clean Ubuntu containers (see Releasing).
+both `.deb`s and the Arch package, publishes them, deploys the website and
+then runs the website installer in clean Ubuntu and Arch containers (see
+Releasing).
 
 To run the same steps locally:
 
 ```bash
 zig build linux-ci
 zig build linux-wayland-e2e   # needs gnome-shell
-zig build linux-install-test  # the local .deb in clean Ubuntu/Debian containers (Docker)
+zig build linux-install-test  # the local .deb and Arch package in clean containers (Docker)
 ```
 
 ## Releasing
 
 Releases are built and published by GitHub Actions (`release.yml`): it runs
-`zig build package-linux` on an amd64 and an arm64 runner and publishes both
-`.deb`s. Run `e2e.yml` first to install and type through a `.deb`. There is no
-local release script.
+`zig build package-linux` on an amd64 and an arm64 runner, and
+`zig build package-linux-arch` on the amd64 one, and publishes both `.deb`s
+and `byakaron_x86_64.pkg.tar.zst`. Run `e2e.yml` first to install and type
+through both packages. There is no local release script.
 
 Every Linux version comes from `.version` in `build.zig.zon`: the `.deb`,
 `byakaron --version` (build.zig compiles it in as `BYK_APP_VERSION`), the IBus
@@ -545,6 +550,10 @@ tag does not match `build.zig.zon`, and CI writes the release's full version
 
 A prerelease's `-` becomes `~` in the `.deb` Version (`1:27.0.0~dev.3`), so
 dpkg sorts it before the release it leads to; the file name keeps the `-`.
+A pacman version cannot hold a `-`, so the Arch package drops it
+(`27.0.0dev.3-1`): `vercmp` sorts letters right after a number before the
+release, as dpkg does `~`. A prerelease must therefore start with a letter
+(`-dev.3`, `-rc.1`); `package-linux-arch` refuses `27.0.0-1`.
 
 The `.deb` Version carries epoch 1 (`1:0.1.3`): until 0.2.1 the Linux package
 had its own numbering, and without the epoch apt refuses the shared 0.1.x over
@@ -555,11 +564,13 @@ is served by the nuhulabs.com repo from copies in `app/public/byakaron/`:
 `install.sh` is `apps/web/app/public/install.sh` (Linux + macOS), and
 `install-amd64.sh` / `install-arm64.sh` (links shared earlier) are
 `apps/linux/web_install.sh`. Copy them there when they change (RELEASING.md).
-They download `byakaron_<arch>.deb` from the latest release, so a release needs
-no copy; the copies of 22/10 still asked for `byakaron_<version>_<arch>.deb` and
+They read `/etc/os-release` and download `byakaron_<arch>.deb` (apt) or
+`byakaron_x86_64.pkg.tar.zst` (pacman, `ID`/`ID_LIKE` arch) from the latest
+release, so a release needs no copy; the copies of 22/10 still asked for `byakaron_<version>_<arch>.deb` and
 failed for everyone from 0.1.0 (26/10) on. `release.yml` now runs the public
 command after each release. `bash apps/linux/tests/web_install_test.sh` checks
-what the installer decides on different systems.
+what the installer decides on different systems, and that both installers run
+the same Linux code.
 
 ## Fcitx5 (optional)
 
@@ -591,18 +602,26 @@ Checked in clean containers with Fcitx5 5.1.7 (Ubuntu 24.04) and 5.1.19
 (26.04), typing through Fcitx5's D-Bus frontend: the addon loads, `ami ` gives
 আমি, `ami bangla ` gives আমি বাংলা, the preedit shows আমি.
 
-## Flatpak (app only)
+## Packages (and Flatpak, app only)
 
 An IBus engine has to live in `/usr/share/ibus/component` so the session
 daemon can spawn it. A sandboxed Flatpak cannot register there, which is why
-ibus-avro ships as a `.deb` too. `zig build package-linux` is the IME artefact.
-It emits one package:
+ibus-avro ships as a `.deb` too. Two packages carry the same files:
 
-- `byakaron_*.deb` — engine, GTK app, GSettings schema, and `Byakaron.db`.
-  Typing Bangla and spell-check.
+- `byakaron_*.deb` (`zig build package-linux`) — engine, GTK app, GSettings
+  schema, and `Byakaron.db`. Typing Bangla and spell-check.
+- `byakaron-*-x86_64.pkg.tar.zst` (`zig build package-linux-arch`) — the same,
+  for Arch Linux and the systems built on it. The engine is in
+  `/usr/lib/byakaron/` (Arch has no `/usr/libexec`). It is made without
+  makepkg, so the Ubuntu host that builds the `.deb` builds it too: `.PKGINFO`
+  (version, dependencies), `.INSTALL` (refreshes IBus in each desktop session,
+  as postinst does) and `.MTREE` (what `pacman -Qkk` checks). Arch's own
+  pacman hooks compile the schema and the icon cache. x86_64 only: Arch Linux
+  has no ARM images to test one in.
 
-One `apt install` of that file is a complete install. Upgrading from the older
-split (`byakaron` + `byakaron-data`) replaces `byakaron-data` automatically.
+One `apt install` (or `pacman -U`) of that file is a complete install.
+Upgrading from the older split (`byakaron` + `byakaron-data`) replaces
+`byakaron-data` automatically.
 
 The settings app is GTK3, so Spelling / Layout / Setup run on
 **Ubuntu 20.04, 22.04, 24.04 and 26.04, and Debian 12 and 13** — the same
@@ -625,6 +644,25 @@ computer. They download the `.deb` from the public
 releases and runs `apt`. Then **add the input source** (installing the package
 is not enough): Settings → Keyboard → Input Sources → **+** → **Bangla** →
 **Byakaron (Bangla Phonetic)** → Add. Switch with Super+Space.
+
+### Installing on Arch Linux
+
+The same `install.sh` command: it finds pacman and installs
+`byakaron_x86_64.pkg.tar.zst` with `pacman -U`, which also installs ibus and
+GTK if they are missing. Bring the system up to date first
+(`sudo pacman -Syu`); the installer never runs `pacman -Sy` itself, since Arch
+does not support partial upgrades. To build one yourself:
+
+```bash
+zig build package-linux-arch
+sudo pacman -U ./zig-out/pkg/byakaron-<version>-1-x86_64.pkg.tar.zst
+```
+
+Then add the input source: GNOME as above; KDE Plasma picks IBus in **System
+Settings → Keyboard → Virtual Keyboard → IBus Wayland**; elsewhere start
+`ibus-daemon -drxR` at login. Remove with `sudo pacman -R byakaron`.
+
+### Building a `.deb`
 
 To build and share a `.deb` yourself instead:
 
