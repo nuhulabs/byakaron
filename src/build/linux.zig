@@ -1167,7 +1167,10 @@ fn ci(t: *Tool, repo: []const u8, prefix_arg: ?[]const u8) !u8 {
 
     std.debug.print("\n=== Fcitx5 addon ===\n", .{});
     const fcitx_so = try join(t, &.{ prefix, "lib/fcitx5/byakaron.so" });
-    if (exists(t.io, fcitx_so)) {
+    if (exists(t.io, fcitx_so) and envIs(t, "BYK_FCITX_BUILT", "0")) {
+        std.debug.print("skipped: Fcitx5's headers are not installed, so this build has no addon\n" ++
+            "         ({s} is left from an earlier build and is not checked)\n", .{fcitx_so});
+    } else if (exists(t.io, fcitx_so)) {
         const syms = capture(t, &.{ "nm", "-D", fcitx_so }) orelse "";
         if (std.mem.indexOf(u8, syms, "fcitx_addon_factory_instance") == null) {
             return fail("{s} does not export fcitx_addon_factory_instance", .{fcitx_so});

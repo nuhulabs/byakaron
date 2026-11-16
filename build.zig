@@ -1129,6 +1129,10 @@ fn addLinux(
     ci.step.dependOn(linux_test_step);
     ci.step.dependOn(&install_smoke.step);
     if (fcitx_so != null) ci.step.dependOn(fcitx_step);
+    // Without Fcitx5's headers the addon is not built, and a byakaron.so left in
+    // zig-out by an earlier build (against a Fcitx5 since removed) is not this
+    // build's: linux-ci must not check it.
+    ci.setEnvironmentVariable("BYK_FCITX_BUILT", if (fcitx_so != null) "1" else "0");
     if (have_wayland) ci.step.dependOn(wayland_step);
     ci_step.dependOn(&ci.step);
 

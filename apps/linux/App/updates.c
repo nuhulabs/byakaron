@@ -31,7 +31,7 @@ typedef struct {
     gchar *installed;     /* its version, e.g. 1:0.1.5 (deb) or 27.0.0-1 (Arch) */
     gchar *tag;           /* v27.0.0 */
     gchar *version;       /* 1:27.0.0 or 27.0.0-1 */
-    gchar *file_name;      /* the release file: byakaron_amd64.deb, byakaron_x86_64.pkg.tar.zst */
+    gchar *file_name;     /* the release file: byakaron_amd64.deb, byakaron_x86_64.pkg.tar.zst */
     gchar *dir;           /* the download's temporary folder */
 } BykUpdates;
 
