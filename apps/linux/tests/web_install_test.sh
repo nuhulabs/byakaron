@@ -1,8 +1,8 @@
 #!/bin/bash
 # Checks what the website installer decides on different computers, without
-# installing anything: fake uname / dpkg / apt-get on a PATH of their own, a
-# fake /etc/os-release, and a download URL that does not exist, so a supported
-# system stops right after detection with "could not download".
+# installing anything: fake uname / dpkg / apt-get / pacman on a PATH of their
+# own, a fake /etc/os-release, and a download URL that does not exist, so a
+# supported system stops right after detection with "could not download".
 #
 #     bash apps/linux/tests/web_install_test.sh
 set -uo pipefail
@@ -22,26 +22,39 @@ done
 
 failures=0
 
-# fake_system <dir> <uname -s> <uname -m> <dpkg arch or ""> <PRETTY_NAME>
+# fake_system <dir> <uname -s> <uname -m> <system> <PRETTY_NAME>
+# <system> is a dpkg architecture (the system has apt and dpkg),
+# pacman:<ID>:<ID_LIKE> (it has pacman, and that os-release ID / ID_LIKE),
+# or "" (neither).
 fake_system() {
-    local dir="$1" sys="$2" machine="$3" arch="$4" name="$5"
+    local dir="$1" sys="$2" machine="$3" system="$4" name="$5"
+    local id="" like=""
     mkdir -p "$dir/bin"
     local tool
     for tool in bash sed head grep curl mktemp rm cat tail awk sha256sum cut; do
         ln -sf "$(command -v "$tool")" "$dir/bin/$tool"
     done
     printf '#!/bin/bash\ncase "$1" in -m) echo %s ;; *) echo %s ;; esac\n' "$machine" "$sys" > "$dir/bin/uname"
-    if [[ -n "$arch" ]]; then
-        printf '#!/bin/bash\n[[ "$1" == --print-architecture ]] && echo %s\n' "$arch" > "$dir/bin/dpkg"
-        printf '#!/bin/bash\nexit 0\n' > "$dir/bin/apt-get"
-        printf '#!/bin/bash\nexit 1\n' > "$dir/bin/dpkg-query"
-    fi
     chmod +x "$dir/bin/uname"
-    [[ -n "$arch" ]] && chmod +x "$dir/bin/dpkg" "$dir/bin/apt-get" "$dir/bin/dpkg-query"
-    printf 'NAME="x"\nPRETTY_NAME="%s"\n' "$name" > "$dir/os-release"
+    case "$system" in
+        "") ;;
+        pacman:*)
+            IFS=: read -r _ id like <<< "$system"
+            # Not installed yet (-Q fails); -U "installs".
+            printf '#!/bin/bash\ncase "$1" in -Q) exit 1 ;; *) exit 0 ;; esac\n' > "$dir/bin/pacman"
+            chmod +x "$dir/bin/pacman"
+            ;;
+        *)
+            printf '#!/bin/bash\n[[ "$1" == --print-architecture ]] && echo %s\n' "$system" > "$dir/bin/dpkg"
+            printf '#!/bin/bash\nexit 0\n' > "$dir/bin/apt-get"
+            printf '#!/bin/bash\nexit 1\n' > "$dir/bin/dpkg-query"
+            chmod +x "$dir/bin/dpkg" "$dir/bin/apt-get" "$dir/bin/dpkg-query"
+            ;;
+    esac
+    printf 'NAME="x"\nPRETTY_NAME="%s"\nID=%s\nID_LIKE="%s"\n' "$name" "$id" "$like" > "$dir/os-release"
 }
 
-# check <label> <script> <uname -s> <uname -m> <arch> <PRETTY_NAME> <expected substring>
+# check <label> <script> <uname -s> <uname -m> <system> <PRETTY_NAME> <expected substring>
 check() {
     local label="$1" script="$2" expect="$7"
     local dir="$WORK/$label"
@@ -49,6 +62,7 @@ check() {
     local out
     out="$(PATH="$dir/bin" BYAKARON_OS_RELEASE="$dir/os-release" \
            BYAKARON_DEB_URL="file://$WORK/missing.deb" \
+           BYAKARON_PKG_URL="file://$WORK/missing.pkg.tar.zst" \
            "$dir/bin/bash" "$WORK/site/$script" 2>&1 || true)"
     if [[ "$out" == *"$expect"* ]]; then
         printf '  ok   %-30s -> %s\n' "$label" "$(printf '%s' "$out" | grep -m1 -E 'Detected|error' )"
@@ -79,28 +93,49 @@ check "pi-os-32bit"          install.sh       Linux  armv7l  armhf "Raspbian GNU
       "this is a 32-bit ARM system (armhf"
 check "32-bit-pc"            install.sh       Linux  i686    i386  "Ubuntu 18.04.6 LTS" \
       "32-bit PC system"
-check "fedora-no-apt"        install.sh       Linux  x86_64  ""    "Fedora Linux 40 (Workstation Edition)" \
-      "This is Fedora Linux 40 (Workstation Edition), which has no apt"
+check "arch"                 install.sh       Linux  x86_64  pacman:arch: "Arch Linux" \
+      "Detected: Arch Linux, Intel/AMD 64-bit (x86_64)"
+check "manjaro"              install.sh       Linux  x86_64  pacman:manjaro:arch "Manjaro Linux" \
+      "Detected: Manjaro Linux, Intel/AMD 64-bit (x86_64)"
+check "endeavouros"          install.sh       Linux  x86_64  pacman:endeavouros:arch "EndeavourOS" \
+      "Detected: EndeavourOS, Intel/AMD 64-bit (x86_64)"
+check "arch-old-amd-link"    install-amd64.sh Linux  x86_64  pacman:arch: "Arch Linux" \
+      "Detected: Arch Linux, Intel/AMD 64-bit (x86_64)"
+check "arch-reaches-download" install.sh      Linux  x86_64  pacman:arch: "Arch Linux" \
+      "could not download"
+check "arch-linux-arm"       install.sh       Linux  aarch64 pacman:archarm:arch "Arch Linux ARM" \
+      "this is Arch Linux ARM (Arch Linux ARM). Byakaron's Arch package is for Intel/AMD 64-bit"
+check "fedora"               install.sh       Linux  x86_64  ""    "Fedora Linux 40 (Workstation Edition)" \
+      "Byakaron is packaged for Ubuntu, Debian and Arch Linux (apt or pacman). This is Fedora Linux 40 (Workstation Edition)."
+check "pacman-but-not-arch"  install.sh       Linux  x86_64  pacman:fedora: "Fedora Linux 40 (Workstation Edition)" \
+      "This is Fedora Linux 40 (Workstation Edition)."
 check "mac"                  install.sh       Darwin arm64   ""    "macOS" \
       "For a Mac: curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash"
 
-# Where the .deb comes from, against a fake Byakaron-Assets on file:// URLs:
+# Where the package comes from, against a fake Byakaron-Assets on file:// URLs:
 # latest/, or the newest prerelease while there is no latest, and the
-# download checked against SHA256SUMS. apt-get is the fake that does nothing.
+# download checked against SHA256SUMS. apt-get and pacman are fakes that do
+# nothing.
 #
-# download <label> <installer> <scenario: latest|preview|damaged|none> <expected substring>
+# download <label> <installer> <scenario: latest|preview|damaged|none> <expected substring> <deb|arch>
 download() {
-    local label="$1" installer="$2" scenario="$3" expect="$4"
-    local dir="$WORK/dl-$label" deb_name="byakaron_amd64.deb"
-    fake_system "$dir" Linux x86_64 amd64 "Ubuntu 24.04.1 LTS"
+    local label="$1" installer="$2" scenario="$3" expect="$4" kind="$5"
+    local dir="$WORK/dl-$label" name
+    if [[ "$kind" == arch ]]; then
+        name="byakaron_x86_64.pkg.tar.zst"
+        fake_system "$dir" Linux x86_64 pacman:arch: "Arch Linux"
+    else
+        name="byakaron_amd64.deb"
+        fake_system "$dir" Linux x86_64 amd64 "Ubuntu 24.04.1 LTS"
+    fi
     mkdir -p "$dir/latest" "$dir/pre"
-    printf 'not really a deb\n' > "$dir/pre/$deb_name"
-    (cd "$dir/pre" && sha256sum "$deb_name" > SHA256SUMS)
+    printf 'not really a package\n' > "$dir/pre/$name"
+    (cd "$dir/pre" && sha256sum "$name" > SHA256SUMS)
     printf '[{"tag_name": "v27.0.0-dev.1", "assets": [{"name": "%s", "browser_download_url": "file://%s/pre/%s"}]}]\n' \
-        "$deb_name" "$dir" "$deb_name" > "$dir/releases.json"
+        "$name" "$dir" "$name" > "$dir/releases.json"
     case "$scenario" in
-        latest)  cp "$dir/pre/$deb_name" "$dir/pre/SHA256SUMS" "$dir/latest/" ;;
-        damaged) printf '%064d  %s\n' 0 "$deb_name" > "$dir/pre/SHA256SUMS" ;;
+        latest)  cp "$dir/pre/$name" "$dir/pre/SHA256SUMS" "$dir/latest/" ;;
+        damaged) printf '%064d  %s\n' 0 "$name" > "$dir/pre/SHA256SUMS" ;;
         none)    printf '[]\n' > "$dir/releases.json" ;;
     esac
     local out
@@ -123,16 +158,29 @@ download() {
 # the per-CPU links run apps/linux/web_install.sh. Both share this logic.
 PUBLIC="$(cd "$HERE/../../.." && pwd)/apps/web/app/public/install.sh"
 echo
-echo "where the .deb comes from:"
+echo "where the package comes from:"
 for installer in "$SRC" "$PUBLIC"; do
     [[ -f "$installer" ]] || { echo "  FAIL missing $installer"; failures=$((failures + 1)); continue; }
-    tag="$(basename "$(dirname "$installer")")"
-    download "$tag-latest"  "$installer" latest  "checksum OK"
-    download "$tag-preview" "$installer" preview "no stable release yet: installing the newest preview build"
-    download "$tag-preview-sum" "$installer" preview "checksum OK"
-    download "$tag-damaged" "$installer" damaged "does not match SHA256SUMS"
-    download "$tag-none"    "$installer" none    "no release has it yet"
+    for kind in deb arch; do
+        tag="$(basename "$(dirname "$installer")")-$kind"
+        download "$tag-latest"      "$installer" latest  "checksum OK" "$kind"
+        download "$tag-preview"     "$installer" preview "no stable release yet: installing the newest preview build" "$kind"
+        download "$tag-preview-sum" "$installer" preview "checksum OK" "$kind"
+        download "$tag-damaged"     "$installer" damaged "does not match SHA256SUMS" "$kind"
+        download "$tag-none"        "$installer" none    "no release has it yet" "$kind"
+    done
 done
+
+# Both installers must run the same Linux code.
+echo
+echo "the two installers:"
+linux_part() { sed -n '/^# One command for every Linux/,/^\(install_macos() {\|command -v curl\)/p' "$1" | sed '$d'; }
+if [[ -n "$(linux_part "$SRC")" ]] && diff <(linux_part "$SRC") <(linux_part "$PUBLIC") >/dev/null; then
+    echo "  ok   same Linux code in web_install.sh and install.sh"
+else
+    echo "  FAIL the Linux code of web_install.sh and install.sh differs"
+    failures=$((failures + 1))
+fi
 
 echo
 if [[ $failures -gt 0 ]]; then
