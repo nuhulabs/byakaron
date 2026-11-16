@@ -26,6 +26,15 @@
             .url = "git+https://github.com/SuperIceCN/Zig-JNI#27570fdfb5706e7d9cb0206ddd1600e66411ad87",
             .hash = "jni-0.0.1-qf3mHEoJBADgTJirCPl6I65kKz6-PBwsV7PgN_EX6AQy",
         },
+        // Android NDK r27c, only for its sysroot (headers and libc stubs, the
+        // same on every host), so building the Android steps needs no NDK
+        // install. Fetched on first use; `-Dandroid-ndk` or ANDROID_NDK_ROOT
+        // still win.
+        .ndk = .{
+            .url = "https://dl.google.com/android/repository/android-ndk-r27c-darwin.zip",
+            .hash = "N-V-__8AADRI65jTfhcgnhQgQpuI6mVM1tOwP7iO6AGcJZjY",
+            .lazy = true,
+        },
     },
     .paths = .{
         "build.zig",

@@ -71,14 +71,6 @@ jobs:
             zig build linux-deps
           # sudo fetched packages into zig-pkg/ as root; later builds run as the runner.
           if [ -d zig-pkg ]; then sudo chown -R "$USER" zig-pkg; fi
-      - name: ndk (android)
-        if: matrix.platform == 'android'
-        uses: nttld/setup-ndk@v1
-        id: ndk
-        with:
-          ndk-version: r27c
-          add-to-path: false
-
       - name: build (linux)
         if: matrix.platform == 'linux'
         run: zig build linux
@@ -95,7 +87,7 @@ jobs:
         run: zig build windows
       - name: build (android)
         if: matrix.platform == 'android'
-        run: zig build android-libs -Dandroid-ndk="${{ steps.ndk.outputs.ndk-path }}"
+        run: zig build android-libs
       - name: build (web)
         if: matrix.platform == 'web'
         run: zig build -Doptimize=ReleaseSmall

@@ -1511,6 +1511,17 @@ fn androidNdk(b: *std.Build) ?[]const u8 {
     for ([_][]const u8{ "ANDROID_NDK_ROOT", "ANDROID_NDK_HOME" }) |name| {
         if (env.get(name)) |p| if (p.len > 0) return p;
     }
+    return installedNdk(b) orelse fetchedNdk(b);
+}
+
+/// The NDK package from build.zig.zon (lazy: downloaded only when no local NDK
+/// was found). Its sysroot is all the Android libraries need.
+fn fetchedNdk(b: *std.Build) ?[]const u8 {
+    const dep = b.lazyDependency("ndk", .{}) orelse return null;
+    return rootPath(dep.builder, ".");
+}
+
+fn installedNdk(b: *std.Build) ?[]const u8 {
     const io = b.graph.io;
     const ndk_root = b.pathJoin(&.{ androidSdk(b) orelse return null, "ndk" });
     var dir = std.Io.Dir.cwd().openDir(io, ndk_root, .{ .iterate = true }) catch return null;

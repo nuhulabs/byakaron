@@ -302,14 +302,6 @@ jobs:
         with:
           version: 0.17.0
 
-      - name: ndk
-        if: steps.keyboard.outputs.sha != ''
-        id: ndk
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r27c
-          add-to-path: false
-
       - uses: actions/download-artifact@v4
         if: steps.keyboard.outputs.sha != ''
         with:
@@ -339,7 +331,6 @@ jobs:
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           zig build release-android \
-            -Dandroid-ndk="${{ steps.ndk.outputs.ndk-path }}" \
             -Dspell-db=zig-out/db/Byakaron.db
 
       - name: stage mapping
