@@ -1,6 +1,7 @@
 //! Build-time helper for the Linux port, run by the `*-linux` build steps.
 //!
 //!   linux package-deb <repo-root> <ime> <app> <Byakaron.db> <out-dir> [fcitx.so]
+//!   linux package-arch <repo-root> <ime> <app> <Byakaron.db> <out-dir>
 //!   linux install <repo-root> <ime> <app> [Byakaron.db] [--fcitx <fcitx.so>]
 //!   linux uninstall
 //!   linux deps [--test]
@@ -9,7 +10,7 @@
 //!   linux assert-glibc <binary>
 //!   linux ci <repo-root> [install-prefix]
 //!   linux tested <ime-test-bin> [expected-version]
-//!   linux install-matrix <ime-test-bin> <deb-or-dir> [--tool=<linux-exe>] [image...]
+//!   linux install-matrix <ime-test-bin> <deb-or-dir> [--arch-pkg=<pkg-or-dir>] [--tool=<linux-exe>] [image...]
 //!   linux wayland-e2e <repo-root> <engine-bin>
 //!   linux package-flatpak <repo-root> <app> <out-dir>
 //!
@@ -52,6 +53,8 @@ fn dispatch(init: std.process.Init) !u8 {
 
     if (eql(u8, command, "package-deb") and (rest.len == 5 or rest.len == 6)) {
         try packageDeb(&t, rest);
+    } else if (eql(u8, command, "package-arch") and rest.len == 5) {
+        try packageArch(&t, rest);
     } else if (eql(u8, command, "install") and rest.len >= 3) {
         try install(&t, rest);
     } else if (eql(u8, command, "uninstall") and rest.len == 0) {
@@ -77,6 +80,7 @@ fn dispatch(init: std.process.Init) !u8 {
     } else {
         std.debug.print(
             \\usage: {s} package-deb <repo-root> <ime> <app> <Byakaron.db> <out-dir> [fcitx.so]
+            \\       {s} package-arch <repo-root> <ime> <app> <Byakaron.db> <out-dir>
             \\       {s} install <repo-root> <ime> <app> [Byakaron.db] [--fcitx <fcitx.so>]
             \\       {s} uninstall
             \\       {s} deps [--test]
@@ -85,11 +89,11 @@ fn dispatch(init: std.process.Init) !u8 {
             \\       {s} assert-glibc <binary>
             \\       {s} ci <repo-root> [install-prefix]
             \\       {s} tested <ime-test-bin> [expected-version]
-            \\       {s} install-matrix <ime-test-bin> <deb-or-dir> [--tool=<linux-exe>] [image...]
+            \\       {s} install-matrix <ime-test-bin> <deb-or-dir> [--arch-pkg=<pkg-or-dir>] [--tool=<linux-exe>] [image...]
             \\       {s} wayland-e2e <repo-root> <engine-bin>
             \\       {s} package-flatpak <repo-root> <app> <out-dir>
             \\
-        , .{ args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0] });
+        , .{ args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0] });
         return error.InvalidArguments;
     }
     return 0;
@@ -113,11 +117,6 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
 
     const version = try readVersion(t, repo);
     const arch = try debArch(t);
-    const res = try join(t, &.{ repo, "apps/linux/Resources" });
-    const fcitx_res = try join(t, &.{ repo, "apps/linux/Fcitx5" });
-
-    try assertGlibc(t, ime);
-    try assertGlibc(t, app);
 
     const name = try std.fmt.allocPrint(t.arena, "byakaron_{s}_{s}", .{ version, arch });
     const stage = try join(t, &.{ repo, "apps/linux/build/deb", name });
@@ -125,47 +124,15 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
     cwd.deleteTree(t.io, stage) catch {};
     try cwd.createDirPath(t.io, try join(t, &.{ stage, "DEBIAN" }));
 
-    // Ship stripped binaries so the download is small (the built ones carry
-    // debug_info).
-    const staged_ime = try join(t, &.{ stage, "usr/libexec/byakaron-ibus" });
-    try installFile(t, "755", ime, staged_ime);
-    strip(t, staged_ime);
-    const staged_app = try join(t, &.{ stage, "usr/bin/byakaron" });
-    try installFile(t, "755", app, staged_app);
-    strip(t, staged_app);
-
-    try installFile(t, "644", try join(t, &.{ res, "byakaron.svg" }), try join(t, &.{ stage, "usr/share/icons/hicolor/scalable/apps/byakaron.svg" }));
-    try installFile(t, "644", try join(t, &.{ res, app_id ++ ".gschema.xml" }), try join(t, &.{ stage, "usr/share/glib-2.0/schemas/" ++ app_id ++ ".gschema.xml" }));
-    try renderMetainfo(t, try join(t, &.{ res, app_id ++ ".metainfo.xml" }), try join(t, &.{ stage, "usr/share/metainfo/" ++ app_id ++ ".metainfo.xml" }), version);
-    try render(t, try join(t, &.{ res, "byakaron-app.desktop.in" }), try join(t, &.{ stage, "usr/share/applications/" ++ app_id ++ ".desktop" }), &.{
-        .{ "@BYK_APP_EXEC@", "/usr/bin/byakaron" },
-    });
-    std.debug.print(">>> Packaged the GTK app (Spelling / Layout / Setup)\n", .{});
-
-    if (!exists(t.io, spell_db)) return fail("{s} is missing; run: zig build db", .{spell_db});
-    try installFile(t, "644", spell_db, try join(t, &.{ stage, "usr/share/byakaron/Byakaron.db" }));
-    std.debug.print(">>> Packaged Byakaron.db\n", .{});
-
-    try render(t, try join(t, &.{ res, "byakaron.xml.in" }), try join(t, &.{ stage, "usr/share/ibus/component/byakaron.xml" }), &.{
-        .{ "@BYK_EXEC@", "/usr/libexec/byakaron-ibus" },
-        .{ "@BYK_ICON@", "/usr/share/icons/hicolor/scalable/apps/byakaron.svg" },
-        .{ "@BYK_SETUP@", "/usr/bin/byakaron --page=setup" },
-        .{ "@BYK_VERSION@", version },
-    });
-
-    try installPanelExtensions(t, res, stage);
-    std.debug.print(">>> Packaged the GNOME Shell suggestion panel\n", .{});
-
-    if (fcitx_so) |so| {
-        try assertGlibc(t, so);
-        const libdir = try fcitxLibdir(t);
-        const staged_so = try join(t, &.{ stage, std.mem.trimStart(u8, libdir, "/"), "fcitx5/byakaron.so" });
-        try installFile(t, "755", so, staged_so);
-        strip(t, staged_so);
-        try installFile(t, "644", try join(t, &.{ fcitx_res, "byakaron-addon.conf" }), try join(t, &.{ stage, "usr/share/fcitx5/addon/byakaron.conf" }));
-        try installFile(t, "644", try join(t, &.{ fcitx_res, "byakaron.conf" }), try join(t, &.{ stage, "usr/share/fcitx5/inputmethod/byakaron.conf" }));
-        std.debug.print(">>> Packaged the Fcitx5 addon\n", .{});
-    }
+    try stagePayload(t, .{
+        .repo = repo,
+        .ime = ime,
+        .app = app,
+        .spell_db = spell_db,
+        .version = version,
+        .engine = libexecdir ++ "/byakaron-ibus",
+        .fcitx_so = fcitx_so,
+    }, stage);
 
     const installed_kb = blk: {
         const du = capture(t, &.{ "du", "-sk", try join(t, &.{ stage, "usr" }) }) orelse break :blk "0";
@@ -234,6 +201,71 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
         \\    sudo apt remove byakaron
         \\
     , .{ out, name });
+}
+
+/// What both packages install, the same files in the same places apart from
+/// the engine: Debian keeps helper programs in /usr/libexec, Arch in
+/// /usr/lib/<package> (it has no /usr/libexec).
+const Payload = struct {
+    repo: []const u8,
+    ime: []const u8,
+    app: []const u8,
+    spell_db: []const u8,
+    version: []const u8,
+    /// The engine's installed path; the IBus component points at it.
+    engine: []const u8,
+    fcitx_so: ?[]const u8 = null,
+};
+
+/// Copy the payload into `stage` (the future `/`).
+fn stagePayload(t: *Tool, p: Payload, stage: []const u8) !void {
+    const res = try join(t, &.{ p.repo, "apps/linux/Resources" });
+    const fcitx_res = try join(t, &.{ p.repo, "apps/linux/Fcitx5" });
+
+    try assertGlibc(t, p.ime);
+    try assertGlibc(t, p.app);
+
+    // Ship stripped binaries so the download is small (the built ones carry
+    // debug_info).
+    const staged_ime = try join(t, &.{ stage, p.engine });
+    try installFile(t, "755", p.ime, staged_ime);
+    strip(t, staged_ime);
+    const staged_app = try join(t, &.{ stage, "usr/bin/byakaron" });
+    try installFile(t, "755", p.app, staged_app);
+    strip(t, staged_app);
+
+    try installFile(t, "644", try join(t, &.{ res, "byakaron.svg" }), try join(t, &.{ stage, "usr/share/icons/hicolor/scalable/apps/byakaron.svg" }));
+    try installFile(t, "644", try join(t, &.{ res, app_id ++ ".gschema.xml" }), try join(t, &.{ stage, "usr/share/glib-2.0/schemas/" ++ app_id ++ ".gschema.xml" }));
+    try renderMetainfo(t, try join(t, &.{ res, app_id ++ ".metainfo.xml" }), try join(t, &.{ stage, "usr/share/metainfo/" ++ app_id ++ ".metainfo.xml" }), p.version);
+    try render(t, try join(t, &.{ res, "byakaron-app.desktop.in" }), try join(t, &.{ stage, "usr/share/applications/" ++ app_id ++ ".desktop" }), &.{
+        .{ "@BYK_APP_EXEC@", "/usr/bin/byakaron" },
+    });
+    std.debug.print(">>> Packaged the GTK app (Spelling / Layout / Setup)\n", .{});
+
+    if (!exists(t.io, p.spell_db)) return fail("{s} is missing; run: zig build db", .{p.spell_db});
+    try installFile(t, "644", p.spell_db, try join(t, &.{ stage, "usr/share/byakaron/Byakaron.db" }));
+    std.debug.print(">>> Packaged Byakaron.db\n", .{});
+
+    try render(t, try join(t, &.{ res, "byakaron.xml.in" }), try join(t, &.{ stage, "usr/share/ibus/component/byakaron.xml" }), &.{
+        .{ "@BYK_EXEC@", p.engine },
+        .{ "@BYK_ICON@", "/usr/share/icons/hicolor/scalable/apps/byakaron.svg" },
+        .{ "@BYK_SETUP@", "/usr/bin/byakaron --page=setup" },
+        .{ "@BYK_VERSION@", p.version },
+    });
+
+    try installPanelExtensions(t, res, stage);
+    std.debug.print(">>> Packaged the GNOME Shell suggestion panel\n", .{});
+
+    if (p.fcitx_so) |so| {
+        try assertGlibc(t, so);
+        const libdir = try fcitxLibdir(t);
+        const staged_so = try join(t, &.{ stage, std.mem.trimStart(u8, libdir, "/"), "fcitx5/byakaron.so" });
+        try installFile(t, "755", so, staged_so);
+        strip(t, staged_so);
+        try installFile(t, "644", try join(t, &.{ fcitx_res, "byakaron-addon.conf" }), try join(t, &.{ stage, "usr/share/fcitx5/addon/byakaron.conf" }));
+        try installFile(t, "644", try join(t, &.{ fcitx_res, "byakaron.conf" }), try join(t, &.{ stage, "usr/share/fcitx5/inputmethod/byakaron.conf" }));
+        std.debug.print(">>> Packaged the Fcitx5 addon\n", .{});
+    }
 }
 
 // apt runs these as root. The ibus daemon and its cache belong to each
@@ -329,6 +361,267 @@ const postrm =
     \\fi
     \\
     \\exit 0
+    \\
+;
+
+// ---------------------------------------------------------------------------
+// package-arch
+// ---------------------------------------------------------------------------
+
+/// Arch keeps a package's helper programs in /usr/lib/<package>: it has no
+/// /usr/libexec.
+const arch_engine = "/usr/lib/byakaron/byakaron-ibus";
+
+/// The .deb's payload as a pacman package, for Arch Linux and the systems
+/// built on it (Manjaro, EndeavourOS, …). Made without makepkg so the Ubuntu
+/// host that builds the .deb (CI) builds this too. A pacman package is a tar,
+/// zstd-compressed, with three files of its own in front: `.PKGINFO` (name,
+/// version, dependencies), `.INSTALL` (the scriptlet) and `.MTREE` (each
+/// entry's type, mode, size and hashes, which `pacman -Qkk` checks).
+fn packageArch(t: *Tool, a: []const []const u8) !void {
+    const repo = a[0];
+    const out_dir = a[4];
+
+    if (isRoot()) {
+        return fail("do not run this as root: zig-out would become root-owned, and the next\n       non-root build would fail. Run: zig build package-linux-arch", .{});
+    }
+    for ([_][]const u8{ "tar", "zstd", "gzip", "find", "stat", "md5sum", "sha256sum" }) |cmd| {
+        if (!haveCmd(t, cmd)) return fail("{s} is required to build the Arch package", .{cmd});
+    }
+
+    const version = try readVersion(t, repo);
+    if (!archVersionValid(version)) {
+        return fail("version {s}: a prerelease must start with a letter (27.0.0-dev.3) to sort before its release in pacman", .{version});
+    }
+    const arch = try pacmanArch(t);
+    const pkgver = try std.fmt.allocPrint(t.arena, "{f}-1", .{archVersion(version)});
+    const name = try std.fmt.allocPrint(t.arena, "byakaron-{s}-{s}", .{ pkgver, arch });
+    const stage = try join(t, &.{ repo, "apps/linux/build/arch", name });
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(t.io, stage) catch {};
+    try cwd.createDirPath(t.io, stage);
+
+    try stagePayload(t, .{
+        .repo = repo,
+        .ime = a[1],
+        .app = a[2],
+        .spell_db = a[3],
+        .version = version,
+        .engine = arch_engine,
+    }, stage);
+
+    // One time for every entry: the tar's and .MTREE's must agree.
+    const when: i64 = if (t.env.get("SOURCE_DATE_EPOCH")) |s|
+        std.fmt.parseInt(i64, s, 10) catch return fail("SOURCE_DATE_EPOCH is not a number: {s}", .{s})
+    else
+        @intCast(Io.Clock.real.now(t.io).toSeconds());
+    const stamp = try std.fmt.allocPrint(t.arena, "{d}", .{when});
+
+    const du = capture(t, &.{ "du", "-sb", try join(t, &.{ stage, "usr" }) }) orelse return fail("du failed on {s}", .{stage});
+    const bytes = du[0 .. std.mem.indexOfAny(u8, du, " \t") orelse du.len];
+
+    // libibus is the engine's library, ibus the daemon that starts it; curl is
+    // for the app's updates. Arch's ibus carries the GTK and Qt modules.
+    const pkginfo = try std.fmt.allocPrint(t.arena,
+        \\# Generated by src/build/linux.zig (zig build package-linux-arch)
+        \\pkgname = byakaron
+        \\pkgbase = byakaron
+        \\xdata = pkgtype=pkg
+        \\pkgver = {s}
+        \\pkgdesc = Bangla phonetic keyboard (IBus) with a GTK app and spell-check
+        \\url = https://nuhulabs.com/byakaron
+        \\builddate = {s}
+        \\packager = Byakaron contributors <byakaron@example.com>
+        \\size = {s}
+        \\arch = {s}
+        \\license = MIT
+        \\depend = glibc>=2.31
+        \\depend = ibus>=1.5
+        \\depend = libibus
+        \\depend = glib2
+        \\depend = gtk3
+        \\depend = curl
+        \\
+    , .{ pkgver, stamp, bytes, arch });
+    try writeFile(t, try join(t, &.{ stage, ".PKGINFO" }), pkginfo, "644");
+    try writeFile(t, try join(t, &.{ stage, ".INSTALL" }), arch_install, "644");
+    try run(t, &.{ "bash", "-c", arch_mtree, "arch-mtree", stage, stamp });
+
+    try cwd.createDirPath(t.io, out_dir);
+    const out = try std.fmt.allocPrint(t.arena, "{s}/{s}.pkg.tar.zst", .{ out_dir, name });
+    cwd.deleteFile(t.io, out) catch {};
+    std.debug.print(">>> Compressing (zstd -19)\n", .{});
+    try run(t, &.{ "bash", "-c", arch_tar, "arch-tar", stage, stamp, out });
+
+    std.debug.print(
+        \\
+        \\=== Built: {s} ===
+        \\
+        \\The same keyboard, app and spell-check as the .deb, for Arch Linux and
+        \\the systems built on it (Manjaro, EndeavourOS). pacman installs ibus and
+        \\GTK if they are missing:
+        \\
+        \\    sudo pacman -U ./{s}.pkg.tar.zst
+        \\
+        \\Then add it: GNOME Settings -> Keyboard -> Input Sources -> + -> Bangla ->
+        \\Byakaron, or the Byakaron app -> Setup. Remove with:
+        \\    sudo pacman -R byakaron
+        \\
+    , .{ out, name });
+}
+
+/// pacman's name for the CPU: BYK_PACMAN_ARCH (set by the build from
+/// -Dlinux-arch), else the host's.
+fn pacmanArch(t: *Tool) ![]const u8 {
+    if (t.env.get("BYK_PACMAN_ARCH")) |a| if (a.len > 0) return a;
+    return switch (@import("builtin").cpu.arch) {
+        .x86_64 => "x86_64",
+        .aarch64 => "aarch64",
+        else => return fail("cannot tell the Arch architecture; set BYK_PACMAN_ARCH", .{}),
+    };
+}
+
+/// build.zig.zon's version as a pacman pkgver, which cannot hold a `-`. The
+/// `-` before a SemVer prerelease is dropped: vercmp sorts letters right after
+/// a number before the release (27.0.0dev.3 < 27.0.0), as dpkg does `~`. A
+/// later `-` becomes `_`. Core/update.c's byk_update_arch_version agrees.
+fn archVersion(version: []const u8) ArchVersion {
+    return .{ .v = version };
+}
+
+/// Without a letter right after the `-`, dropping it would glue two numbers
+/// together (27.0.0-1 → 27.0.01).
+fn archVersionValid(version: []const u8) bool {
+    const dash = std.mem.indexOfScalar(u8, version, '-') orelse return true;
+    return dash + 1 < version.len and std.ascii.isAlphabetic(version[dash + 1]);
+}
+
+const ArchVersion = struct {
+    v: []const u8,
+
+    pub fn format(self: ArchVersion, w: *Io.Writer) Io.Writer.Error!void {
+        var dropped = false;
+        for (self.v) |c| {
+            if (c != '-') {
+                try w.writeByte(c);
+            } else if (dropped) {
+                try w.writeByte('_');
+            } else {
+                dropped = true;
+            }
+        }
+    }
+};
+
+test archVersion {
+    var buf: [64]u8 = undefined;
+    try std.testing.expectEqualStrings("27.0.0dev.3", try std.fmt.bufPrint(&buf, "{f}", .{archVersion("27.0.0-dev.3")}));
+    try std.testing.expectEqualStrings("27.0.0", try std.fmt.bufPrint(&buf, "{f}", .{archVersion("27.0.0")}));
+    try std.testing.expectEqualStrings("27.0.0rc.1_x", try std.fmt.bufPrint(&buf, "{f}", .{archVersion("27.0.0-rc.1-x")}));
+    try std.testing.expect(archVersionValid("27.0.0-dev.3"));
+    try std.testing.expect(archVersionValid("27.0.0"));
+    try std.testing.expect(!archVersionValid("27.0.0-1"));
+    try std.testing.expect(!archVersionValid("27.0.0-"));
+}
+
+// pacman runs these as root, with the new version as $1 (and the old one as
+// $2 on an upgrade). The ibus daemon and its cache belong to each logged-in
+// desktop session, so those buses are refreshed as the session user, as the
+// .deb's postinst does. The settings schema, icon cache and desktop database
+// have pacman hooks of their own (glib2, gtk-update-icon-cache,
+// desktop-file-utils), so nothing here runs those.
+const arch_install =
+    \\as_session_user() {
+    \\    local uid_dir="$1"
+    \\    shift
+    \\    local uid user
+    \\    uid="$(basename "$uid_dir")"
+    \\    user="$(getent passwd "$uid" | cut -d: -f1)"
+    \\    [ -n "$user" ] || return 0
+    \\    runuser -u "$user" -- env \
+    \\        DBUS_SESSION_BUS_ADDRESS="unix:path=$uid_dir/bus" \
+    \\        "$@" >/dev/null 2>&1 || true
+    \\}
+    \\
+    \\refresh_ibus() {
+    \\    for uid_dir in /run/user/*; do
+    \\        [ -S "$uid_dir/bus" ] || continue
+    \\        as_session_user "$uid_dir" ibus write-cache
+    \\        as_session_user "$uid_dir" ibus restart
+    \\    done
+    \\}
+    \\
+    \\post_install() {
+    \\    refresh_ibus
+    \\    # The curl installer prints the steps itself and sets BYAKARON_INSTALLER
+    \\    # so they do not appear twice.
+    \\    [ -z "${BYAKARON_INSTALLER:-}" ] || return 0
+    \\    echo ""
+    \\    echo "Byakaron installed. The package only registers the engine — add it:"
+    \\    if command -v gnome-control-center >/dev/null; then
+    \\        echo "  1. Settings -> Keyboard -> Input Sources -> '+'"
+    \\        echo "  2. Choose Bangla, then Byakaron (Bangla Phonetic) -> Add"
+    \\        echo "  3. Switch with Super+Space"
+    \\        echo "  If Byakaron is missing from the Bangla list, log out and back in."
+    \\        echo "  Log out and back in once anyway to get Byakaron's suggestion panel."
+    \\    else
+    \\        echo "  1. Make IBus start with your desktop. KDE Plasma (Wayland): System Settings"
+    \\        echo "     -> Keyboard -> Virtual Keyboard -> IBus Wayland. Elsewhere: run"
+    \\        echo "     'ibus-daemon -drxR' at login (https://wiki.archlinux.org/title/IBus)"
+    \\        echo "  2. ibus-setup -> Input Method -> Add -> Bangla -> Byakaron"
+    \\        echo "  3. Switch with Super+Space"
+    \\    fi
+    \\    echo "  Or open the Byakaron app -> Setup, which walks through this."
+    \\}
+    \\
+    \\post_upgrade() {
+    \\    refresh_ibus
+    \\    echo "Byakaron updated from $2. Your input source stays as it is."
+    \\}
+    \\
+    \\post_remove() {
+    \\    refresh_ibus
+    \\}
+    \\
+;
+
+// .MTREE: what makepkg writes with bsdtar --format=mtree, one line per entry
+// with every keyword spelled out (no /set lines). Modes lose group/other write,
+// as the tar's do (--mode=go-w), whatever the builder's umask was.
+const arch_mtree =
+    \\set -euo pipefail
+    \\stage="$1" when="$2"
+    \\cd "$stage"
+    \\{
+    \\    echo '#mtree'
+    \\    LC_ALL=C find . -mindepth 1 ! -path ./.MTREE -printf '%P\n' | LC_ALL=C sort |
+    \\    while IFS= read -r p; do
+    \\        # mtree would escape anything else; nothing Byakaron ships needs it.
+    \\        case "$p" in *[!A-Za-z0-9._@+/-]*)
+    \\            echo "error: $p: a character .MTREE would have to escape" >&2; exit 1 ;;
+    \\        esac
+    \\        mode=$(printf '%o' $(( 8#$(stat -c %a "$p") & ~8#022 )))
+    \\        if [[ -L "$p" ]]; then
+    \\            echo "error: $p: the package has no symlinks" >&2; exit 1
+    \\        elif [[ -d "$p" ]]; then
+    \\            echo "./$p time=$when.0 mode=$mode type=dir uid=0 gid=0"
+    \\        else
+    \\            md5=$(md5sum <"$p" | cut -d' ' -f1)
+    \\            sha=$(sha256sum <"$p" | cut -d' ' -f1)
+    \\            echo "./$p time=$when.0 mode=$mode size=$(stat -c %s "$p") md5digest=$md5 sha256digest=$sha type=file uid=0 gid=0"
+    \\        fi
+    \\    done
+    \\} | gzip -9 -n > .MTREE
+    \\
+;
+
+// .PKGINFO first: pacman reads a package's metadata from the front.
+const arch_tar =
+    \\set -euo pipefail
+    \\stage="$1" when="$2" out="$3"
+    \\LC_ALL=C tar -C "$stage" --format=gnu --owner=0 --group=0 --numeric-owner --mode=go-w \
+    \\    --mtime="@$when" --sort=name -cf - .PKGINFO .INSTALL .MTREE usr \
+    \\    | zstd -19 -T0 -q -c > "$out"
     \\
 ;
 
@@ -1460,41 +1753,35 @@ fn tested(t: *Tool, a: []const []const u8) !u8 {
     return 0;
 }
 
-/// Install the *local* .deb in clean containers, the way apt does for a user,
-/// then run `tested` inside each (files, icon, app window, typing through the
-/// installed engine). `deb` is the .deb or a directory holding one. Images
-/// default to ubuntu 20.04 / 22.04 / 24.04 / 26.04 and debian:bookworm / trixie
-/// (what Raspberry Pi OS 64-bit is built on); the .deb's CPU must match the
-/// Docker host's. The IME test binary must be built for glibc 2.31
-/// (`zig build linux-test`).
+/// Install the *local* packages in clean containers, the way apt or pacman
+/// does for a user, then run `tested` inside each (files, icon, app window,
+/// typing through the installed engine). `deb` is the .deb or a directory
+/// holding one; `--arch-pkg=` the Arch package (or its directory). A container
+/// with pacman installs the Arch package (and checks it with `pacman -Qkk`
+/// and removes it again), any other the .deb. Images default to ubuntu 20.04 /
+/// 22.04 / 24.04 / 26.04 and debian:bookworm / trixie (what Raspberry Pi OS
+/// 64-bit is built on), plus archlinux:latest on an x86_64 host when there is
+/// an Arch package; the packages' CPU must match the Docker host's. The IME
+/// test binary must be built for glibc 2.31 (`zig build linux-test`).
 /// `--tool` is a static build of this program, so it runs on any image.
 fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
     const ime_test = a[0];
     var tool: ?[]const u8 = null;
+    var arch_arg: ?[]const u8 = null;
     var images: std.ArrayList([]const u8) = .empty;
     for (a[2..]) |arg| {
-        if (std.mem.startsWith(u8, arg, "--tool=")) tool = arg["--tool=".len..] else try images.append(t.arena, arg);
-    }
-    if (images.items.len == 0) {
-        try images.appendSlice(t.arena, &.{ "ubuntu:20.04", "ubuntu:22.04", "ubuntu:24.04", "ubuntu:26.04", "debian:bookworm", "debian:trixie" });
+        if (std.mem.startsWith(u8, arg, "--tool=")) {
+            tool = arg["--tool=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--arch-pkg=")) {
+            arch_arg = arg["--arch-pkg=".len..];
+        } else try images.append(t.arena, arg);
     }
     if (!haveCmd(t, "docker")) return fail("docker is required", .{});
     if (!exists(t.io, ime_test)) return fail("{s} is not an executable", .{ime_test});
 
-    const cwd = Io.Dir.cwd();
-    var deb = a[1];
-    if (cwd.statFile(t.io, deb, .{})) |st| {
-        if (st.kind == .directory) {
-            var dir = try cwd.openDir(t.io, deb, .{ .iterate = true });
-            defer dir.close(t.io);
-            var it = dir.iterate();
-            var found: ?[]const u8 = null;
-            while (try it.next(t.io)) |e| {
-                if (std.mem.endsWith(u8, e.name, ".deb")) found = try t.arena.dupe(u8, e.name);
-            }
-            deb = try join(t, &.{ deb, found orelse return fail("no .deb in {s}", .{deb}) });
-        }
-    } else |_| return fail("{s} does not exist", .{deb});
+    const deb = try findPackage(t, a[1], ".deb") orelse return fail("no .deb in {s}", .{a[1]});
+    const arch_pkg: ?[]const u8 = if (arch_arg) |p| (try findPackage(t, p, ".pkg.tar.zst") orelse
+        return fail("no .pkg.tar.zst in {s}", .{p})) else null;
 
     // byakaron_<version>_<arch>.deb
     const base = std.fs.path.basename(deb);
@@ -1503,11 +1790,23 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
         _ = parts.next();
         break :blk parts.next() orelse "";
     };
+    if (arch_pkg) |p| {
+        const shown = shownFromArchFile(t.arena, std.fs.path.basename(p));
+        if (!std.mem.eql(u8, shown, version)) return fail("the .deb is {s}, the Arch package {s}: build both from one tree", .{ version, shown });
+    }
+
+    const machine = capture(t, &.{ "uname", "-m" }) orelse "?";
+    if (images.items.len == 0) {
+        try images.appendSlice(t.arena, &.{ "ubuntu:20.04", "ubuntu:22.04", "ubuntu:24.04", "ubuntu:26.04", "debian:bookworm", "debian:trixie" });
+        // Arch Linux has x86_64 images only.
+        if (arch_pkg != null and std.mem.eql(u8, machine, "x86_64")) try images.append(t.arena, "archlinux:latest");
+    }
     const self_exe = try std.process.executablePathAlloc(t.io, t.arena);
 
     // Under apps/linux/build, not /tmp: snap-packaged Docker cannot mount /tmp.
     const here = try std.process.currentPathAlloc(t.io, t.arena);
     const work = try join(t, &.{ here, "apps/linux/build/install-matrix" });
+    const cwd = Io.Dir.cwd();
     cwd.deleteTree(t.io, work) catch {};
     try cwd.createDirPath(t.io, work);
     defer cwd.deleteTree(t.io, work) catch {};
@@ -1515,9 +1814,9 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
     try installFile(t, "755", ime_test, try join(t, &.{ work, "ime-test" }));
     try installFile(t, "755", tool orelse self_exe, try join(t, &.{ work, "tool" }));
     try installFile(t, "644", deb, try join(t, &.{ work, "byakaron.deb" }));
+    if (arch_pkg) |p| try installFile(t, "644", p, try join(t, &.{ work, "byakaron.pkg.tar.zst" }));
     try writeFile(t, try join(t, &.{ work, "inside.sh" }), matrix_inside, "755");
 
-    const machine = capture(t, &.{ "uname", "-m" }) orelse "?";
     var failed: std.ArrayList([]const u8) = .empty;
     for (images.items) |image| {
         std.debug.print("=== {s} ({s}) with {s}\n", .{ image, machine, base });
@@ -1564,8 +1863,85 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
     return 0;
 }
 
+/// `path` itself, or the one file in the directory `path` whose name ends in
+/// `suffix`; null when the directory has none.
+fn findPackage(t: *Tool, path: []const u8, suffix: []const u8) !?[]const u8 {
+    const cwd = Io.Dir.cwd();
+    const st = cwd.statFile(t.io, path, .{}) catch return fail("{s} does not exist", .{path});
+    if (st.kind != .directory) return path;
+    var dir = try cwd.openDir(t.io, path, .{ .iterate = true });
+    defer dir.close(t.io);
+    var it = dir.iterate();
+    var found: ?[]const u8 = null;
+    while (try it.next(t.io)) |e| {
+        if (std.mem.endsWith(u8, e.name, suffix)) found = try t.arena.dupe(u8, e.name);
+    }
+    return if (found) |name| try join(t, &.{ path, name }) else null;
+}
+
+/// byakaron-27.0.0dev.3-1-x86_64.pkg.tar.zst → 27.0.0-dev.3, the version
+/// `byakaron --version` prints: `archVersion` backwards (the `-` goes back in
+/// front of the first letter).
+fn shownFromArchFile(arena: Allocator, name: []const u8) []const u8 {
+    var rest = name;
+    if (std.mem.startsWith(u8, rest, "byakaron-")) rest = rest["byakaron-".len..];
+    // <pkgver>-<pkgrel>-<arch>.pkg.tar.zst
+    const rel = std.mem.indexOfScalar(u8, rest, '-') orelse return rest;
+    const pkgver = rest[0..rel];
+    for (pkgver, 0..) |c, i| {
+        if (std.ascii.isAlphabetic(c)) {
+            return std.fmt.allocPrint(arena, "{s}-{s}", .{ pkgver[0..i], pkgver[i..] }) catch pkgver;
+        }
+    }
+    return pkgver;
+}
+
+test shownFromArchFile {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    try std.testing.expectEqualStrings("27.0.0-dev.3", shownFromArchFile(a, "byakaron-27.0.0dev.3-1-x86_64.pkg.tar.zst"));
+    try std.testing.expectEqualStrings("27.0.0-dev", shownFromArchFile(a, "byakaron-27.0.0dev-1-x86_64.pkg.tar.zst"));
+    try std.testing.expectEqualStrings("27.0.0", shownFromArchFile(a, "byakaron-27.0.0-1-x86_64.pkg.tar.zst"));
+}
+
+// pacman (Arch): the image is behind its repositories, so tools come with a
+// full upgrade, never a partial one. Then the package's own checks: the
+// scriptlet ran, the glib2 hook compiled the settings schema, `pacman -Qkk`
+// finds every file as .MTREE lists it, and `pacman -R` leaves nothing behind.
 const matrix_inside =
     \\#!/bin/bash
+    \\if command -v pacman >/dev/null; then
+    \\    export LC_ALL=C.UTF-8
+    \\    [ -f /w/byakaron.pkg.tar.zst ] || { echo "  FAIL an Arch image, but no Arch package to test (--arch-pkg=)"; exit 1; }
+    \\    pacman -Syu --noconfirm --needed -q xorg-server-xvfb dbus xorg-xwininfo ibus \
+    \\        python-gobject gdk-pixbuf2 librsvg >/tmp/tools.log 2>&1 \
+    \\        || { echo "  FAIL could not install the test tools"; tail -5 /tmp/tools.log; exit 1; }
+    \\    echo "  >>> pacman -U /w/byakaron.pkg.tar.zst"
+    \\    pacman -U --noconfirm /w/byakaron.pkg.tar.zst > /tmp/install.log 2>&1 \
+    \\        || { echo "  FAIL pacman -U of the package:"; tail -15 /tmp/install.log; exit 1; }
+    \\    grep -q "Byakaron installed" /tmp/install.log && echo "  ok   post_install printed the setup steps" \
+    \\        || { echo "  FAIL post_install did not run:"; tail -15 /tmp/install.log; exit 1; }
+    \\    gsettings list-schemas | grep -qx dev.nuhu.labs.Byakaron && echo "  ok   settings schema compiled (glib2's hook)" \
+    \\        || { echo "  FAIL settings schema not compiled"; exit 1; }
+    \\    pacman -Qkk byakaron > /tmp/qkk.log 2>&1
+    \\    grep -q " 0 altered files" /tmp/qkk.log && ! grep -q "^warning" /tmp/qkk.log \
+    \\        && echo "  ok   pacman -Qkk: $(tail -1 /tmp/qkk.log)" \
+    \\        || { echo "  FAIL pacman -Qkk byakaron:"; tail -15 /tmp/qkk.log; exit 1; }
+    \\    /w/tool tested /w/ime-test "$1" || exit 1
+    \\    echo "  >>> pacman -R byakaron"
+    \\    pacman -R --noconfirm byakaron > /tmp/remove.log 2>&1 \
+    \\        || { echo "  FAIL pacman -R byakaron:"; tail -15 /tmp/remove.log; exit 1; }
+    \\    left="$(ls -d /usr/bin/byakaron /usr/lib/byakaron /usr/share/byakaron \
+    \\        /usr/share/ibus/component/byakaron.xml /usr/share/icons/hicolor/scalable/apps/byakaron.svg \
+    \\        /usr/share/applications/dev.nuhu.labs.Byakaron.desktop /usr/share/metainfo/dev.nuhu.labs.Byakaron.metainfo.xml \
+    \\        /usr/share/glib-2.0/schemas/dev.nuhu.labs.Byakaron.gschema.xml \
+    \\        /usr/share/gnome-shell/extensions/byakaron-panel* 2>/dev/null)"
+    \\    gsettings list-schemas | grep -qx dev.nuhu.labs.Byakaron && left="$left compiled schema"
+    \\    [ -z "$left" ] && echo "  ok   pacman -R left nothing behind" \
+    \\        || { echo "  FAIL left behind after pacman -R: $left"; exit 1; }
+    \\    exit 0
+    \\fi
     \\export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
     \\# Do not set XDG_RUNTIME_DIR before apt: ibus's postinst can bind
     \\# $XDG_RUNTIME_DIR/ibus.sock and then Session.start fails with EADDRINUSE.
