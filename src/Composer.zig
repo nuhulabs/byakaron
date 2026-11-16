@@ -307,6 +307,7 @@ fn addExtras(self: *Composer) !void {
     // Corrections only when Avro found no dictionary word: its list is just
     // the plain transliteration.
     if (!self.settings.spelling_corrections or self.avro_count > 1) return;
+    if (number_marks and hasBanglaDigit(plain)) return;
     const corrector = self.corrector orelse return;
     if ((std.unicode.utf8CountCodepoints(plain) catch 0) < 2) return;
     if (self.user_words.contains(plain) or self.ac().contains(plain)) return;
@@ -326,6 +327,7 @@ fn addPrefixWords(self: *Composer) !void {
     const plain = try self.ac().transliterate(self.gpa, arena, self.latin.items);
     // A single letter starts too many words to say anything yet.
     if ((std.unicode.utf8CountCodepoints(plain) catch 0) < 2) return;
+    if (number_marks and hasBanglaDigit(plain)) return;
     const longer = self.ac().prefixSuggest(arena, plain, prefix_limit) catch &.{};
     for (longer) |entry| if (!self.listed(entry.word)) {
         try self.items.append(self.gpa, try arena.dupe(u8, entry.word));
@@ -334,6 +336,17 @@ fn addPrefixWords(self: *Composer) !void {
 
 fn isBanglaDigit(c: u21) bool {
     return c >= 0x09E6 and c <= 0x09EF; // ০–৯
+}
+
+/// A number is not a misspelling, and an open list would make its next digit
+/// pick a candidate (`1`–`9` choose while the list is up), so a word with a
+/// digit gets no corrections and no longer words. Desktop Linux only, like
+/// `number_marks`.
+fn hasBanglaDigit(word: []const u8) bool {
+    const view = std.unicode.Utf8View.init(word) catch return false;
+    var it = view.iterator();
+    while (it.nextCodepoint()) |c| if (isBanglaDigit(c)) return true;
+    return false;
 }
 
 /// `word` with each । or ঃ between two Bangla digits made . or :, or null
@@ -728,6 +741,24 @@ const FakeCorrector = struct {
         return &.{ "বাংলা", "বাংলো" };
     }
 };
+
+test "Linux: a number gets no corrections, so its next digit never picks one" {
+    if (!number_marks) return error.SkipZigTest;
+    var memory = Store.Memory.init(testing.allocator);
+    defer memory.deinit();
+    var fake: FakeCorrector = .{ .ready = true };
+    var c = try Composer.init(testing.allocator, memory.store(), fake.corrector());
+    defer c.deinit();
+    // With Byakaron.db installed, ১০ঃ got corrections, the list opened, and
+    // the 3 picked the third one: 10:30 typed ০.
+    for ("10:30") |ch| _ = try c.key(.{ .char = ch }, .{});
+    try testing.expectEqualStrings("১০:৩০", c.preedit());
+    try testing.expect(!c.panelVisible());
+    try testing.expectEqualStrings("১০:৩০ ", (try c.key(.space, .{})).commit);
+    // A word still gets them.
+    for ("bngl") |ch| _ = try c.key(.{ .char = ch }, .{});
+    try testing.expect(c.panelVisible());
+}
 
 test "corrections arrive later and are appended" {
     var memory = Store.Memory.init(testing.allocator);
