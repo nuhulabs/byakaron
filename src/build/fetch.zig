@@ -12,7 +12,32 @@
 const std = @import("std");
 const Io = std.Io;
 
-const max_attempts = 5;
+const max_attempts = 8;
+
+/// Ubuntu's own archive hosts are often throttled from CI runners (a download
+/// that never answers). Their packages are pinned by SHA-256, so any mirror
+/// with the same layout can serve them: attempts rotate through these.
+const ubuntu_mirrors = [_][]const u8{
+    "http://archive.ubuntu.com/ubuntu/",
+    "http://azure.archive.ubuntu.com/ubuntu/",
+    "http://mirrors.edge.kernel.org/ubuntu/",
+    "http://us.archive.ubuntu.com/ubuntu/",
+};
+const ubuntu_ports_mirrors = [_][]const u8{
+    "http://ports.ubuntu.com/ubuntu-ports/",
+};
+
+/// The URL to try on `attempt` (1-based): the given one first, then the same
+/// path on the other mirrors of its family.
+fn mirrorUrl(arena: std.mem.Allocator, url: []const u8, attempt: usize) ![]const u8 {
+    const families = [_][]const []const u8{ &ubuntu_mirrors, &ubuntu_ports_mirrors };
+    for (families) |family| for (family, 0..) |prefix, i| {
+        if (!std.mem.startsWith(u8, url, prefix)) continue;
+        const next = family[(i + attempt - 1) % family.len];
+        return std.fmt.allocPrint(arena, "{s}{s}", .{ next, url[prefix.len..] });
+    };
+    return url;
+}
 const stall_timeout: Io.Duration = .fromSeconds(30);
 
 pub fn main(init: std.process.Init) !void {
@@ -30,9 +55,10 @@ pub fn main(init: std.process.Init) !void {
     const cwd = Io.Dir.cwd();
     var attempt: usize = 1;
     while (true) : (attempt += 1) {
-        std.debug.print("fetching {s}\n", .{url});
+        const try_url = try mirrorUrl(arena, url, attempt);
+        std.debug.print("fetching {s}\n", .{try_url});
         const part = try std.fmt.allocPrint(arena, "{s}.part{d}", .{ out, attempt });
-        if (attemptDownload(init.gpa, io, url, part)) |_| {
+        if (attemptDownload(init.gpa, io, try_url, part)) |_| {
             try cwd.rename(part, cwd, out, io);
             break;
         } else |err| {
