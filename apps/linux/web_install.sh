@@ -2,7 +2,7 @@
 # Byakaron for Linux — one-command install (Ubuntu, Debian, Arch).
 #
 # Canonical installer is the website script (Linux + macOS):
-#   curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash
+#   curl -fsSL https://byakaron.com/install.sh | bash
 #
 # This file stays as a thin Linux-only entry for older links and local tests.
 # Prefer apps/web/app/public/install.sh when updating install behaviour.
@@ -19,7 +19,7 @@ need() { command -v "$1" >/dev/null || die "need $1"; }
 
 case "$(uname -s)" in
     Linux) ;;
-    Darwin) die "this is the Linux installer. For a Mac: curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash" ;;
+    Darwin) die "this is the Linux installer. For a Mac: curl -fsSL https://byakaron.com/install.sh | bash" ;;
     *) die "this installer is for Linux (Ubuntu, Debian or Arch), not $(uname -s)" ;;
 esac
 
@@ -134,7 +134,7 @@ install_deb() {
             [[ "$KERNEL_CPU" == aarch64 ]] && hint=" The processor is 64-bit, but the installed system is 32-bit."
             die "this is a 32-bit ARM system ($ARCH, $OS_NAME).$hint
        Byakaron needs a 64-bit system: Raspberry Pi OS (64-bit) or Ubuntu Desktop arm64,
-       on a Raspberry Pi 4 or 5. See https://nuhulabs.com/byakaron" ;;
+       on a Raspberry Pi 4 or 5. See https://byakaron.com" ;;
         i386) die "this is a 32-bit PC system ($OS_NAME). Byakaron needs 64-bit Ubuntu or Debian." ;;
         *) die "unsupported CPU '$ARCH' ($OS_NAME). Byakaron is built for amd64 and arm64." ;;
     esac

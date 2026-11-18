@@ -110,7 +110,7 @@ check "fedora"               install.sh       Linux  x86_64  ""    "Fedora Linux
 check "pacman-but-not-arch"  install.sh       Linux  x86_64  pacman:fedora: "Fedora Linux 40 (Workstation Edition)" \
       "This is Fedora Linux 40 (Workstation Edition)."
 check "mac"                  install.sh       Darwin arm64   ""    "macOS" \
-      "For a Mac: curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash"
+      "For a Mac: curl -fsSL https://byakaron.com/install.sh | bash"
 
 # Where the package comes from, against a fake Byakaron-Assets on file:// URLs:
 # latest/, or the newest prerelease while there is no latest, and the

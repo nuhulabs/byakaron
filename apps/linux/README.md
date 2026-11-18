@@ -562,11 +562,12 @@ The `.deb` Version carries epoch 1 (`1:0.1.3`): until 0.2.1 the Linux package
 had its own numbering, and without the epoch apt refuses the shared 0.1.x over
 0.2.1 as a downgrade. Keep it in every future version.
 
-The public command, `curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash`,
-is served by the nuhulabs.com repo from copies in `app/public/byakaron/`:
-`install.sh` is `apps/web/app/public/install.sh` (Linux + macOS), and
-`install-amd64.sh` / `install-arm64.sh` (links shared earlier) are
-`apps/linux/web_install.sh`. Copy them there when they change.
+The public command, `curl -fsSL https://byakaron.com/install.sh | bash`,
+is served by the website (`apps/web`) from `apps/web/app/public/install.sh`
+(Linux + macOS), so it ships with every web deploy. The per-CPU
+`install-amd64.sh` / `install-arm64.sh` (links shared earlier, before the
+site moved to byakaron.com) are `apps/linux/web_install.sh` and stay on the
+nuhulabs.com repo (`app/public/byakaron/`): copy it there when it changes.
 They read `/etc/os-release` and download `byakaron_<arch>.deb` (apt) or
 `byakaron_x86_64.pkg.tar.zst` (pacman, `ID`/`ID_LIKE` arch) from the latest
 release, so a release needs no copy; the copies of 22/10 still asked for `byakaron_<version>_<arch>.deb` and
@@ -632,13 +633,13 @@ releases as the keyboard.
 
 ### Installing on Ubuntu
 
-One command installs the keyboard, the GTK app, and spell-check. The website
-shows the one for the computer's processor (an Intel / AMD | ARM switch):
+One command installs the keyboard, the GTK app, and spell-check. It detects
+the computer's processor; the per-CPU scripts from before still work:
 
 ```bash
-curl -fsSL https://nuhulabs.com/byakaron/install-amd64.sh | sudo bash   # Intel / AMD
-curl -fsSL https://nuhulabs.com/byakaron/install-arm64.sh | sudo bash   # ARM
-curl -fsSL https://nuhulabs.com/byakaron/install.sh | sudo bash         # either: detects it
+curl -fsSL https://byakaron.com/install.sh | sudo bash                   # detects the CPU
+curl -fsSL https://nuhulabs.com/byakaron/install-amd64.sh | sudo bash   # older link: Intel / AMD
+curl -fsSL https://nuhulabs.com/byakaron/install-arm64.sh | sudo bash   # older link: ARM
 ```
 
 Each per-CPU script stops with the right command if run on the other kind of

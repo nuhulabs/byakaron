@@ -123,7 +123,7 @@ install_deb() {
             [[ "$KERNEL_CPU" == aarch64 ]] && hint=" The processor is 64-bit, but the installed system is 32-bit."
             die "this is a 32-bit ARM system ($ARCH, $OS_NAME).$hint
        Byakaron needs a 64-bit system: Raspberry Pi OS (64-bit) or Ubuntu Desktop arm64,
-       on a Raspberry Pi 4 or 5. See https://nuhulabs.com/byakaron" ;;
+       on a Raspberry Pi 4 or 5. See https://byakaron.com" ;;
         i386) die "this is a 32-bit PC system ($OS_NAME). Byakaron needs 64-bit Ubuntu or Debian." ;;
         *) die "unsupported CPU '$ARCH' ($OS_NAME). Byakaron is built for amd64 and arm64." ;;
     esac

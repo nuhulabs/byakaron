@@ -5,7 +5,7 @@ Pi the install is the same one command as everywhere else; the installer
 detects the CPU and downloads the ARM package:
 
 ```bash
-curl -fsSL https://nuhulabs.com/byakaron/install.sh | sudo bash
+curl -fsSL https://byakaron.com/install.sh | sudo bash
 ```
 
 **Typing it by hand?** The character before `sudo` is a pipe `|`. Raspberry Pi

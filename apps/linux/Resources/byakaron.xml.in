@@ -24,7 +24,7 @@
   <version>@BYK_VERSION@</version>
   <author>Byakaron contributors</author>
   <license>MIT</license>
-  <homepage>https://nuhulabs.com/byakaron</homepage>
+  <homepage>https://byakaron.com</homepage>
   <textdomain>byakaron</textdomain>
 
   <engines>

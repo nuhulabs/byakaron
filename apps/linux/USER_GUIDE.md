@@ -11,7 +11,7 @@ version, which you can turn off.
 Open a terminal and run:
 
 ```sh
-curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash
+curl -fsSL https://byakaron.com/install.sh | bash
 ```
 
 It asks for your password once, and finds out by itself which Linux it is on.
@@ -112,4 +112,4 @@ folder to remove them too.
 | On Arch, the install stops because pacman cannot download ibus or gtk3 | Run `sudo pacman -Syu`, then the install command again. |
 | In Telegram, VLC or KDE apps on Ubuntu 20.04 or 22.04, a word disappears when you click | Byakaron app → **Settings** → turn on **Qt apps: type a word once on click**. |
 
-More: https://nuhulabs.com/byakaron
+More: https://byakaron.com

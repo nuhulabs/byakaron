@@ -159,7 +159,7 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
         \\Provides: byakaron-app, byakaron-data
         \\Section: utils
         \\Priority: optional
-        \\Homepage: https://nuhulabs.com/byakaron
+        \\Homepage: https://byakaron.com
         \\Description: Bangla phonetic input method (IBus engine)
         \\ Type Bangla phonetically from a latin keyboard. Registers as a
         \\ first-class input source in GNOME Settings -> Keyboard -> Input Sources and
@@ -429,7 +429,7 @@ fn packageArch(t: *Tool, a: []const []const u8) !void {
         \\xdata = pkgtype=pkg
         \\pkgver = {s}
         \\pkgdesc = Bangla phonetic keyboard (IBus) with a GTK app and spell-check
-        \\url = https://nuhulabs.com/byakaron
+        \\url = https://byakaron.com
         \\builddate = {s}
         \\packager = Byakaron contributors <byakaron@example.com>
         \\size = {s}
