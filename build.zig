@@ -1636,12 +1636,30 @@ fn addIos(b: *std.Build, avro: AvroData, locale: LocaleStrings) void {
     }
     const out = xcf_dir.path(b, "Byakaron.xcframework");
     step.dependOn(&b.addInstallDirectory(.{ .source_dir = out, .install_dir = .lib, .install_subdir = "ios/Byakaron.xcframework" }).step);
+    b.step("ios-libs", "Build the iOS engine → zig-out/lib/ios/Byakaron.xcframework").dependOn(step);
+
+    // The app's Settings.bundle, from the settings manifest
+    // (src/build/settings_bundle.zig). Committed in the submodule, so Xcode
+    // alone builds the app; `ios`, `ios-libs` and `ios-settings` refresh it.
+    const settings_gen = hostExe(b, "settings_bundle", "src/build/settings_bundle.zig");
+    settings_gen.root_module.addImport("settings", b.createModule(.{
+        .root_source_file = b.path("src/settings.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    }));
+    const settings_dir = b.addRunArtifact(settings_gen).addOutputDirectoryArg("Settings.bundle");
+    const settings_bundle = b.addUpdateSourceFiles();
+    for ([_][]const u8{ "Root.plist", "en.lproj/Root.strings", "bn.lproj/Root.strings" }) |file| {
+        settings_bundle.addCopyFileToSource(settings_dir.path(b, file), b.fmt("apps/ios/keyboard/HostingApp/Settings.bundle/{s}", .{file}));
+    }
+    b.step("ios-settings", "Regenerate the iOS app's Settings.bundle from the settings manifest").dependOn(&settings_bundle.step);
 
     const keyboard = rootPath(b, "apps/ios/keyboard");
     std.Io.Dir.cwd().access(b.graph.io, b.pathJoin(&.{ keyboard, "GiellaKeyboard.xcworkspace" }), .{}) catch {
         ios.dependOn(&b.addFail("apps/ios/keyboard is not checked out: git submodule update --init apps/ios/keyboard").step);
         return;
     };
+    step.dependOn(&settings_bundle.step);
     std.Io.Dir.cwd().access(b.graph.io, b.pathJoin(&.{ keyboard, "Pods/Manifest.lock" }), .{}) catch {
         ios.dependOn(&b.addFail("CocoaPods are not installed: run `pod install` in apps/ios/keyboard").step);
         return;

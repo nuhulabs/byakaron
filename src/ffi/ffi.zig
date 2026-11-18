@@ -428,6 +428,8 @@ pub const ByakaronComposerState = extern struct {
     page_count: usize,
     /// The Latin being composed (what was typed), "" when idle.
     latin: [*:0]const u8,
+    /// The word exactly as typed (plain Avro transliteration), "" when idle.
+    literal: [*:0]const u8,
 };
 
 // ── Next-word predictions (embedded, no database) ─────────────────────────────
@@ -614,6 +616,7 @@ pub export fn byakaron_composer_state(composer: ?*ComposerHandle, out: ?*Byakaro
         .page = c.page(),
         .page_count = c.pageCount(),
         .latin = outString(h, c.latin.items),
+        .literal = outString(h, c.literal),
     };
 }
 
@@ -633,6 +636,141 @@ pub export fn byakaron_settings_set(composer: ?*ComposerHandle, json: [*:0]const
     const h = composer orelse return -1;
     const s = Composer.Settings.parse(std.heap.c_allocator, std.mem.span(json)) catch return -1;
     h.composer.setSettings(s) catch return -1;
+    return 0;
+}
+
+/// One setting as a number (see Settings.value). 0, or -1 for an unknown key.
+pub export fn byakaron_setting_get(composer: ?*ComposerHandle, key: [*:0]const u8, value: ?*c_int) c_int {
+    const h = composer orelse return -1;
+    const out = value orelse return -1;
+    h.composer.sync();
+    out.* = h.composer.settings.value(std.mem.span(key)) orelse return -1;
+    return 0;
+}
+
+/// Set and save one setting from a number (see Settings.setValue). 0, or -1
+/// for an unknown key or a failed save.
+pub export fn byakaron_setting_set(composer: ?*ComposerHandle, key: [*:0]const u8, value: c_int) c_int {
+    const h = composer orelse return -1;
+    // Read-modify-write: another process may have saved since.
+    h.composer.sync();
+    var s = h.composer.settings;
+    if (!s.setValue(std.mem.span(key), value)) return -1;
+    h.composer.setSettings(s) catch return -1;
+    return 0;
+}
+
+/// How many personal-dictionary words there are, after re-reading them.
+pub export fn byakaron_userdict_count(composer: ?*ComposerHandle) usize {
+    const h = composer orelse return 0;
+    resetOut(h);
+    h.composer.sync();
+    return h.composer.user_words.words.items.len;
+}
+
+/// The `index`th personal-dictionary word (byte-sorted), or NULL past the end.
+/// Valid until the next call on the composer other than this one.
+pub export fn byakaron_userdict_word(composer: ?*ComposerHandle, index: usize) ?[*:0]const u8 {
+    const h = composer orelse return null;
+    const words = h.composer.user_words.words.items;
+    if (index >= words.len) return null;
+    return outString(h, words[index]);
+}
+
+// ── Settings manifest (src/Composer/Settings.zig) ───────────────────────────
+
+const Settings = Composer.Settings;
+const language_count = std.enums.values(Settings.Language).len;
+
+pub const ByakaronSettingsSection = extern struct {
+    id: [*:0]const u8,
+    title: [*:0]const u8,
+    hint: ?[*:0]const u8,
+};
+
+pub const ByakaronSettingsField = extern struct {
+    key: [*:0]const u8,
+    section: usize,
+    control: c_int,
+    title: [*:0]const u8,
+    hint: ?[*:0]const u8,
+    min: c_int,
+    max: c_int,
+    option_count: usize,
+    option_values: [*]const [*:0]const u8,
+    option_labels: [*]const [*:0]const u8,
+    platforms: c_uint,
+};
+
+/// Each field's option values, and labels per language, as C string arrays.
+const option_tables = blk: {
+    const Tables = struct {
+        values: []const [*:0]const u8,
+        labels: [language_count][]const [*:0]const u8,
+    };
+    var tables: [Settings.manifest.len]Tables = undefined;
+    for (Settings.manifest, &tables) |f, *t| {
+        var values: [f.options.len][*:0]const u8 = undefined;
+        for (f.options, &values) |o, *v| v.* = o.value.ptr;
+        const final_values = values;
+        t.values = &final_values;
+        for (&t.labels, 0..) |*labels, l| {
+            var ls: [f.options.len][*:0]const u8 = undefined;
+            for (f.options, &ls) |o, *v| v.* = o.label[l].ptr;
+            const final = ls;
+            labels.* = &final;
+        }
+    }
+    break :blk tables;
+};
+
+// byakaron.h's BYAKARON_PLATFORM_* bits.
+comptime {
+    for (.{ .{ .macos, 1 }, .{ .ios, 2 }, .{ .linux, 4 }, .{ .windows, 8 }, .{ .android, 16 }, .{ .web, 32 } }) |p| {
+        if (Settings.Platform.bit(p[0]) != p[1]) @compileError("BYAKARON_PLATFORM_* differs from Settings.Platform");
+    }
+}
+
+fn languageOf(lang: ?[*:0]const u8) usize {
+    return @intFromEnum(Settings.language(if (lang) |p| std.mem.span(p) else ""));
+}
+
+pub export fn byakaron_settings_section_count() usize {
+    return Settings.sections.len;
+}
+
+pub export fn byakaron_settings_section_info(index: usize, lang: ?[*:0]const u8, out: ?*ByakaronSettingsSection) c_int {
+    const o = out orelse return -1;
+    if (index >= Settings.sections.len) return -1;
+    const s = Settings.sections[index];
+    const l = languageOf(lang);
+    o.* = .{ .id = s.id.ptr, .title = s.title[l].ptr, .hint = if (s.hint) |t| t[l].ptr else null };
+    return 0;
+}
+
+pub export fn byakaron_settings_field_count() usize {
+    return Settings.manifest.len;
+}
+
+pub export fn byakaron_settings_field_info(index: usize, lang: ?[*:0]const u8, out: ?*ByakaronSettingsField) c_int {
+    const o = out orelse return -1;
+    if (index >= Settings.manifest.len) return -1;
+    const f = Settings.manifest[index];
+    const l = languageOf(lang);
+    const t = option_tables[index];
+    o.* = .{
+        .key = f.key.ptr,
+        .section = f.section,
+        .control = @intFromEnum(f.control),
+        .title = f.title[l].ptr,
+        .hint = if (f.hint) |h| h[l].ptr else null,
+        .min = f.min,
+        .max = f.max,
+        .option_count = f.options.len,
+        .option_values = t.values.ptr,
+        .option_labels = t.labels[l].ptr,
+        .platforms = f.platforms,
+    };
     return 0;
 }
 
@@ -712,6 +850,43 @@ test "composer ABI: type, draw, commit, settings, personal words" {
     defer byakaron_string_free(words);
     try testing.expectEqualStrings("[\"বাংলাভাষী\"]", std.mem.span(words));
     try testing.expectEqual(@as(c_int, 1), byakaron_userdict_remove(c, "বাংলাভাষী"));
+
+    // One setting at a time, by key; the manifest says what to draw.
+    var v: c_int = -1;
+    try testing.expectEqual(@as(c_int, 0), byakaron_setting_get(c, "suggestions", &v));
+    try testing.expectEqual(@as(c_int, 0), v);
+    try testing.expectEqual(@as(c_int, 0), byakaron_setting_set(c, "candidates_per_page", 4));
+    try testing.expectEqual(@as(c_int, 0), byakaron_setting_get(c, "candidates_per_page", &v));
+    try testing.expectEqual(@as(c_int, 4), v);
+    try testing.expectEqual(@as(c_int, -1), byakaron_setting_set(c, "nope", 1));
+    try testing.expectEqual(@as(c_int, 0), byakaron_setting_get(c, "suggestions", &v));
+    try testing.expectEqual(@as(c_int, 0), v); // the per-page change kept it
+    var field: ByakaronSettingsField = undefined;
+    var found_orientation = false;
+    for (0..byakaron_settings_field_count()) |i| {
+        try testing.expectEqual(@as(c_int, 0), byakaron_settings_field_info(i, "bn_BD.UTF-8", &field));
+        try testing.expect(field.section < byakaron_settings_section_count());
+        try testing.expectEqual(@as(c_int, 0), byakaron_setting_get(c, field.key, &v));
+        if (std.mem.eql(u8, std.mem.span(field.key), "candidate_orientation")) {
+            found_orientation = true;
+            try testing.expectEqual(@as(usize, 2), field.option_count);
+            try testing.expectEqualStrings("vertical", std.mem.span(field.option_values[1]));
+            try testing.expectEqualStrings("উল্লম্ব", std.mem.span(field.option_labels[1]));
+            try testing.expectEqual(@as(c_uint, 0), field.platforms & 2); // not iOS
+        }
+    }
+    try testing.expect(found_orientation);
+    try testing.expectEqual(@as(c_int, -1), byakaron_settings_field_info(99, null, &field));
+    var section: ByakaronSettingsSection = undefined;
+    try testing.expectEqual(@as(c_int, 0), byakaron_settings_section_info(0, null, &section));
+    try testing.expectEqualStrings("Typing", std.mem.span(section.title));
+
+    try testing.expectEqual(@as(c_int, 1), byakaron_userdict_add(c, "আকাশ"));
+    try testing.expectEqual(@as(c_int, 1), byakaron_userdict_add(c, "অজানা"));
+    try testing.expectEqual(@as(usize, 2), byakaron_userdict_count(c));
+    try testing.expectEqualStrings("অজানা", std.mem.span(byakaron_userdict_word(c, 0).?));
+    try testing.expectEqualStrings("আকাশ", std.mem.span(byakaron_userdict_word(c, 1).?));
+    try testing.expectEqual(@as(?[*:0]const u8, null), byakaron_userdict_word(c, 2));
 
     // A second composer on the same directory sees the saved settings.
     const d = byakaron_composer_create(dir.ptr, null, null, null) orelse return error.CreateFailed;

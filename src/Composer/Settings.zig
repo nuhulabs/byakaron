@@ -2,6 +2,11 @@
 //! settings screens show and what `Composer` obeys. Stored as JSON
 //! (`settings.json` in the data directory, or the web's kv); defaults follow
 //! iAvro's preferences.plist where Avro has the setting.
+//!
+//! `sections` and `manifest` describe the settings screen every app draws from
+//! them: each setting's control, range or options, title and hint (in every
+//! language of src/locale) and the platforms that show it. `value` and
+//! `setValue` read and write a setting by its key, so no app parses this JSON.
 
 const Settings = @This();
 
@@ -57,8 +62,280 @@ pub fn clamp(self: *Settings) void {
     self.candidates_per_page = std.math.clamp(self.candidates_per_page, min_candidates_per_page, max_candidates_per_page);
 }
 
+// —— Manifest: what a settings screen shows ——
+
+/// The languages of src/locale (Locale.zig's `files`, in that order). Every
+/// title and hint comes in each.
+pub const Language = enum { en, bn };
+const locale_tables = .{ @import("../locale/en.zon"), @import("../locale/bn.zon") };
+const language_count = std.enums.values(Language).len;
+
+/// The language for a tag ("bn", "bn_BD.UTF-8", "bn-IN"); English when there
+/// is no locale for it.
+pub fn language(tag: []const u8) Language {
+    for (std.enums.values(Language)) |l| {
+        const code = @tagName(l);
+        if (!std.mem.startsWith(u8, tag, code)) continue;
+        if (tag.len == code.len) return l;
+        switch (tag[code.len]) {
+            '_', '-', '.', '@', ':' => return l,
+            else => {},
+        }
+    }
+    return .en;
+}
+
+/// One label in every language, indexed by `Language`.
+pub const Text = [language_count][:0]const u8;
+
+fn text(comptime key: []const u8) Text {
+    var t: Text = undefined;
+    inline for (locale_tables, 0..) |table, i| t[i] = @field(table, key);
+    return t;
+}
+
+fn optionalText(comptime key: []const u8) ?Text {
+    return if (@hasField(@TypeOf(locale_tables[0]), key)) text(key) else null;
+}
+
+/// Where a setting is shown, as bits of `Field.platforms`.
+pub const Platform = enum(u5) {
+    macos,
+    ios,
+    linux,
+    windows,
+    android,
+    web,
+
+    pub fn bit(p: Platform) u32 {
+        return @as(u32, 1) << @intFromEnum(p);
+    }
+};
+
+fn platforms(comptime list: []const Platform) u32 {
+    var mask: u32 = 0;
+    for (list) |p| mask |= p.bit();
+    return mask;
+}
+
+const everywhere = platforms(std.enums.values(Platform));
+const desktop = platforms(&.{ .macos, .linux, .windows, .web });
+
+pub const Control = enum(u8) {
+    /// On or off (a bool field): 0 or 1.
+    toggle,
+    /// One of `options` (an enum field): the option's index.
+    choice,
+    /// A whole number from `min` to `max` (an integer field).
+    number,
+};
+
+pub const Section = struct {
+    id: [:0]const u8,
+    title: Text,
+    hint: ?Text,
+};
+
+pub const Option = struct {
+    /// As stored in the JSON.
+    value: [:0]const u8,
+    label: Text,
+};
+
+pub const Field = struct {
+    /// The field's name here and in the JSON.
+    key: [:0]const u8,
+    /// Index into `sections`.
+    section: u8,
+    control: Control,
+    title: Text,
+    hint: ?Text,
+    options: []const Option,
+    min: i32,
+    max: i32,
+    platforms: u32,
+
+    pub fn shownOn(f: Field, p: Platform) bool {
+        return f.platforms & p.bit() != 0;
+    }
+};
+
+pub const sections = [_]Section{
+    .{ .id = "typing", .title = text("typing"), .hint = text("typing_hint") },
+    .{ .id = "candidates", .title = text("candidates"), .hint = text("candidates_hint") },
+};
+
+/// Every setting a screen shows, in order. Titles are the locale's `<key>`,
+/// hints `<key>_hint`, option labels the option's name; the control, range and
+/// options follow the field's type.
+pub const manifest = [_]Field{
+    field("suggestions", 0, everywhere),
+    // Needs Byakaron.db, which the iOS engine cannot open (see src/ffi/ffi.zig).
+    field("spelling_corrections", 0, everywhere & ~Platform.ios.bit()),
+    field("learn_choices", 0, everywhere),
+    field("bangla_digits", 0, everywhere),
+    field("newline_on_enter", 0, everywhere),
+    // Phones show a bar, not a panel.
+    field("candidate_orientation", 1, desktop),
+    field("candidates_per_page", 1, everywhere),
+};
+
+fn field(comptime key: [:0]const u8, comptime section: u8, comptime shown: u32) Field {
+    const T = @FieldType(Settings, key);
+    var f: Field = .{
+        .key = key,
+        .section = section,
+        .control = undefined,
+        .title = text(key),
+        .hint = optionalText(key ++ "_hint"),
+        .options = &.{},
+        .min = 0,
+        .max = 1,
+        .platforms = shown,
+    };
+    switch (@typeInfo(T)) {
+        .bool => f.control = .toggle,
+        .@"enum" => {
+            const tags = std.enums.values(T);
+            var options: [tags.len]Option = undefined;
+            for (tags, &options) |tag, *o| o.* = .{ .value = @tagName(tag), .label = text(@tagName(tag)) };
+            const final = options;
+            f.control = .choice;
+            f.options = &final;
+            f.max = tags.len - 1;
+        },
+        .int => {
+            f.control = .number;
+            if (std.mem.eql(u8, key, "candidates_per_page")) {
+                f.min = min_candidates_per_page;
+                f.max = max_candidates_per_page;
+            } else @compileError("give " ++ key ++ " its range");
+        },
+        else => @compileError("no control for " ++ key),
+    }
+    return f;
+}
+
+/// A setting a platform keeps itself, not in this JSON (iOS keeps these in its
+/// app group's defaults, under `key` in camelCase), listed with `manifest` on
+/// that platform's screen after its section's shared fields.
+pub const PlatformField = struct {
+    key: [:0]const u8,
+    section: u8,
+    control: Control,
+    title: Text,
+    hint: ?Text,
+    options: []const Option,
+    /// 0 or 1 for a toggle, the option's index for a choice.
+    default: i32,
+    platforms: u32,
+};
+
+pub const platform_fields = [_]PlatformField{
+    .{
+        .key = "english",
+        .section = 0,
+        .control = .toggle,
+        .title = text("english"),
+        .hint = text("english_hint"),
+        .options = &.{},
+        .default = 0,
+        .platforms = Platform.ios.bit(),
+    },
+    .{
+        .key = "emoji_key",
+        .section = 0,
+        .control = .choice,
+        .title = text("emoji_key"),
+        .hint = text("emoji_key_hint"),
+        .options = &.{
+            .{ .value = "automatic", .label = text("automatic") },
+            .{ .value = "always", .label = text("always") },
+            .{ .value = "never", .label = text("never") },
+        },
+        .default = 0,
+        .platforms = Platform.ios.bit(),
+    },
+};
+
+/// The note under an iOS settings screen: what follows the system's settings.
+pub const ios_system_note = text("system_settings_hint");
+
+/// A setting as a number: 0 or 1 for a toggle, the option's index for a
+/// choice, the number itself. Null for a key not in `manifest`.
+pub fn value(self: Settings, key: []const u8) ?i32 {
+    inline for (manifest) |f| if (std.mem.eql(u8, f.key, key)) {
+        const v = @field(self, f.key);
+        return switch (f.control) {
+            .toggle => @intFromBool(v),
+            .choice => @intFromEnum(v),
+            .number => v,
+        };
+    };
+    return null;
+}
+
+/// Set a setting from a number (see `value`); a number out of range is
+/// clamped. False for a key not in `manifest`.
+pub fn setValue(self: *Settings, key: []const u8, v: i32) bool {
+    inline for (manifest) |f| if (std.mem.eql(u8, f.key, key)) {
+        const n = std.math.clamp(v, f.min, f.max);
+        const T = @FieldType(Settings, f.key);
+        @field(self, f.key) = switch (f.control) {
+            .toggle => n != 0,
+            .choice => @as(T, @enumFromInt(n)),
+            .number => @as(T, @intCast(n)),
+        };
+        return true;
+    };
+    return false;
+}
+
 // ------------ TESTING ------------
 const testing = std.testing;
+
+test "the manifest covers every setting, and value/setValue round trip" {
+    var covered: usize = 0;
+    inline for (@typeInfo(Settings).@"struct".field_names) |name| {
+        if (comptime std.mem.eql(u8, name, "version")) continue;
+        var found = false;
+        for (manifest) |f| found = found or std.mem.eql(u8, f.key, name);
+        if (!found) std.log.err("{s} is not in the manifest", .{name});
+        try testing.expect(found);
+        covered += 1;
+    }
+    try testing.expectEqual(manifest.len, covered);
+
+    var s: Settings = .{};
+    try testing.expectEqual(@as(?i32, 1), s.value("suggestions"));
+    try testing.expectEqual(@as(?i32, 9), s.value("candidates_per_page"));
+    try testing.expectEqual(@as(?i32, null), s.value("version"));
+    try testing.expect(s.setValue("suggestions", 0));
+    try testing.expect(s.setValue("candidate_orientation", 1));
+    try testing.expect(s.setValue("candidates_per_page", 40));
+    try testing.expect(!s.setValue("nope", 1));
+    try testing.expect(!s.suggestions);
+    try testing.expectEqual(Orientation.vertical, s.candidate_orientation);
+    try testing.expectEqual(@as(u8, max_candidates_per_page), s.candidates_per_page);
+    try testing.expect(s.setValue("candidate_orientation", -3));
+    try testing.expectEqual(Orientation.horizontal, s.candidate_orientation);
+}
+
+test "manifest text in each language, and the language for a tag" {
+    try testing.expectEqual(Language.bn, language("bn_BD.UTF-8"));
+    try testing.expectEqual(Language.bn, language("bn-IN"));
+    try testing.expectEqual(Language.en, language("bnx"));
+    try testing.expectEqual(Language.en, language("fr"));
+    for (manifest) |f| {
+        try testing.expect(f.section < sections.len);
+        for (f.title) |t| try testing.expect(t.len > 0);
+        if (f.control == .choice) try testing.expectEqual(f.options.len, @as(usize, @intCast(f.max + 1)));
+    }
+    const per_page = manifest[manifest.len - 1];
+    try testing.expectEqualStrings("Words per page", per_page.title[@intFromEnum(Language.en)]);
+    try testing.expect(!manifest[1].shownOn(.ios));
+    try testing.expect(manifest[0].shownOn(.ios));
+}
 
 test "defaults follow iAvro" {
     const s: Settings = .{};

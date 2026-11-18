@@ -97,6 +97,9 @@ items: std.ArrayList([]const u8) = .empty,
 extras: std.heap.ArenaAllocator,
 /// The first `avro_count` items are Avro's (the only ones it can learn).
 avro_count: usize = 0,
+/// The plain transliteration of `latin`: the word exactly as typed (in
+/// `extras`). Phones show it apart from the other candidates.
+literal: []const u8 = "",
 highlight: usize = 0,
 committed: std.ArrayList(u8) = .empty,
 selections_dirty: bool = false,
@@ -276,6 +279,7 @@ pub fn refresh(self: *Composer) !void {
     errdefer fresh.deinit();
     self.clearList();
     _ = self.extras.reset(.retain_capacity);
+    self.literal = "";
     self.avro = fresh;
     try self.items.appendSlice(self.gpa, fresh.items);
     self.avro_count = fresh.items.len;
@@ -285,8 +289,13 @@ pub fn refresh(self: *Composer) !void {
     };
 
     if (self.settings.suggestions) {
+        // Once per key: the extras below all start from it.
+        self.literal = try self.ac().transliterate(self.gpa, self.extras.allocator(), self.latin.items);
         try self.addExtras();
         if (prefix_words) try self.addPrefixWords();
+    } else if (self.items.items.len > 0) {
+        // Phonetic mode's one candidate is the transliteration.
+        self.literal = self.items.items[0];
     }
 
     // A refresh that only appended (corrections arriving) keeps the user's place.
@@ -298,7 +307,7 @@ pub fn refresh(self: *Composer) !void {
 
 fn addExtras(self: *Composer) !void {
     const arena = self.extras.allocator();
-    const plain = try self.ac().transliterate(self.gpa, arena, self.latin.items);
+    const plain = self.literal;
     if (plain.len == 0) return;
 
     const words = try self.user_words.prefix(arena, plain, user_word_limit);
@@ -324,7 +333,7 @@ fn addExtras(self: *Composer) !void {
 /// After the corrections: a misspelling rarely starts a real word.
 fn addPrefixWords(self: *Composer) !void {
     const arena = self.extras.allocator();
-    const plain = try self.ac().transliterate(self.gpa, arena, self.latin.items);
+    const plain = self.literal;
     // A single letter starts too many words to say anything yet.
     if ((std.unicode.utf8CountCodepoints(plain) catch 0) < 2) return;
     if (number_marks and hasBanglaDigit(plain)) return;
@@ -408,6 +417,7 @@ fn clearWord(self: *Composer) void {
 fn clearList(self: *Composer) void {
     if (self.avro) |*c| c.deinit();
     self.avro = null;
+    self.literal = "";
     self.items.clearRetainingCapacity();
     self.avro_count = 0;
     self.highlight = 0;
@@ -609,6 +619,19 @@ test "moving the highlight is learned and persisted" {
     defer other.deinit();
     for ("bhalo") |ch| _ = try other.key(.{ .char = ch }, .{});
     try testing.expectEqualStrings(chosen, other.preedit());
+}
+
+test "literal: the word exactly as typed, with suggestions on and off" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    try h.typed("sonar");
+    try testing.expectEqualStrings("সনার", h.c.literal);
+    _ = try h.c.key(.escape, .{});
+    try testing.expectEqualStrings("", h.c.literal);
+    try h.c.setSettings(.{ .suggestions = false });
+    try h.typed("bhalO");
+    try testing.expectEqualStrings("ভালো", h.c.literal);
 }
 
 test "phonetic mode: exact transliteration, no panel" {

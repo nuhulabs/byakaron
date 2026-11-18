@@ -1,7 +1,9 @@
-// Settings and menu labels every Byakaron app shares (macOS, Linux, web,
-// Android). src/build/locale.zig turns each locale file into what each
-// platform reads: a C header (Linux, and Swift through the bridging header),
-// a Zig module (web) and Android string resources.
+// Settings and menu labels every Byakaron app shares (macOS, iOS, Linux,
+// Windows, web, Android). src/build/locale.zig turns each locale file into
+// what each platform reads: a C header (Linux, and Swift through the bridging
+// header), a Zig module (web) and Android string resources. The settings
+// screens take their titles and hints from src/Composer/Settings.zig's
+// `manifest`, which reads these files too.
 //
 // Every locale file (listed in Locale.zig) must have exactly these keys; the
 // `zig build test` check fails otherwise. Values are plain text: no format
@@ -14,30 +16,41 @@
 
     // Typing settings.
     .typing = "Typing",
-    .typing_hint = "The keyboard picks these up from the next word you type.",
-    .suggestions = "Word suggestions",
-    .suggestions_hint = "Avro dictionary mode. Off is phonetic mode: every word is typed exactly as spelled, with no list.",
-    .spelling_corrections = "Spelling corrections",
-    .spelling_corrections_hint = "When a word comes out misspelled (sonar → সনার), suggest the correct one (সোনার).",
-    .learn_choices = "Remember my choices",
-    .learn_choices_hint = "The suggestion you picked for a word is highlighted first next time.",
+    .typing_hint = "Changes apply from your next word.",
+    .suggestions = "Suggestions",
+    .suggestions_hint = "Shows matching words as you type. Off, each word is typed exactly as you spell it.",
+    .spelling_corrections = "Fix spelling",
+    .spelling_corrections_hint = "Suggest সোনার when sonar comes out as সনার.",
+    .learn_choices = "Learn my choices",
+    .learn_choices_hint = "The word you pick comes first next time.",
     .bangla_digits = "Bangla digits",
-    .bangla_digits_hint = "0–9 type ০–৯. Number keys still pick a suggestion while the list is showing.",
+    .bangla_digits_hint = "Type ০–৯ for 0–9.",
     .newline_on_enter = "New line on Enter",
-    .newline_on_enter_hint = "Enter commits the word and also starts a new line. Off commits only.",
+    .newline_on_enter_hint = "Enter finishes the word and starts a new line.",
 
     // Candidate list.
-    .candidates = "Candidates",
-    .candidates_hint = "Applies to the candidate list the keyboard shows while you type.",
-    .candidate_orientation = "Candidate list",
-    .candidate_orientation_hint = "How the candidates are laid out.",
+    .candidates = "Suggestion list",
+    .candidates_hint = "How the list looks while you type.",
+    .candidate_orientation = "Direction",
+    .candidate_orientation_hint = "Side by side or one under another.",
     .horizontal = "Horizontal",
     .vertical = "Vertical",
-    .candidates_per_page = "Candidates per page",
+    .candidates_per_page = "Words per page",
+    .candidates_per_page_hint = "The rest are a page away.",
+
+    // Settings a platform keeps itself (Settings.zig's `platform_fields`).
+    .english = "English",
+    .english_hint = "A key at the top right switches between Bangla and English.",
+    .emoji_key = "Emoji key",
+    .emoji_key_hint = "Automatic shows it when you have the Emoji keyboard.",
+    .automatic = "Automatic",
+    .always = "Always",
+    .never = "Never",
+    .system_settings_hint = "Sound, haptics, auto-caps, the “.” shortcut and predictive text follow iOS Settings › General › Keyboard.",
 
     // Personal dictionary.
     .personal_dictionary = "Personal dictionary",
-    .personal_dictionary_hint = "Words you saved as correct. They are never marked as misspelled and the keyboard suggests them.",
+    .personal_dictionary_hint = "Words you saved. Always suggested, never marked wrong.",
     .add_word = "Add a word",
     .add = "Add",
     .remove = "Remove",

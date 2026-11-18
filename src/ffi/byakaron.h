@@ -307,6 +307,7 @@ typedef struct {
     size_t page;
     size_t page_count;
     const char *latin;              /* the Latin being composed, "" when idle */
+    const char *literal;            /* the word exactly as typed (plain Avro), "" when idle */
 } ByakaronComposerState;
 
 typedef void (*ByakaronUpdateFn)(void *userdata);
@@ -353,10 +354,75 @@ void byakaron_composer_state(ByakaronComposer *composer, ByakaronComposerState *
 char *byakaron_settings_get(ByakaronComposer *composer);
 int byakaron_settings_set(ByakaronComposer *composer, const char *json);
 
+/*
+ * One setting by its key (a ByakaronSettingsField's `key`), as a number: 0 or 1
+ * for a toggle, the option's index for a choice, else the number. get returns
+ * 0 and sets *value, or -1 for an unknown key. set clamps to the field's range,
+ * saves, and returns 0, or -1 for an unknown key.
+ */
+int byakaron_setting_get(ByakaronComposer *composer, const char *key, int *value);
+int byakaron_setting_set(ByakaronComposer *composer, const char *key, int value);
+
 /* Personal dictionary: get = JSON array (free it); add/remove return 1, 0 or -1. */
 char *byakaron_userdict_get(ByakaronComposer *composer);
 int byakaron_userdict_add(ByakaronComposer *composer, const char *word);
 int byakaron_userdict_remove(ByakaronComposer *composer, const char *word);
+/*
+ * The personal dictionary without JSON: count re-reads it (another process may
+ * have changed it) and returns how many words; word returns the index-th,
+ * byte-sorted (NULL past the end). Strings stay valid until the next call on
+ * the composer other than byakaron_userdict_word.
+ */
+size_t byakaron_userdict_count(ByakaronComposer *composer);
+const char *byakaron_userdict_word(ByakaronComposer *composer, size_t index);
+
+/*
+ * The settings manifest (src/Composer/Settings.zig): the sections and fields
+ * every settings screen shows, in order, with their text in `lang` ("bn",
+ * "bn_BD.UTF-8", ...; English when there is no locale for it). Draw a field
+ * only when `platforms` has your BYAKARON_PLATFORM_* bit, and read and write
+ * it with byakaron_setting_get / byakaron_setting_set. Every string is static.
+ */
+enum {
+    BYAKARON_PLATFORM_MACOS = 1,
+    BYAKARON_PLATFORM_IOS = 2,
+    BYAKARON_PLATFORM_LINUX = 4,
+    BYAKARON_PLATFORM_WINDOWS = 8,
+    BYAKARON_PLATFORM_ANDROID = 16,
+    BYAKARON_PLATFORM_WEB = 32
+};
+
+enum {
+    BYAKARON_CONTROL_TOGGLE = 0, /* on/off: 0 or 1 */
+    BYAKARON_CONTROL_CHOICE = 1, /* one of options: its index */
+    BYAKARON_CONTROL_NUMBER = 2  /* min..max */
+};
+
+typedef struct {
+    const char *id;    /* "typing", "candidates" */
+    const char *title;
+    const char *hint;  /* a footer under the section, or NULL */
+} ByakaronSettingsSection;
+
+typedef struct {
+    const char *key;   /* for byakaron_setting_get/set, and the JSON field */
+    size_t section;    /* index of its ByakaronSettingsSection */
+    int control;       /* BYAKARON_CONTROL_* */
+    const char *title;
+    const char *hint;  /* one short line under the title, or NULL */
+    int min, max;
+    size_t option_count;
+    const char *const *option_values; /* as stored in the JSON */
+    const char *const *option_labels;
+    unsigned int platforms;           /* BYAKARON_PLATFORM_* bits */
+} ByakaronSettingsField;
+
+size_t byakaron_settings_section_count(void);
+/* 0, or -1 past the end. */
+int byakaron_settings_section_info(size_t index, const char *lang, ByakaronSettingsSection *out);
+size_t byakaron_settings_field_count(void);
+/* 0, or -1 past the end. */
+int byakaron_settings_field_info(size_t index, const char *lang, ByakaronSettingsField *out);
 
 #ifdef __cplusplus
 }
