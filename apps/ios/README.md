@@ -111,3 +111,13 @@ git fetch upstream
 git checkout main && git merge --ff-only upstream/main && git push origin main
 git checkout dev && git rebase main && git push --force-with-lease origin dev
 ```
+
+## Release
+
+`release.yml`'s `pack (ios)` archives the app for devices on every release.
+With `IOS_CERTIFICATE` (+ `IOS_CERTIFICATE_PASSWORD`, an Apple Distribution
+.p12, base64) and an App Store Connect API key (`APP_STORE_CONNECT_API_KEY`,
+`APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`) set, it signs and
+exports `Byakaron.ipa` (profiles through Xcode's automatic signing with that
+key) and `publish (ios)` uploads it to App Store Connect (TestFlight).
+Without them the archive is unsigned and nothing is uploaded.

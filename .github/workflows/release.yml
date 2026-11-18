@@ -3,19 +3,20 @@
 #   prepare         version + Byakaron.db
 #   pack-<os>       linux, macos, windows, android: one job each, packing
 #                   every CPU arch it ships with `zig build pack`;
-#                   ios: placeholder; web: the Worker bundle + static site
+#                   ios: an App Store .ipa (signed when the credentials are
+#                   set); web: the Worker bundle + static site
 #   publish-<dest>  each waits only for what it ships:
 #                     github   every binary pack (tag, Byakaron-Assets, notes)
 #                     android  pack-android (Google Play)
-#                     ios      pack-ios (App Store, placeholder)
-#                     web      pack-web + publish-github (the site links to latest)
+#                     ios      pack-ios (App Store Connect / TestFlight)
+#                     web      pack-web (the site links to latest)
 #
 # Artifacts on nuhulabs/Byakaron-Assets (stable names → /releases/latest/download/…):
 #   pack linux    → byakaron_{amd64,arm64}.deb, byakaron_x86_64.pkg.tar.zst (Arch)
 #   pack macos    → Byakaron.dmg
 #   pack windows  → Byakaron-Setup.exe
 #   pack android  → Byakaron.apk + Byakaron.aab (the .aab also goes to Google Play)
-#   pack ios      → nothing yet (App Store only, never on Assets)
+#   pack ios      → Byakaron.ipa when signed (App Store only, never on Assets)
 #   pack web      → nothing (Cloudflare Workers, never on Assets)
 #
 # Local `zig build pack -- linux` writes byakaron_<ver>_<arch>.deb (and
@@ -420,20 +421,165 @@ jobs:
             zig-out/pkg/mapping.txt
           if-no-files-found: error
 
-  # App Store: not set up yet. `zig build ios` only builds an unsigned
-  # simulator app; a signed archive (.ipa) needs an Xcode archive/export step
-  # and the Apple distribution certificate + provisioning profile. Until then
-  # this keeps the pack -> publish shape in place.
+  # The iOS app (apps/ios/keyboard, the byakaron-ios submodule) with its
+  # keyboard extension, archived for devices. Signed only when the
+  # credentials are set; otherwise an unsigned archive still checks that the
+  # release builds, and nothing is uploaded.
+  #   IOS_CERTIFICATE (+ _PASSWORD)  base64 Apple Distribution .p12
+  #   APP_STORE_CONNECT_API_KEY      the .p8 key's contents (App Manager)
+  #   APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID
+  # Provisioning profiles come from Xcode's automatic signing with that API
+  # key (-allowProvisioningUpdates), for dev.nuhu.labs.KeyboardApp and its
+  # keyboard, team 654MC856Z2 (the project's DEVELOPMENT_TEAM).
   pack-ios:
     name: pack (ios)
     needs: prepare
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    runs-on: xcode-27
+    timeout-minutes: 60
+    outputs:
+      signed: ${{ steps.signing.outputs.signed }}
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - name: placeholder
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pack-setup
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          zig-version: ${{ env.ZIG_VERSION }}
+
+      # The keyboard is a private repo pinned by the submodule gitlink.
+      - name: keyboard
+        id: keyboard
         env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: echo "::notice::iOS packing is not set up yet; no .ipa for $VERSION"
+          DEPLOY_KEY: ${{ secrets.IOS_DEPLOY_KEY }}
+        run: |
+          sha=$(git ls-tree HEAD apps/ios/keyboard | awk '$2 == "commit" { print $3 }')
+          [[ -n "$sha" ]] || { echo "::error::no gitlink at apps/ios/keyboard"; exit 1; }
+          [[ -n "$DEPLOY_KEY" ]] || { echo "::error::IOS_DEPLOY_KEY unset: cannot clone byakaron-ios@$sha"; exit 1; }
+          echo "ios keyboard@$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: nuhulabs/byakaron-ios
+          ref: ${{ steps.keyboard.outputs.sha }}
+          path: apps/ios/keyboard
+          ssh-key: ${{ secrets.IOS_DEPLOY_KEY }}
+
+      - uses: actions/cache@v4
+        with:
+          path: apps/ios/keyboard/Pods
+          key: pods-${{ runner.os }}-${{ hashFiles('apps/ios/keyboard/Podfile.lock') }}
+
+      - name: pods
+        working-directory: apps/ios/keyboard
+        run: pod install
+
+      # Byakaron.xcframework (which the Xcode project links) and the
+      # Settings.bundle; also a simulator build of the app.
+      - name: engine
+        run: zig build ios
+
+      # App Store versions are at most three numbers (27.0.0-dev.3 → 27.0.0);
+      # the build number is unique per run, as for Google Play.
+      - name: version
+        working-directory: apps/ios/keyboard
+        run: |
+          short="${VERSION%%-*}"
+          build=$(( GITHUB_RUN_NUMBER * 10 + GITHUB_RUN_ATTEMPT ))
+          for plist in HostingApp/Info.plist Keyboard/Info.plist; do
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $short" -c "Set :CFBundleVersion $build" "$plist"
+          done
+          echo "iOS $short ($build)"
+
+      - name: signing
+        id: signing
+        env:
+          IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          if [[ -z "$IOS_CERTIFICATE" || -z "$API_KEY" || -z "$API_KEY_ID" || -z "$API_ISSUER_ID" ]]; then
+            echo "::notice::iOS signing credentials are not set; building an unsigned archive (no .ipa)"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/ios-signing.keychain-db"
+          password=$(openssl rand -hex 16)
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          echo "$IOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/ios.p12"
+          security import "$RUNNER_TEMP/ios.p12" -k "$keychain" \
+            -P "$IOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          rm "$RUNNER_TEMP/ios.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+
+          key="$RUNNER_TEMP/AuthKey_${API_KEY_ID}.p8"
+          printf '%s\n' "$API_KEY" > "$key"
+          {
+            echo "signed=true"
+            echo "key=$key"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: archive
+        working-directory: apps/ios/keyboard
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+          API_KEY_PATH: ${{ steps.signing.outputs.key }}
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          archive="$RUNNER_TEMP/Byakaron.xcarchive"
+          args=(-workspace GiellaKeyboard.xcworkspace -scheme HostingApp -configuration Release
+                -destination generic/platform=iOS -archivePath "$archive" -quiet)
+          if [[ "$SIGNED" != "true" ]]; then
+            xcodebuild archive "${args[@]}" CODE_SIGNING_ALLOWED=NO
+            exit 0
+          fi
+          auth=(-allowProvisioningUpdates -authenticationKeyPath "$API_KEY_PATH"
+                -authenticationKeyID "$API_KEY_ID" -authenticationKeyIssuerID "$API_ISSUER_ID")
+          xcodebuild archive "${args[@]}" "${auth[@]}"
+
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$archive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" "${auth[@]}"
+          mkdir -p "$GITHUB_WORKSPACE/zig-out/pkg"
+          mapfile -t ipas < <(compgen -G "$RUNNER_TEMP/export/*.ipa" || true)
+          [[ ${#ipas[@]} -eq 1 ]] || { echo "::error::expected one .ipa, got: ${ipas[*]-<none>}"; exit 1; }
+          mv "${ipas[0]}" "$GITHUB_WORKSPACE/zig-out/pkg/Byakaron.ipa"
+          ls -l "$GITHUB_WORKSPACE/zig-out/pkg/Byakaron.ipa"
+
+      # The runner may be reused: drop the key and the signing keychain.
+      - name: cleanup
+        if: always() && steps.signing.outputs.signed == 'true'
+        run: |
+          rm -f "${{ steps.signing.outputs.key }}"
+          security delete-keychain "$RUNNER_TEMP/ios-signing.keychain-db" 2>/dev/null || true
+
+      # Named `ios`, not byakaron-ios: publish-github ships every byakaron-*
+      # artifact, and the .ipa goes to the App Store only.
+      - uses: actions/upload-artifact@v4
+        if: steps.signing.outputs.signed == 'true'
+        with:
+          name: ios
+          path: zig-out/pkg/Byakaron.ipa
+          if-no-files-found: error
 
   # The website: the Worker bundle (wrangler.jsonc's custom build, bundled
   # by a wrangler dry run) and the prerendered static site, plus a deploy
@@ -642,29 +788,60 @@ jobs:
           status: completed
           mappingFile: ${{ env.mapping }}
 
-  # App Store: not set up yet (see pack-ios).
+  # The .ipa to App Store Connect, where it lands in TestFlight; submitting
+  # it for App Store review stays manual. Skipped when pack-ios was not
+  # signed (no credentials), so a release without them still succeeds.
   publish-ios:
     name: publish (ios)
     if: needs.prepare.outputs.publish == 'true'
     needs: [prepare, pack-ios]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    runs-on: xcode-27
+    timeout-minutes: 30
+    concurrency:
+      group: publish-ios
+      cancel-in-progress: false
     steps:
-      - name: app store
+      - name: check
         env:
+          SIGNED: ${{ needs.pack-ios.outputs.signed }}
           TAG: ${{ needs.prepare.outputs.tag }}
-        run: echo "::notice::App Store publishing is not set up yet; nothing to do for $TAG"
+        run: |
+          if [[ "$SIGNED" != "true" ]]; then
+            echo "::notice::pack-ios was not signed (no iOS credentials); not uploading $TAG to App Store Connect"
+            echo "skip=true" >> "$GITHUB_ENV"
+          fi
 
-  # The website (and the install.sh it serves), from pack-web's bundle, after
-  # the binaries are on Byakaron-Assets, since its download links and
-  # installer pull latest. It runs only when publish-github did (dry runs skip
-  # it), so it needs nothing else.
+      - uses: actions/download-artifact@v4
+        if: env.skip != 'true'
+        with:
+          name: ios
+          path: dist
+
+      - name: app store connect
+        if: env.skip != 'true'
+        env:
+          API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          [[ -f dist/Byakaron.ipa ]] || { echo "::error::Byakaron.ipa is missing"; exit 1; }
+          # altool looks for AuthKey_<id>.p8 in ~/.appstoreconnect/private_keys.
+          mkdir -p ~/.appstoreconnect/private_keys
+          printf '%s\n' "$API_KEY" > ~/.appstoreconnect/private_keys/"AuthKey_${API_KEY_ID}.p8"
+          xcrun altool --upload-app --type ios --file dist/Byakaron.ipa \
+            --apiKey "$API_KEY_ID" --apiIssuer "$API_ISSUER_ID"
+          rm -f ~/.appstoreconnect/private_keys/"AuthKey_${API_KEY_ID}.p8"
+
+  # The website (and the install.sh it serves), from pack-web's bundle. Its
+  # download links and installer point at Byakaron-Assets' latest release,
+  # so it does not wait for publish-github.
   # D1 migrations stay local:
   #   zig build gen -Dspell-db=zig-out/db/Byakaron.db -- d1
   #   cd apps/web && npx wrangler d1 migrations apply DB --remote
   publish-web:
     name: publish (web)
-    needs: [publish-github, pack-web]
+    if: needs.prepare.outputs.publish == 'true'
+    needs: [prepare, pack-web]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: byakaron-web
