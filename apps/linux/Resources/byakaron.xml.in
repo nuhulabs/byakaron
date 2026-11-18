@@ -2,7 +2,7 @@
 <!--
   IBus component descriptor for Byakaron.
 
-  src/build/linux.zig (dev -- linux-system, pack -- linux, dev -- linux) substitutes the
+  src/build/linux.zig (`zig build dev` and `zig build pack`, linux targets) substitutes the
   exec and icon placeholders with the
   absolute paths of the installed files, then writes the result to
   /usr/share/ibus/component/. That directory is the only one ibus-daemon scans

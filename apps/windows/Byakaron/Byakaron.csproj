@@ -59,7 +59,8 @@
   </PropertyGroup>
 
   <!-- Zig FFI DLL + Byakaron.db (native\) and the IME payload (ime\ByakaronIME.dll +
-       byakaron.dll), staged by `zig build windows` (DLLs only), `dev -- windows` and `pack -- windows`.
+       byakaron.dll), staged by `zig build windows` (DLLs only) and the windows targets of
+       `zig build dev` and `zig build pack`.
        byakaron.dll is copied as byakaron_ffi.dll so it does not overwrite the
        managed Byakaron.dll. -->
   <Target Name="CopyNativeFfi" AfterTargets="Build;Publish">
