@@ -1,10 +1,13 @@
 # release (the CD), three stages:
 #
-#   prepare  version + Byakaron.db
-#   pack     one job per OS (linux, macos, windows, android); each OS job
-#            packs every CPU arch it ships with `zig build pack`
-#   publish  one job per destination (github, android, ios, web)
-#   then     live install (the public install command, for latest releases)
+#   prepare         version + Byakaron.db
+#   pack-<os>       linux, macos, windows, android: one job each, packing
+#                   every CPU arch it ships with `zig build pack`
+#   publish-<dest>  each waits only for what it ships:
+#                     github   every pack (tag, Byakaron-Assets, notes)
+#                     android  pack-android (Google Play)
+#                     ios      placeholder (App Store)
+#                     web      publish-github (the site links to latest)
 #
 # Artifacts on nuhulabs/Byakaron-Assets (stable names → /releases/latest/download/…):
 #   pack linux    → byakaron_{amd64,arm64}.deb, byakaron_x86_64.pkg.tar.zst (Arch)
@@ -173,109 +176,24 @@ jobs:
           if-no-files-found: error
 
   # ── pack ───────────────────────────────────────────────────────────────────
-  # One job per OS. The CPU architectures are not matrix entries: each OS job
-  # runs `zig build pack` for every arch it ships (Linux cross-compiles arm64
-  # against its pinned sysroot; Android builds every ABI into one bundle).
-  pack:
-    name: pack (${{ matrix.os }})
-    needs: prepare
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.timeout }}
-    environment: ${{ matrix.environment }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: linux
-            runner: ubuntu-latest
-            timeout: 60
-            environment: ""
-            artifacts: |
-              zig-out/pkg/byakaron_*.deb
-              zig-out/pkg/byakaron-*.pkg.tar.zst
-          - os: macos
-            runner: xcode-27
-            timeout: 180
-            environment: ""
-            artifacts: zig-out/pkg/Byakaron.dmg
-          - os: windows
-            runner: windows-latest
-            timeout: 90
-            environment: ""
-            artifacts: zig-out/pkg/Byakaron-Setup.exe
-          - os: android
-            runner: ubuntu-latest
-            timeout: 60
-            environment: byakaron-android
-            artifacts: |
-              zig-out/pkg/Byakaron.apk
-              zig-out/pkg/Byakaron.aab
-              zig-out/pkg/mapping.txt
-    env:
-      VERSION: ${{ needs.prepare.outputs.version }}
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+  # One job per OS, each packing every CPU arch it ships with `zig build pack`
+  # (Linux cross-compiles arm64 against its pinned sysroot; Android builds
+  # every ABI into one bundle). .github/actions/pack-setup does the shared
+  # start: version, Zig, Byakaron.db.
 
+  pack-linux:
+    name: pack (linux)
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-
-      # The packages read build.zig.zon's .version (Linux .deb, app, IBus
-      # component, metainfo), so the release version goes there first.
-      - name: version
-        shell: bash
-        run: |
-          sed -i.bak -E "s/^([[:space:]]*\.version = \")[^\"]*(\".*)$/\1${VERSION}\2/" build.zig.zon
-          rm build.zig.zon.bak
-          grep -m1 '\.version = ' build.zig.zon
-
-      # The Android keyboard is a private repo pinned by the submodule gitlink.
-      - name: keyboard (android)
-        id: keyboard
-        if: matrix.os == 'android'
-        env:
-          DEPLOY_KEY: ${{ secrets.ANDROID_DEPLOY_KEY }}
-        run: |
-          sha=$(git ls-tree HEAD apps/android/keyboard | awk '$2 == "commit" { print $3 }')
-          [[ -n "$sha" ]] || { echo "::error::no gitlink at apps/android/keyboard"; exit 1; }
-          [[ -n "$DEPLOY_KEY" ]] || { echo "::error::ANDROID_DEPLOY_KEY unset: cannot clone byakaron-android@$sha"; exit 1; }
-          echo "android keyboard@$sha"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/checkout@v4
-        if: matrix.os == 'android'
+      - uses: ./.github/actions/pack-setup
         with:
-          repository: nuhulabs/byakaron-android
-          ref: ${{ steps.keyboard.outputs.sha }}
-          path: apps/android/keyboard
-          ssh-key: ${{ secrets.ANDROID_DEPLOY_KEY }}
+          version: ${{ needs.prepare.outputs.version }}
+          zig-version: ${{ env.ZIG_VERSION }}
 
-      # Google Play rejects a versionCode it has seen, so every run gets its
-      # own (run number and attempt), above the hand-set ones in the submodule.
-      # versionName is the release version.
-      - name: version (android)
-        if: matrix.os == 'android'
-        run: |
-          gradle=apps/android/keyboard/app/build.gradle.kts
-          code=$(( GITHUB_RUN_NUMBER * 10 + GITHUB_RUN_ATTEMPT ))
-          sed -i -E \
-            -e "s/^([[:space:]]*versionCode = )[0-9]+/\1${code}/" \
-            -e "s/^([[:space:]]*versionName = )\"[^\"]*\"/\1\"${VERSION}\"/" \
-            "$gradle"
-          grep -E '^[[:space:]]*version(Code|Name) = ' "$gradle"
-
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: ${{ env.ZIG_VERSION }}
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: byakaron-db
-          path: zig-out/db
-
-      # ── linux: amd64 + arm64 .deb, x86_64 Arch package ──
-      - name: deps (linux)
-        if: matrix.os == 'linux'
+      - name: deps
         run: |
           sudo -E env "PATH=$PATH" \
             ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
@@ -283,21 +201,41 @@ jobs:
           # sudo fetched packages into zig-pkg/ as root; later builds run as the runner.
           if [ -d zig-pkg ]; then sudo chown -R "$USER" zig-pkg; fi
 
-      # Arch Linux has no ARM images to test a package in, so x86_64 only.
-      - name: pack (linux)
-        if: matrix.os == 'linux'
+      # amd64 + arm64 .deb; the Arch package is x86_64 only (Arch Linux has no
+      # ARM images to test one in).
+      - name: pack
         run: |
           zig build pack -Dlinux-arch=x86_64 -Dspell-db=zig-out/db/Byakaron.db -- linux linux-arch
           zig build pack -Dlinux-arch=aarch64 -Dspell-db=zig-out/db/Byakaron.db -- linux
           ls -l zig-out/pkg
 
-      # ── macos ──
-      - name: pack (macos)
-        if: matrix.os == 'macos'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: byakaron-linux
+          path: |
+            zig-out/pkg/byakaron_*.deb
+            zig-out/pkg/byakaron-*.pkg.tar.zst
+          if-no-files-found: error
+
+  pack-macos:
+    name: pack (macos)
+    needs: prepare
+    runs-on: xcode-27
+    timeout-minutes: 180
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pack-setup
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          zig-version: ${{ env.ZIG_VERSION }}
+
+      - name: pack
         run: zig build pack -Dspell-db=zig-out/db/Byakaron.db -- macos
 
-      - name: sign (macos)
-        if: matrix.os == 'macos' && env.APPLE_CERTIFICATE != ''
+      - name: sign
+        if: env.APPLE_CERTIFICATE != ''
         env:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -345,20 +283,37 @@ jobs:
             --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
           xcrun stapler staple zig-out/pkg/Byakaron.dmg
 
-      # ── windows ──
-      - name: inno (windows)
-        if: matrix.os == 'windows'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: byakaron-macos
+          path: zig-out/pkg/Byakaron.dmg
+          if-no-files-found: error
+
+  pack-windows:
+    name: pack (windows)
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pack-setup
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          zig-version: ${{ env.ZIG_VERSION }}
+
+      - name: inno
         run: choco install innosetup --no-progress -y
 
-      - name: pack (windows)
-        if: matrix.os == 'windows'
+      - name: pack
         env:
-          BYAKARON_VERSION: ${{ env.VERSION }}
+          BYAKARON_VERSION: ${{ needs.prepare.outputs.version }}
         shell: pwsh
         run: zig build pack "-Dspell-db=zig-out/db/Byakaron.db" -- windows
 
-      - name: sign (windows)
-        if: matrix.os == 'windows' && env.WINDOWS_CERTIFICATE != ''
+      - name: sign
+        if: env.WINDOWS_CERTIFICATE != ''
         env:
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         shell: pwsh
@@ -375,24 +330,75 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "signature does not verify" }
           Remove-Item $pfx
 
-      # ── android: every ABI in one .apk / .aab ──
+      - uses: actions/upload-artifact@v4
+        with:
+          name: byakaron-windows
+          path: zig-out/pkg/Byakaron-Setup.exe
+          if-no-files-found: error
+
+  pack-android:
+    name: pack (android)
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: byakaron-android
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pack-setup
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          zig-version: ${{ env.ZIG_VERSION }}
+
+      # The keyboard is a private repo pinned by the submodule gitlink.
+      - name: keyboard
+        id: keyboard
+        env:
+          DEPLOY_KEY: ${{ secrets.ANDROID_DEPLOY_KEY }}
+        run: |
+          sha=$(git ls-tree HEAD apps/android/keyboard | awk '$2 == "commit" { print $3 }')
+          [[ -n "$sha" ]] || { echo "::error::no gitlink at apps/android/keyboard"; exit 1; }
+          [[ -n "$DEPLOY_KEY" ]] || { echo "::error::ANDROID_DEPLOY_KEY unset: cannot clone byakaron-android@$sha"; exit 1; }
+          echo "android keyboard@$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: nuhulabs/byakaron-android
+          ref: ${{ steps.keyboard.outputs.sha }}
+          path: apps/android/keyboard
+          ssh-key: ${{ secrets.ANDROID_DEPLOY_KEY }}
+
+      # Google Play rejects a versionCode it has seen, so every run gets its
+      # own (run number and attempt), above the hand-set ones in the submodule.
+      # versionName is the release version.
+      - name: version code
+        run: |
+          gradle=apps/android/keyboard/app/build.gradle.kts
+          code=$(( GITHUB_RUN_NUMBER * 10 + GITHUB_RUN_ATTEMPT ))
+          sed -i -E \
+            -e "s/^([[:space:]]*versionCode = )[0-9]+/\1${code}/" \
+            -e "s/^([[:space:]]*versionName = )\"[^\"]*\"/\1\"${VERSION}\"/" \
+            "$gradle"
+          grep -E '^[[:space:]]*version(Code|Name) = ' "$gradle"
+
       - uses: actions/setup-java@v4
-        if: matrix.os == 'android'
         with:
           java-version: "17"
           distribution: temurin
 
       - uses: gradle/actions/setup-gradle@v4
-        if: matrix.os == 'android'
 
-      - name: keystore (android)
-        if: matrix.os == 'android' && env.ANDROID_KEYSTORE_BASE64 != ''
+      - name: keystore
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
           echo "RELEASE_STORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
-      - name: pack (android)
-        if: matrix.os == 'android'
+      # Every ABI in one .apk / .aab.
+      - name: pack
         env:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
@@ -404,51 +410,37 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: byakaron-${{ matrix.os }}
-          path: ${{ matrix.artifacts }}
+          name: byakaron-android
+          path: |
+            zig-out/pkg/Byakaron.apk
+            zig-out/pkg/Byakaron.aab
+            zig-out/pkg/mapping.txt
           if-no-files-found: error
 
   # ── publish ────────────────────────────────────────────────────────────────
-  # One job per destination, all at once once every package is built.
-  publish:
-    name: publish (${{ matrix.target }})
+  # One job per destination, each waiting only for the packs it ships.
+
+  # Tag, every binary on Byakaron-Assets, notes on this repo.
+  publish-github:
+    name: publish (github)
     if: needs.prepare.outputs.publish == 'true'
-    needs: [prepare, pack]
+    needs: [prepare, pack-linux, pack-macos, pack-windows, pack-android]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: ${{ matrix.environment }}
     permissions:
       contents: write
-    concurrency:
-      group: publish-${{ matrix.target }}
-      cancel-in-progress: false
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: github
-            environment: ""
-          - target: android
-            environment: byakaron-android
-          - target: ios
-            environment: ""
-          - target: web
-            environment: byakaron-web
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       TAG: ${{ needs.prepare.outputs.tag }}
-
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: ${{ matrix.target == 'github' && '0' || '1' }}
-
-      # ── github: tag, binaries on Byakaron-Assets, notes on this repo ──
+          fetch-depth: 0
 
       # Dispatched releases: tag the commit that was built. GITHUB_TOKEN pushes
       # do not trigger workflows, so this does not start a second release.
       - name: tag
-        if: matrix.target == 'github' && needs.prepare.outputs.create_tag == 'true'
+        if: needs.prepare.outputs.create_tag == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -466,14 +458,12 @@ jobs:
           git push origin "refs/tags/$TAG"
 
       - uses: actions/download-artifact@v4
-        if: matrix.target == 'github'
         with:
           pattern: byakaron-*
           path: dist
           merge-multiple: true
 
-      - name: release (github)
-        if: matrix.target == 'github'
+      - name: release
         env:
           GH_TOKEN: ${{ secrets.BYAKARON_ASSETS_TOKEN }}
           ASSETS_REPO: nuhulabs/Byakaron-Assets
@@ -545,21 +535,30 @@ jobs:
             --title "Byakaron ${VERSION}" --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}"
           echo "https://github.com/$SOURCE_REPO/releases/tag/$TAG"
 
-      # ── android: the .aab to Google Play ──
-      # PLAY_STORE_JSON_KEY (byakaron-android environment) is the JSON key of
-      # play-publisher@byakaron.iam.gserviceaccount.com (Cloud project
-      # byakaron, Google Play Android Developer API on), which Play Console
-      # lets view Byakaron Keyboard and release it to testing tracks only, so
-      # production stays manual. The build rolls out to the track's testers
-      # at once. Uploads by hand need a versionCode above CI's (see pack).
+  # The .aab to Google Play, as soon as the Android pack is done.
+  # PLAY_STORE_JSON_KEY (byakaron-android environment) is the JSON key of
+  # play-publisher@byakaron.iam.gserviceaccount.com (Cloud project byakaron,
+  # Google Play Android Developer API on), which Play Console lets view
+  # Byakaron Keyboard and release it to testing tracks only, so production
+  # stays manual. The build rolls out to the track's testers at once. Uploads
+  # by hand need a versionCode above CI's (see pack-android).
+  publish-android:
+    name: publish (android)
+    if: needs.prepare.outputs.publish == 'true'
+    needs: [prepare, pack-android]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: byakaron-android
+    concurrency:
+      group: publish-android
+      cancel-in-progress: false
+    steps:
       - uses: actions/download-artifact@v4
-        if: matrix.target == 'android'
         with:
           name: byakaron-android
           path: dist
 
-      - name: check (android)
-        if: matrix.target == 'android'
+      - name: check
         env:
           KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
         run: |
@@ -568,7 +567,6 @@ jobs:
           echo "mapping=$([[ -f dist/mapping.txt ]] && echo dist/mapping.txt)" >> "$GITHUB_ENV"
 
       - name: google play
-        if: matrix.target == 'android'
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_JSON_KEY }}
@@ -579,23 +577,41 @@ jobs:
           status: completed
           mappingFile: ${{ env.mapping }}
 
-      # ── ios: App Store (not set up yet) ──
-      - name: app store (ios)
-        if: matrix.target == 'ios'
+  # App Store: not set up yet. Will need a pack-ios job.
+  publish-ios:
+    name: publish (ios)
+    if: needs.prepare.outputs.publish == 'true'
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: app store
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
         run: echo "::notice::App Store publishing is not set up yet; nothing to do for $TAG"
 
-      # ── web: the website (and the install.sh it serves) ──
-      # D1 migrations stay local:
-      #   zig build gen -Dspell-db=zig-out/db/Byakaron.db -- d1
-      #   cd apps/web && npx wrangler d1 migrations apply DB --remote
+  # The website (and the install.sh it serves), after the binaries are on
+  # Byakaron-Assets, since its download links and installer pull latest.
+  # D1 migrations stay local:
+  #   zig build gen -Dspell-db=zig-out/db/Byakaron.db -- d1
+  #   cd apps/web && npx wrangler d1 migrations apply DB --remote
+  publish-web:
+    name: publish (web)
+    if: needs.prepare.outputs.publish == 'true'
+    needs: [prepare, publish-github]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: byakaron-web
+    concurrency:
+      group: deploy-web
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
       # wrangler.jsonc runs `zig build zx …` as a custom build before deploy.
       - uses: mlugg/setup-zig@v2
-        if: matrix.target == 'web'
         with:
           version: ${{ env.ZIG_VERSION }}
-
-      - name: deploy (web)
-        if: matrix.target == 'web'
+      - name: deploy
         working-directory: apps/web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -606,49 +622,3 @@ jobs:
             exit 0
           fi
           npx --yes wrangler@4.100.0 deploy
-
-  # The command the website shows pulls releases/latest, so right after publish
-  # it must install this release. A stale installer on nuhulabs.com broke it for
-  # everyone from 26/10 to 01/11 without any job failing. Prereleases are not
-  # latest, so they are skipped. It runs even when another destination (say
-  # Google Play) failed, since it checks only the github and web ones.
-  live-install:
-    name: live install (${{ matrix.image }}, ${{ matrix.runner }})
-    if: >-
-      !cancelled() && needs.pack.result == 'success'
-      && needs.prepare.outputs.publish == 'true'
-      && !contains(needs.prepare.outputs.version, '-')
-    needs: [prepare, pack, publish]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { runner: ubuntu-latest, image: "ubuntu:20.04" }
-          - { runner: ubuntu-latest, image: "ubuntu:26.04" }
-          - { runner: ubuntu-24.04-arm, image: "ubuntu:24.04" }
-          - { runner: ubuntu-latest, image: "archlinux:latest" }
-    steps:
-      - name: curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash
-        env:
-          WANT: "1:${{ needs.prepare.outputs.version }}"  # a release: no -prerelease to map to ~
-          WANT_ARCH: "${{ needs.prepare.outputs.version }}-1"  # pacman's pkgver-pkgrel
-          IMAGE: ${{ matrix.image }}
-        run: |
-          docker run --rm -e WANT -e WANT_ARCH "$IMAGE" bash -c '
-            if command -v pacman >/dev/null; then
-              # The image is behind its repositories: a full upgrade, never a partial one.
-              pacman -Syu --noconfirm -q curl >/dev/null
-              curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash
-              got=$(pacman -Q byakaron 2>/dev/null | cut -d" " -f2)
-              echo "installed: ${got:-nothing}, released: $WANT_ARCH"
-              [ "$got" = "$WANT_ARCH" ]
-              exit
-            fi
-            export DEBIAN_FRONTEND=noninteractive
-            apt-get update -qq >/dev/null && apt-get install -y -qq curl ca-certificates >/dev/null
-            curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash
-            got=$(dpkg-query -W -f="\${Version}" byakaron 2>/dev/null)
-            echo "installed: ${got:-nothing}, released: $WANT"
-            [ "$got" = "$WANT" ]'

@@ -1,0 +1,35 @@
+name: pack setup
+description: >-
+  What every release pack job starts with: the release version written into
+  build.zig.zon, Zig, and prepare's Byakaron.db in zig-out/db.
+
+inputs:
+  version:
+    description: Release version (prepare's output)
+    required: true
+  zig-version:
+    description: Zig version
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # The packages read build.zig.zon's .version (Linux .deb, app, IBus
+    # component, metainfo), so the release version goes there first.
+    - name: version
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        sed -i.bak -E "s/^([[:space:]]*\.version = \")[^\"]*(\".*)$/\1${VERSION}\2/" build.zig.zon
+        rm build.zig.zon.bak
+        grep -m1 '\.version = ' build.zig.zon
+
+    - uses: mlugg/setup-zig@v2
+      with:
+        version: ${{ inputs.zig-version }}
+
+    - uses: actions/download-artifact@v4
+      with:
+        name: byakaron-db
+        path: zig-out/db

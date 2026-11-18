@@ -2,7 +2,7 @@
 # matrix, one job each) once they pass.
 #
 # Kept fast on purpose: no packaging, installers, e2e or install-matrix here.
-# Those run in release.yml (packages, live install) and e2e.yml (by hand).
+# Those run in release.yml (packages) and e2e.yml (by hand).
 name: ci
 
 on:
