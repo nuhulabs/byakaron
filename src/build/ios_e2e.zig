@@ -474,11 +474,15 @@ fn matrix(t: *Tool, o: Options) ![]Pair {
     // Major version → the latest runtime of it, in the order majors appear.
     var latest: std.AutoArrayHashMapUnmanaged(u64, *Runtime) = .empty;
     for (items(get(root, "runtimes"))) |rt| {
-        if (!boolOr(get(rt, "isAvailable"), false)) continue;
         if (!std.mem.eql(u8, str(get(rt, "platform")) orelse "iOS", "iOS")) continue;
+        if (!boolOr(get(rt, "isAvailable"), false)) {
+            std.debug.print("skipping {s}: unavailable ({s})\n", .{ str(get(rt, "name")) orelse "?", str(get(rt, "availabilityError")) orelse "no reason given" });
+            continue;
+        }
         const version = str(get(rt, "version")) orelse continue;
         const runtime = try t.arena.create(Runtime);
         runtime.* = .{ .version = version, .identifier = str(get(rt, "identifier")) orelse continue, .kinds = try kindsOf(t, rt, o.devices) };
+        if (runtime.kinds.len == 0) std.debug.print("iOS {s}: no iPhone matches --devices \"{s}\" ({d} device types)\n", .{ version, o.devices, items(get(rt, "supportedDeviceTypes")).len });
 
         const is_named = for (exact.items) |v| {
             if (std.mem.eql(u8, version, v) or (std.mem.startsWith(u8, version, v) and version.len > v.len and version[v.len] == '.')) break true;
