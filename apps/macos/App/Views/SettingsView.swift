@@ -24,11 +24,11 @@ struct SettingsView: View {
                 .tabItem { Label(tr(BYK_STR_SETUP), systemImage: "sparkles") }
                 .tag(SettingsTab.setup.rawValue)
 
-            TypingSettings(model: model)
+            ManifestSettings(model: model, section: "typing")
                 .tabItem { Label(tr(BYK_STR_TYPING), systemImage: "keyboard") }
                 .tag(SettingsTab.typing.rawValue)
 
-            CandidateSettings(model: model)
+            ManifestSettings(model: model, section: "candidates")
                 .tabItem { Label(tr(BYK_STR_CANDIDATES), systemImage: "list.bullet.rectangle") }
                 .tag(SettingsTab.suggestions.rawValue)
 
@@ -57,14 +57,9 @@ struct SettingsView: View {
 final class KeyboardSettingsModel: ObservableObject {
     private let composer: OpaquePointer?
 
-    @Published var values = ByakaronSettings.Values() {
-        didSet {
-            guard values != oldValue, !loading, let composer else { return }
-            ByakaronSettings.set(values, composer)
-        }
-    }
+    /// Each manifest field's value by key (see `ByakaronSettings.value`).
+    @Published private(set) var values: [String: Int] = [:]
     @Published private(set) var userWords: [String] = []
-    private var loading = false
 
     init() {
         composer = ByakaronSettings.openComposer()
@@ -78,10 +73,27 @@ final class KeyboardSettingsModel: ObservableObject {
     /// Re-read what is on disk (another process may have changed it).
     func reload() {
         guard let composer else { return }
-        loading = true
-        values = ByakaronSettings.get(composer)
+        var fresh: [String: Int] = [:]
+        for field in SettingsManifest.fields {
+            fresh[field.key] = ByakaronSettings.value(field.key, composer)
+        }
+        values = fresh
         userWords = ByakaronSettings.userWords(composer)
-        loading = false
+    }
+
+    func binding(_ key: String) -> Binding<Int> {
+        Binding(
+            get: { self.values[key] ?? 0 },
+            set: { value in
+                guard let composer = self.composer, value != self.values[key] else { return }
+                ByakaronSettings.setValue(key, value, composer)
+                self.values[key] = ByakaronSettings.value(key, composer) ?? value
+            })
+    }
+
+    func toggle(_ key: String) -> Binding<Bool> {
+        let number = binding(key)
+        return Binding(get: { number.wrappedValue != 0 }, set: { number.wrappedValue = $0 ? 1 : 0 })
     }
 
     /// Add a word; false if it was already there or is not a word.
@@ -100,74 +112,57 @@ final class KeyboardSettingsModel: ObservableObject {
     }
 }
 
-// MARK: - Typing
+// MARK: - Manifest sections
 
-private struct TypingSettings: View {
+/// One section of the shared manifest (Typing, Suggestion list): a control per
+/// field, its title and hint as every Byakaron app shows them.
+private struct ManifestSettings: View {
     @ObservedObject var model: KeyboardSettingsModel
+    let section: String
 
     var body: some View {
         Form {
-            Section {
-                Toggle(isOn: $model.values.suggestions) {
-                    Text(tr(BYK_STR_SUGGESTIONS))
-                    Text(tr(BYK_STR_SUGGESTIONS_HINT))
+            if let section = SettingsManifest.section(section) {
+                Section {
+                    ForEach(SettingsManifest.fields(in: section)) { field in
+                        control(field)
+                    }
+                } header: {
+                    Text(section.title)
+                } footer: {
+                    if let hint = section.hint {
+                        Text(hint).font(.caption).foregroundStyle(.tertiary)
+                    }
                 }
-                Toggle(isOn: $model.values.spellingCorrections) {
-                    Text(tr(BYK_STR_SPELLING_CORRECTIONS))
-                    Text(tr(BYK_STR_SPELLING_CORRECTIONS_HINT))
-                }
-                Toggle(isOn: $model.values.learnChoices) {
-                    Text(tr(BYK_STR_LEARN_CHOICES))
-                    Text(tr(BYK_STR_LEARN_CHOICES_HINT))
-                }
-                Toggle(isOn: $model.values.banglaDigits) {
-                    Text(tr(BYK_STR_BANGLA_DIGITS))
-                    Text(tr(BYK_STR_BANGLA_DIGITS_HINT))
-                }
-                Toggle(isOn: $model.values.newlineOnEnter) {
-                    Text(tr(BYK_STR_NEWLINE_ON_ENTER))
-                    Text(tr(BYK_STR_NEWLINE_ON_ENTER_HINT))
-                }
-            } header: {
-                Text(tr(BYK_STR_TYPING))
-            } footer: {
-                Text(tr(BYK_STR_TYPING_HINT))
-                    .font(.caption).foregroundStyle(.tertiary)
             }
         }
         .formStyle(.grouped)
     }
-}
 
-// MARK: - Candidates
-
-private struct CandidateSettings: View {
-    @ObservedObject var model: KeyboardSettingsModel
-
-    var body: some View {
-        Form {
-            Section {
-                Picker(tr(BYK_STR_CANDIDATE_ORIENTATION), selection: $model.values.candidateOrientation) {
-                    ForEach(ByakaronSettings.Orientation.allCases) { o in
-                        Text(o.label).tag(o)
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                LabeledContent(tr(BYK_STR_CANDIDATES_PER_PAGE)) {
-                    Stepper(
-                        "\(model.values.candidatesPerPage)",
-                        value: $model.values.candidatesPerPage,
-                        in: ByakaronSettings.candidatesPerPageRange)
-                }
-            } header: {
-                Text(tr(BYK_STR_CANDIDATES))
-            } footer: {
-                Text(tr(BYK_STR_CANDIDATES_HINT))
-                    .font(.caption).foregroundStyle(.tertiary)
+    @ViewBuilder
+    private func control(_ field: SettingsManifest.Field) -> some View {
+        switch field.control {
+        case .toggle:
+            Toggle(isOn: model.toggle(field.key)) {
+                Text(field.title)
+                if let hint = field.hint { Text(hint) }
+            }
+        case .choice(let options):
+            Picker(selection: model.binding(field.key)) {
+                ForEach(options.indices, id: \.self) { i in Text(options[i]).tag(i) }
+            } label: {
+                Text(field.title)
+                if let hint = field.hint { Text(hint) }
+            }
+            .pickerStyle(.segmented)
+        case .number(let range):
+            LabeledContent {
+                Stepper("\(model.values[field.key] ?? range.lowerBound)", value: model.binding(field.key), in: range)
+            } label: {
+                Text(field.title)
+                if let hint = field.hint { Text(hint) }
             }
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -229,10 +224,10 @@ private struct PersonalDictionarySettings: View {
     GettingStartedTab().frame(width: 540)
 }
 #Preview("Typing") {
-    TypingSettings(model: KeyboardSettingsModel()).frame(width: 540)
+    ManifestSettings(model: KeyboardSettingsModel(), section: "typing").frame(width: 540)
 }
 #Preview("Suggestions") {
-    CandidateSettings(model: KeyboardSettingsModel()).frame(width: 540)
+    ManifestSettings(model: KeyboardSettingsModel(), section: "candidates").frame(width: 540)
 }
 #Preview("Dictionary") {
     PersonalDictionarySettings(model: KeyboardSettingsModel()).frame(width: 540)

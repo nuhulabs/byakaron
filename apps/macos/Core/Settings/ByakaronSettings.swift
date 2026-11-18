@@ -58,63 +58,24 @@ enum ByakaronSettings {
 
     // MARK: - Shared settings
 
-    /// The settings every Byakaron keyboard shares (JSON field names from
-    /// src/Composer/Settings.zig).
-    struct Values: Codable, Equatable {
-        var suggestions = true
-        var spellingCorrections = true
-        var learnChoices = true
-        var banglaDigits = true
-        var newlineOnEnter = false
-        var candidateOrientation = Orientation.horizontal
-        var candidatesPerPage = 9
-
-        enum CodingKeys: String, CodingKey {
-            case suggestions
-            case spellingCorrections = "spelling_corrections"
-            case learnChoices = "learn_choices"
-            case banglaDigits = "bangla_digits"
-            case newlineOnEnter = "newline_on_enter"
-            case candidateOrientation = "candidate_orientation"
-            case candidatesPerPage = "candidates_per_page"
-        }
+    /// A setting by its manifest key: 0/1, an option's index or a number.
+    static func value(_ key: String, _ composer: OpaquePointer) -> Int? {
+        var v: Int32 = 0
+        return byakaron_setting_get(composer, key, &v) == 0 ? Int(v) : nil
     }
 
-    enum Orientation: String, Codable, CaseIterable, Identifiable {
-        case horizontal
-        case vertical
-        var id: String { rawValue }
-        var label: String {
-            switch self {
-            case .horizontal: return tr(BYK_STR_HORIZONTAL)
-            case .vertical: return tr(BYK_STR_VERTICAL)
-            }
-        }
-    }
-
-    static let candidatesPerPageRange = 3...9
-
-    static func get(_ composer: OpaquePointer) -> Values {
-        guard let cstr = byakaron_settings_get(composer) else { return Values() }
-        defer { byakaron_string_free(cstr) }
-        return (try? JSONDecoder().decode(Values.self, from: Data(String(cString: cstr).utf8))) ?? Values()
-    }
-
-    static func set(_ values: Values, _ composer: OpaquePointer) {
-        guard let data = try? JSONEncoder().encode(values),
-            let json = String(data: data, encoding: .utf8)
-        else { return }
-        if byakaron_settings_set(composer, json) != 0 {
-            NSLog("Byakaron: failed to save settings")
+    static func setValue(_ key: String, _ value: Int, _ composer: OpaquePointer) {
+        if byakaron_setting_set(composer, key, Int32(value)) != 0 {
+            NSLog("Byakaron: failed to save %@", key)
         }
     }
 
     // MARK: - Personal dictionary
 
     static func userWords(_ composer: OpaquePointer) -> [String] {
-        guard let cstr = byakaron_userdict_get(composer) else { return [] }
-        defer { byakaron_string_free(cstr) }
-        return (try? JSONDecoder().decode([String].self, from: Data(String(cString: cstr).utf8))) ?? []
+        (0..<byakaron_userdict_count(composer)).compactMap { i in
+            byakaron_userdict_word(composer, i).map { String(cString: $0) }
+        }
     }
 
     // MARK: - Migration
@@ -123,20 +84,18 @@ enum ByakaronSettings {
     /// settings.json, then drop every key those builds wrote (most were never read).
     private static func migrateLegacySettings(_ composer: OpaquePointer) {
         let d = defaults
-        var v = Values()
         if d.object(forKey: "ByakaronPhoneticOnlyMode") != nil {
-            v.suggestions = !d.bool(forKey: "ByakaronPhoneticOnlyMode")
+            setValue("suggestions", d.bool(forKey: "ByakaronPhoneticOnlyMode") ? 0 : 1, composer)
         }
-        if let raw = d.string(forKey: "ByakaronCandidateOrientation"), let o = Orientation(rawValue: raw) {
-            v.candidateOrientation = o
+        if let raw = d.string(forKey: "ByakaronCandidateOrientation") {
+            setValue("candidate_orientation", raw == "vertical" ? 1 : 0, composer)
         }
         if d.object(forKey: "ByakaronCandidatesPerPage") != nil {
-            v.candidatesPerPage = d.integer(forKey: "ByakaronCandidatesPerPage")
+            setValue("candidates_per_page", d.integer(forKey: "ByakaronCandidatesPerPage"), composer)
         }
         if d.object(forKey: "ByakaronSmartDigits") != nil {
-            v.banglaDigits = d.bool(forKey: "ByakaronSmartDigits")
+            setValue("bangla_digits", d.bool(forKey: "ByakaronSmartDigits") ? 1 : 0, composer)
         }
-        set(v, composer)
 
         for key in [
             "ByakaronPhoneticOnlyMode", "ByakaronCandidateOrientation", "ByakaronCandidatesPerPage",
@@ -148,6 +107,68 @@ enum ByakaronSettings {
             d.removeObject(forKey: key)
         }
     }
+}
+
+// MARK: - Manifest
+
+/// What the settings screens show, from the shared manifest
+/// (src/Composer/Settings.zig): sections and the fields macOS shows, in order,
+/// with their text in the user's language.
+enum SettingsManifest {
+    struct Section: Identifiable {
+        let id: Int
+        let key: String
+        let title: String
+        let hint: String?
+    }
+
+    enum Control {
+        case toggle
+        case choice([String])
+        case number(ClosedRange<Int>)
+    }
+
+    struct Field: Identifiable {
+        var id: String { key }
+        let key: String
+        let section: Int
+        let title: String
+        let hint: String?
+        let control: Control
+    }
+
+    private static let language = Locale.preferredLanguages.first ?? "en"
+
+    static let sections: [Section] = (0..<byakaron_settings_section_count()).compactMap { i in
+        var s = ByakaronSettingsSection()
+        guard byakaron_settings_section_info(i, language, &s) == 0 else { return nil }
+        return Section(
+            id: i, key: String(cString: s.id), title: String(cString: s.title),
+            hint: s.hint.map { String(cString: $0) })
+    }
+
+    static let fields: [Field] = (0..<byakaron_settings_field_count()).compactMap { i in
+        var f = ByakaronSettingsField()
+        guard byakaron_settings_field_info(i, language, &f) == 0,
+            f.platforms & UInt32(BYAKARON_PLATFORM_MACOS) != 0
+        else { return nil }
+        let control: Control
+        switch Int(f.control) {
+        case Int(BYAKARON_CONTROL_TOGGLE):
+            control = .toggle
+        case Int(BYAKARON_CONTROL_CHOICE):
+            control = .choice((0..<f.option_count).map { String(cString: f.option_labels[$0]!) })
+        default:
+            control = .number(Int(f.min)...Int(f.max))
+        }
+        return Field(
+            key: String(cString: f.key), section: f.section, title: String(cString: f.title),
+            hint: f.hint.map { String(cString: $0) }, control: control)
+    }
+
+    static func section(_ key: String) -> Section? { sections.first { $0.key == key } }
+
+    static func fields(in section: Section) -> [Field] { fields.filter { $0.section == section.id } }
 }
 
 /// A settings label shared with every Byakaron app (src/locale/*.zon, generated
