@@ -5,6 +5,12 @@
     // /releases/latest/download/<file> so this catalog does not need a
     // per-release refresh.
     .repo = "nuhulabs/Byakaron-Assets",
+    // Store listings. An empty string means not listed yet (shown as "Coming
+    // soon" on the landing page).
+    .stores = .{
+        .android = "https://play.google.com/store/apps/details?id=com.nuhulabs.byakaron",
+        .ios = "",
+    },
     .assets = .{
         .{
             .id = "macos",
@@ -29,6 +35,12 @@
             .label = "Linux (arm64)",
             .detail = "Ubuntu / Debian · .deb",
             .file = "byakaron_arm64.deb",
+        },
+        .{
+            .id = "linux_arch",
+            .label = "Arch Linux (x86_64)",
+            .detail = "pacman · .pkg.tar.zst",
+            .file = "byakaron_x86_64.pkg.tar.zst",
         },
         .{
             .id = "android_apk",

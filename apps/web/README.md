@@ -14,8 +14,9 @@ Spell check and SQLite autocomplete read the app database `zx.db`. Natively that
 
 The site deploys as the Worker `byakaron` (`wrangler.jsonc`, entry `main.ts`), split in three:
 
-- **The page is static.** `app/pages/page.zx` is `.rendering = .prerendered`: the build renders it once into `zig-out/static/index.html`, an empty shell whose UI is a `@client` component that runs in the browser (wasm). Everything that depends on the visitor (the saved draft and settings in the browser's storage, a shared `?q=` link) is read there. Cloudflare serves it, with the client wasm, the JS and the CSS, straight from its CDN; the Worker doesn't run for them.
-- **Downloads** at `/download` list installers via stable `/releases/latest/download/…` URLs on public [`nuhulabs/Byakaron-Assets`](https://github.com/nuhulabs/Byakaron-Assets) (`app/downloads.zon`). One-command installers live in `app/public/install.sh` and `install.ps1`. No per-release web republish.
+- **The landing page** at `/` (`app/pages/page.zx`, prerendered) has a card per platform. `app/public/landing.js` sets `<html data-os>` from the visitor's user agent so CSS lifts that platform's card and swaps the hero button to its store listing or installer; without JavaScript it offers the web app. Store links and installers come from `app/downloads.zon` (an empty store link shows "Coming soon"). Platform and store icons are single-colour SVGs in `app/public/icons/` (brand marks from Simple Icons, CC0), drawn as CSS masks; `app/public/logo.svg` (also the favicon) is `apps/linux/Resources/byakaron.svg` without its comments.
+- **The spell checker is static.** `app/pages/app/page.zx` (`/app`) is `.rendering = .prerendered`: the build renders it once into `zig-out/static/app.html`, an empty shell whose UI is a `@client` component that runs in the browser (wasm). Everything that depends on the visitor (the saved draft and settings in the browser's storage, a shared `?q=` link) is read there. Cloudflare serves it, with the client wasm, the JS and the CSS, straight from its CDN; the Worker doesn't run for them.
+- **Downloads** at `/download` list installers via stable `/releases/latest/download/…` URLs on public [`nuhulabs/Byakaron-Assets`](https://github.com/nuhulabs/Byakaron-Assets) (`app/downloads.zon`, read through `app/catalog.zig`). One-command installers live in `app/public/install.sh` and `install.ps1`. No per-release web republish.
 - **The API is dynamic.** `app/pages/api/spell/route.zig` is `.rendering = .request`: `POST /api/spell` runs in the Worker against the D1 database.
 
 ### Spell API and the browser cache
@@ -29,7 +30,7 @@ curl -X POST localhost:8787/api/spell -H 'content-type: application/json' --data
 
 The page splits its text into words with the same tokenizer the server uses (`tokenization`, `.normalize = true`), answers every word it has cached and asks the API only for the others. The keyboard's corrections use the same cache. The cache is kept in memory and saved to `zx.kv` (the browser's IndexedDB) as one value under `spell_cache_v<N>`:
 
-- **Version:** bump `SpellCache.version` in `page.zx` when the server's answers change (a new Byakaron.db, new ranking). Every browser then ignores and deletes its old cache.
+- **Version:** bump `SpellCache.version` in `app/pages/app/page.zx` when the server's answers change (a new Byakaron.db, new ranking). Every browser then ignores and deletes its old cache.
 - **Expiry:** each word expires 7 days after it was fetched (`SpellCache.ttl_ms`). The browser's kv has no TTL of its own, so the expiry is stored with each entry and checked when it is read.
 - **Size:** at most 20 000 words (`SpellCache.max_entries`); the oldest go first.
 - **Schema:** the value is written with `zx.kv.putAs`, so a change to the result types also invalidates it.
@@ -100,4 +101,4 @@ npx wrangler@4.100.0 dev        # runs the build command, then http://localhost:
 curl -X POST localhost:8787/api/spell -H 'content-type: application/json' --data-binary '[["আমি","বাংলা"]]'
 ```
 
-`/` comes from `zig-out/static/index.html`, so after changing the page rebuild (`wrangler dev` rebuilds on changes under `app/`).
+`/` and `/app` come from `zig-out/static/index.html` and `app.html`, so after changing the page rebuild (`wrangler dev` rebuilds on changes under `app/`).
