@@ -1,10 +1,33 @@
 pub fn Layout(ctx: zx.LayoutContext, children: zx.Component) zx.Component {
+    const m = meta.get(ctx.data);
+    const url = std.fmt.allocPrint(ctx.arena, "{s}{s}", .{ meta.site, m.path }) catch meta.site;
     return (
         <html @allocator={ctx.arena} lang="bn">
             <head>
                 <meta charset="UTF-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-                <title>byakaron | বাংলা বানান</title>
+                <title>{m.title}</title>
+                <meta name="description" content={m.description} />
+                <meta name="keywords" content="Byakaron, ব্যাকারন, Bangla keyboard, Bengali keyboard, বাংলা কিবোর্ড, Bangla spell checker, বানান পরীক্ষক, Avro, phonetic" />
+                <meta name="application-name" content="Byakaron" />
+                <meta name="theme-color" content="#0e1319" />
+                <meta name="robots" content="index, follow" />
+                <link rel="canonical" href={url} />
+                <meta property="og:type" content="website" />
+                <meta property="og:site_name" content="Byakaron" />
+                <meta property="og:title" content={m.title} />
+                <meta property="og:description" content={m.description} />
+                <meta property="og:url" content={url} />
+                <meta property="og:image" content={meta.image} />
+                <meta property="og:image:width" content="1200" />
+                <meta property="og:image:height" content="630" />
+                <meta property="og:image:alt" content="Byakaron: বাংলা লিখুন, নির্ভুল বানানে।" />
+                <meta property="og:locale" content="bn_BD" />
+                <meta property="og:locale:alternate" content="en_US" />
+                <meta name="twitter:card" content="summary_large_image" />
+                <meta name="twitter:title" content={m.title} />
+                <meta name="twitter:description" content={m.description} />
+                <meta name="twitter:image" content={meta.image} />
                 <link rel="preconnect" href="https://fonts.googleapis.com" />
                 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
                 <link href="https://fonts.googleapis.com/css2?family=Anek+Bangla:wght@400;600;700&family=Syne:wght@600;700&display=swap" rel="stylesheet" />
@@ -20,4 +43,6 @@ pub fn Layout(ctx: zx.LayoutContext, children: zx.Component) zx.Component {
     );
 }
 
+const std = @import("std");
 const zx = @import("zx");
+const meta = @import("../meta.zig");

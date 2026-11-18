@@ -2,19 +2,21 @@
 //! the visitor's OS (`data-os`) so CSS can lift that card to the top and swap
 //! the hero button to its store listing or installer. Without JavaScript the
 //! hero offers the web app and every card stays reachable.
-//! Icons are single-colour SVGs in `app/public/icons/`, drawn with CSS masks
-//! (`.ic-<name>`) so they take the text colour.
+//! Icons are inline SVGs from `app/icons.zig` (`currentColor`), so they take
+//! the text colour.
 //! The spell checker itself lives at `/app`.
 
 const std = @import("std");
 const zx = @import("zx");
+const meta = @import("../meta.zig");
 const Catalog = @import("../catalog.zig");
+const icons = @import("../icons.zig");
 const catalog = Catalog.catalog;
 
 /// One icon button on a platform card. An empty `href` renders disabled
 /// ("coming soon").
 const Action = struct {
-    /// `ic-<name>` class, an SVG in `app/public/icons/`.
+    /// An inline SVG from `app/icons.zig`.
     icon: []const u8,
     /// Tooltip and accessible name.
     tip: []const u8,
@@ -45,10 +47,10 @@ const Feature = struct {
 };
 
 const features = [_]Feature{
-    .{ .icon = "ic-check", .title = "Spell check", .body = "Finds misspellings and offers the right word." },
-    .{ .icon = "ic-spark", .title = "Suggestions as you type", .body = "Words and corrections in the keyboard." },
-    .{ .icon = "ic-offline", .title = "Works offline", .body = "The dictionary ships inside the apps." },
-    .{ .icon = "ic-devices", .title = "On every device", .body = "Desktop, phone and the web." },
+    .{ .icon = icons.check, .title = "Spell check", .body = "Finds misspellings and offers the right word." },
+    .{ .icon = icons.spark, .title = "Suggestions as you type", .body = "Words and corrections in the keyboard." },
+    .{ .icon = icons.offline, .title = "Works offline", .body = "The dictionary ships inside the apps." },
+    .{ .icon = icons.devices, .title = "On every device", .body = "Desktop, phone and the web." },
 };
 
 fn platforms(arena: std.mem.Allocator) ![]const Platform {
@@ -62,76 +64,76 @@ fn platforms(arena: std.mem.Allocator) ![]const Platform {
         .{
             .id = "macos",
             .name = "macOS",
-            .icon = "ic-apple",
+            .icon = icons.apple,
             .detail = "Apple Silicon and Intel",
             .cta = "Download for macOS",
-            .cta_icon = "ic-apple",
+            .cta_icon = icons.apple,
             .cta_href = dmg,
             .actions = try arena.dupe(Action, &.{
-                .{ .icon = "ic-download", .tip = "Download Byakaron.dmg", .href = dmg, .file = "Byakaron.dmg", .primary = true },
+                .{ .icon = icons.download, .tip = "Download Byakaron.dmg", .href = dmg, .file = "Byakaron.dmg", .primary = true },
             }),
         },
         .{
             .id = "windows",
             .name = "Windows",
-            .icon = "ic-windows",
+            .icon = icons.windows,
             .detail = "Windows 10 and 11, x64",
             .cta = "Download for Windows",
-            .cta_icon = "ic-windows",
+            .cta_icon = icons.windows,
             .cta_href = exe,
             .actions = try arena.dupe(Action, &.{
-                .{ .icon = "ic-download", .tip = "Download Byakaron-Setup.exe", .href = exe, .file = "Byakaron-Setup.exe", .primary = true },
+                .{ .icon = icons.download, .tip = "Download Byakaron-Setup.exe", .href = exe, .file = "Byakaron-Setup.exe", .primary = true },
             }),
         },
         .{
             .id = "linux",
             .name = "Linux",
-            .icon = "ic-linux",
+            .icon = icons.linux,
             .detail = "Ubuntu, Debian and Arch",
             .cta = "Download for Linux",
-            .cta_icon = "ic-linux",
+            .cta_icon = icons.linux,
             .cta_href = deb,
             .actions = try arena.dupe(Action, &.{
-                .{ .icon = "ic-more", .tip = "arm64, Arch and other packages", .href = "/download" },
-                .{ .icon = "ic-download", .tip = "Download the .deb (amd64)", .href = deb, .file = "byakaron_amd64.deb", .primary = true },
+                .{ .icon = icons.more, .tip = "arm64, Arch and other packages", .href = "/download" },
+                .{ .icon = icons.download, .tip = "Download the .deb (amd64)", .href = deb, .file = "byakaron_amd64.deb", .primary = true },
             }),
         },
         .{
             .id = "android",
             .name = "Android",
-            .icon = "ic-android",
+            .icon = icons.android,
             .detail = "Byakaron Keyboard",
             .cta = "Get it on Google Play",
-            .cta_icon = "ic-googleplay",
+            .cta_icon = icons.googleplay,
             .cta_href = if (play.len > 0) play else apk,
             .actions = try arena.dupe(Action, &.{
-                .{ .icon = "ic-download", .tip = "Download the APK", .href = apk, .file = "Byakaron.apk" },
-                .{ .icon = "ic-googleplay", .tip = "Get it on Google Play", .href = play, .primary = true },
+                .{ .icon = icons.download, .tip = "Download the APK", .href = apk, .file = "Byakaron.apk" },
+                .{ .icon = icons.googleplay, .tip = "Get it on Google Play", .href = play, .primary = true },
             }),
         },
         .{
             .id = "ios",
             .name = "iPhone and iPad",
-            .icon = "ic-apple",
+            .icon = icons.apple,
             .detail = "Coming to the App Store",
             .cta = if (app_store.len > 0) "Download on the App Store" else "Open the web app",
-            .cta_icon = if (app_store.len > 0) "ic-appstore" else "ic-globe",
+            .cta_icon = if (app_store.len > 0) icons.appstore else icons.globe,
             .cta_href = if (app_store.len > 0) app_store else "/app",
             .actions = try arena.dupe(Action, &.{
-                .{ .icon = "ic-globe", .tip = "Open the web app meanwhile", .href = "/app" },
-                .{ .icon = "ic-appstore", .tip = if (app_store.len > 0) "Download on the App Store" else "App Store: coming soon", .href = app_store, .primary = true },
+                .{ .icon = icons.globe, .tip = "Open the web app meanwhile", .href = "/app" },
+                .{ .icon = icons.appstore, .tip = if (app_store.len > 0) "Download on the App Store" else "App Store: coming soon", .href = app_store, .primary = true },
             }),
         },
         .{
             .id = "web",
             .name = "Web",
-            .icon = "ic-globe",
+            .icon = icons.globe,
             .detail = "Any browser, nothing to install",
             .cta = "Open the web app",
-            .cta_icon = "ic-globe",
+            .cta_icon = icons.globe,
             .cta_href = "/app",
             .actions = try arena.dupe(Action, &.{
-                .{ .icon = "ic-arrow", .tip = "Open the web app", .href = "/app", .primary = true },
+                .{ .icon = icons.arrow, .tip = "Open the web app", .href = "/app", .primary = true },
             }),
         },
     });
@@ -170,12 +172,13 @@ const Terminal = struct {
 };
 
 const terminals = [_]Terminal{
-    .{ .id = "lp-term-macos", .name = "macOS", .icon = "ic-apple", .prompt = "$", .note = "Installs Byakaron.app into Applications. Script:", .script = "/install.sh", .default = true },
-    .{ .id = "lp-term-linux", .name = "Linux", .icon = "ic-linux", .prompt = "$", .note = "Ubuntu, Debian or Arch Linux. Script:", .script = "/install.sh" },
-    .{ .id = "lp-term-windows", .name = "Windows", .icon = "ic-windows", .prompt = "PS>", .note = "In PowerShell; runs the quiet Setup.exe. Script:", .script = "/install.ps1", .windows = true },
+    .{ .id = "lp-term-macos", .name = "macOS", .icon = icons.apple, .prompt = "$", .note = "Installs Byakaron.app into Applications. Script:", .script = "/install.sh", .default = true },
+    .{ .id = "lp-term-linux", .name = "Linux", .icon = icons.linux, .prompt = "$", .note = "Ubuntu, Debian or Arch Linux. Script:", .script = "/install.sh" },
+    .{ .id = "lp-term-windows", .name = "Windows", .icon = icons.windows, .prompt = "PS>", .note = "In PowerShell; runs the quiet Setup.exe. Script:", .script = "/install.ps1", .windows = true },
 };
 
 pub fn Page(ctx: zx.PageContext) !zx.Component {
+    meta.set(ctx.data, .{ .path = "/" });
     const list = try platforms(ctx.arena);
     const notes = try std.fmt.allocPrint(ctx.arena, "https://github.com/{s}/releases/latest", .{catalog.repo});
     const unix_cmd = try std.fmt.allocPrint(ctx.arena, "curl -fsSL {s}/install.sh | bash", .{catalog.site});
@@ -202,7 +205,7 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
                     <div class="lp-actions">
                         {for (list) |p| (
                             <a class="lp-cta" data-for={p.id} href={p.cta_href}>
-                                <span class={p.cta_icon} aria-hidden="true"></span>
+                                <span class="ic" aria-hidden="true" @escaping={.none}>{p.cta_icon}</span>
                                 {p.cta}
                             </a>
                         )}
@@ -239,7 +242,7 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
             <section class="lp-features" aria-label="Features">
                 {for (features) |f| (
                     <div class="lp-feature">
-                        <span class={f.icon} aria-hidden="true"></span>
+                        <span class="ic lp-feature-ic" aria-hidden="true" @escaping={.none}>{f.icon}</span>
                         <div>
                             <h3>{f.title}</h3>
                             <p>{f.body}</p>
@@ -254,7 +257,7 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
                 <ul class="lp-grid">
                     {for (list) |p| (
                         <li class="lp-card" data-for={p.id}>
-                            <span class={p.icon} aria-hidden="true"></span>
+                            <span class="ic lp-card-ic" aria-hidden="true" @escaping={.none}>{p.icon}</span>
                             <div class="lp-card-body">
                                 <h3 class="lp-card-name">
                                     {p.name}
@@ -267,15 +270,15 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
                                     <span class={if (a.primary) "lp-tip is-primary" else "lp-tip"} data-tip={a.tip}>
                                         {if (a.href.len == 0) (
                                             <span class="lp-icon-btn is-soon" role="link" aria-disabled="true" aria-label={a.tip}>
-                                                <span class={a.icon} aria-hidden="true"></span>
+                                                <span class="ic" aria-hidden="true" @escaping={.none}>{a.icon}</span>
                                             </span>
                                         ) else if (a.file.len > 0) (
                                             <a class="lp-icon-btn" href={a.href} download={a.file} aria-label={a.tip}>
-                                                <span class={a.icon} aria-hidden="true"></span>
+                                                <span class="ic" aria-hidden="true" @escaping={.none}>{a.icon}</span>
                                             </a>
                                         ) else (
                                             <a class="lp-icon-btn" href={a.href} aria-label={a.tip}>
-                                                <span class={a.icon} aria-hidden="true"></span>
+                                                <span class="ic" aria-hidden="true" @escaping={.none}>{a.icon}</span>
                                             </a>
                                         )}
                                     </span>
@@ -302,7 +305,7 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
                         <div class="lp-term-tabs">
                             {for (terminals) |t| (
                                 <label for={t.id}>
-                                    <span class={t.icon} aria-hidden="true"></span>
+                                    <span class="ic" aria-hidden="true" @escaping={.none}>{t.icon}</span>
                                     {t.name}
                                 </label>
                             )}
