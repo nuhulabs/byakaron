@@ -1,4 +1,4 @@
-//! Interactive Bangla spell checker — client-side UI with `zx.http.Client` to `/api/spell`.
+//! Interactive Bangla spell checker: client-side UI with `zx.http.Client` to `/api/spell`.
 //! Typing, issue selection, and applying suggestions do not full-page refresh.
 //! Avro typing runs in the browser (wasm) through the same `Composer` every
 //! native keyboard drives, so keys, candidates, settings and learned choices
@@ -15,7 +15,7 @@ const schema = @import("../api/spell/schema.zig");
 /// Settings labels shared with every app (src/locale/en.zon).
 const L = @import("strings").default;
 
-// —— Client-side model (WASM module globals) ——
+// -- Client-side model (WASM module globals) --
 
 const Suggestion = schema.Suggestion;
 const TokenResult = schema.TokenResult;
@@ -90,7 +90,7 @@ pub fn SpellApp(ctx: *zx.ComponentContext) zx.Component {
         ctx.allocator,
         "{d} words · {d} issues",
         .{ word_count, unknown_count },
-    ) catch "—";
+    ) catch "-";
 
     return (
         <div @allocator={ctx.allocator} class={if (restored) "app-layout" else "app-layout is-restoring"}>
@@ -288,7 +288,7 @@ fn utf8Codepoints(text: []const u8) usize {
     return std.unicode.utf8CountCodepoints(text) catch text.len;
 }
 
-// —— Client handlers ——
+// -- Client handlers --
 
 fn onTextInput(e: zx.client.Event) void {
     const v = e.value() orelse "";
@@ -427,12 +427,12 @@ fn ensureComposer() ?*Composer {
     return &composer.?;
 }
 
-// —— Composer user data in zx.kv ——
+// -- Composer user data in zx.kv --
 //
 // zx.kv is the browser's IndexedDB, which is asynchronous: a key handler that
 // touched it would suspend before it could `preventDefault`, and the browser
-// would type the raw key. So the composer's blobs are mirrored in memory —
-// read from kv once at startup (`loadStore`) — and written back from a timer.
+// would type the raw key. So the composer's blobs are mirrored in memory,
+// read from kv once at startup (`loadStore`), and written back from a timer.
 
 const blob_names = [_][]const u8{ Composer.Store.settings, Composer.Store.selections, Composer.Store.user_words };
 var blobs: [blob_names.len]?[]u8 = .{ null, null, null };
@@ -508,7 +508,7 @@ fn flushBlobs() void {
     }
 }
 
-// —— Spelling corrections from /api/spell ——
+// -- Spelling corrections from /api/spell --
 
 const WebCorrector = struct {
     pending: bool = false,
@@ -541,7 +541,7 @@ fn onCorrections(_: void, result: zx.http.Client.Error!zx.http.Client.Result) vo
     zx.client.rerender();
 }
 
-// —— Spell results, cached per word ——
+// -- Spell results, cached per word --
 
 const SpellCache = struct {
     // Bump when the server's answers change to drop every browser's cache.
@@ -635,7 +635,7 @@ fn storeResponse(result: zx.http.Client.Error!zx.http.Client.Result) bool {
     return true;
 }
 
-// —— Settings panel (the settings every Byakaron keyboard shares) ——
+// -- Settings panel (the settings every Byakaron keyboard shares) --
 
 fn onToggleSettingsPanel(_: zx.client.Event) void {
     finishWord();
@@ -901,7 +901,7 @@ fn onApplySuggestion(e: zx.client.Event) void {
 }
 
 /// Textareas keep their live `.value` after user edits; child text from rerender
-/// alone won't update them — write the property explicitly.
+/// alone won't update them: write the property explicitly.
 fn syncTextarea(text: []const u8) void {
     if (zx.platform.role != .client) return;
     const document = zx.client.Document.init(zx.allocator);
@@ -1051,7 +1051,7 @@ fn onThrottleFire() void {
     if (!check_dirty) return;
     check_dirty = false;
     startFetch();
-    // More keystrokes arrived while we were starting the fetch — arm another window.
+    // More keystrokes arrived while we were starting the fetch: arm another window.
     if (check_dirty) scheduleCheck();
 }
 

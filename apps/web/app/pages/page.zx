@@ -1,4 +1,4 @@
-//! Landing page. Every platform has a card; `/landing.js` tags `<html>` with
+//! Landing page. Every platform has a card; `/site.js` tags `<html>` with
 //! the visitor's OS (`data-os`) so CSS can lift that card to the top and swap
 //! the hero button to its store listing or installer. Without JavaScript the
 //! hero offers the web app and every card stays reachable.
@@ -25,7 +25,7 @@ const Action = struct {
 };
 
 const Platform = struct {
-    /// Matches the `data-os` value `/landing.js` sets.
+    /// Matches the `data-os` value `/site.js` sets.
     id: []const u8,
     name: []const u8,
     icon: []const u8,
@@ -45,10 +45,10 @@ const Feature = struct {
 };
 
 const features = [_]Feature{
-    .{ .icon = "ic-check", .title = "Spell check", .body = "Finds misspelled words across your whole text and offers the right one." },
-    .{ .icon = "ic-spark", .title = "Suggestions as you type", .body = "Word suggestions and corrections right in the keyboard." },
-    .{ .icon = "ic-offline", .title = "Works offline", .body = "The dictionary ships inside the apps, so no connection is needed." },
-    .{ .icon = "ic-devices", .title = "On every device", .body = "macOS, Windows, Linux, Android and the web, with iOS on the way." },
+    .{ .icon = "ic-check", .title = "Spell check", .body = "Finds misspellings and offers the right word." },
+    .{ .icon = "ic-spark", .title = "Suggestions as you type", .body = "Words and corrections in the keyboard." },
+    .{ .icon = "ic-offline", .title = "Works offline", .body = "The dictionary ships inside the apps." },
+    .{ .icon = "ic-devices", .title = "On every device", .body = "Desktop, phone and the web." },
 };
 
 fn platforms(arena: std.mem.Allocator) ![]const Platform {
@@ -156,6 +156,25 @@ const glyphs = [_]Glyph{
     .{ .ch = "ঙ", .x = 22, .y = 26, .size = 1.7, .rot = 4 },
 };
 
+/// Tabs of the terminal install box; `/site.js` checks the visitor's.
+const Terminal = struct {
+    /// `lp-term-<data-os>`.
+    id: []const u8,
+    name: []const u8,
+    icon: []const u8,
+    prompt: []const u8,
+    note: []const u8,
+    script: []const u8,
+    windows: bool = false,
+    default: bool = false,
+};
+
+const terminals = [_]Terminal{
+    .{ .id = "lp-term-macos", .name = "macOS", .icon = "ic-apple", .prompt = "$", .note = "Installs Byakaron.app into Applications. Script:", .script = "/install.sh", .default = true },
+    .{ .id = "lp-term-linux", .name = "Linux", .icon = "ic-linux", .prompt = "$", .note = "Ubuntu, Debian or Arch Linux. Script:", .script = "/install.sh" },
+    .{ .id = "lp-term-windows", .name = "Windows", .icon = "ic-windows", .prompt = "PS>", .note = "In PowerShell; runs the quiet Setup.exe. Script:", .script = "/install.ps1", .windows = true },
+};
+
 pub fn Page(ctx: zx.PageContext) !zx.Component {
     const list = try platforms(ctx.arena);
     const notes = try std.fmt.allocPrint(ctx.arena, "https://github.com/{s}/releases/latest", .{catalog.repo});
@@ -163,7 +182,7 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
     const win_cmd = try std.fmt.allocPrint(ctx.arena, "irm {s}/install.ps1 | iex", .{catalog.site});
     return (
         <main @allocator={ctx.arena} class="lp">
-            <script src="/landing.js"></script>
+            <script src="/site.js"></script>
             <nav class="lp-nav">
                 <a class="lp-logo" href="/">
                     <img src="/logo.svg" alt="" width="32" height="32" />
@@ -221,8 +240,10 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
                 {for (features) |f| (
                     <div class="lp-feature">
                         <span class={f.icon} aria-hidden="true"></span>
-                        <h3>{f.title}</h3>
-                        <p>{f.body}</p>
+                        <div>
+                            <h3>{f.title}</h3>
+                            <p>{f.body}</p>
+                        </div>
                     </div>
                 )}
             </section>
@@ -268,21 +289,34 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
             <section class="lp-install" aria-labelledby="lp-install-title">
                 <h2 id="lp-install-title" class="lp-section-title">Or install from a terminal</h2>
                 <p class="lp-section-lead">One command picks the right package for your machine.</p>
-                <div class="lp-install-grid">
-                    <div class="dl-cmd-block">
-                        <div class="dl-cmd-head">
-                            <span class="dl-cmd-os">Linux and macOS</span>
-                            <a class="dl-cmd-link" href="/install.sh">install.sh</a>
+                <div class="lp-term">
+                    {for (terminals) |t| (
+                        <input class="lp-term-radio" type="radio" name="lp-term" id={t.id} checked={t.default} />
+                    )}
+                    <div class="lp-term-bar">
+                        <span class="lp-term-dots" aria-hidden="true">
+                            <i></i>
+                            <i></i>
+                            <i></i>
+                        </span>
+                        <div class="lp-term-tabs">
+                            {for (terminals) |t| (
+                                <label for={t.id}>
+                                    <span class={t.icon} aria-hidden="true"></span>
+                                    {t.name}
+                                </label>
+                            )}
                         </div>
-                        <pre class="dl-cmd"><code>{unix_cmd}</code></pre>
                     </div>
-                    <div class="dl-cmd-block">
-                        <div class="dl-cmd-head">
-                            <span class="dl-cmd-os">Windows (PowerShell)</span>
-                            <a class="dl-cmd-link" href="/install.ps1">install.ps1</a>
+                    {for (terminals) |t| (
+                        <div class="lp-term-pane" data-tab={t.id}>
+                            <pre><code><span class="lp-term-prompt" aria-hidden="true">{t.prompt}</span>{if (t.windows) win_cmd else unix_cmd}</code></pre>
+                            <p class="lp-term-note">
+                                {t.note}
+                                <a href={t.script}>{t.script[1..]}</a>
+                            </p>
                         </div>
-                        <pre class="dl-cmd"><code>{win_cmd}</code></pre>
-                    </div>
+                    )}
                 </div>
             </section>
 

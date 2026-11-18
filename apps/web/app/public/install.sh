@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Byakaron — one-command install (Linux & macOS).
+# Byakaron: one-command install (Linux & macOS).
 #
 #   curl -fsSL https://<host>/install.sh | bash
 #

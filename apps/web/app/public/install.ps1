@@ -1,4 +1,4 @@
-# Byakaron — one-command install (Windows).
+# Byakaron: one-command install (Windows).
 #
 #   irm https://<host>/install.ps1 | iex
 #
@@ -21,6 +21,24 @@ function Die([string]$Message) {
 
 if (-not [Environment]::Is64BitOperatingSystem) {
     Die "Byakaron requires 64-bit Windows 10 or later."
+}
+
+# GitHub's latest/ skips prereleases, so while there are only prereleases
+# (27.0.0-internal.0, say) it has nothing: take the newest release with the
+# installer, as install.sh does.
+if (-not $env:BYAKARON_SETUP_URL) {
+    try {
+        Invoke-WebRequest -Uri $SetupUrl -Method Head -UseBasicParsing | Out-Null
+    } catch {
+        $Api = "https://api.github.com/repos/$Repo/releases?per_page=20"
+        $Preview = (Invoke-RestMethod -Uri $Api -UseBasicParsing) |
+            ForEach-Object { $_.assets } |
+            Where-Object { $_.name -eq "Byakaron-Setup.exe" } |
+            Select-Object -First 1 -ExpandProperty browser_download_url
+        if (-not $Preview) { Die "could not find Byakaron-Setup.exe on $Repo (no release has it yet)" }
+        Write-Host ">>> no stable release yet: installing the newest preview build"
+        $SetupUrl = $Preview
+    }
 }
 
 $Out = Join-Path ([System.IO.Path]::GetTempPath()) "Byakaron-Setup.exe"

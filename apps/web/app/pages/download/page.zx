@@ -17,10 +17,11 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
     const win_cmd = try std.fmt.allocPrint(ctx.arena, "irm {s}/install.ps1 | iex", .{catalog.site});
     return (
         <main @allocator={ctx.arena} class="dl-shell">
+            <script src="/site.js"></script>
             <header class="dl-hero">
                 <p class="dl-brand">byakaron</p>
                 <h1 class="dl-title">Download</h1>
-                <p class="dl-lead">Install with one command, or grab a platform installer. Binaries are hosted on a public assets repo — no login required.</p>
+                <p class="dl-lead">Install with one command, or grab a platform installer. Binaries are hosted on a public assets repo, no login required.</p>
                 <p class="dl-nav">
                     <a href="/">Home</a>
                     <span aria-hidden="true">·</span>

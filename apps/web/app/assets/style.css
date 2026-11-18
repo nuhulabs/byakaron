@@ -43,7 +43,7 @@ body {
     background: var(--panel);
 }
 
-/* —— Sidebar —— */
+/* -- Sidebar -- */
 .sidebar {
     background: var(--sidebar);
     border-right: 1px solid var(--line);
@@ -118,7 +118,7 @@ body {
     background: #fff;
     box-shadow: inset 2px 0 0 var(--warn);
     position: relative;
-    /* Clicks must hit the <button>, not child nodes — otherwise
+    /* Clicks must hit the <button>, not child nodes; otherwise
        Event.value() falls back to the span (no value) and selection no-ops. */
     pointer-events: none;
 }
@@ -281,7 +281,7 @@ body {
     -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='black' viewBox='0 0 24 24'%3E%3Cpath d='M12 3 2 21h20L12 3zm0 6v5m0 3h.01'/%3E%3C/svg%3E");
 }
 
-/* —— Editor —— */
+/* -- Editor -- */
 .editor {
     position: relative;
     flex: 1;
@@ -339,7 +339,7 @@ body {
     color: #a0a7b4;
 }
 
-/* —— Spell-check activity: fades in place, never shifts the layout —— */
+/* -- Spell-check activity: fades in place, never shifts the layout -- */
 .check-dot {
     display: inline-block;
     width: 6px;
@@ -357,7 +357,7 @@ body {
     transition-delay: 0.25s;
 }
 
-/* —— Completion menu (anchored at the caret via --caret-x / --caret-y) —— */
+/* -- Completion menu (anchored at the caret via --caret-x / --caret-y) -- */
 .suggest-menu {
     position: absolute;
     z-index: 5;
@@ -430,7 +430,7 @@ body {
     color: #fff;
 }
 
-/* —— Fix bar —— */
+/* -- Fix bar -- */
 .fix-bar {
     display: grid;
     grid-template-columns: auto 1fr auto;
@@ -546,7 +546,7 @@ body {
     color: var(--ink);
 }
 
-/* —— Status —— */
+/* -- Status -- */
 .status-bar {
     display: flex;
     align-items: center;
@@ -598,7 +598,7 @@ body {
         gap: 0.55rem;
     }
 }
-/* —— Keyboard settings (the settings every Byakaron keyboard shares) —— */
+/* -- Keyboard settings (the settings every Byakaron keyboard shares) -- */
 .settings-panel {
     margin: 0 1rem 0.65rem;
     padding: 0.9rem 1rem;
@@ -750,7 +750,7 @@ body {
     font-size: 0.9rem;
 }
 
-/* —— Download page —— */
+/* -- Download page -- */
 .dl-shell {
     min-height: 100vh;
     max-width: 42rem;
@@ -955,7 +955,7 @@ body {
     }
 }
 
-/* —— Landing page —— */
+/* -- Landing page -- */
 .ic-apple { --ic: url(/icons/apple.svg); }
 .ic-android { --ic: url(/icons/android.svg); }
 .ic-linux { --ic: url(/icons/linux.svg); }
@@ -1239,41 +1239,48 @@ body:has(.lp) {
 .lp-features {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 1.5rem;
-    padding: 2.25rem 0 4rem;
+    gap: 0.75rem 1.25rem;
+    padding: 1.4rem 0 3rem;
     border-top: 1px solid var(--line);
 }
 
+.lp-feature {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
 .lp-feature > [class^="ic-"] {
-    width: 2.1rem;
-    height: 2.1rem;
-    padding: 0.45rem;
-    border-radius: 0.55rem;
-    background: var(--accent);
+    position: relative;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 0.5rem;
+    background: var(--accent-soft);
     -webkit-mask: none;
     mask: none;
-    position: relative;
 }
 
 .lp-feature > [class^="ic-"]::after {
     content: "";
     position: absolute;
-    inset: 0.45rem;
-    background: #fff;
+    inset: 0.42rem;
+    background: var(--accent);
     -webkit-mask: var(--ic) center / contain no-repeat;
     mask: var(--ic) center / contain no-repeat;
 }
 
 .lp-feature h3 {
-    margin: 0.8rem 0 0.25rem;
-    font-size: 1rem;
+    margin: 0;
+    font-size: 0.9rem;
     font-weight: 600;
+    line-height: 1.25;
 }
 
 .lp-feature p {
     margin: 0;
     color: var(--muted-2);
-    font-size: 0.9rem;
+    font-size: 0.8rem;
+    line-height: 1.3;
 }
 
 /* platforms */
@@ -1439,22 +1446,142 @@ body:has(.lp) {
     cursor: default;
 }
 
-/* install */
+/* install: a terminal window with a tab per OS (CSS radio tabs) */
 .lp-install {
     padding-bottom: 4rem;
 }
 
-.lp-install-grid {
-    display: grid;
-    gap: 0.75rem;
+.lp-term {
+    max-width: 44rem;
+    border-radius: 0.8rem;
+    background: #0e1319;
+    color: #e8ebee;
+    overflow: hidden;
+    box-shadow: 0 20px 40px -24px rgb(14 19 25 / 0.6);
 }
 
-.lp-install-grid .dl-cmd-block {
+.lp-term-radio {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.lp-term-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0 0.9rem;
+    background: #161c24;
+    border-bottom: 1px solid #232b35;
+}
+
+.lp-term-dots {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.lp-term-dots i {
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 50%;
+    background: #2e3742;
+}
+
+.lp-term-tabs {
+    display: flex;
+}
+
+.lp-term-tabs label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.65rem 0.9rem;
+    border-bottom: 2px solid transparent;
+    color: #8b929e;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.lp-term-tabs label:hover {
+    color: #e8ebee;
+}
+
+.lp-term-tabs [class^="ic-"] {
+    width: 0.95em;
+    height: 0.95em;
+}
+
+.lp-term-pane {
+    display: none;
+    padding: 1rem 1.1rem 0.9rem;
+}
+
+.lp-term-pane pre {
     margin: 0;
+    overflow-x: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.88rem;
+    line-height: 1.5;
 }
 
-.lp-install-grid .dl-cmd-link {
-    color: var(--accent);
+.lp-term-prompt {
+    margin-right: 0.6em;
+    color: #6ea0ff;
+    user-select: none;
+}
+
+.lp-term-note {
+    margin: 0.7rem 0 0;
+    color: #8b929e;
+    font-size: 0.8rem;
+}
+
+.lp-term-note a {
+    margin-left: 0.3em;
+    color: #9db9ff !important;
+}
+
+#lp-term-macos:checked ~ .lp-term-bar label[for="lp-term-macos"] {
+    border-bottom-color: #6ea0ff;
+    color: #fff;
+}
+
+#lp-term-macos:focus-visible ~ .lp-term-bar label[for="lp-term-macos"] {
+    outline: 2px solid #6ea0ff;
+    outline-offset: -4px;
+}
+
+#lp-term-macos:checked ~ .lp-term-pane[data-tab="lp-term-macos"] {
+    display: block;
+}
+
+#lp-term-linux:checked ~ .lp-term-bar label[for="lp-term-linux"] {
+    border-bottom-color: #6ea0ff;
+    color: #fff;
+}
+
+#lp-term-linux:focus-visible ~ .lp-term-bar label[for="lp-term-linux"] {
+    outline: 2px solid #6ea0ff;
+    outline-offset: -4px;
+}
+
+#lp-term-linux:checked ~ .lp-term-pane[data-tab="lp-term-linux"] {
+    display: block;
+}
+
+#lp-term-windows:checked ~ .lp-term-bar label[for="lp-term-windows"] {
+    border-bottom-color: #6ea0ff;
+    color: #fff;
+}
+
+#lp-term-windows:focus-visible ~ .lp-term-bar label[for="lp-term-windows"] {
+    outline: 2px solid #6ea0ff;
+    outline-offset: -4px;
+}
+
+#lp-term-windows:checked ~ .lp-term-pane[data-tab="lp-term-windows"] {
+    display: block;
 }
 
 /* footer */
@@ -1527,7 +1654,7 @@ body:has(.lp) {
     }
 
     .lp-features {
-        gap: 1.25rem 1rem;
+        gap: 0.9rem 0.75rem;
     }
 
     .lp-cta {
