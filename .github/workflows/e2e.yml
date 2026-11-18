@@ -128,6 +128,16 @@ jobs:
         with:
           version: ${{ env.ZIG_VERSION }}
 
+      # build.zig's ios targets need the CocoaPods workspace.
+      - uses: actions/cache@v4
+        with:
+          path: apps/ios/keyboard/Pods
+          key: pods-${{ runner.os }}-${{ hashFiles('apps/ios/keyboard/Podfile.lock') }}
+
+      - name: pods
+        working-directory: apps/ios/keyboard
+        run: pod install
+
       # Also builds zig-out/lib/ios/Byakaron.xcframework, which the Xcode
       # project links, so the app needs no `zig build ios` of its own.
       - name: matrix
@@ -141,15 +151,9 @@ jobs:
           cat "$RUNNER_TEMP/matrix.json"
           echo "matrix=$(cat "$RUNNER_TEMP/matrix.json")" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v4
-        with:
-          path: apps/ios/keyboard/Pods
-          key: pods-${{ runner.os }}-${{ hashFiles('apps/ios/keyboard/Podfile.lock') }}
-
       - name: build
         working-directory: apps/ios/keyboard
         run: |
-          pod install
           xcodebuild build-for-testing -quiet -workspace GiellaKeyboard.xcworkspace \
             -scheme KeyboardUITests -sdk iphonesimulator \
             -destination "generic/platform=iOS Simulator" \
@@ -163,7 +167,7 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # Runs the prebuilt tests (`--products`): no CocoaPods, no app build.
+  # Runs the prebuilt tests (`--products`): no app build.
   ios:
     name: e2e (ios ${{ matrix.os }}, ${{ matrix.device }})
     needs: ios-build
@@ -191,6 +195,16 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
+
+      # build.zig's ios targets need the CocoaPods workspace.
+      - uses: actions/cache@v4
+        with:
+          path: apps/ios/keyboard/Pods
+          key: pods-${{ runner.os }}-${{ hashFiles('apps/ios/keyboard/Podfile.lock') }}
+
+      - name: pods
+        working-directory: apps/ios/keyboard
+        run: pod install
 
       - uses: actions/download-artifact@v4
         with:
