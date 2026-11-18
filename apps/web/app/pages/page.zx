@@ -137,6 +137,25 @@ fn platforms(arena: std.mem.Allocator) ![]const Platform {
     });
 }
 
+/// Bangla letters scattered behind the hero's right side (decoration only).
+const Glyph = struct { ch: []const u8, x: u8, y: u8, size: f32, rot: i16 };
+const glyphs = [_]Glyph{
+    .{ .ch = "অ", .x = 6, .y = 8, .size = 3.2, .rot = -12 },
+    .{ .ch = "ক", .x = 30, .y = 2, .size = 2.2, .rot = 8 },
+    .{ .ch = "ব", .x = 58, .y = 6, .size = 4.2, .rot = -6 },
+    .{ .ch = "ং", .x = 86, .y = 12, .size = 2.4, .rot = 14 },
+    .{ .ch = "শ", .x = 92, .y = 40, .size = 3.4, .rot = -10 },
+    .{ .ch = "য", .x = 2, .y = 46, .size = 2.6, .rot = 10 },
+    .{ .ch = "ঞ", .x = 80, .y = 70, .size = 2.8, .rot = 6 },
+    .{ .ch = "ৎ", .x = 14, .y = 82, .size = 3.0, .rot = -14 },
+    .{ .ch = "ড়", .x = 44, .y = 90, .size = 2.2, .rot = 12 },
+    .{ .ch = "ঋ", .x = 64, .y = 84, .size = 3.6, .rot = -4 },
+    .{ .ch = "ঘ", .x = 96, .y = 88, .size = 2.0, .rot = -16 },
+    .{ .ch = "ই", .x = 40, .y = 30, .size = 1.8, .rot = 18 },
+    .{ .ch = "আ", .x = 72, .y = 32, .size = 1.9, .rot = -8 },
+    .{ .ch = "ঙ", .x = 22, .y = 26, .size = 1.7, .rot = 4 },
+};
+
 pub fn Page(ctx: zx.PageContext) !zx.Component {
     const list = try platforms(ctx.arena);
     const notes = try std.fmt.allocPrint(ctx.arena, "https://github.com/{s}/releases/latest", .{catalog.repo});
@@ -148,7 +167,7 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
             <nav class="lp-nav">
                 <a class="lp-logo" href="/">
                     <img src="/logo.svg" alt="" width="32" height="32" />
-                    <span>byakaron</span>
+                    <span class="lp-logo-name">Byakaron<span class="lp-logo-sep" aria-hidden="true">|</span><span lang="bn">ব্যাকারন</span></span>
                 </a>
                 <div class="lp-nav-links">
                     <a href="/app">Web app</a>
@@ -170,6 +189,11 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
                         )}
                         <a class="lp-secondary" href="/download">All downloads</a>
                     </div>
+                </div>
+                <div class="lp-glyphs" aria-hidden="true">
+                    {for (glyphs) |g| (
+                        <span style={try std.fmt.allocPrint(ctx.arena, "left:{d}%;top:{d}%;font-size:{d}rem;transform:translate(-50%,-50%) rotate({d}deg)", .{ g.x, g.y, g.size, g.rot })}>{g.ch}</span>
+                    )}
                 </div>
                 <div class="lp-demo" aria-hidden="true">
                     <div class="lp-demo-bar">
@@ -265,7 +289,7 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
             <footer class="lp-footer">
                 <a class="lp-logo" href="/">
                     <img src="/logo.svg" alt="" width="22" height="22" />
-                    <span>byakaron</span>
+                    <span class="lp-logo-name">Byakaron<span class="lp-logo-sep" aria-hidden="true">|</span><span lang="bn">ব্যাকারন</span></span>
                 </a>
                 <div class="lp-footer-links">
                     <a href="/app">Web app</a>

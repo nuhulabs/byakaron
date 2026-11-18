@@ -1108,8 +1108,57 @@ body:has(.lp) {
     text-decoration: underline;
 }
 
+.lp-logo-sep {
+    margin: 0 0.45em;
+    color: var(--line);
+    font-weight: 400;
+}
+
+.lp-logo-name [lang="bn"] {
+    font-family: "Anek Bangla", sans-serif;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+
+/* scattered letters behind the demo */
+.lp-hero {
+    position: relative;
+}
+
+.lp-glyphs {
+    position: absolute;
+    top: 0;
+    right: -1rem;
+    bottom: 0;
+    width: 56%;
+    z-index: 0;
+    pointer-events: none;
+    user-select: none;
+    -webkit-mask: radial-gradient(ellipse at 55% 50%, #000 50%, transparent 85%);
+    mask: radial-gradient(ellipse at 55% 50%, #000 50%, transparent 85%);
+}
+
+.lp-glyphs span {
+    position: absolute;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--accent);
+    opacity: 0.22;
+}
+
+.lp-glyphs span:nth-child(3n) {
+    color: var(--ink);
+    opacity: 0.12;
+}
+
+.lp-hero-copy {
+    position: relative;
+    z-index: 1;
+}
+
 /* demo */
 .lp-demo {
+    z-index: 1;
     position: relative;
     padding: 0 0 4.5rem;
     border: 1px solid var(--line);
@@ -1453,6 +1502,13 @@ body:has(.lp) {
 }
 
 @media (max-width: 900px) {
+    .lp-glyphs {
+        top: auto;
+        height: 22rem;
+        width: 100%;
+        right: 0;
+    }
+
     .lp-hero {
         grid-template-columns: 1fr;
         gap: 2.5rem;
