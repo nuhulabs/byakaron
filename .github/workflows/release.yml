@@ -44,15 +44,15 @@ on:
   workflow_dispatch:
     inputs:
       prerelease:
-        description: Publish a prerelease; with no version, the next <zon version>.N
+        description: Prerelease
         type: boolean
         default: false
       version:
-        description: Version to tag and publish (empty = next prerelease, or a dry run)
+        description: Version
         type: string
         default: ""
       play_track:
-        description: Google Play track for the Android bundle
+        description: Track
         type: choice
         options: [internal, alpha, beta]
         default: internal
@@ -635,7 +635,7 @@ jobs:
   publish-github:
     name: publish (github)
     if: needs.prepare.outputs.publish == 'true'
-    needs: [prepare, pack-linux, pack-macos, pack-windows, pack-android]
+    needs: [pack-linux, pack-macos, pack-windows, pack-android]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -756,7 +756,7 @@ jobs:
   publish-android:
     name: publish (android)
     if: needs.prepare.outputs.publish == 'true'
-    needs: [prepare, pack-android]
+    needs: [pack-android]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: byakaron-android
@@ -794,7 +794,7 @@ jobs:
   publish-ios:
     name: publish (ios)
     if: needs.prepare.outputs.publish == 'true'
-    needs: [prepare, pack-ios]
+    needs: [pack-ios]
     runs-on: xcode-27
     timeout-minutes: 30
     concurrency:
@@ -841,7 +841,7 @@ jobs:
   publish-web:
     name: publish (web)
     if: needs.prepare.outputs.publish == 'true'
-    needs: [prepare, pack-web]
+    needs: [pack-web]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: byakaron-web
