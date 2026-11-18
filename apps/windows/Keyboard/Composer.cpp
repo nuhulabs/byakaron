@@ -67,9 +67,8 @@ bool Composer::LoadFfi()
         Resolve(_ffi, "byakaron_composer_reset", _reset) &&
         Resolve(_ffi, "byakaron_composer_refresh", _refresh) &&
         Resolve(_ffi, "byakaron_composer_state", _state) &&
-        Resolve(_ffi, "byakaron_settings_get", _settingsGet) &&
-        Resolve(_ffi, "byakaron_settings_set", _settingsSet) &&
-        Resolve(_ffi, "byakaron_string_free", _stringFree);
+        Resolve(_ffi, "byakaron_setting_get", _settingGet) &&
+        Resolve(_ffi, "byakaron_setting_set", _settingSet);
     if (!ok) _create = nullptr; // an older byakaron.dll: stay unusable
     return ok;
 }
@@ -153,18 +152,15 @@ bool Composer::Composing()
     return st.composing != 0;
 }
 
-std::string Composer::SettingsJson()
+int Composer::Setting(const char* key, int fallback)
 {
-    if (!_composer) return {};
-    char* json = _settingsGet(_composer);
-    if (!json) return {};
-    std::string out(json);
-    _stringFree(json);
-    return out;
+    int value = 0;
+    if (!_composer || _settingGet(_composer, key, &value) != 0) return fallback;
+    return value;
 }
 
-bool Composer::SetSettingsJson(const std::string& json)
+bool Composer::SetSetting(const char* key, int value)
 {
     if (!_composer) return false;
-    return _settingsSet(_composer, json.c_str()) == 0;
+    return _settingSet(_composer, key, value) == 0;
 }

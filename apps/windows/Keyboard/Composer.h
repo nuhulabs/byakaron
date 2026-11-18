@@ -55,9 +55,12 @@ public:
     State GetState();
     bool Composing();
 
-    // byakaron_settings_get / set (JSON, see src/Composer/Settings.zig).
-    std::string SettingsJson();
-    bool SetSettingsJson(const std::string& json);
+    // One shared setting by key (byakaron_setting_get / set, see
+    // src/Composer/Settings.zig): 0 or 1 for a toggle, the option's index for a
+    // choice, else the number. Setting returns fallback for an unknown key;
+    // SetSetting clamps, saves and returns false for an unknown key.
+    int Setting(const char* key, int fallback);
+    bool SetSetting(const char* key, int value);
 
 private:
     bool LoadFfi();
@@ -75,7 +78,6 @@ private:
     decltype(&byakaron_composer_reset) _reset = nullptr;
     decltype(&byakaron_composer_refresh) _refresh = nullptr;
     decltype(&byakaron_composer_state) _state = nullptr;
-    decltype(&byakaron_settings_get) _settingsGet = nullptr;
-    decltype(&byakaron_settings_set) _settingsSet = nullptr;
-    decltype(&byakaron_string_free) _stringFree = nullptr;
+    decltype(&byakaron_setting_get) _settingGet = nullptr;
+    decltype(&byakaron_setting_set) _settingSet = nullptr;
 };

@@ -86,42 +86,16 @@ void MigrateLegacy(Composer& composer)
     HKEY key = nullptr;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, kLegacyRoot, 0, KEY_READ, &key) != ERROR_SUCCESS) return;
 
-    // Only the values that were set; the rest take the shared defaults.
-    std::string json;
-    auto add = [&json](const std::string& field)
-    {
-        json += json.empty() ? "{" : ",";
-        json += field;
-    };
+    // Only the values that were set; the rest take the shared defaults. The
+    // core clamps candidates_per_page.
     DWORD dword = 0;
     std::wstring text;
     if (ReadDword(key, L"PhoneticOnlyMode", &dword))
-        add(std::string("\"suggestions\":") + (dword ? "false" : "true"));
+        composer.SetSetting("suggestions", dword ? 0 : 1);
     if (ReadString(key, L"CandidateOrientation", &text))
-        add(std::string("\"candidate_orientation\":\"") + (text == L"vertical" ? "vertical" : "horizontal") + "\"");
+        composer.SetSetting("candidate_orientation", text == L"vertical" ? 1 : 0);
     if (ReadDword(key, L"CandidatesPerPage", &dword))
-    {
-        if (dword < 3) dword = 3;
-        if (dword > 9) dword = 9;
-        add("\"candidates_per_page\":" + std::to_string(dword));
-    }
+        composer.SetSetting("candidates_per_page", (int)dword);
     RegCloseKey(key);
-
-    if (json.empty()) return;
-    json += "}";
-    composer.SetSettingsJson(json);
-}
-
-bool JsonBool(const std::string& json, const char* key, bool fallback)
-{
-    const std::string needle = std::string("\"") + key + "\"";
-    size_t at = json.find(needle);
-    if (at == std::string::npos) return fallback;
-    at += needle.size();
-    while (at < json.size() && (json[at] == ' ' || json[at] == '\t' || json[at] == '\r' || json[at] == '\n' || json[at] == ':'))
-        ++at;
-    if (json.compare(at, 4, "true") == 0) return true;
-    if (json.compare(at, 5, "false") == 0) return false;
-    return fallback;
 }
 } // namespace ByakaronSettings

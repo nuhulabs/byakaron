@@ -230,7 +230,7 @@ BOOL CByakaronTextService::WouldEat(const KeyInput& key)
     if (key.kind != BYAKARON_KEY_CHAR || IsShortcut(key.mods)) return FALSE;
     // Outside a word, digits pass through unless they become Bangla digits.
     if (key.ch >= '0' && key.ch <= '9')
-        return ByakaronSettings::JsonBool(_composer.SettingsJson(), "bangla_digits", true) ? TRUE : FALSE;
+        return _composer.Setting("bangla_digits", 1) ? TRUE : FALSE;
     return TRUE;
 }
 

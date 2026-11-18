@@ -1,36 +1,41 @@
 using System;
-using System.Buffers;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
-using System.Text;
-using System.Text.Json;
+using System.Runtime.InteropServices;
 using Byakaron.Interop;
 using Microsoft.Win32;
 
 namespace Byakaron.Settings;
 
-/// <summary>
-/// The settings every Byakaron keyboard shares (<c>src/Composer/Settings.zig</c>).
-/// </summary>
-public sealed class KeyboardSettings
+/// <summary>BYAKARON_CONTROL_*: how a field is drawn and what its number means.</summary>
+public enum SettingControl
 {
-    public const int MinCandidatesPerPage = 3;
-    public const int MaxCandidatesPerPage = 9;
-
-    /// <summary>Avro dictionary mode; off is plain phonetic typing with no list.</summary>
-    public bool Suggestions { get; set; } = true;
-    public bool SpellingCorrections { get; set; } = true;
-    public bool LearnChoices { get; set; } = true;
-    public bool BanglaDigits { get; set; } = true;
-    public bool NewlineOnEnter { get; set; }
-    public bool Vertical { get; set; }
-    public int CandidatesPerPage { get; set; } = MaxCandidatesPerPage;
+    Toggle = 0,
+    Choice = 1,
+    Number = 2,
 }
+
+/// <summary>A group of settings, with an optional footer.</summary>
+public sealed record SettingsSection(string Id, string Title, string? Hint, IReadOnlyList<SettingsField> Fields);
+
+/// <summary>
+/// One setting from the shared manifest (<c>src/Composer/Settings.zig</c>):
+/// read and write it with <see cref="ByakaronSettings.Get"/> and <see cref="ByakaronSettings.Set"/>.
+/// </summary>
+public sealed record SettingsField(
+    string Key,
+    SettingControl Control,
+    string Title,
+    string? Hint,
+    int Min,
+    int Max,
+    IReadOnlyList<string> Options);
 
 /// <summary>
 /// Keyboard settings and the personal dictionary in <c>%LOCALAPPDATA%\Byakaron</c>,
 /// read and written through a composer on that directory
-/// (<c>byakaron_settings_*</c>, <c>byakaron_userdict_*</c>). Running keyboards
+/// (<c>byakaron_setting_*</c>, <c>byakaron_userdict_*</c>). Running keyboards
 /// pick changes up at their next word.
 /// </summary>
 public sealed class ByakaronSettings : IDisposable
@@ -79,68 +84,78 @@ public sealed class ByakaronSettings : IDisposable
         }
     }
 
-    public KeyboardSettings Load()
+    /// <summary>
+    /// The sections and the Windows fields of the shared settings manifest, in
+    /// the UI language. Empty when byakaron_ffi.dll is unavailable.
+    /// </summary>
+    public static List<SettingsSection> Manifest()
     {
-        var result = new KeyboardSettings();
-        if (_composer == nint.Zero)
-        {
-            return result;
-        }
-
-        var json = ByakaronNative.TakeUtf8String(ByakaronNative.SettingsGet(_composer));
-        if (string.IsNullOrEmpty(json))
-        {
-            return result;
-        }
-
+        var result = new List<SettingsSection>();
         try
         {
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            result.Suggestions = ReadBool(root, "suggestions", result.Suggestions);
-            result.SpellingCorrections = ReadBool(root, "spelling_corrections", result.SpellingCorrections);
-            result.LearnChoices = ReadBool(root, "learn_choices", result.LearnChoices);
-            result.BanglaDigits = ReadBool(root, "bangla_digits", result.BanglaDigits);
-            result.NewlineOnEnter = ReadBool(root, "newline_on_enter", result.NewlineOnEnter);
-            result.Vertical =
-                root.TryGetProperty("candidate_orientation", out var orientation) &&
-                orientation.ValueKind == JsonValueKind.String &&
-                orientation.GetString() == "vertical";
-            if (root.TryGetProperty("candidates_per_page", out var perPage) && perPage.TryGetInt32(out var n))
+            var lang = CultureInfo.CurrentUICulture.Name;
+            var sectionCount = ByakaronNative.SettingsSectionCount();
+            var fields = new List<SettingsField>[(int)sectionCount];
+            for (var i = 0; i < fields.Length; i++)
             {
-                result.CandidatesPerPage = Math.Clamp(n, KeyboardSettings.MinCandidatesPerPage, KeyboardSettings.MaxCandidatesPerPage);
+                fields[i] = new List<SettingsField>();
+            }
+
+            var fieldCount = ByakaronNative.SettingsFieldCount();
+            for (nuint i = 0; i < fieldCount; i++)
+            {
+                if (ByakaronNative.SettingsFieldInfo(i, lang, out var f) != 0 ||
+                    (f.Platforms & ByakaronNative.PlatformWindows) == 0 ||
+                    f.Section >= sectionCount)
+                {
+                    continue;
+                }
+
+                var options = new List<string>();
+                for (var o = 0; o < (int)f.OptionCount; o++)
+                {
+                    var label = Marshal.ReadIntPtr(f.OptionLabels, o * nint.Size);
+                    options.Add(ByakaronNative.Utf8String(label) ?? string.Empty);
+                }
+                fields[(int)f.Section].Add(new SettingsField(
+                    ByakaronNative.Utf8String(f.Key) ?? string.Empty,
+                    (SettingControl)f.Control,
+                    ByakaronNative.Utf8String(f.Title) ?? string.Empty,
+                    ByakaronNative.Utf8String(f.Hint),
+                    f.Min,
+                    f.Max,
+                    options));
+            }
+
+            for (nuint i = 0; i < sectionCount; i++)
+            {
+                if (fields[(int)i].Count == 0 || ByakaronNative.SettingsSectionInfo(i, lang, out var s) != 0)
+                {
+                    continue;
+                }
+                result.Add(new SettingsSection(
+                    ByakaronNative.Utf8String(s.Id) ?? string.Empty,
+                    ByakaronNative.Utf8String(s.Title) ?? string.Empty,
+                    ByakaronNative.Utf8String(s.Hint),
+                    fields[(int)i]));
             }
         }
-        catch (JsonException)
+        catch (DllNotFoundException)
+        {
+        }
+        catch (EntryPointNotFoundException)
         {
         }
         return result;
     }
 
-    public bool Save(KeyboardSettings settings)
-    {
-        if (_composer == nint.Zero)
-        {
-            return false;
-        }
+    /// <summary>A setting as a number (toggle 0/1, choice index, number), or null.</summary>
+    public int? Get(string key) =>
+        _composer != nint.Zero && ByakaronNative.SettingGet(_composer, key, out var value) == 0 ? value : null;
 
-        var buffer = new ArrayBufferWriter<byte>();
-        using (var w = new Utf8JsonWriter(buffer))
-        {
-            w.WriteStartObject();
-            w.WriteBoolean("suggestions", settings.Suggestions);
-            w.WriteBoolean("spelling_corrections", settings.SpellingCorrections);
-            w.WriteBoolean("learn_choices", settings.LearnChoices);
-            w.WriteBoolean("bangla_digits", settings.BanglaDigits);
-            w.WriteBoolean("newline_on_enter", settings.NewlineOnEnter);
-            w.WriteString("candidate_orientation", settings.Vertical ? "vertical" : "horizontal");
-            w.WriteNumber(
-                "candidates_per_page",
-                Math.Clamp(settings.CandidatesPerPage, KeyboardSettings.MinCandidatesPerPage, KeyboardSettings.MaxCandidatesPerPage));
-            w.WriteEndObject();
-        }
-        return ByakaronNative.SettingsSet(_composer, Encoding.UTF8.GetString(buffer.WrittenSpan)) == 0;
-    }
+    /// <summary>Saves the setting; the core clamps it to the field's range.</summary>
+    public bool Set(string key, int value) =>
+        _composer != nint.Zero && ByakaronNative.SettingSet(_composer, key, value) == 0;
 
     public List<string> UserWords()
     {
@@ -150,28 +165,13 @@ public sealed class ByakaronSettings : IDisposable
             return words;
         }
 
-        var json = ByakaronNative.TakeUtf8String(ByakaronNative.UserDictGet(_composer));
-        if (string.IsNullOrEmpty(json))
+        var count = ByakaronNative.UserDictCount(_composer);
+        for (nuint i = 0; i < count; i++)
         {
-            return words;
-        }
-
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.ValueKind == JsonValueKind.Array)
+            if (ByakaronNative.Utf8String(ByakaronNative.UserDictWord(_composer, i)) is { Length: > 0 } word)
             {
-                foreach (var item in doc.RootElement.EnumerateArray())
-                {
-                    if (item.ValueKind == JsonValueKind.String && item.GetString() is { Length: > 0 } word)
-                    {
-                        words.Add(word);
-                    }
-                }
+                words.Add(word);
             }
-        }
-        catch (JsonException)
-        {
         }
         return words;
     }
@@ -192,11 +192,6 @@ public sealed class ByakaronSettings : IDisposable
         }
     }
 
-    private static bool ReadBool(JsonElement root, string name, bool fallback) =>
-        root.TryGetProperty(name, out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False
-            ? v.GetBoolean()
-            : fallback;
-
     /// <summary>
     /// One-time, before settings.json exists: carry the old HKCU\Software\Byakaron
     /// values over. The registry is not read otherwise.
@@ -214,31 +209,21 @@ public sealed class ByakaronSettings : IDisposable
             var phoneticOnly = key.GetValue("PhoneticOnlyMode") as int?;
             var orientation = key.GetValue("CandidateOrientation") as string;
             var perPage = key.GetValue("CandidatesPerPage") as int?;
-            if (phoneticOnly is null && string.IsNullOrEmpty(orientation) && perPage is null)
-            {
-                return;
-            }
 
             // Only the values that were set; the rest take the shared defaults.
-            var buffer = new ArrayBufferWriter<byte>();
-            using (var w = new Utf8JsonWriter(buffer))
+            // The core clamps candidates_per_page.
+            if (phoneticOnly is int p)
             {
-                w.WriteStartObject();
-                if (phoneticOnly is int p)
-                {
-                    w.WriteBoolean("suggestions", p == 0);
-                }
-                if (!string.IsNullOrEmpty(orientation))
-                {
-                    w.WriteString("candidate_orientation", orientation == "vertical" ? "vertical" : "horizontal");
-                }
-                if (perPage is int n)
-                {
-                    w.WriteNumber("candidates_per_page", Math.Clamp(n, KeyboardSettings.MinCandidatesPerPage, KeyboardSettings.MaxCandidatesPerPage));
-                }
-                w.WriteEndObject();
+                Set("suggestions", p == 0 ? 1 : 0);
             }
-            ByakaronNative.SettingsSet(_composer, Encoding.UTF8.GetString(buffer.WrittenSpan));
+            if (!string.IsNullOrEmpty(orientation))
+            {
+                Set("candidate_orientation", orientation == "vertical" ? 1 : 0);
+            }
+            if (perPage is int n)
+            {
+                Set("candidates_per_page", n);
+            }
         }
         catch (Exception)
         {

@@ -21,7 +21,4 @@ namespace ByakaronSettings
     // HKCU\Software\Byakaron values (PhoneticOnlyMode, CandidateOrientation,
     // CandidatesPerPage) over into it. The registry is not read otherwise.
     void MigrateLegacy(Composer& composer);
-
-    // A boolean field of a settings JSON object, or fallback.
-    bool JsonBool(const std::string& json, const char* key, bool fallback);
 }

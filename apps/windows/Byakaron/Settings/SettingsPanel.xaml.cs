@@ -1,6 +1,6 @@
+using System.Collections.Generic;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
 
 namespace Byakaron.Settings;
 
@@ -11,26 +11,23 @@ namespace Byakaron.Settings;
 public sealed partial class SettingsPanel : UserControl
 {
     private readonly ByakaronSettings? _store;
-    private readonly KeyboardSettings _settings;
+    private readonly List<Control> _settingControls = new();
     private bool _loading = true;
 
     public SettingsPanel()
     {
         InitializeComponent();
         _store = ByakaronSettings.Open();
-        _settings = _store?.Load() ?? new KeyboardSettings();
         Unloaded += (_, _) => _store?.Dispose();
 
-        LoadControls();
+        BuildSettings();
         RefreshUserWords();
         if (_store is null)
         {
             UnavailableText.Visibility = Visibility.Visible;
-            foreach (var control in new Control[]
-            {
-                SuggestionsToggle, SpellingToggle, LearnToggle, DigitsToggle, NewlineToggle,
-                OrientationCombo, PerPageSlider, NewWordBox, AddWordButton,
-            })
+            _settingControls.Add(NewWordBox);
+            _settingControls.Add(AddWordButton);
+            foreach (var control in _settingControls)
             {
                 control.IsEnabled = false;
             }
@@ -38,52 +35,97 @@ public sealed partial class SettingsPanel : UserControl
         _loading = false;
     }
 
-    private void LoadControls()
+    // One group per manifest section: its title, its fields, then its hint.
+    private void BuildSettings()
     {
-        SuggestionsToggle.IsOn = _settings.Suggestions;
-        SpellingToggle.IsOn = _settings.SpellingCorrections;
-        LearnToggle.IsOn = _settings.LearnChoices;
-        DigitsToggle.IsOn = _settings.BanglaDigits;
-        NewlineToggle.IsOn = _settings.NewlineOnEnter;
-        OrientationCombo.SelectedIndex = _settings.Vertical ? 1 : 0;
-        PerPageSlider.Value = _settings.CandidatesPerPage;
-        PerPageValueText.Text = $"{_settings.CandidatesPerPage} suggestions";
-    }
-
-    private void Save()
-    {
-        _store?.Save(_settings);
-    }
-
-    private void Toggle_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (_loading) return;
-        _settings.Suggestions = SuggestionsToggle.IsOn;
-        _settings.SpellingCorrections = SpellingToggle.IsOn;
-        _settings.LearnChoices = LearnToggle.IsOn;
-        _settings.BanglaDigits = DigitsToggle.IsOn;
-        _settings.NewlineOnEnter = NewlineToggle.IsOn;
-        Save();
-    }
-
-    private void OrientationCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_loading) return;
-        if (OrientationCombo.SelectedItem is ComboBoxItem item && item.Tag is string tag)
+        foreach (var section in ByakaronSettings.Manifest())
         {
-            _settings.Vertical = tag == "vertical";
-            Save();
+            var group = new StackPanel { Spacing = 8 };
+            group.Children.Add(new TextBlock { Text = section.Title, Style = ResourceStyle("SectionTitleStyle") });
+            foreach (var field in section.Fields)
+            {
+                AddField(group, field);
+            }
+            if (!string.IsNullOrEmpty(section.Hint))
+            {
+                group.Children.Add(Hint(section.Hint));
+            }
+            ManifestPanel.Children.Add(group);
         }
     }
 
-    private void PerPageSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
+    private void AddField(StackPanel group, SettingsField field)
     {
-        if (_loading || PerPageValueText is null) return;
-        var n = (int)PerPageSlider.Value;
-        _settings.CandidatesPerPage = n;
-        PerPageValueText.Text = $"{n} suggestions";
-        Save();
+        var value = _store?.Get(field.Key) ?? field.Min;
+        switch (field.Control)
+        {
+            case SettingControl.Toggle:
+            {
+                var toggle = new ToggleSwitch { Header = field.Title, IsOn = value != 0 };
+                toggle.Toggled += (_, _) => Save(field.Key, toggle.IsOn ? 1 : 0);
+                group.Children.Add(toggle);
+                _settingControls.Add(toggle);
+                break;
+            }
+            case SettingControl.Choice:
+            {
+                group.Children.Add(new TextBlock { Text = field.Title, Style = ResourceStyle("FieldTitleStyle") });
+                var combo = new ComboBox { MinWidth = 200 };
+                foreach (var option in field.Options)
+                {
+                    combo.Items.Add(new ComboBoxItem { Content = option });
+                }
+                combo.SelectedIndex = value >= 0 && value < field.Options.Count ? value : -1;
+                combo.SelectionChanged += (_, _) =>
+                {
+                    if (combo.SelectedIndex >= 0) Save(field.Key, combo.SelectedIndex);
+                };
+                group.Children.Add(combo);
+                _settingControls.Add(combo);
+                break;
+            }
+            case SettingControl.Number:
+            {
+                group.Children.Add(new TextBlock { Text = field.Title, Style = ResourceStyle("FieldTitleStyle") });
+                var slider = new Slider
+                {
+                    Minimum = field.Min,
+                    Maximum = field.Max,
+                    StepFrequency = 1,
+                    TickFrequency = 1,
+                    Value = value,
+                };
+                var shown = new TextBlock { Text = value.ToString(), Style = ResourceStyle("HintStyle") };
+                slider.ValueChanged += (_, e) =>
+                {
+                    var n = (int)e.NewValue;
+                    shown.Text = n.ToString();
+                    Save(field.Key, n);
+                };
+                group.Children.Add(slider);
+                group.Children.Add(shown);
+                _settingControls.Add(slider);
+                break;
+            }
+            default:
+                return; // a control this app does not know yet
+        }
+
+        if (!string.IsNullOrEmpty(field.Hint))
+        {
+            group.Children.Add(Hint(field.Hint));
+        }
     }
+
+    private void Save(string key, int value)
+    {
+        if (_loading) return;
+        _store?.Set(key, value);
+    }
+
+    private TextBlock Hint(string text) => new() { Text = text, Style = ResourceStyle("HintStyle") };
+
+    private Microsoft.UI.Xaml.Style ResourceStyle(string key) => (Microsoft.UI.Xaml.Style)Resources[key];
 
     private void AddWord_Click(object sender, RoutedEventArgs e)
     {

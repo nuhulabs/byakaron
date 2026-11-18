@@ -5,7 +5,8 @@ namespace Byakaron.Interop;
 
 /// <summary>
 /// Raw C ABI for libbyakaron (see <c>src/ffi/byakaron.h</c>).
-/// Returned strings are heap UTF-8 owned by the caller — free with <see cref="StringFree"/>.
+/// Returned strings are heap UTF-8 owned by the caller — free with <see cref="StringFree"/> —
+/// except the settings manifest's and the user dictionary's words, which are not freed.
 /// </summary>
 internal static partial class ByakaronNative
 {
@@ -61,20 +62,25 @@ internal static partial class ByakaronNative
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
     internal static partial void ComposerDestroy(nint composer);
 
-    /// <summary>Settings JSON; free with <see cref="StringFree"/> (use <see cref="TakeUtf8String"/>).</summary>
-    [LibraryImport(LibraryName, EntryPoint = "byakaron_settings_get")]
+    /// <summary>One setting by key as a number (toggle 0/1, choice index, number). 0, or -1 for an unknown key.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_setting_get", StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
-    internal static partial nint SettingsGet(nint composer);
+    internal static partial int SettingGet(nint composer, string key, out int value);
 
-    /// <summary>0, or -1 on invalid JSON. Missing fields take their defaults.</summary>
-    [LibraryImport(LibraryName, EntryPoint = "byakaron_settings_set", StringMarshalling = StringMarshalling.Utf8)]
+    /// <summary>Clamps to the field's range and saves. 0, or -1 for an unknown key.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_setting_set", StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
-    internal static partial int SettingsSet(nint composer, string json);
+    internal static partial int SettingSet(nint composer, string key, int value);
 
-    /// <summary>JSON array of personal words; free with <see cref="StringFree"/>.</summary>
-    [LibraryImport(LibraryName, EntryPoint = "byakaron_userdict_get")]
+    /// <summary>Re-reads the personal dictionary and returns how many words it has.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_userdict_count")]
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
-    internal static partial nint UserDictGet(nint composer);
+    internal static partial nuint UserDictCount(nint composer);
+
+    /// <summary>The index-th word (UTF-8, not owned), or 0 past the end. Valid until the next non-word call.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_userdict_word")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial nint UserDictWord(nint composer, nuint index);
 
     /// <summary>1 added, 0 already there, -1 not a valid word.</summary>
     [LibraryImport(LibraryName, EntryPoint = "byakaron_userdict_add", StringMarshalling = StringMarshalling.Utf8)]
@@ -86,7 +92,59 @@ internal static partial class ByakaronNative
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
     internal static partial int UserDictRemove(nint composer, string word);
 
+    // ── Settings manifest (static strings: do not free) ─────────────────────
+
+    internal const uint PlatformWindows = 8;
+
+    /// <summary>ByakaronSettingsSection.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct SettingsSection
+    {
+        public nint Id;
+        public nint Title;
+        public nint Hint;
+    }
+
+    /// <summary>ByakaronSettingsField.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct SettingsField
+    {
+        public nint Key;
+        public nuint Section;
+        public int Control;
+        public nint Title;
+        public nint Hint;
+        public int Min;
+        public int Max;
+        public nuint OptionCount;
+        public nint OptionValues;
+        public nint OptionLabels;
+        public uint Platforms;
+    }
+
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_settings_section_count")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial nuint SettingsSectionCount();
+
+    /// <summary>0, or -1 past the end.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_settings_section_info", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial int SettingsSectionInfo(nuint index, string? lang, out SettingsSection section);
+
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_settings_field_count")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial nuint SettingsFieldCount();
+
+    /// <summary>0, or -1 past the end.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_settings_field_info", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial int SettingsFieldInfo(nuint index, string? lang, out SettingsField field);
+
     // ── Helpers ─────────────────────────────────────────────────────────────
+
+    /// <summary>A static or borrowed UTF-8 C string (not freed); null for a null pointer.</summary>
+    internal static string? Utf8String(nint ptr) =>
+        ptr == nint.Zero ? null : Marshal.PtrToStringUTF8(ptr);
 
     /// <summary>Read a NUL-terminated UTF-8 C string and free it with the Zig allocator.</summary>
     internal static string? TakeUtf8String(nint ptr)
