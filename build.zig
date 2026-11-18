@@ -1642,8 +1642,11 @@ fn androidNdk(b: *std.Build) ?[]const u8 {
 }
 
 /// The NDK package from build.zig.zon (lazy: downloaded only when no local NDK
-/// was found). Its sysroot is all the Android libraries need.
+/// was found). Its sysroot is all the Android libraries need. It is the macOS
+/// NDK, so other hosts never fetch it (every build would otherwise download
+/// it, `deps -- linux` included).
 fn fetchedNdk(b: *std.Build) ?[]const u8 {
+    if (builtin.os.tag != .macos) return null;
     const dep = b.lazyDependency("ndk", .{}) orelse return null;
     return rootPath(dep.builder, ".");
 }
