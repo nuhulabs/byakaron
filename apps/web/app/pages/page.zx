@@ -329,6 +329,7 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
                     <a href="/app">Web app</a>
                     <a href="/download">Downloads</a>
                     <a href={notes}>Release notes</a>
+                    <a href="/policy">Privacy</a>
                 </div>
             </footer>
         </main>

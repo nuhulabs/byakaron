@@ -1,0 +1,25 @@
+//! Privacy policy at /policy (the Google Play listing links here). The text
+//! lives in `body.md`; it moved here from nuhulabs.com/byakaron/policy.
+
+const zx = @import("zx");
+const Body = @import("body.md");
+
+pub fn Page(ctx: zx.PageContext) zx.Component {
+    return (
+        <main @allocator={ctx.arena} class="policy">
+            <nav class="policy-nav">
+                <a class="lp-logo" href="/">
+                    <img src="/logo.svg" alt="" width="28" height="28" />
+                    <span class="lp-logo-name">Byakaron<span class="lp-logo-sep" aria-hidden="true">|</span><span lang="bn">ব্যাকারন</span></span>
+                </a>
+            </nav>
+            <article class="policy-body">
+                {Body.render(ctx.arena)}
+            </article>
+        </main>
+    );
+}
+
+pub const options: zx.PageOptions = .{
+    .rendering = .prerendered,
+};

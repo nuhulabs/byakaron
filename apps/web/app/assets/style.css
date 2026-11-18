@@ -1662,3 +1662,59 @@ body:has(.lp) {
         justify-content: center;
     }
 }
+
+/* -- Privacy policy (/policy) -- */
+.policy {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 0 1.25rem 4rem;
+}
+
+.policy-nav {
+    padding: 1.1rem 0 1.5rem;
+}
+
+.policy .lp-logo {
+    color: inherit;
+}
+
+.policy-body {
+    font-size: 0.98rem;
+    line-height: 1.65;
+}
+
+.policy-body h1 {
+    margin: 0.5rem 0 0.75rem;
+    font-size: clamp(1.7rem, 4.5vw, 2.3rem);
+    line-height: 1.2;
+}
+
+.policy-body h2 {
+    margin: 2.25rem 0 0.6rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--line);
+    font-size: 1.2rem;
+}
+
+.policy-body h3 {
+    margin: 1.4rem 0 0.4rem;
+    font-size: 1rem;
+}
+
+.policy-body p,
+.policy-body ul {
+    margin: 0 0 0.85rem;
+    color: var(--muted-2);
+}
+
+.policy-body ul {
+    padding-left: 1.2rem;
+}
+
+.policy-body li {
+    margin: 0.25rem 0;
+}
+
+.policy-body strong {
+    color: var(--ink);
+}
