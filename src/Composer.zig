@@ -148,6 +148,7 @@ pub fn preedit(self: Composer) []const u8 {
 }
 
 pub fn panelVisible(self: Composer) bool {
+    if (self.settings.strip_mode) return self.composing() and self.settings.suggestions and self.items.items.len > 0;
     return self.composing() and self.settings.suggestions and self.items.items.len > 1;
 }
 
@@ -253,6 +254,34 @@ pub fn pick(self: *Composer, index: usize) !Outcome {
     return .{ .handled = true, .commit = self.committed.items };
 }
 
+/// Choose `word` directly (from the candidate list or an external suggestion
+/// strip) and commit it, recording the choice when learning is enabled.
+pub fn pickWord(self: *Composer, word: []const u8) !Outcome {
+    self.committed.clearRetainingCapacity();
+    if (!self.composing() or word.len == 0) return .{ .handled = false };
+    for (self.items.items, 0..) |item, i| if (std.mem.eql(u8, item, word)) {
+        if (i < self.avro_count) {
+            self.moveHighlight(i);
+            try self.commitHighlighted();
+            return .{ .handled = true, .commit = self.committed.items };
+        }
+        break;
+    };
+    if (self.settings.learn_choices) {
+        const base_cp = std.unicode.utf8CountCodepoints(self.preedit()) catch 0;
+        const word_cp = std.unicode.utf8CountCodepoints(word) catch 0;
+        if (base_cp >= 2 and word_cp > 0 and word_cp <= base_cp + 2) {
+            if (self.ac().select(self.gpa, self.latin.items, word)) |_| {
+                self.selections_dirty = true;
+            } else |_| {}
+        }
+    }
+    try self.committed.appendSlice(self.gpa, word);
+    self.clearWord();
+    self.saveSelections();
+    return .{ .handled = true, .commit = self.committed.items };
+}
+
 /// Commit the word being typed, if any (focus leaving, the shell resetting).
 /// Returns the text to insert.
 pub fn flush(self: *Composer) ![]const u8 {
@@ -292,7 +321,7 @@ pub fn refresh(self: *Composer) !void {
         // Once per key: the extras below all start from it.
         self.literal = try self.ac().transliterate(self.gpa, self.extras.allocator(), self.latin.items);
         try self.addExtras();
-        if (prefix_words) try self.addPrefixWords();
+        if (prefix_words or self.settings.strip_mode) try self.addPrefixWords();
     } else if (self.items.items.len > 0) {
         // Phonetic mode's one candidate is the transliteration.
         self.literal = self.items.items[0];
@@ -795,3 +824,27 @@ test "corrections arrive later and are appended" {
     try c.refresh();
     try testing.expect(c.candidates().len > before);
 }
+
+test "strip mode: prefix suggestions and panel visibility" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    try h.c.setSettings(.{ .strip_mode = true });
+
+    // Type "am"
+    try h.typed("am");
+    try testing.expect(h.c.panelVisible());
+    const cands = h.c.candidates();
+    try testing.expect(cands.len > 1);
+    var has_prefix = false;
+    for (cands) |item| {
+        if (std.mem.eql(u8, item, "আমি") or std.mem.eql(u8, item, "আমার")) has_prefix = true;
+    }
+    try testing.expect(has_prefix);
+
+    // Type "i" -> "ami"
+    _ = try h.c.key(.{ .char = 'i' }, .{});
+    try testing.expect(h.c.panelVisible());
+    try testing.expectEqualStrings("আমি", h.c.preedit());
+}
+

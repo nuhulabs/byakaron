@@ -577,6 +577,15 @@ pub export fn byakaron_composer_pick(composer: ?*ComposerHandle, index: usize) B
     return keyResult(h, h.composer.pick(index));
 }
 
+/// Choose `word` directly (from the candidate list or an external strip) and
+/// commit it, learning the selection when enabled.
+pub export fn byakaron_composer_pick_word(composer: ?*ComposerHandle, word: ?[*:0]const u8) ByakaronKeyResult {
+    const h = composer orelse return .{ .handled = 0, .commit = "" };
+    const w = word orelse return .{ .handled = 0, .commit = "" };
+    resetOut(h);
+    return keyResult(h, h.composer.pickWord(std.mem.span(w)));
+}
+
 /// Commit the word being typed (focus leaving). Returns the text to insert
 /// ("" if none), valid until the next call.
 pub export fn byakaron_composer_flush(composer: ?*ComposerHandle) [*:0]const u8 {

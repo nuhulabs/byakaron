@@ -319,6 +319,212 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeSuggestCtx(
     return stringArrayFromCStrings(&j_env, string_class, suggestions[0..count], count);
 }
 
+/// Batched candidate lookup for phonetic and fixed-layout composition in a single JNI call.
+/// Combines transliteration, context-aware N-gram/spell suggestions, and prefix completions,
+/// returning deduplicated Bangla candidates (excluding `typed_word` and `raw_latin`).
+export fn Java_com_byakaron_engine_ByakaronEngine_nativePhoneticCandidates(
+    env: *jni.cjni.JNIEnv,
+    thiz: jni.jobject,
+    handle: jni.jlong,
+    typed_word: jni.jstring,
+    raw_latin: jni.jstring,
+    prev2: jni.jstring,
+    prev1: jni.jstring,
+    suggestion_limit: jni.jint,
+) callconv(.c) jni.jobjectArray {
+    _ = thiz;
+    const j_env = jni.JNIEnv.warp(env);
+    const string_class = j_env.findClass("java/lang/String");
+    if (handle == 0 or suggestion_limit <= 0) {
+        return j_env.newObjectArray(0, string_class, null);
+    }
+    const session = sessionFromHandle(handle);
+    const limit_u: usize = @intCast(@min(suggestion_limit, 32));
+
+    var c_typed: bool = false;
+    var owned_typed = false;
+    var c_raw: bool = false;
+    var owned_raw = false;
+    var c2: bool = false;
+    var owned2 = false;
+    var c1: bool = false;
+    var owned1 = false;
+
+    const s_typed = nullableCStr(&j_env, typed_word, &c_typed, &owned_typed);
+    const s_raw = nullableCStr(&j_env, raw_latin, &c_raw, &owned_raw);
+    const s_prev2 = nullableCStr(&j_env, prev2, &c2, &owned2);
+    const s_prev1 = nullableCStr(&j_env, prev1, &c1, &owned1);
+    defer releaseNullableCStr(&j_env, typed_word, s_typed, owned_typed);
+    defer releaseNullableCStr(&j_env, raw_latin, s_raw, owned_raw);
+    defer releaseNullableCStr(&j_env, prev2, s_prev2, owned2);
+    defer releaseNullableCStr(&j_env, prev1, s_prev1, owned1);
+
+    const typed_slice = std.mem.span(s_typed);
+    const raw_slice = std.mem.span(s_raw);
+    if (typed_slice.len == 0 and raw_slice.len == 0) {
+        return j_env.newObjectArray(0, string_class, null);
+    }
+
+    var to_free: [64][*:0]u8 = undefined;
+    var free_count: usize = 0;
+    defer for (to_free[0..free_count]) |ptr| ffi.byakaron_string_free(ptr);
+
+    var merged: [64][*:0]const u8 = undefined;
+    var merged_count: usize = 0;
+
+    const Helper = struct {
+        fn add(
+            list: *[64][*:0]const u8,
+            count: *usize,
+            max_items: usize,
+            cand: [*:0]const u8,
+            typed: []const u8,
+            raw: []const u8,
+        ) void {
+            if (count.* >= max_items or count.* >= list.len) return;
+            const s = std.mem.span(cand);
+            if (s.len == 0) return;
+            if (typed.len > 0 and std.mem.eql(u8, s, typed)) return;
+            if (raw.len > 0 and std.mem.eql(u8, s, raw)) return;
+            for (list[0..count.*]) |existing| {
+                if (std.mem.eql(u8, std.mem.span(existing), s)) return;
+            }
+            list[count.*] = cand;
+            count.* += 1;
+        }
+    };
+
+    var composed_c_str: ?[*:0]u8 = null;
+    defer if (composed_c_str) |c| ffi.byakaron_string_free(c);
+
+    var spell_out: [32][*:0]u8 = undefined;
+    var pref_out: [32][*:0]u8 = undefined;
+
+    if (raw_slice.len > 0) {
+        if (session.transliteration_engine != null) {
+            composed_c_str = ffi.byakaron_engine_transliterate(session.transliteration_engine, s_raw);
+        }
+        const composed: [*:0]const u8 = composed_c_str orelse s_raw;
+        const target: [*:0]const u8 = if (typed_slice.len > 0) s_typed else composed;
+
+        Helper.add(&merged, &merged_count, limit_u, composed, typed_slice, raw_slice);
+
+        if (session.spell_engine != null) {
+            const spell_count = spell_ffi.byakaron_spell_suggest_ctx_list(
+                session.spell_engine,
+                composed,
+                s_prev2,
+                s_prev1,
+                "",
+                @intCast(limit_u),
+                &spell_out,
+                spell_out.len,
+            );
+            for (spell_out[0..spell_count]) |item| {
+                to_free[free_count] = item;
+                free_count += 1;
+                Helper.add(&merged, &merged_count, limit_u, item, typed_slice, raw_slice);
+            }
+
+            const pref_count = spell_ffi.byakaron_spell_prefix_list(
+                session.spell_engine,
+                target,
+                @intCast(limit_u),
+                &pref_out,
+                pref_out.len,
+            );
+            for (pref_out[0..pref_count]) |item| {
+                to_free[free_count] = item;
+                free_count += 1;
+                Helper.add(&merged, &merged_count, limit_u, item, typed_slice, raw_slice);
+            }
+        } else if (session.autocomplete_engine != null) {
+            const pref_count = ffi.byakaron_ac_prefix_list(
+                session.autocomplete_engine,
+                target,
+                @intCast(limit_u),
+                &pref_out,
+                pref_out.len,
+            );
+            for (pref_out[0..pref_count]) |item| {
+                to_free[free_count] = item;
+                free_count += 1;
+                Helper.add(&merged, &merged_count, limit_u, item, typed_slice, raw_slice);
+            }
+        }
+    } else if (typed_slice.len > 0) {
+        const w = s_typed;
+        if (session.spell_engine != null) {
+            const pref_count = spell_ffi.byakaron_spell_prefix_list(
+                session.spell_engine,
+                w,
+                @intCast(limit_u),
+                &pref_out,
+                pref_out.len,
+            );
+            for (pref_out[0..pref_count]) |item| {
+                to_free[free_count] = item;
+                free_count += 1;
+            }
+
+            const has_ctx = std.mem.span(s_prev1).len > 0 or std.mem.span(s_prev2).len > 0;
+            const is_correct = spell_ffi.byakaron_spell_is_correct(session.spell_engine, w) == 1;
+            const spell_count: usize = if (has_ctx or !is_correct or pref_count < 4)
+                spell_ffi.byakaron_spell_suggest_ctx_list(
+                    session.spell_engine,
+                    w,
+                    s_prev2,
+                    s_prev1,
+                    "",
+                    @intCast(limit_u),
+                    &spell_out,
+                    spell_out.len,
+                )
+            else
+                0;
+            for (spell_out[0..spell_count]) |item| {
+                to_free[free_count] = item;
+                free_count += 1;
+            }
+
+            if (!is_correct and spell_count > 0) {
+                const top_pref = @min(pref_count, 3);
+                for (pref_out[0..top_pref]) |item| Helper.add(&merged, &merged_count, limit_u, item, typed_slice, raw_slice);
+                for (spell_out[0..spell_count]) |item| Helper.add(&merged, &merged_count, limit_u, item, typed_slice, raw_slice);
+                for (pref_out[top_pref..pref_count]) |item| Helper.add(&merged, &merged_count, limit_u, item, typed_slice, raw_slice);
+            } else {
+                const top_pref = @min(pref_count, 4);
+                for (pref_out[0..top_pref]) |item| Helper.add(&merged, &merged_count, limit_u, item, typed_slice, raw_slice);
+                const top_ctx = @min(spell_count, 3);
+                for (spell_out[0..top_ctx]) |item| Helper.add(&merged, &merged_count, limit_u, item, typed_slice, raw_slice);
+                for (pref_out[top_pref..pref_count]) |item| Helper.add(&merged, &merged_count, limit_u, item, typed_slice, raw_slice);
+                for (spell_out[top_ctx..spell_count]) |item| Helper.add(&merged, &merged_count, limit_u, item, typed_slice, raw_slice);
+            }
+        } else if (session.autocomplete_engine != null) {
+            const pref_count = ffi.byakaron_ac_prefix_list(
+                session.autocomplete_engine,
+                w,
+                @intCast(limit_u),
+                &pref_out,
+                pref_out.len,
+            );
+            for (pref_out[0..pref_count]) |item| {
+                to_free[free_count] = item;
+                free_count += 1;
+                Helper.add(&merged, &merged_count, limit_u, item, typed_slice, raw_slice);
+            }
+        }
+    }
+
+    const result = j_env.newObjectArray(@intCast(merged_count), string_class, null);
+    for (merged[0..merged_count], 0..) |cstr, i| {
+        const j_word = j_env.newStringUTF(cstr);
+        j_env.setObjectArrayElement(result, @intCast(i), j_word);
+        j_env.deleteLocalRef(j_word);
+    }
+    return result;
+}
+
 /// Full-text spell check. Returns JSON `[{token,known,suggestions}]` or null.
 export fn Java_com_byakaron_engine_ByakaronEngine_nativeCheck(
     env: *jni.cjni.JNIEnv,
@@ -809,6 +1015,7 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeComposerCreate(
         allocator.destroy(jc);
         return 0;
     };
+    composer.composer.settings.strip_mode = true;
     jc.composer = composer;
     return @intCast(@intFromPtr(jc));
 }
@@ -867,6 +1074,25 @@ export fn Java_com_byakaron_engine_ByakaronEngine_nativeComposerPick(
     const jc = composerFromHandle(handle) orelse return null;
     if (index < 0) return null;
     const r = ffi.byakaron_composer_pick(jc.composer, @intCast(index));
+    return keyResultToJava(&j_env, jc, r);
+}
+
+/// Pick a candidate word directly (whether in the composer's current page or
+/// from an external strip source), learning the selection and committing it.
+export fn Java_com_byakaron_engine_ByakaronEngine_nativeComposerPickWord(
+    env: *jni.cjni.JNIEnv,
+    thiz: jni.jobject,
+    handle: jni.jlong,
+    word: jni.jstring,
+) callconv(.c) jni.jstring {
+    _ = thiz;
+    const j_env = jni.JNIEnv.warp(env);
+    const jc = composerFromHandle(handle) orelse return null;
+    if (word == null or j_env.isSameObject(word, null)) return null;
+    var is_copy: bool = false;
+    const w = jstrToC(&j_env, word, &is_copy);
+    defer j_env.releaseStringUTFChars(word, w);
+    const r = ffi.byakaron_composer_pick_word(jc.composer, w);
     return keyResultToJava(&j_env, jc, r);
 }
 

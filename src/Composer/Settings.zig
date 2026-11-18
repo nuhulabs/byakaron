@@ -37,6 +37,9 @@ bangla_digits: bool = true,
 newline_on_enter: bool = false,
 candidate_orientation: Orientation = .horizontal,
 candidates_per_page: u8 = max_candidates_per_page,
+/// Strip mode for mobile keyboards: candidate panel stays active while composing,
+/// even for single candidate results, and prefix autocompletions are included.
+strip_mode: bool = false,
 
 /// Settings from JSON. Unknown fields are ignored, missing ones take their
 /// default, and out-of-range values are clamped, so any older or newer file
@@ -164,6 +167,10 @@ pub const sections = [_]Section{
     .{ .id = "typing", .title = text("typing"), .hint = text("typing_hint") },
     .{ .id = "candidates", .title = text("candidates"), .hint = text("candidates_hint") },
 };
+
+/// Fields no settings screen shows: the file's version, and what a keyboard
+/// sets for itself (Android's `strip_mode`).
+pub const internal = [_][]const u8{ "version", "strip_mode" };
 
 /// Every setting a screen shows, in order. Titles are the locale's `<key>`,
 /// hints `<key>_hint`, option labels the option's name; the control, range and
@@ -297,7 +304,10 @@ const testing = std.testing;
 test "the manifest covers every setting, and value/setValue round trip" {
     var covered: usize = 0;
     inline for (@typeInfo(Settings).@"struct".field_names) |name| {
-        if (comptime std.mem.eql(u8, name, "version")) continue;
+        const skip = comptime for (internal) |i| {
+            if (std.mem.eql(u8, i, name)) break true;
+        } else false;
+        if (skip) continue;
         var found = false;
         for (manifest) |f| found = found or std.mem.eql(u8, f.key, name);
         if (!found) std.log.err("{s} is not in the manifest", .{name});
