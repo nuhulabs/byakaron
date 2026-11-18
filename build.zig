@@ -94,7 +94,11 @@ pub fn build(b: *std.Build) !void {
     spell_db_tool.root_module.addImport("sql", host_sql);
     const db_words = b.option(u32, "db-words", "Keep only the N most frequent words in Byakaron.db (default: $BYAKARON_DB_WORDS, else all; `d1`: 150000)") orelse
         if (b.graph.environ_map.get("BYAKARON_DB_WORDS")) |s| std.fmt.parseInt(u32, s, 10) catch @panic("BYAKARON_DB_WORDS is not a number") else null;
-    const full_db = b.option(std.Build.LazyPath, "spell-db", "Use this Byakaron.db instead of building it") orelse spell.db;
+    const default_spell_db: ?std.Build.LazyPath = if (std.Io.Dir.cwd().access(b.graph.io, "zig-out/db/Byakaron.db", .{})) |_|
+        b.path("zig-out/db/Byakaron.db")
+    else |_| null;
+    const full_db = b.option(std.Build.LazyPath, "spell-db", "Use this Byakaron.db instead of building it") orelse
+        (default_spell_db orelse spell.db);
     const spell_db = if (db_words) |n| trimSpellDb(b, spell_db_tool, full_db, n) else full_db;
     b.addNamedLazyPath("spell_db", spell_db);
     const install_spell_db = b.addInstallFile(spell_db, "db/Byakaron.db");
@@ -284,7 +288,7 @@ pub fn build(b: *std.Build) !void {
         b.step("macos-icons", "Regenerate apps/macos/Resources/MenuIcon.{pdf,tiff}").dependOn(&icons.step);
     }
 
-    addAndroid(b, avro, spell_db);
+    addAndroid(b, avro, packSpellDb(b, spell_db_tool, spell_db));
 
     // Web app (apps/web): a ziex app in this build graph, so it shares the cache.
     //   zig build run-web    dev server (hot reload)
