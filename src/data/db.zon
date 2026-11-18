@@ -1,0 +1,12 @@
+// What Byakaron.db is built from (`zig build gen -- db`).
+//
+// The release workflow caches Byakaron.db by this file alone, so CI rebuilds
+// the database (a long job) only when it changes. Change `wiki_date` to build
+// from a newer dump, or bump `revision` when the data pipeline, its SQL or
+// the Avro lexicon change what goes into the database.
+.{
+    // bnwiki dump date (YYYYMMDD), from https://dumps.wikimedia.org/bnwiki/.
+    // `-Dwiki-date` overrides it for one build.
+    .wiki_date = "20261001",
+    .revision = 1,
+}

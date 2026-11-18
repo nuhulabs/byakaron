@@ -49,8 +49,11 @@ in `.zig-cache`.
 
 - **Spell DB**: `zig build gen -- db` downloads the bnwiki dump and builds
   `zig-out/db/Byakaron.db` in cached stages, so a re-run only redoes what
-  changed. `-Dwiki-date=YYYYMMDD` picks another dump, `-Dwiki-dump=<file>`
-  uses a local one. SQLite, bzip2 and the XML parser are built from source.
+  changed. The dump date lives in `src/data/db.zon` (`-Dwiki-date=YYYYMMDD`
+  overrides it once, `-Dwiki-dump=<file>` uses a local dump). The release
+  workflow caches `Byakaron.db` by that file alone: change the date, or bump
+  its `revision` when the pipeline changes the data, to rebuild it in CI.
+  SQLite, bzip2 and the XML parser are built from source.
 - **Lexicon**: the autocomplete word list is committed as
   `src/AutoComplete/lexicon.zon` and compiled in; `zig build gen -- grammars
   -Diavro` resyncs it and the transliteration rules from their pinned source.

@@ -140,12 +140,16 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "release $tag (build.zig.zon $zon) publish=$publish create_tag=$create_tag"
 
+      # Keyed by src/data/db.zon alone (the dump date and a revision), so the
+      # database is rebuilt only when that file changes, not on every edit to
+      # the build or the version bump in build.zig.zon. Tag runs read the
+      # cache main saved.
       - name: cache Byakaron.db
         id: cache
         uses: actions/cache@v4
         with:
           path: zig-out/db/Byakaron.db
-          key: byakaron-db-${{ hashFiles('build.zig', 'build.zig.zon', 'src/data/**', 'src/build/**') }}
+          key: byakaron-db-${{ hashFiles('src/data/db.zon') }}
 
       - uses: mlugg/setup-zig@v2
         if: steps.cache.outputs.cache-hit != 'true'

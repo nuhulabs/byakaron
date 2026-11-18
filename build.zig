@@ -2046,7 +2046,8 @@ fn addSpellDb(
     host_sql: *std.Build.Module,
     avro_words: std.Build.LazyPath,
 ) struct { db: std.Build.LazyPath, debug_db: std.Build.LazyPath } {
-    const wiki_date = b.option([]const u8, "wiki-date", "bnwiki dump date for `gen -- db` (YYYYMMDD)") orelse "20261001";
+    const config: struct { wiki_date: []const u8, revision: u32 } = @import("src/data/db.zon");
+    const wiki_date = b.option([]const u8, "wiki-date", "bnwiki dump date for `gen -- db` (YYYYMMDD, default: src/data/db.zon)") orelse config.wiki_date;
     const wiki_dump = b.option(std.Build.LazyPath, "wiki-dump", "Use a local bnwiki pages-articles .xml/.xml.bz2 instead of downloading");
 
     const host = b.graph.host;
