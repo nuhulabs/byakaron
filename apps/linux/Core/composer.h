@@ -7,7 +7,7 @@
  * here is what only Linux knows: where the data directory and Byakaron.db are,
  * how X11 keysyms (IBus, GDK and Fcitx5 all speak them) map to composer keys,
  * the one-time move of the old GSettings keys into settings.json, and small
- * GLib-friendly readers for the JSON the ABI returns.
+ * GLib-friendly readers for the word lists the ABI returns.
  *
  * Shared by Keyboard/ (IBus), Fcitx5/ and App/ (the GTK app).
  */
@@ -47,29 +47,12 @@ ByakaronComposer *byk_composer_open (gboolean with_spell, ByakaronUpdateFn on_up
  */
 gboolean byk_keysym_to_key (guint keyval, int *kind, unsigned int *ch);
 
-/* The shared settings (src/Composer/Settings.zig), as the app edits them. */
-typedef struct {
-    gboolean suggestions;
-    gboolean spelling_corrections;
-    gboolean learn_choices;
-    gboolean bangla_digits;
-    gboolean newline_on_enter;
-    gboolean vertical;        /* candidate_orientation */
-    gint candidates_per_page; /* 3–9 */
-} BykSettings;
-
-void byk_settings_defaults (BykSettings *out);
-/* Current settings; defaults for anything missing. */
-void byk_settings_load (ByakaronComposer *composer, BykSettings *out);
-/* Save all of them; FALSE if the composer rejected the JSON. */
-gboolean byk_settings_save (ByakaronComposer *composer, const BykSettings *settings);
-
 /* The personal dictionary, sorted. Never NULL; g_strfreev. */
 gchar **byk_userdict_words (ByakaronComposer *composer);
 gboolean byk_userdict_contains (ByakaronComposer *composer, const gchar *word);
 
 /*
- * Parse a flat JSON array of strings (the ABI's word lists). NULL if it is
+ * Parse a flat JSON array of strings (spell suggestions). NULL if it is
  * malformed or not valid UTF-8; g_strfreev.
  */
 gchar **byk_parse_json_strings (const gchar *json);

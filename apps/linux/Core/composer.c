@@ -1,6 +1,5 @@
 #include "composer.h"
 
-#include <stdlib.h>
 #include <string.h>
 
 #include "prefs.h"
@@ -109,95 +108,6 @@ byk_keysym_to_key (guint keyval, int *kind, unsigned int *ch)
 
 /* ── settings ────────────────────────────────────────────────────────────── */
 
-void
-byk_settings_defaults (BykSettings *out)
-{
-    /* Settings.zig's defaults. */
-    out->suggestions = TRUE;
-    out->spelling_corrections = TRUE;
-    out->learn_choices = TRUE;
-    out->bangla_digits = TRUE;
-    out->newline_on_enter = FALSE;
-    out->vertical = FALSE;
-    out->candidates_per_page = 9;
-}
-
-/*
- * The value of top-level field `name` in the settings JSON, or NULL. The
- * producer is Settings.stringify: a flat object of booleans, one string and
- * numbers, so finding `"name"` and the colon after it is enough.
- */
-static const gchar *
-byk_json_field (const gchar *json, const gchar *name)
-{
-    gchar *needle = g_strdup_printf ("\"%s\"", name);
-    const gchar *p = strstr (json, needle);
-    if (p != NULL) {
-        p += strlen (needle);
-        while (g_ascii_isspace (*p))
-            p++;
-        if (*p == ':') {
-            p++;
-            while (g_ascii_isspace (*p))
-                p++;
-        } else {
-            p = NULL;
-        }
-    }
-    g_free (needle);
-    return p;
-}
-
-static void
-byk_json_bool (const gchar *json, const gchar *name, gboolean *value)
-{
-    const gchar *p = byk_json_field (json, name);
-    if (p != NULL && strncmp (p, "true", 4) == 0)
-        *value = TRUE;
-    else if (p != NULL && strncmp (p, "false", 5) == 0)
-        *value = FALSE;
-}
-
-void
-byk_settings_load (ByakaronComposer *composer, BykSettings *out)
-{
-    byk_settings_defaults (out);
-    char *json = composer != NULL ? byakaron_settings_get (composer) : NULL;
-    if (json == NULL)
-        return;
-
-    byk_json_bool (json, "suggestions", &out->suggestions);
-    byk_json_bool (json, "spelling_corrections", &out->spelling_corrections);
-    byk_json_bool (json, "learn_choices", &out->learn_choices);
-    byk_json_bool (json, "bangla_digits", &out->bangla_digits);
-    byk_json_bool (json, "newline_on_enter", &out->newline_on_enter);
-    const gchar *p = byk_json_field (json, "candidate_orientation");
-    if (p != NULL)
-        out->vertical = strncmp (p, "\"vertical\"", 10) == 0;
-    p = byk_json_field (json, "candidates_per_page");
-    if (p != NULL && g_ascii_isdigit (*p))
-        out->candidates_per_page = CLAMP ((gint) strtol (p, NULL, 10), 3, 9);
-
-    byakaron_string_free (json);
-}
-
-gboolean
-byk_settings_save (ByakaronComposer *composer, const BykSettings *s)
-{
-#define B(v) ((v) ? "true" : "false")
-    gchar *json = g_strdup_printf (
-        "{\"suggestions\":%s,\"spelling_corrections\":%s,\"learn_choices\":%s,"
-        "\"bangla_digits\":%s,\"newline_on_enter\":%s,"
-        "\"candidate_orientation\":\"%s\",\"candidates_per_page\":%d}",
-        B (s->suggestions), B (s->spelling_corrections), B (s->learn_choices),
-        B (s->bangla_digits), B (s->newline_on_enter),
-        s->vertical ? "vertical" : "horizontal", CLAMP (s->candidates_per_page, 3, 9));
-#undef B
-    const gboolean ok = byakaron_settings_set (composer, json) == 0;
-    g_free (json);
-    return ok;
-}
-
 /*
  * Before settings.json, the switches were GSettings keys (dconf). The first
  * composer to start after the upgrade — the keyboard or the app — carries
@@ -207,19 +117,23 @@ byk_settings_save (ByakaronComposer *composer, const BykSettings *s)
 static void
 byk_settings_migrate (ByakaronComposer *composer)
 {
-    BykSettings s;
-    byk_settings_defaults (&s);
-
     GSettings *prefs = byk_prefs_try_open ();
-    if (prefs != NULL) {
-        s.suggestions = !byk_prefs_boolean (prefs, BYK_PREFS_OLD_PHONETIC_ONLY, FALSE);
-        s.spelling_corrections = byk_prefs_boolean (prefs, BYK_PREFS_OLD_SPELLING_SUGGESTIONS, TRUE);
-        s.bangla_digits = byk_prefs_boolean (prefs, BYK_PREFS_OLD_BANGLA_DIGITS, TRUE);
-        s.vertical = !byk_prefs_boolean (prefs, BYK_PREFS_OLD_CANDIDATES_HORIZONTAL, TRUE);
-        g_object_unref (prefs);
-    }
-    if (!byk_settings_save (composer, &s))
-        g_warning ("byakaron: could not write settings.json");
+    if (prefs == NULL)
+        return;
+    const struct {
+        const gchar *key;
+        gint value;
+    } old[] = {
+        { "suggestions", !byk_prefs_boolean (prefs, BYK_PREFS_OLD_PHONETIC_ONLY, FALSE) },
+        { "spelling_corrections", byk_prefs_boolean (prefs, BYK_PREFS_OLD_SPELLING_SUGGESTIONS, TRUE) },
+        { "bangla_digits", byk_prefs_boolean (prefs, BYK_PREFS_OLD_BANGLA_DIGITS, TRUE) },
+        /* Option 1 is vertical. */
+        { "candidate_orientation", !byk_prefs_boolean (prefs, BYK_PREFS_OLD_CANDIDATES_HORIZONTAL, TRUE) },
+    };
+    g_object_unref (prefs);
+    for (gsize i = 0; i < G_N_ELEMENTS (old); i++)
+        if (byakaron_setting_set (composer, old[i].key, old[i].value) != 0)
+            g_warning ("byakaron: could not write %s to settings.json", old[i].key);
 }
 
 ByakaronComposer *
@@ -370,11 +284,15 @@ malformed:
 gchar **
 byk_userdict_words (ByakaronComposer *composer)
 {
-    char *json = composer != NULL ? byakaron_userdict_get (composer) : NULL;
-    gchar **words = json != NULL ? byk_parse_json_strings (json) : NULL;
-    if (json != NULL)
-        byakaron_string_free (json);
-    return words != NULL ? words : g_new0 (gchar *, 1);
+    const gsize n = composer != NULL ? byakaron_userdict_count (composer) : 0;
+    GPtrArray *words = g_ptr_array_sized_new (n + 1);
+    for (gsize i = 0; i < n; i++) {
+        const char *word = byakaron_userdict_word (composer, i);
+        if (word != NULL)
+            g_ptr_array_add (words, g_strdup (word));
+    }
+    g_ptr_array_add (words, NULL);
+    return (gchar **) g_ptr_array_free (words, FALSE);
 }
 
 gboolean

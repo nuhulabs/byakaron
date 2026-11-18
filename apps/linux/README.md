@@ -340,8 +340,10 @@ since `g_settings_new` aborts the process on an unknown schema and that schema
 does not exist outside GNOME.
 
 **Settings live in `settings.json`**, shared with every Byakaron platform
-(`src/Composer/Settings.zig`). The app opens its own composer on the keyboard's
-data directory and writes them with `byakaron_settings_set`; the IBus engine
+(`src/Composer/Settings.zig`). The app draws its settings page from that
+manifest (`byakaron_settings_field_info`, the fields marked for Linux), opens
+its own composer on the keyboard's data directory and writes each one with
+`byakaron_setting_set`; the IBus engine
 and the Fcitx5 addon pick them up at their next word, with no restart and no
 IPC.
 

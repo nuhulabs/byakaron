@@ -1,5 +1,7 @@
 #include "settings.h"
 
+#include <locale.h>
+
 #include "byakaron_strings.h"
 #include "dictionary.h"
 #include "prefs.h"
@@ -17,70 +19,33 @@ struct _BykSettingsPage {
 
 G_DEFINE_TYPE (BykSettingsPage, byk_settings_page, GTK_TYPE_BOX)
 
-/* Which shared setting a control edits ("byk-field" data on the widget). */
-enum {
-    BYK_FIELD_SUGGESTIONS,
-    BYK_FIELD_SPELLING,
-    BYK_FIELD_LEARN,
-    BYK_FIELD_DIGITS,
-    BYK_FIELD_NEWLINE,
-    BYK_FIELD_VERTICAL,
-    BYK_FIELD_PER_PAGE,
-};
-
-static gboolean *
-byk_settings_flag (BykSettings *s, gint field)
-{
-    switch (field) {
-    case BYK_FIELD_SUGGESTIONS: return &s->suggestions;
-    case BYK_FIELD_SPELLING:    return &s->spelling_corrections;
-    case BYK_FIELD_LEARN:       return &s->learn_choices;
-    case BYK_FIELD_DIGITS:      return &s->bangla_digits;
-    case BYK_FIELD_NEWLINE:     return &s->newline_on_enter;
-    default:                    return &s->vertical;
-    }
-}
-
-/* Read-modify-write: settings.json may have changed since the page opened. */
+/* The key of the shared setting a control edits ("byk-key" data, static). */
 static void
-byk_settings_store (BykSettingsPage *self, gint field, gint value)
+byk_settings_store (gpointer widget, gpointer user_data, gint value)
 {
-    BykSettings s;
-    byk_settings_load (self->engines->composer, &s);
-    if (field == BYK_FIELD_PER_PAGE)
-        s.candidates_per_page = value;
-    else
-        *byk_settings_flag (&s, field) = value != 0;
-    if (!byk_settings_save (self->engines->composer, &s))
-        g_warning ("byakaron: could not save settings");
-}
-
-static gint
-byk_widget_field (gpointer widget)
-{
-    return GPOINTER_TO_INT (g_object_get_data (G_OBJECT (widget), "byk-field"));
+    BykSettingsPage *self = BYK_SETTINGS_PAGE (user_data);
+    const gchar *key = g_object_get_data (G_OBJECT (widget), "byk-key");
+    if (byakaron_setting_set (self->engines->composer, key, value) != 0)
+        g_warning ("byakaron: could not save setting %s", key);
 }
 
 static void
 on_switch_changed (GtkSwitch *sw, GParamSpec *pspec, gpointer user_data)
 {
     (void) pspec;
-    byk_settings_store (BYK_SETTINGS_PAGE (user_data), byk_widget_field (sw),
-                        gtk_switch_get_active (sw));
+    byk_settings_store (sw, user_data, gtk_switch_get_active (sw));
 }
 
 static void
-on_orientation_changed (GtkComboBox *combo, gpointer user_data)
+on_choice_changed (GtkComboBox *combo, gpointer user_data)
 {
-    byk_settings_store (BYK_SETTINGS_PAGE (user_data), BYK_FIELD_VERTICAL,
-                        gtk_combo_box_get_active (combo) == 1);
+    byk_settings_store (combo, user_data, gtk_combo_box_get_active (combo));
 }
 
 static void
-on_per_page_changed (GtkSpinButton *spin, gpointer user_data)
+on_number_changed (GtkSpinButton *spin, gpointer user_data)
 {
-    byk_settings_store (BYK_SETTINGS_PAGE (user_data), BYK_FIELD_PER_PAGE,
-                        gtk_spin_button_get_value_as_int (spin));
+    byk_settings_store (spin, user_data, gtk_spin_button_get_value_as_int (spin));
 }
 
 static void
@@ -96,55 +61,78 @@ byk_settings_add_row (GtkWidget *list, const gchar *title, const gchar *subtitle
     byk_box_add (list, byk_row (NULL, title, subtitle, control));
 }
 
-static void
-byk_settings_switch (BykSettingsPage *self, GtkWidget *list, BykSettings *s, gint field,
-                     const gchar *title, const gchar *subtitle)
+/* The POSIX message locale, as byk_str picks it. */
+static const gchar *
+byk_settings_lang (void)
 {
-    GtkWidget *sw = gtk_switch_new ();
-    gtk_switch_set_active (GTK_SWITCH (sw), *byk_settings_flag (s, field));
-    g_object_set_data (G_OBJECT (sw), "byk-field", GINT_TO_POINTER (field));
-    g_signal_connect (sw, "notify::active", G_CALLBACK (on_switch_changed), self);
-    byk_settings_add_row (list, title, subtitle, sw);
+    const gchar *lang = g_getenv ("LANGUAGE");
+    if (lang == NULL || *lang == '\0')
+        lang = setlocale (LC_MESSAGES, NULL);
+    return lang;
 }
 
+/* The control for one manifest field, set to its current value. */
 static GtkWidget *
-byk_settings_build_typing (BykSettingsPage *self)
+byk_settings_control (BykSettingsPage *self, const ByakaronSettingsField *f)
 {
-    GtkWidget *list = NULL;
-    GtkWidget *group = byk_framed_list (
-        byk_str (BYK_STR_TYPING), byk_str (BYK_STR_TYPING_HINT),
-        &list);
+    gint value = 0;
+    if (self->engines->composer != NULL)
+        byakaron_setting_get (self->engines->composer, f->key, &value);
 
-    BykSettings s;
-    byk_settings_load (self->engines->composer, &s);
+    GtkWidget *control;
+    switch (f->control) {
+    case BYAKARON_CONTROL_CHOICE:
+        control = gtk_combo_box_text_new ();
+        for (gsize i = 0; i < f->option_count; i++)
+            gtk_combo_box_text_append_text (GTK_COMBO_BOX_TEXT (control), f->option_labels[i]);
+        gtk_combo_box_set_active (GTK_COMBO_BOX (control), value);
+        g_signal_connect (control, "changed", G_CALLBACK (on_choice_changed), self);
+        break;
+    case BYAKARON_CONTROL_NUMBER:
+        control = gtk_spin_button_new_with_range (f->min, f->max, 1);
+        gtk_spin_button_set_value (GTK_SPIN_BUTTON (control), value);
+        g_signal_connect (control, "value-changed", G_CALLBACK (on_number_changed), self);
+        break;
+    default:
+        control = gtk_switch_new ();
+        gtk_switch_set_active (GTK_SWITCH (control), value != 0);
+        g_signal_connect (control, "notify::active", G_CALLBACK (on_switch_changed), self);
+        break;
+    }
+    g_object_set_data (G_OBJECT (control), "byk-key", (gpointer) f->key);
+    return control;
+}
 
-    byk_settings_switch (self, list, &s, BYK_FIELD_SUGGESTIONS,
-                         byk_str (BYK_STR_SUGGESTIONS), byk_str (BYK_STR_SUGGESTIONS_HINT));
-    byk_settings_switch (self, list, &s, BYK_FIELD_SPELLING,
-                         byk_str (BYK_STR_SPELLING_CORRECTIONS), byk_str (BYK_STR_SPELLING_CORRECTIONS_HINT));
-    byk_settings_switch (self, list, &s, BYK_FIELD_LEARN,
-                         byk_str (BYK_STR_LEARN_CHOICES), byk_str (BYK_STR_LEARN_CHOICES_HINT));
-    byk_settings_switch (self, list, &s, BYK_FIELD_DIGITS,
-                         byk_str (BYK_STR_BANGLA_DIGITS), byk_str (BYK_STR_BANGLA_DIGITS_HINT));
-    byk_settings_switch (self, list, &s, BYK_FIELD_NEWLINE,
-                         byk_str (BYK_STR_NEWLINE_ON_ENTER), byk_str (BYK_STR_NEWLINE_ON_ENTER_HINT));
+/* The shared settings, one group per manifest section (Settings.zig). */
+static void
+byk_settings_build_shared (BykSettingsPage *self, GtkWidget *column)
+{
+    const gchar *lang = byk_settings_lang ();
+    const gsize n_sections = byakaron_settings_section_count ();
+    const gsize n_fields = byakaron_settings_field_count ();
 
-    GtkWidget *orientation = gtk_combo_box_text_new ();
-    gtk_combo_box_text_append_text (GTK_COMBO_BOX_TEXT (orientation), byk_str (BYK_STR_HORIZONTAL));
-    gtk_combo_box_text_append_text (GTK_COMBO_BOX_TEXT (orientation), byk_str (BYK_STR_VERTICAL));
-    gtk_combo_box_set_active (GTK_COMBO_BOX (orientation), s.vertical ? 1 : 0);
-    g_signal_connect (orientation, "changed", G_CALLBACK (on_orientation_changed), self);
-    byk_settings_add_row (list, byk_str (BYK_STR_CANDIDATE_ORIENTATION), byk_str (BYK_STR_CANDIDATE_ORIENTATION_HINT),
-                          orientation);
+    for (gsize s = 0; s < n_sections; s++) {
+        ByakaronSettingsSection section;
+        if (byakaron_settings_section_info (s, lang, &section) != 0)
+            continue;
 
-    GtkWidget *per_page = gtk_spin_button_new_with_range (3, 9, 1);
-    gtk_spin_button_set_value (GTK_SPIN_BUTTON (per_page), s.candidates_per_page);
-    g_signal_connect (per_page, "value-changed", G_CALLBACK (on_per_page_changed), self);
-    byk_settings_add_row (list, byk_str (BYK_STR_CANDIDATES_PER_PAGE), "Page Up / Page Down show the rest.", per_page);
-
-    if (self->engines->composer == NULL)
-        gtk_widget_set_sensitive (list, FALSE);
-    return group;
+        GtkWidget *list = NULL;
+        GtkWidget *group = NULL;
+        for (gsize i = 0; i < n_fields; i++) {
+            ByakaronSettingsField f;
+            if (byakaron_settings_field_info (i, lang, &f) != 0 || f.section != s ||
+                (f.platforms & BYAKARON_PLATFORM_LINUX) == 0)
+                continue;
+            if (group == NULL)
+                group = byk_framed_list (section.title, section.hint, &list);
+            byk_settings_add_row (list, f.title, f.hint, byk_settings_control (self, &f));
+        }
+        if (group == NULL)
+            continue;
+        if (self->engines->composer == NULL)
+            gtk_widget_set_sensitive (list, FALSE);
+        byk_box_add (column, group);
+    }
 }
 
 /* Linux only, in GSettings: the app's own update check (updates.c). */
@@ -190,9 +178,8 @@ void
 byk_settings_page_refresh (BykSettingsPage *self)
 {
     g_return_if_fail (BYK_IS_SETTINGS_PAGE (self));
-    gchar **words = byk_userdict_words (self->engines->composer);
-    const guint n = g_strv_length (words);
-    g_strfreev (words);
+    ByakaronComposer *composer = self->engines->composer;
+    const guint n = composer != NULL ? (guint) byakaron_userdict_count (composer) : 0;
     gchar *text = g_strdup_printf (n == 1 ? "%u saved word" : "%u saved words", n);
     gtk_label_set_text (GTK_LABEL (self->dict_count), text);
     g_free (text);
@@ -266,7 +253,7 @@ byk_settings_page_new (BykEngines *engines, GCallback on_dictionary_changed_cb, 
     gtk_widget_set_halign (column, GTK_ALIGN_CENTER);
     gtk_widget_set_size_request (column, 420, -1);
     gtk_widget_set_margin_bottom (column, 24);
-    byk_box_add (column, byk_settings_build_typing (self));
+    byk_settings_build_shared (self, column);
     if (self->prefs != NULL)
         byk_box_add (column, byk_settings_build_compat (self));
     if (byk_prefs_has_key (self->prefs, BYK_PREFS_CHECK_UPDATES))

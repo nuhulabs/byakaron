@@ -179,17 +179,26 @@ int main(void)
         byakaron_composer_state(c, &st);
         expect(handled && !st.composing, "Escape drops the word", st.composing ? "composing" : "dropped");
 
-        BykSettings s;
-        byk_settings_load(c, &s);
-        expect(s.suggestions && s.bangla_digits && !s.vertical && s.candidates_per_page == 9,
+        int vertical = -1, per_page = -1, digits = -1, suggestions = -1;
+        byakaron_setting_get(c, "candidate_orientation", &vertical);
+        byakaron_setting_get(c, "candidates_per_page", &per_page);
+        byakaron_setting_get(c, "bangla_digits", &digits);
+        byakaron_setting_get(c, "suggestions", &suggestions);
+        expect(suggestions == 1 && digits == 1 && vertical == 0 && per_page == 9,
                "default settings", "loaded");
-        s.vertical = TRUE;
-        s.candidates_per_page = 5;
-        s.bangla_digits = FALSE;
-        expect(byk_settings_save(c, &s), "save settings", "saved");
-        BykSettings back;
-        byk_settings_load(c, &back);
-        expect(back.vertical && back.candidates_per_page == 5 && !back.bangla_digits,
+        expect(byakaron_setting_set(c, "candidate_orientation", 1) == 0 &&
+               byakaron_setting_set(c, "candidates_per_page", 5) == 0 &&
+               byakaron_setting_set(c, "bangla_digits", 0) == 0,
+               "save settings", "saved");
+        expect(byakaron_setting_set(c, "no_such_setting", 1) == -1, "unknown key", "rejected");
+        byakaron_setting_set(c, "candidates_per_page", 99);
+        byakaron_setting_get(c, "candidates_per_page", &per_page);
+        expect(per_page == 9, "clamped to the manifest's max", "9");
+        byakaron_setting_set(c, "candidates_per_page", 5);
+        byakaron_setting_get(c, "candidate_orientation", &vertical);
+        byakaron_setting_get(c, "candidates_per_page", &per_page);
+        byakaron_setting_get(c, "bangla_digits", &digits);
+        expect(vertical == 1 && per_page == 5 && digits == 0,
                "settings round trip", "loaded");
         type(c, "bhalo");
         byakaron_composer_state(c, &st);
@@ -267,6 +276,22 @@ int main(void)
     }
 
     /* The ABI's word lists (personal dictionary, spell suggestions). */
+    puts("settings manifest (Linux fields):");
+    {
+        size_t shown = 0;
+        int ok = byakaron_settings_section_count() > 0;
+        for (size_t i = 0; i < byakaron_settings_field_count(); i++) {
+            ByakaronSettingsField f;
+            ok = ok && byakaron_settings_field_info(i, "bn_BD.UTF-8", &f) == 0;
+            if (!ok || (f.platforms & BYAKARON_PLATFORM_LINUX) == 0)
+                continue;
+            shown++;
+            ok = f.title != NULL && f.section < byakaron_settings_section_count() &&
+                 (f.control != BYAKARON_CONTROL_CHOICE || f.option_count > 0);
+        }
+        expect(ok && shown > 0, "every Linux field is drawable", ok ? "yes" : "no");
+    }
+
     puts("JSON string-array parser:");
     static const struct {
         const char *json;
