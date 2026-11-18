@@ -36,7 +36,7 @@ For a real release:
 
    A tag with a `-` (`v0.3.0-rc.1`) is published as a prerelease; any other
    tag becomes the Latest release. A tag that does not match `build.zig.zon`
-   stops the release in its `version` job. Dispatching the workflow with a
+   stops the release in its `prepare` job. Dispatching the workflow with a
    **version** instead tags that version at the dispatched commit.
 3. Watch the `release` run. When every job passes:
 
@@ -48,9 +48,9 @@ For a real release:
    | `byakaron_amd64.deb`, `byakaron_arm64.deb` | `zig build pack -- linux` (renamed at publish) |
    | `byakaron_x86_64.pkg.tar.zst` (Arch Linux) | `zig build pack -- linux-arch` (renamed at publish) |
    | `Byakaron.dmg` | `zig build pack -- macos` |
-   | `Byakaron-Setup.exe` | `zig build windows` |
+   | `Byakaron-Setup.exe` | `zig build pack -- windows` |
    | `Byakaron.apk`, `Byakaron.aab` | `zig build pack -- android` |
-   | `SHA256SUMS` | the `publish` job |
+   | `SHA256SUMS` | the `publish (github)` job |
 
    - **byakaron** (this repo) gets the same tag as a notes-only GitHub Release.
 
@@ -79,19 +79,47 @@ from Byakaron-Assets `releases/latest`, so a release itself needs no copy.
 After publishing, `release.yml`'s `live-install` job runs the public command in
 clean Ubuntu containers (amd64 and arm64) and fails unless it installs this release.
 
+## Google Play
+
+`publish (android)` uploads `Byakaron.aab` to Google Play for every published
+release (prereleases included), on the **internal** track unless the dispatch
+picks another (`gh workflow run release.yml -f prerelease=true -f
+play_track=alpha`; production is not offered). CI sets `versionCode` to
+`run_number * 10 + run_attempt` and `versionName` to the release version, so
+the hand-set values in the submodule only matter for local builds.
+
+It signs in as a Google Cloud service account whose JSON key is the
+`PLAY_STORE_JSON_KEY` secret in the `byakaron-android` environment. That
+account needs, in Play Console → **Users and permissions**, access to
+Byakaron with **Release apps to testing tracks**, and the **Google Play
+Android Developer API** enabled in its Cloud project. Without the access the upload fails with "The
+caller does not have permission".
+
+The account is `play-publisher@byakaron.iam.gserviceaccount.com` (Cloud
+project `byakaron`), with **View app information** and **Release apps to
+testing tracks** on Byakaron Keyboard (`com.nuhulabs.byakaron`) only, so
+production releases stay manual. Uploads are rolled out (`status: completed`)
+to the track's testers at once.
+
+Local uploads after a CI one need a `versionCode` above CI's (321 and up).
+
 ## Secrets
 
 | Secret | Used by | What it is |
 | --- | --- | --- |
-| `BYAKARON_ASSETS_TOKEN` | `release.yml` publish | PAT with Contents write on `nuhulabs/Byakaron-Assets`. |
-| `ANDROID_DEPLOY_KEY` | android pkg | Deploy key to clone `nuhulabs/byakaron-android`. |
-| `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` | cd web deploy | Worker deploy on push to `main`. |
-| Apple / Windows / Android signing secrets | optional | Unsigned assets if missing. |
+| `BYAKARON_ASSETS_TOKEN` | publish (github) | PAT with Contents write on `nuhulabs/Byakaron-Assets`. |
+| `ANDROID_DEPLOY_KEY` | pack (android) | Deploy key to clone `nuhulabs/byakaron-android`. |
+| `PLAY_STORE_JSON_KEY` (env `byakaron-android`) | publish (android) | Service account key for the Play Developer API. |
+| `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` (env `byakaron-web`) | publish (web) | Worker deploy. |
+| Apple / Windows / Android signing secrets | pack | Unsigned assets if missing. |
 
 ## CI / CD
 
 ```
-ci:  test → integration → e2e
-cd:  prepare ∥ web deploy + linux install-matrix
-release: prepare → pkg → Byakaron-Assets (binaries) + byakaron (notes)
+ci:      test → build (one job per platform)
+release: prepare (version, Byakaron.db)
+         → pack (linux: amd64 + arm64 + arch, macos, windows, android)
+         → publish (github: Byakaron-Assets + notes, android: Google Play,
+                    ios: placeholder, web: Cloudflare)
+         → live install (latest releases only)
 ```

@@ -52,7 +52,7 @@ jobs:
           # publish + Inno Setup) is release-only: `zig build pack -- windows`.
           - platform: windows
             runs-on: windows-latest
-          # Native libs for every ABI and the debug APK; the signed APK/AAB is release-only (pkg.yml).
+          # Native libs for every ABI and the debug APK; the signed APK/AAB is release-only (release.yml).
           - platform: android
             runs-on: ubuntu-latest
           - platform: web
