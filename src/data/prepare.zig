@@ -1,6 +1,6 @@
 //! Assemble `Byakaron.db` from `export` CSVs (through `zx.Db`, see build/sql.zig).
 //!
-//! Every path is explicit so `zig build db` can run this as a cached step:
+//! Every path is explicit so `zig build gen -- db` can run this as a cached step:
 //!
 //!   prepare --data <data exe> --schema <schema.sql>
 //!           --export <export_id dir> --seed <confusions_seed.csv>

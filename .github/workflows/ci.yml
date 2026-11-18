@@ -49,7 +49,7 @@ jobs:
           - platform: ios
             runs-on: xcode-27
           # The IME DLLs and a Debug build of the app. The installer (dotnet
-          # publish + Inno Setup) is release-only: `zig build package-windows`.
+          # publish + Inno Setup) is release-only: `zig build pack -- windows`.
           - platform: windows
             runs-on: windows-latest
           # Native libs for every ABI and the debug APK; the signed APK/AAB is release-only (pkg.yml).
@@ -103,7 +103,7 @@ jobs:
         run: |
           sudo -E env "PATH=$PATH" \
             ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
-            zig build linux-deps -- --test
+            zig build deps -- linux --test
           # sudo fetched packages into zig-pkg/ as root; later builds run as the runner.
           if [ -d zig-pkg ]; then sudo chown -R "$USER" zig-pkg; fi
       - name: build (linux)
@@ -127,4 +127,4 @@ jobs:
         run: zig build android
       - name: build (web)
         if: matrix.platform == 'web'
-        run: zig build -Doptimize=ReleaseSmall
+        run: zig build web -Doptimize=ReleaseSmall

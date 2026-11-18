@@ -82,8 +82,8 @@ to link it.
 ### 1. System packages
 
 ```bash
-sudo zig build linux-deps              # IBus, GTK3 IM module, glib-compile-schemas
-sudo zig build linux-deps -- --test    # + compiler and -dev packages for the tests
+sudo zig build deps -- linux              # IBus, GTK3 IM module, glib-compile-schemas
+sudo zig build deps -- linux --test    # + compiler and -dev packages for the tests
 ```
 
 Building needs no `-dev` packages: `zig build linux` (IBus engine + GTK app)
@@ -113,7 +113,7 @@ All other dependencies (ziex, SQLite, the sysroot packages) are fetched by
 ### 3. Verify the engine
 
 ```bash
-zig build linux-smoke
+zig build e2e -- linux
 ```
 
 This builds the Zig core and calls it from C. Expect `ami → আমি`,
@@ -128,16 +128,17 @@ behaviour itself is tested in Zig (`zig build test`, `src/Composer.zig`).
 
 ```bash
 zig build linux          # -> zig-out/bin/{byakaron-ibus,byakaron}
-zig build linux-app      # alias for `linux`
-zig build linux-fcitx5   # -> zig-out/lib/fcitx5/byakaron.so  (optional)
-zig build run-linux-app  # build and run the app
-zig build linux-test     # -> zig-out/bin/byakaron-ime-test
-zig build linux-wayland  # -> zig-out/bin/byakaron-wayland-{probe,type}  (optional, needs libgtk-4-dev)
+zig build linux      # alias for `linux`
+zig build dev -- linux-system   # -> zig-out/lib/fcitx5/byakaron.so  (optional)
+zig build dev -- linux-app  # build and run the app
+zig build e2e -- linux     # -> zig-out/bin/byakaron-ime-test
+zig build e2e -- linux  # -> zig-out/bin/byakaron-wayland-{probe,type}  (optional, needs libgtk-4-dev)
 ```
 
 The engine binary links the Zig core statically, so it is self-contained apart
 from system IBus and GLib at runtime. GTK3 3.24 is on Ubuntu 20.04, 22.04, and
-24.04. `linux-fcitx5` is a separate step: it builds against the host's
+24.04. The Fcitx5 addon is built apart (by `e2e -- linux` and the system
+install, when its headers are there): it builds against the host's
 `libfcitx5core-dev` (it is not in the pinned sysroot), which a GNOME box does
 not have, and installing those headers does not switch the session's input
 method.
@@ -145,7 +146,7 @@ method.
 ### Development run
 
 ```bash
-zig build run-linux
+zig build dev -- linux
 ```
 
 Registers the engine with the *running* `ibus-daemon` straight from the build
@@ -154,16 +155,16 @@ process exits. While it runs, `ibus engine byakaron` switches to it and
 `ibus engine xkb:us::eng` switches back.
 
 Permanent installation (so the engine survives a reboot and shows up in
-Settings → Keyboard → Input Sources) is `zig build install-linux` (below).
+Settings → Keyboard → Input Sources) is `zig build dev -- linux-system` (below).
 
 ### Integration test
 
 ```bash
-zig build linux-ci
+zig build e2e -- linux
 ```
 
-(`linux-ci` starts a private Xvfb + `ibus-daemon` when it can, and runs this
-test against it together with the other checks; `zig build run-linux` is the
+(`e2e -- linux` starts a private Xvfb + `ibus-daemon` when it can, and runs this
+test against it together with the other checks; `zig build dev -- linux` is the
 way to register the engine yourself.)
 
 Starts a throwaway engine, drives it through a *private* IBus input context, and
@@ -389,7 +390,7 @@ default on; the time is in `last-update-check`), or on **Check Now**:
    `1:27.0.0`, `v27.0.0-dev.2` → `1:27.0.0~dev.2`) in dpkg's order. Then
    pacman (`pacman -Q byakaron`): Arch versions (`v27.0.0` → `27.0.0-1`,
    `v27.0.0-dev.2` → `27.0.0dev.2-1`) in `vercmp`'s order. A build that
-   neither installed (run from `zig-out`, or `install-linux`) never checks.
+   neither installed (run from `zig-out`, or `dev -- linux-system`) never checks.
 3. If it is newer, a bar says **Byakaron 27.0.0 is available**. **Update**
    downloads `byakaron_<arch>.deb` (or `byakaron_x86_64.pkg.tar.zst` on Arch)
    and `SHA256SUMS` from that release, checks the hash, and runs
@@ -406,7 +407,7 @@ version, for tests.
 
 ```bash
 zig build                                              # warm the cache as your user first
-sudo -E zig build install-linux                        # add -Dlinux-install-db to build and install Byakaron.db
+sudo -E zig build dev -- linux-system                        # add -Dlinux-install-db to build and install Byakaron.db
 ```
 
 This is a **system** install (`/usr/libexec`, `/usr/share/ibus/component`,
@@ -441,10 +442,10 @@ After installing:
 3. Switch with **Super+Space**
 
 ```bash
-sudo zig build uninstall-linux
+sudo zig build remove -- linux
 ```
 
-removes everything `install-linux` added.
+removes everything `dev -- linux-system` added.
 
 ## Wayland
 
@@ -463,7 +464,7 @@ text-input-v3 instead.
 
 ### Tested on a real GNOME Shell Wayland session
 
-`zig build linux-wayland-e2e` (`src/build/linux.zig wayland-e2e`) starts a **private** `gnome-shell --headless
+`zig build e2e -- linux-wayland` (`src/build/linux.zig wayland-e2e`) starts a **private** `gnome-shell --headless
 --wayland` (own D-Bus, dconf, runtime dir and ibus-daemon, input source set to
 Byakaron) next to the running desktop, opens GTK3 and GTK4 windows natively on
 it, and types through `org.gnome.Mutter.RemoteDesktop`. Those keys take the
@@ -477,7 +478,7 @@ gives the dictionary's সোনার first; and Bangla digits switched off and
 every check fail, so the test does measure the engine.
 
 ```bash
-zig build linux-wayland-e2e   # GTK3 + GTK4
+zig build e2e -- linux-wayland   # GTK3 + GTK4
 ```
 
 The same sandbox was also used by hand for other apps (28/10/26, the packaged
@@ -501,22 +502,22 @@ address file is a process it can see. Clicks land in the field because the
 pointer is first moved to the middle of the screen (relative RemoteDesktop
 motion needs no screen-cast stream).
 
-`zig build linux-ci` runs the quick nested-mutter probes from the
-`linux-wayland` binaries (`wayland_probe`, `wayland_type`).
+`zig build e2e -- linux` runs the quick nested-mutter probes from the
+GTK4 helpers (`wayland_probe`, `wayland_type`) when libgtk-4-dev is installed.
 
 ## CI
 
 `.github/workflows/ci.yml` runs on every branch push. For Linux it installs
-`zig build linux-deps`, runs `zig build test` and builds `zig build linux`;
+`zig build deps -- linux`, runs `zig build test` and builds `zig build linux`;
 the other platforms build in their own jobs alongside. It stays quick on
 purpose: nothing is packaged, installed or typed into there.
 
 The slow checks run by hand from `.github/workflows/e2e.yml` (Actions → e2e →
-Run): **GNOME Wayland typing** (`zig build linux-wayland-e2e`, see
+Run): **GNOME Wayland typing** (`zig build e2e -- linux-wayland`, see
 [Wayland](#wayland): GTK3 and GTK4 apps on a headless GNOME Shell, typed into
 through `org.gnome.Mutter.RemoteDesktop`) and the **install matrix** (package
-the `.deb` and the Arch package and `zig build linux-install-test` them in
-clean Ubuntu/Debian containers and `archlinux:latest`). `zig build linux-ci` (glibc ceiling, smoke test, IME integration
+the `.deb` and the Arch package and `zig build e2e -- linux-install` them in
+clean Ubuntu/Debian containers and `archlinux:latest`). `zig build e2e -- linux` (glibc ceiling, smoke test, IME integration
 test against a throwaway Xvfb+ibus-daemon, Fcitx5 addon, GtkEntry typing) is
 for local runs before a release.
 
@@ -528,16 +529,16 @@ Releasing).
 To run the same steps locally:
 
 ```bash
-zig build linux-ci
-zig build linux-wayland-e2e   # needs gnome-shell
-zig build linux-install-test  # the local .deb and Arch package in clean containers (Docker)
+zig build e2e -- linux
+zig build e2e -- linux-wayland   # needs gnome-shell
+zig build e2e -- linux-install  # the local .deb and Arch package in clean containers (Docker)
 ```
 
 ## Releasing
 
 Releases are built and published by GitHub Actions (`release.yml`): it runs
-`zig build package-linux` on an amd64 and an arm64 runner, and
-`zig build package-linux-arch` on the amd64 one, and publishes both `.deb`s
+`zig build pack -- linux` on an amd64 and an arm64 runner, and
+`zig build pack -- linux-arch` on the amd64 one, and publishes both `.deb`s
 and `byakaron_x86_64.pkg.tar.zst`. Run `e2e.yml` first to install and type
 through both packages. There is no local release script.
 
@@ -555,7 +556,7 @@ dpkg sorts it before the release it leads to; the file name keeps the `-`.
 A pacman version cannot hold a `-`, so the Arch package drops it
 (`27.0.0dev.3-1`): `vercmp` sorts letters right after a number before the
 release, as dpkg does `~`. A prerelease must therefore start with a letter
-(`-dev.3`, `-rc.1`); `package-linux-arch` refuses `27.0.0-1`.
+(`-dev.3`, `-rc.1`); `pack -- linux-arch` refuses `27.0.0-1`.
 
 The `.deb` Version carries epoch 1 (`1:0.1.3`): until 0.2.1 the Linux package
 had its own numbering, and without the epoch apt refuses the shared 0.1.x over
@@ -585,7 +586,7 @@ since Fcitx5 does not commit the preedit by itself).
 
 Build it on the machine that uses it, with `libfcitx5core-dev` and `g++`
 installed (or `PKG_CONFIG_PATH` pointing at the Fcitx5 headers):
-`zig build linux-fcitx5`. That does **not** switch the session to Fcitx5.
+`zig build dev -- linux-system`. That does **not** switch the session to Fcitx5.
 Install copies `byakaron.so` plus the addon/inputmethod `.conf` files if the
 addon was **rebuilt in that same run** (a leftover `zig-out` copy is not
 shipped). Fcitx5 users then add **Byakaron** in the Fcitx5 config tool. The
@@ -596,7 +597,7 @@ The system's g++ compiles `engine.cpp`, not Zig. Fcitx5's API passes
 and Zig's C++ is libc++, so the Zig-built addon referenced `std::__1` symbols
 no Fcitx5 has and never loaded ("undefined symbol" in Fcitx5's log). Zig still
 builds the engine and the C glue as static libraries with a C interface; g++
-links them with `--no-undefined`, and `zig build linux-ci` checks that every
+links them with `--no-undefined`, and `zig build e2e -- linux` checks that every
 symbol resolves. It is C++20 (Fcitx5 5.1.19's headers use `std::span`), and
 the class is `BykFcitxEngine` (`ByakaronEngine` is the C API's handle type).
 
@@ -610,9 +611,9 @@ An IBus engine has to live in `/usr/share/ibus/component` so the session
 daemon can spawn it. A sandboxed Flatpak cannot register there, which is why
 ibus-avro ships as a `.deb` too. Two packages carry the same files:
 
-- `byakaron_*.deb` (`zig build package-linux`) — engine, GTK app, GSettings
+- `byakaron_*.deb` (`zig build pack -- linux`) — engine, GTK app, GSettings
   schema, and `Byakaron.db`. Typing Bangla and spell-check.
-- `byakaron-*-x86_64.pkg.tar.zst` (`zig build package-linux-arch`) — the same,
+- `byakaron-*-x86_64.pkg.tar.zst` (`zig build pack -- linux-arch`) — the same,
   for Arch Linux and the systems built on it. The engine is in
   `/usr/lib/byakaron/` (Arch has no `/usr/libexec`). It is made without
   makepkg, so the Ubuntu host that builds the `.deb` builds it too: `.PKGINFO`
@@ -656,7 +657,7 @@ GTK if they are missing. Bring the system up to date first
 does not support partial upgrades. To build one yourself:
 
 ```bash
-zig build package-linux-arch
+zig build pack -- linux-arch
 sudo pacman -U ./zig-out/pkg/byakaron-<version>-1-x86_64.pkg.tar.zst
 ```
 
@@ -672,7 +673,7 @@ The keyboard is built for **glibc 2.31**, so it works on **Ubuntu 20.04, 22.04,
 24.04 and 26.04, and Debian 12 and 13**. On ARM, see [ARM.md](ARM.md).
 
 ```bash
-zig build package-linux      # alias: linux-deb; builds Byakaron.db too
+zig build pack -- linux      # alias: linux-deb; builds Byakaron.db too
 sudo apt install ./zig-out/pkg/byakaron_<version>_amd64.deb
 ```
 
@@ -685,7 +686,7 @@ the Bangla list, log out and back in.
 The companion GTK app *can* live in a sandbox:
 
 ```bash
-zig build package-linux-flatpak
+zig build pack -- linux-flatpak
 ```
 
 That packs the already-built `byakaron` binary against `org.gnome.Platform`
@@ -698,7 +699,7 @@ the Debian package lives in `Resources/dev.nuhu.labs.Byakaron.metainfo.xml`.
 
 After installing the engine and adding **Byakaron** as an input source, switch to it with Super+Space and verify `ami` + Space commits `আমি ` in GTK4, Firefox, Chrome, one Qt application, and Cursor or another Electron app. In Cursor/Electron, specifically confirm a pending word is committed before its preedit is hidden. If using Fcitx5, also add Byakaron in the Fcitx5 configuration tool and confirm the same flow.
 
-For Wayland without logging out, run `zig build linux-wayland-e2e` (see [Wayland](#wayland)). A Wayland *login* is still the place to check things the sandbox cannot: candidate-window position, and browsers.
+For Wayland without logging out, run `zig build e2e -- linux-wayland` (see [Wayland](#wayland)). A Wayland *login* is still the place to check things the sandbox cannot: candidate-window position, and browsers.
 
 ## Known issues
 
@@ -732,10 +733,10 @@ For Wayland without logging out, run `zig build linux-wayland-e2e` (see [Wayland
 ## Notes
 
 - `Byakaron.db` is a **local SQLite file**, not a server. It is generated, not
-  committed (`*.db` is gitignored). Build it with `zig build db`, which
+  committed (`*.db` is gitignored). Build it with `zig build gen -- db`, which
   downloads the bnwiki dump and merges the Avro lexicon into a Wikipedia
   dictionary with bigram/trigram tables (written to `zig-out/db/Byakaron.db`).
-  `zig build install-linux` copies it to `/usr/share/byakaron/Byakaron.db` when the file is
+  `zig build dev -- linux-system` copies it to `/usr/share/byakaron/Byakaron.db` when the file is
   present. The shareable `.deb` ships it in the same package as the keyboard
   and app, so one file is a complete install. The `.deb` gets a packed copy
   (`spell_db pack`): the SymSpell `deletes` table stored once instead of as a

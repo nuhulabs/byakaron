@@ -435,7 +435,7 @@ pub const ByakaronComposerState = extern struct {
 // ── Next-word predictions (embedded, no database) ─────────────────────────────
 
 const NextWords = struct { word: []const u8, next: []const []const u8 };
-/// Byte-sorted by `word`; `zig build next-words` regenerates it.
+/// Byte-sorted by `word`; `zig build gen -- next-words` regenerates it.
 const next_words: []const NextWords = @import("next_words.zon");
 
 /// Up to `max_out` words that most often follow `previous` in the Wikipedia

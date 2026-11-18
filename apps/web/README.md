@@ -3,9 +3,9 @@
 Spell-check playground built with [Ziex](https://ziex.dev). It is part of the root build (`build.zig` → `ziex.init` with `apps/web/app`), so it shares the repo's Zig cache.
 
 ```sh
-zig build db        # once: builds zig-out/db/Byakaron.db
-zig build run-web   # dev server with hot reload
-zig build serve-web # production-mode server
+zig build gen -- db        # once: builds zig-out/db/Byakaron.db
+zig build dev -- web   # dev server with hot reload
+zig build zx -- serve # production-mode server
 ```
 
 Spell check and SQLite autocomplete read the app database `zx.db`. Natively that is `<install prefix>/db/Byakaron.db`, opened read-only at startup (`app/pages/spell.zig`). On Cloudflare it is the D1 database bound as `DB`. The in-memory autocomplete uses the Avro lexicon embedded in `autocomplete_mem`.
@@ -36,17 +36,17 @@ The page splits its text into words with the same tokenizer the server uses (`to
 
 The build command is `zig build -Dtarget=wasm32-wasi --release=small -Dziex-config=.{.prerender=true}`. It builds the Worker to `zig-out/bin/web.wasm`, the Cloudflare bindings to `zig-out/bindings/` and the assets to `zig-out/static/`. Then, because of `prerender`, ziex builds the app for this machine, runs it without a database and saves the prerendered page into `zig-out/static/`. The `web` job in `.github/workflows/release.yml` deploys it with every published release.
 
-Natively (`run-web`, `serve-web`) the server still renders the page itself.
+Natively (`dev -- web`, `zx -- serve`) the server still renders the page itself.
 
 ### Spell database
 
-`zig build d1` writes Byakaron.db as D1 migrations to `zig-out/d1/` (`migrations_dir` in `wrangler.jsonc`), and `wrangler d1 migrations apply DB` loads them like any other migrations:
+`zig build gen -- d1` writes Byakaron.db as D1 migrations to `zig-out/d1/` (`migrations_dir` in `wrangler.jsonc`), and `wrangler d1 migrations apply DB` loads them like any other migrations:
 
 - `0000_…` drops and recreates every table, the data files insert the rows (statements under D1's 100 KB limit, files of at most 4 MB), and the last file creates the indexes.
 - Every file name carries a hash of the whole set, so a changed Byakaron.db is a new set that wrangler applies from scratch; an unchanged one is already applied and nothing runs. Spell check is unavailable while a new set loads.
 - Each data file first deletes the rows it inserts, so after a failure (network, timeout) rerunning `migrations apply` picks up where it stopped.
 
-The database keeps the 150 000 most frequent words by default: about 460 MB, under D1's 500 MB Free-plan database limit. `-Ddb-words=N` (or `BYAKARON_DB_WORDS=N`) changes that, for `zig build db` too; `-Dspell-db=<path>` uses an existing Byakaron.db instead of building one. Loading 150 000 words writes about 6.8 M rows (68 files, 260 MB of SQL), so it needs Workers Paid; the Free plan allows 100 000 rows written per day.
+The database keeps the 150 000 most frequent words by default: about 460 MB, under D1's 500 MB Free-plan database limit. `-Ddb-words=N` (or `BYAKARON_DB_WORDS=N`) changes that, for `zig build gen -- db` too; `-Dspell-db=<path>` uses an existing Byakaron.db instead of building one. Loading 150 000 words writes about 6.8 M rows (68 files, 260 MB of SQL), so it needs Workers Paid; the Free plan allows 100 000 rows written per day.
 
 ### Setup
 
@@ -60,7 +60,7 @@ The database keeps the 150 000 most frequent words by default: about 460 MB, und
 
 2. In the GitHub repository, add the secrets `CLOUDFLARE_API_TOKEN` (permissions: Workers Scripts edit, D1 edit, Workers KV edit) and `CLOUDFLARE_ACCOUNT_ID`, available to the `byakaron-web` environment.
 
-3. Deploy: push to `main` or run **CD** by hand. The `web` job takes Byakaron.db from the job that builds it, runs `zig build d1`, applies the migrations to the remote database and deploys the Worker.
+3. Deploy: push to `main` or run **CD** by hand. The `web` job takes Byakaron.db from the job that builds it, runs `zig build gen -- d1`, applies the migrations to the remote database and deploys the Worker.
 
 ### Deploy from your machine
 
@@ -68,10 +68,10 @@ Needs Zig 0.17, Node and a Cloudflare login (`npx wrangler@4.100.0 login`, or `C
 
 ```sh
 # 1. Byakaron.db: build it locally (not published on Byakaron-Assets)
-zig build db
+zig build gen -- db
 
 # 2. Load it into D1; a no-op when this Byakaron.db is already there
-zig build d1 -Dspell-db=zig-out/db/Byakaron.db
+zig build gen -- d1 -Dspell-db=zig-out/db/Byakaron.db
 cd apps/web
 npx wrangler@4.100.0 d1 migrations apply DB --remote
 
@@ -92,8 +92,8 @@ cd apps/web && npx wrangler@4.100.0 deploy --dry-run --outdir .wrangler-artifact
 The same Worker and static files, with a local D1:
 
 ```sh
-zig build db
-zig build d1 -Ddb-words=20000   # a smaller set loads faster locally
+zig build gen -- db
+zig build gen -- d1 -Ddb-words=20000   # a smaller set loads faster locally
 cd apps/web
 npx wrangler@4.100.0 d1 migrations apply DB --local
 npx wrangler@4.100.0 dev        # runs the build command, then http://localhost:8787

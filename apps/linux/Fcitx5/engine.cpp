@@ -5,7 +5,7 @@
  * composer says; this file maps keysyms to composer keys and turns its results
  * and state into commitString / client preedit / panel candidates.
  *
- * Optional: `zig build linux-fcitx5` (needs libfcitx5core-dev). IBus stays the
+ * Optional: `zig build dev -- linux-system` (needs libfcitx5core-dev). IBus stays the
  * GNOME/Ubuntu default; this exists so a KDE box can load the same composer.
  */
 #include "engine.h"

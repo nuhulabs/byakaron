@@ -56,7 +56,7 @@ fn plist(arena: std.mem.Allocator, texts: *std.ArrayList(Settings.Text)) ![]cons
     try o.writeAll(
         \\<?xml version="1.0" encoding="UTF-8"?>
         \\<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        \\<!-- Generated from src/Composer/Settings.zig by src/build/settings_bundle.zig (zig build ios-settings). Do not edit. -->
+        \\<!-- Generated from src/Composer/Settings.zig by src/build/settings_bundle.zig (zig build gen -- ios-settings). Do not edit. -->
         \\<plist version="1.0">
         \\<dict>
         \\  <key>ApplicationGroupContainerIdentifier</key>

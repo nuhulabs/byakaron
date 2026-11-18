@@ -72,18 +72,18 @@ jobs:
         run: |
           sudo -E env "PATH=$PATH" \
             ZIG_LOCAL_CACHE_DIR=/tmp/zig-deps ZIG_GLOBAL_CACHE_DIR=/tmp/zig-deps \
-            zig build linux-deps
+            zig build deps -- linux
           # sudo fetched packages into zig-pkg/ as root; later builds run as the runner.
           if [ -d zig-pkg ]; then sudo chown -R "$USER" zig-pkg; fi
 
       - name: pkg
-        run: zig build package-linux -Dlinux-arch=${{ matrix.zig_arch }} -Dspell-db=zig-out/db/Byakaron.db
+        run: zig build pack -Dlinux-arch=${{ matrix.zig_arch }} -Dspell-db=zig-out/db/Byakaron.db -- linux
 
       # The same payload as a pacman package. x86_64 only: Arch Linux has no
       # ARM images to test one in.
       - name: pkg (arch linux)
         if: matrix.zig_arch == 'x86_64'
-        run: zig build package-linux-arch -Dlinux-arch=x86_64 -Dspell-db=zig-out/db/Byakaron.db
+        run: zig build pack -Dlinux-arch=x86_64 -Dspell-db=zig-out/db/Byakaron.db -- linux-arch
 
       - uses: actions/upload-artifact@v4
         with:
@@ -126,7 +126,7 @@ jobs:
           path: zig-out/db
 
       - name: build
-        run: zig build release-macos -Dspell-db=zig-out/db/Byakaron.db
+        run: zig build pack -Dspell-db=zig-out/db/Byakaron.db -- macos
 
       - name: sign
         if: env.APPLE_CERTIFICATE != ''
@@ -222,7 +222,7 @@ jobs:
         env:
           BYAKARON_VERSION: ${{ inputs.version }}
         shell: pwsh
-        run: zig build package-windows "-Dspell-db=zig-out/db/Byakaron.db"
+        run: zig build pack "-Dspell-db=zig-out/db/Byakaron.db" -- windows
 
       - name: sign
         if: env.WINDOWS_CERTIFICATE != ''
@@ -331,8 +331,7 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
-          zig build release-android \
-            -Dspell-db=zig-out/db/Byakaron.db
+          zig build pack -Dspell-db=zig-out/db/Byakaron.db -- android
 
       - name: stage mapping
         if: steps.keyboard.outputs.sha != ''

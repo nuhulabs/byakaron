@@ -8,8 +8,8 @@
 #   byakaron-windows                             → Byakaron-Setup.exe
 #   byakaron-android                             → Byakaron.apk + Byakaron.aab
 #
-# Local `zig build package-linux` still writes byakaron_<ver>_<arch>.deb (and
-# package-linux-arch byakaron-<ver>-1-x86_64.pkg.tar.zst); publish
+# Local `zig build pack -- linux` still writes byakaron_<ver>_<arch>.deb (and
+# `pack -- linux-arch` byakaron-<ver>-1-x86_64.pkg.tar.zst); publish
 # renames for the public Assets release so the website/installer never need a
 # versioned URL. Byakaron.db is baked into packages, not uploaded to Assets.
 #
@@ -258,7 +258,7 @@ jobs:
 
   # The website (and the install.sh it serves) ships with each published
   # release, after the binaries are up. D1 migrations stay local:
-  #   zig build d1 -Dspell-db=zig-out/db/Byakaron.db
+  #   zig build gen -Dspell-db=zig-out/db/Byakaron.db -- d1
   #   cd apps/web && npx wrangler d1 migrations apply DB --remote
   web:
     name: deploy (web)

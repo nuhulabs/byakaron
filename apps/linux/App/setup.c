@@ -5,7 +5,7 @@
 
 #include "uiutil.h"
 
-/* The only directory ibus-daemon scans for components; `zig build install-linux`
+/* The only directory ibus-daemon scans for components; `zig build dev -- linux-system`
  * writes here and nowhere else, so its presence is the installed check. */
 #define BYK_COMPONENT_XML "/usr/share/ibus/component/byakaron.xml"
 #define BYK_ENGINE_NAME   "byakaron"

@@ -11,7 +11,7 @@
 //!   canonical form.
 //!
 //! Output is `std.zon` with Bangla as plain UTF-8, so the grammars stay readable
-//! and diffable. Run through `zig build grammars`, which writes the results back
+//! and diffable. Run through `zig build gen -- grammars`, which writes the results back
 //! over the source files; nothing in the build reads iAvro's JSON directly.
 
 const std = @import("std");

@@ -24,7 +24,7 @@ pub fn main(init: std.process.Init) !void {
     //   --mine-confusions      dictionary.csv [confusions_seed.csv]
     //                          → confusions_mined.csv + confusions.csv (reweighted)
     // `--out <path>` overrides the primary output (and `--out-mined <path>` the
-    // mined confusions); `zig build db` passes build-cache paths for both.
+    // mined confusions); `zig build gen -- db` passes build-cache paths for both.
     var mode: enum { sentences, word_triplets, symspell_deletes, mine_confusions } = .sentences;
     var positional: ?[]const u8 = null;
     var secondary: ?[]const u8 = null;

@@ -77,7 +77,7 @@ Other dependencies (ziex, SQLite, the sysroot packages) are fetched by
 
 ```bash
 cd ~/Code/byakaron
-sudo -E env "PATH=$PATH" zig build linux-deps   # needs Zig from step 3, so do that first
+sudo -E env "PATH=$PATH" zig build deps -- linux   # needs Zig from step 3, so do that first
 ```
 
 That installs IBus and the GTK3 input module. The build itself downloads the
@@ -105,13 +105,13 @@ zig version   # 0.17.0
 cd ~/Code/byakaron
 
 # optional sanity check (ami → আমি)
-zig build linux-smoke
+zig build e2e -- linux
 
 zig build                       # as your user, so root does not own the cache
-sudo -E zig build install-linux
+sudo -E zig build dev -- linux-system
 ```
 
-`install-linux` builds for the host CPU (`aarch64`) against glibc 2.31 and
+`dev -- linux-system` builds for the host CPU (`aarch64`) against glibc 2.31 and
 always as ReleaseFast. It installs the IBus engine system-wide
 and, when GTK3 is present, the companion app.
 
@@ -128,11 +128,11 @@ sudo swapon /swapfile
 ### Spell-check dictionary (optional)
 
 Typing does not need this. Spell-check in the GTK app does (`Byakaron.db` is
-about 1 GB; `zig build db` downloads the bnwiki dump and builds it).
+about 1 GB; `zig build gen -- db` downloads the bnwiki dump and builds it).
 
 ```bash
-zig build db
-sudo -E zig build install-linux -Dlinux-install-db
+zig build gen -- db
+sudo -E zig build dev -- linux-system -Dlinux-install-db
 ```
 
 ### Or package a Pi-native `.deb`
@@ -141,7 +141,7 @@ This builds one complete file (keyboard, GTK app, and `Byakaron.db`). If
 `Byakaron.db` is not already generated, the step builds it first.
 
 ```bash
-zig build package-linux
+zig build pack -- linux
 sudo apt install ./zig-out/pkg/byakaron_0.1.0_arm64.deb
 ```
 
@@ -163,10 +163,10 @@ If Byakaron is missing from the Bangla list, log out and back in, then add
 the input source again.
 
 ```bash
-sudo -E zig build uninstall-linux
+sudo -E zig build remove -- linux
 ```
 
-removes everything `install-linux` added.
+removes everything `dev -- linux-system` added.
 
 ## What will not work
 

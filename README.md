@@ -1,57 +1,56 @@
 # Byakaron
 
-A native, unified Bangla keyboard for all major OSes, built on a shared Zig engine (transliteration, tokenization, spell check, autocomplete).
+A native Bangla keyboard for every major OS, built on one shared Zig engine
+(transliteration, tokenization, spell check, autocomplete).
 
 Requires Zig **0.17.0** (pinned in `.tool-versions`).
 
 ## Layout
 
-| Path               | What                                                              |
-| ------------------ | ----------------------------------------------------------------- |
-| `src/`             | Zig engine + C FFI (`libbyakaron`, `src/ffi/byakaron.h`)          |
-| `src/data/`        | Data pipeline tools: Wikipedia dump → `Byakaron.db`                  |
-| `src/build/`       | Build-time tools (Avro lexicon generator, downloader)             |
-| `apps/web`         | Web spell-check UI (ziex app, part of the root build)             |
-| `apps/macos`       | macOS app + IME (Xcode)                                           |
-| `apps/windows`     | WinUI app + TSF IME                                               |
-| `apps/linux`       | IBus engine, GTK 3 app, optional Fcitx5 (C over the FFI)          |
-| `apps/android`     | Android `.so` build script (`libbyakaron.so` + JNI)               |
-| `apps/ios`         | iOS keyboard (giellakbd-ios fork, `byakaron-ios` submodule)       |
-
-## Data
-
-Nothing derived is committed: every data file comes out of the Zig build graph and is cached in `.zig-cache`.
-
-- **Autocomplete lexicon** (`AutoComplete/Mem.zig`, the default backend): OmicronLab's Avro word database ([`iAvro/database.db3`](https://github.com/omicronlab/iAvro), hash-pinned in `build.zig.zon`) is committed as `src/AutoComplete/lexicon.zon` and embedded at compile time; `zig build` derives `zig-out/db/{avro_dictionary.txt,Dictionary.json}` from it (the JSON is bundled by the macOS keyboard). iAvro is a lazy dependency, fetched only by `zig build grammars -Diavro` (resync `lexicon.zon`, `rules.zon`, `search.zon`) and `zig build test -Diavro` (the iAvro parity test). The host data tools use SQLite through ziex's `zx.Db`.
-- **Spell DB**: `zig build db` downloads the bnwiki dump, then runs `sentences → triplets → export → prepare` (merging in the Avro lexicon) and installs `zig-out/db/Byakaron.db`. Each stage is its own cached build step, so a re-run only redoes what changed. `zig build db-debug` builds the larger text-keyed `spell_debug.db`.
-
-  ```sh
-  zig build db                                  # bnwiki dump of -Dwiki-date (default 20261001)
-  zig build db -Dwiki-date=20261101             # newer dump (dumps.wikimedia.org/bnwiki/)
-  zig build db -Dwiki-dump=/path/to/bnwiki-latest-pages-articles.xml.bz2   # local file
-  ```
-
-  SQLite (CLI included), bzip2 and zig-xml are built from source, so no system tools are needed.
+| Path           | What                                                       |
+| -------------- | ---------------------------------------------------------- |
+| `src/`         | Zig engine + C FFI (`libbyakaron`, `src/ffi/byakaron.h`)   |
+| `src/data/`    | Data pipeline: Wikipedia dump → `Byakaron.db`              |
+| `src/build/`   | Build-time tools (generators, packaging, test drivers)     |
+| `apps/web`     | Web app (ziex, part of the root build)                     |
+| `apps/macos`   | macOS app + input method (Xcode)                           |
+| `apps/ios`     | iOS keyboard (`byakaron-ios` submodule)                    |
+| `apps/android` | Android keyboard (`byakaron-android` submodule)            |
+| `apps/windows` | WinUI app + TSF input method                               |
+| `apps/linux`   | IBus engine, GTK 3 app, optional Fcitx5                    |
 
 ## Build
 
+Everything goes through `zig build`. Each platform is a step; the rest are
+verbs that take a target after `--` (run a verb alone to list its targets).
+
 ```sh
-zig build            # libbyakaron + repl + web app + zig-out/db lexicon
-zig build lib        # just libbyakaron + header + lexicon (used by platform scripts)
-zig build test
-zig build db         # Byakaron.db (see Data)
-zig build macos      # zig-out/bin/Byakaron.app (-Dmacos-config=release|sandboxed)
-zig build run-macos  # build, quit the running copy, launch it
-zig build install-macos    # into /Applications and launch; uninstall-macos removes it
-zig build release-macos    # Release build → zig-out/pkg/Byakaron.dmg
-zig build run-web    # apps/web dev server (builds Byakaron.db first); serve-web for prod mode
-zig build ios-libs   # zig-out/lib/ios/Byakaron.xcframework (on macOS) for apps/ios
-zig build windows    # IME DLLs + WinUI app, Debug (on Windows); run-win runs the app
-zig build package-windows # zig-out/pkg/Byakaron-Setup.exe (on Windows)
-zig build windows-ime     # ByakaronIME.dll + byakaron.dll → zig-out/lib/windows/ime/
-zig build linux      # Linux IBus + GTK app → zig-out/bin/ (sysroot cross from any host)
-zig build package-linux   # → zig-out/pkg/byakaron_<ver>_<arch>.deb
-zig build install-linux   # sudo -E; system install into /usr
-zig build linux-ci        # smoke + IME + probes (what CI runs)
+zig build <platform>          # macos | ios | android | windows | web | linux → zig-out/bin
+zig build pack -- <platform>  # release packages → zig-out/pkg
+zig build dev -- <platform>   # install and start the app (web: the dev server)
+zig build test                # unit tests
+zig build e2e -- <suite>      # end-to-end tests: ios | linux | linux-wayland | linux-install
+zig build gen -- <what>       # regenerate data: db | d1 | o-words | next-words | ios-settings | …
 ```
 
+A few more: `zig build deps -- linux` installs the Linux packages,
+`zig build remove -- macos|linux` uninstalls. Options go before `--` or after
+it, as in `zig build pack -Dspell-db=zig-out/db/Byakaron.db -- macos`;
+`zig build --help` lists them.
+
+Each app's README has the details: [macOS](apps/macos), [iOS](apps/ios),
+[Android](apps/android/README.md), [Windows](apps/windows/Keyboard/README.md),
+[Linux](apps/linux/README.md), [web](apps/web/README.md).
+
+## Data
+
+Derived data is not committed: it comes out of the build graph and is cached
+in `.zig-cache`.
+
+- **Spell DB**: `zig build gen -- db` downloads the bnwiki dump and builds
+  `zig-out/db/Byakaron.db` in cached stages, so a re-run only redoes what
+  changed. `-Dwiki-date=YYYYMMDD` picks another dump, `-Dwiki-dump=<file>`
+  uses a local one. SQLite, bzip2 and the XML parser are built from source.
+- **Lexicon**: the autocomplete word list is committed as
+  `src/AutoComplete/lexicon.zon` and compiled in; `zig build gen -- grammars
+  -Diavro` resyncs it and the transliteration rules from their pinned source.

@@ -3,7 +3,7 @@
 zig-out/
 zig-pkg/
 
-# Generated / local data (everything comes from `zig build` / `zig build db`)
+# Generated / local data (everything comes from `zig build` / `zig build gen -- db`)
 *.db
 *.db-wal
 *.db-shm
@@ -11,7 +11,7 @@ zig-pkg/
 *.csv
 *.jsonl
 !src/data/queries/confusions_seed.csv
-# Pre-`zig build db` local pipeline outputs
+# Pre-`zig build gen -- db` local pipeline outputs
 packages/
 
 

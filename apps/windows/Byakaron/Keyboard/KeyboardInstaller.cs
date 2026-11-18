@@ -41,7 +41,7 @@ public static class KeyboardInstaller
             if (staged is null)
             {
                 return KeyboardInstallResult.Failed(
-                    "IME payload not found. Build the app with zig build run-win");
+                    "IME payload not found. Build the app with zig build dev -- windows");
             }
 
             Directory.CreateDirectory(InstallDirectory);

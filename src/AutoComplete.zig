@@ -462,7 +462,7 @@ fn isO(s: []const u8) bool {
 }
 
 /// Words in ও / ো attested in the Wikipedia corpus that Avro's lexicon mostly
-/// lacks (যদিও, তবুও, আমাদেরও), byte-sorted. `zig build o-words` regenerates it.
+/// lacks (যদিও, তবুও, আমাদেরও), byte-sorted. `zig build gen -- o-words` regenerates it.
 const o_words: []const []const u8 = @import("AutoComplete/o_words.zon");
 
 fn keepsO(self: *const AutoComplete, word: []const u8) bool {

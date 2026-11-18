@@ -62,13 +62,137 @@ const fcitx_cflags: []const []const u8 = &.{
     "-DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_64",
 };
 
+/// The build's commands. Each platform is its own step (`zig build macos`,
+/// → zig-out/bin); everything else is a verb that takes what it acts on after
+/// `--`:
+///
+///   zig build pack -- <platform>…   release packages → zig-out/pkg
+///   zig build dev -- <platform>     install and start it (web: the dev server)
+///   zig build e2e -- <suite> [args] end-to-end tests
+///   zig build gen -- <what>…        regenerate data and committed sources
+///   zig build deps -- linux         system packages; remove -- macos|linux
+///
+/// Each platform registers its targets with the verbs (`Verb.add`). The args
+/// after `--` are only known when the build runs, so a verb's step runs
+/// src/build/verb.zig, which picks the targets and runs `zig build <verb>
+/// -Dselect=<targets>` with this build's flags: configured with `-Dselect`,
+/// the verb's step depends on just those targets' steps.
+const Cli = struct {
+    pack: Verb = .{ .name = "pack", .about = "Release packages → zig-out/pkg", .multi = true },
+    dev: Verb = .{ .name = "dev", .about = "Install and start an app (web: the dev server)", .multi = false },
+    e2e: Verb = .{ .name = "e2e", .about = "End-to-end tests (args after the suite go to it)", .multi = false },
+    gen: Verb = .{ .name = "gen", .about = "Regenerate data and committed sources", .multi = true },
+    deps: Verb = .{ .name = "deps", .about = "Install a platform's system packages", .multi = false },
+    remove: Verb = .{ .name = "remove", .about = "Remove an installed app", .multi = false },
+
+    /// `-Dselect`: the targets the dispatcher picked.
+    select: ?[]const u8,
+    /// This build's own flags, for the dispatcher to configure the same build.
+    forward: []const []const u8,
+
+    fn init(b: *std.Build) Cli {
+        // Before any b.option() call: the options as given on the command line.
+        var forward: std.ArrayList([]const u8) = .empty;
+        const a = b.allocator;
+        for (b.user_input_options.keys(), b.user_input_options.values()) |name, value| {
+            if (std.mem.eql(u8, name, "select")) continue;
+            switch (value) {
+                .flag => forward.append(a, b.fmt("-D{s}", .{name})) catch @panic("OOM"),
+                .scalar => |v| forward.append(a, b.fmt("-D{s}={s}", .{ name, v })) catch @panic("OOM"),
+                .list => |l| for (l.items) |v| forward.append(a, b.fmt("-D{s}={s}", .{ name, v })) catch @panic("OOM"),
+                else => {},
+            }
+        }
+        switch (b.graph.release_mode) {
+            .off => {},
+            .any => forward.append(a, "--release") catch @panic("OOM"),
+            else => |m| forward.append(a, b.fmt("--release={t}", .{m})) catch @panic("OOM"),
+        }
+        return .{
+            .select = b.option([]const u8, "select", "Targets for a verb step, comma separated (what `zig build <verb> -- <target>` sets)"),
+            .forward = forward.items,
+        };
+    }
+
+    fn finish(cli: *Cli, b: *std.Build) void {
+        const dispatch = hostExe(b, "verb", "src/build/verb.zig");
+        inline for (.{ &cli.pack, &cli.dev, &cli.e2e, &cli.gen, &cli.deps, &cli.remove }) |v| v.finish(b, cli, dispatch);
+    }
+};
+
+const Verb = struct {
+    name: []const u8,
+    about: []const u8,
+    /// Several targets at once (`pack -- macos android`); otherwise one
+    /// target, and the args after it are its run steps' (`addPassthruArgs`).
+    multi: bool,
+    targets: std.StringArrayHashMapUnmanaged(Target) = .empty,
+
+    const Target = struct { step: *std.Build.Step, about: []const u8 };
+
+    /// A target of this verb: a step that is not top level, run by
+    /// `zig build <verb> -- <name>`.
+    fn add(v: *Verb, b: *std.Build, name: []const u8, about: []const u8) *std.Build.Step {
+        const step = &b.addWriteFiles().step;
+        step.name = b.fmt("{s} {s}", .{ v.name, name });
+        v.targets.put(b.allocator, name, .{ .step = step, .about = about }) catch @panic("OOM");
+        return step;
+    }
+
+    /// A target that cannot run here (wrong host, missing checkout): naming
+    /// it fails with `why`.
+    fn unavailable(v: *Verb, b: *std.Build, name: []const u8, about: []const u8, why: []const u8) void {
+        v.add(b, name, about).dependOn(&b.addFail(why).step);
+    }
+
+    fn finish(v: *Verb, b: *std.Build, cli: *const Cli, dispatch: *std.Build.Step.Compile) void {
+        const a = b.allocator;
+        var names: std.ArrayList(u8) = .empty;
+        var usage: std.ArrayList(u8) = .empty;
+        usage.print(a, "usage: zig build {s} -- {s}\n", .{ v.name, if (v.multi) "<target>…" else "<target> [args…]" }) catch @panic("OOM");
+        for (v.targets.keys(), v.targets.values(), 0..) |name, t, i| {
+            names.print(a, "{s}{s}", .{ if (i == 0) "" else ",", name }) catch @panic("OOM");
+            usage.print(a, "  {s: <14} {s}\n", .{ name, t.about }) catch @panic("OOM");
+        }
+        const top = b.step(v.name, b.fmt("{s} (-- {s})", .{ v.about, std.mem.replaceOwned(u8, a, names.items, ",", "|") catch @panic("OOM") }));
+
+        const select = cli.select orelse {
+            const run = b.addRunArtifact(dispatch);
+            run.addArgs(&.{ b.graph.zig_exe, v.name, if (v.multi) "1" else "0" });
+            run.addFileArg(b.addWriteFiles().add(b.fmt("{s}-usage.txt", .{v.name}), usage.items));
+            run.addArg(names.items);
+            run.addArgs(cli.forward);
+            // The same cache and prefix (`--cache-dir`, `-p`) as this build.
+            run.addArg("--cache-dir");
+            run.addDirectoryArg(b.graph.path(.local_cache, "."));
+            run.addArg("--prefix");
+            run.addDirectoryArg(b.graph.path(.install_prefix, "."));
+            run.addArg("--");
+            run.addPassthruArgs();
+            run.has_side_effects = true;
+            top.dependOn(&run.step);
+            return;
+        };
+        var it = std.mem.splitScalar(u8, select, ',');
+        while (it.next()) |name| {
+            const t = v.targets.get(name) orelse {
+                top.dependOn(&b.addFail(b.fmt("`{s}` is not a `zig build {s}` target\n{s}", .{ name, v.name, usage.items })).step);
+                continue;
+            };
+            top.dependOn(t.step);
+        }
+    }
+};
+
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    var cli: Cli = .init(b);
+    defer cli.finish(b);
 
     // iAvro (pinned in build.zig.zon) is only fetched with -Diavro: everything
     // the build needs from it is committed (`zig build grammars -Diavro` resyncs).
-    const iavro: ?*std.Build.Dependency = if (b.option(bool, "iavro", "Fetch iAvro for `grammars` (resync) and the iAvro parity test in `test`") orelse false)
+    const iavro: ?*std.Build.Dependency = if (b.option(bool, "iavro", "Fetch iAvro for `gen -- grammars` (resync) and the iAvro parity test in `test`") orelse false)
         b.lazyDependency("iavro", .{})
     else
         null;
@@ -82,7 +206,7 @@ pub fn build(b: *std.Build) !void {
     b.addNamedLazyPath("avro_dictionary", avro.words);
     // All data lands in zig-out/db/. Dictionary.json ships in the macOS bundle
     // (Keyboard/SpellServer.swift).
-    const install_lexicon = b.step("lexicon", "Generate the Avro lexicon → zig-out/db/");
+    const install_lexicon = cli.gen.add(b, "lexicon", "The word list and Dictionary.json → zig-out/db/");
     install_lexicon.dependOn(&b.addInstallFile(avro.json, "db/Dictionary.json").step);
     install_lexicon.dependOn(&b.addInstallFile(avro.words, "db/avro_dictionary.txt").step);
     b.getInstallStep().dependOn(install_lexicon);
@@ -92,7 +216,7 @@ pub fn build(b: *std.Build) !void {
     const spell = addSpellDb(b, host_sql, avro.words);
     const spell_db_tool = hostExe(b, "spell_db", "src/build/spell_db.zig");
     spell_db_tool.root_module.addImport("sql", host_sql);
-    const db_words = b.option(u32, "db-words", "Keep only the N most frequent words in Byakaron.db (default: $BYAKARON_DB_WORDS, else all; `d1`: 150000)") orelse
+    const db_words = b.option(u32, "db-words", "Keep only the N most frequent words in Byakaron.db (default: $BYAKARON_DB_WORDS, else all; `gen -- d1`: 150000)") orelse
         if (b.graph.environ_map.get("BYAKARON_DB_WORDS")) |s| std.fmt.parseInt(u32, s, 10) catch @panic("BYAKARON_DB_WORDS is not a number") else null;
     const default_spell_db: ?std.Build.LazyPath = if (std.Io.Dir.cwd().access(b.graph.io, "zig-out/db/Byakaron.db", .{})) |_|
         b.path("zig-out/db/Byakaron.db")
@@ -102,7 +226,7 @@ pub fn build(b: *std.Build) !void {
     const spell_db = if (db_words) |n| trimSpellDb(b, spell_db_tool, full_db, n) else full_db;
     b.addNamedLazyPath("spell_db", spell_db);
     const install_spell_db = b.addInstallFile(spell_db, "db/Byakaron.db");
-    b.step("db", "Download bnwiki + build Byakaron.db → zig-out/db/").dependOn(&install_spell_db.step);
+    cli.gen.add(b, "db", "Download bnwiki and build Byakaron.db → zig-out/db/").dependOn(&install_spell_db.step);
     // Regenerate the committed `src/AutoComplete/o_words.zon` from Byakaron.db
     // (see src/build/o_words.zig). Builds the spell DB first, like `zig build db`.
     {
@@ -112,7 +236,7 @@ pub fn build(b: *std.Build) !void {
         run.addFileArg(full_db);
         const update = b.addUpdateSourceFiles();
         update.addCopyFileToSource(run.addOutputFileArg("o_words.zon"), "src/AutoComplete/o_words.zon");
-        b.step("o-words", "Regenerate src/AutoComplete/o_words.zon from Byakaron.db (-Dspell-db=… to reuse one)").dependOn(&update.step);
+        cli.gen.add(b, "o-words", "src/AutoComplete/o_words.zon from Byakaron.db (-Dspell-db=… to reuse one)").dependOn(&update.step);
     }
     // Regenerate the committed `src/ffi/next_words.zon` (next-word predictions
     // for keyboards without the database) from Byakaron.db's bigrams.
@@ -123,9 +247,9 @@ pub fn build(b: *std.Build) !void {
         run.addFileArg(full_db);
         const update = b.addUpdateSourceFiles();
         update.addCopyFileToSource(run.addOutputFileArg("next_words.zon"), "src/ffi/next_words.zon");
-        b.step("next-words", "Regenerate src/ffi/next_words.zon from Byakaron.db (-Dspell-db=… to reuse one)").dependOn(&update.step);
+        cli.gen.add(b, "next-words", "src/ffi/next_words.zon from Byakaron.db (-Dspell-db=… to reuse one)").dependOn(&update.step);
     }
-    b.step("db-debug", "Build the text-keyed spell_debug.db (large) → zig-out/db/")
+    cli.gen.add(b, "db-debug", "The text-keyed spell_debug.db (large) → zig-out/db/")
         .dependOn(&b.addInstallFile(spell.debug_db, "db/spell_debug.db").step);
 
     // 150 000 words stay under D1's 500 MB Free-plan database size.
@@ -140,7 +264,7 @@ pub fn build(b: *std.Build) !void {
         sync.addDirectoryArg(migrations);
         sync.addDirectoryArg(b.graph.path(.install_prefix, "d1"));
         sync.has_side_effects = true;
-        b.step("d1", "Byakaron.db as D1 migrations → zig-out/d1/ (-Ddb-words, -Dspell-db)").dependOn(&sync.step);
+        cli.gen.add(b, "d1", "Byakaron.db as D1 migrations → zig-out/d1/ (-Ddb-words, -Dspell-db)").dependOn(&sync.step);
     }
 
     // Shared UI labels (src/locale/*.zon) → every platform's strings.
@@ -159,8 +283,6 @@ pub fn build(b: *std.Build) !void {
     // Static lib (macOS Xcode links extracted objects). Shared lib (Windows C#
     // P/Invoke loads byakaron.dll, Android loads libbyakaron.so).
     // `-Dshared` selects dynamic linkage; defaults to true on Android.
-    // `zig build lib` installs only this (+ the lexicon): what the native platform
-    // scripts need, without the web app the default install also builds.
     const is_android = target.result.os.tag == .linux and target.result.abi.isAndroid();
     // wasm32-wasi is the web app's Cloudflare Workers build (apps/web/wrangler.jsonc):
     // the default install is just the web server there.
@@ -174,16 +296,12 @@ pub fn build(b: *std.Build) !void {
         });
         // Install the FFI header alongside the lib so consumers can find it.
         lib.installHeader(b.path("src/ffi/byakaron.h"), "byakaron.h");
-        const install_lib = b.addInstallArtifact(lib, .{});
-        if (!is_wasi) b.getInstallStep().dependOn(&install_lib.step);
-        const lib_step = b.step("lib", "Build libbyakaron + byakaron.h + lexicon (for platform builds)");
-        lib_step.dependOn(&install_lib.step);
-        lib_step.dependOn(install_lexicon);
+        if (!is_wasi) b.getInstallStep().dependOn(&b.addInstallArtifact(lib, .{}).step);
     }
 
     // Linux: IBus engine, GTK app, optional Fcitx5, against a pinned Ubuntu
     // sysroot on every host (see `addLinux`).
-    addLinux(b, target, optimize, mod, avro, packSpellDb(b, spell_db_tool, spell_db), &install_spell_db.step, locale);
+    addLinux(b, &cli, target, optimize, mod, avro, packSpellDb(b, spell_db_tool, spell_db), &install_spell_db.step, locale);
 
     // Executable (only built for non-Android, non-wasm targets)
     if (!is_android and !is_wasi) {
@@ -206,24 +324,30 @@ pub fn build(b: *std.Build) !void {
         });
         b.installArtifact(exe);
         const run_cmd = b.addRunArtifact(exe);
-        run_cmd.step.dependOn(b.getInstallStep());
         run_cmd.addPassthruArgs();
-        const run_step = b.step("run", "Run the app");
-        run_step.dependOn(&run_cmd.step);
+        cli.dev.add(b, "repl", "The engine's REPL (zig-out/bin/repl)").dependOn(&run_cmd.step);
     }
 
     // macOS app (apps/macos) through its Xcode project. The build graph provides
     // everything Xcode links and bundles under zig-out/ (libbyakaron.a +
     // byakaron.h in zig-out/lib/macos/, Dictionary.json + Byakaron.db in zig-out/db/),
     // and src/build/xcode.zig runs xcodebuild with its progress in zig's tree.
-    //   zig build macos            → zig-out/bin/Byakaron.app
-    //   zig build run-macos        → build, quit the running copy, launch the build
-    //   zig build install-macos    → build, install into /Applications, launch
-    //                                 (--release or -Dmacos-config=release for an optimized build)
-    //   zig build uninstall-macos  → remove the app and keyboard (-Dmacos-remove-user-data)
-    //   zig build release-macos    → Release build → zig-out/pkg/Byakaron.dmg
-    //   zig build macos-icons      → regenerate Resources/MenuIcon.{pdf,tiff}
-    if (builtin.os.tag == .macos) {
+    //   zig build macos                → zig-out/bin/Byakaron.app
+    //   zig build dev -- macos         → install into /Applications and launch
+    //                                    (--release or -Dmacos-config=release for an optimized build)
+    //   zig build remove -- macos      → remove the app and keyboard (-Dmacos-remove-user-data)
+    //   zig build pack -- macos        → Release build → zig-out/pkg/Byakaron.dmg
+    //   zig build gen -- macos-icons   → regenerate Resources/MenuIcon.{pdf,tiff}
+    if (builtin.os.tag != .macos) {
+        const why = "this needs a macOS host";
+        b.step("macos", "Build the macOS app → zig-out/bin/Byakaron.app").dependOn(&b.addFail(why).step);
+        b.step("ios", "Build the iOS keyboard for the simulator → zig-out/bin/Byakaron-ios.app").dependOn(&b.addFail(why).step);
+        cli.dev.unavailable(b, "macos", "Install the macOS app into /Applications and launch it", why);
+        cli.pack.unavailable(b, "macos", "Byakaron.dmg", why);
+        cli.remove.unavailable(b, "macos", "The macOS app and keyboard", why);
+        cli.dev.unavailable(b, "ios", "Install and launch the iOS app on the booted simulator", why);
+        cli.e2e.unavailable(b, "ios", "KeyboardUITests on an iPhone x iOS simulator matrix", why);
+    } else {
         // Unset, it follows --release: any mode (fast, safe or small) is Xcode's
         // one Release configuration; none is Debug. The engine is always
         // ReleaseFast (below), whatever this is.
@@ -252,7 +376,7 @@ pub fn build(b: *std.Build) !void {
         };
         const xcode_exe = hostExe(b, "xcode", "src/build/xcode.zig");
         const tool = hostExe(b, "macos", "src/build/macos.zig");
-        addIos(b, avro, locale);
+        addIos(b, &cli, avro, locale);
 
         const app = struct {
             /// Build Byakaron.app for `cfg` into a directory containing it. Each
@@ -284,25 +408,18 @@ pub fn build(b: *std.Build) !void {
         const installed_app = b.graph.path(.install_prefix, "bin/Byakaron.app");
         b.step("macos", "Build the macOS app → zig-out/bin/Byakaron.app").dependOn(&install_app.step);
 
-        const launch = b.addRunArtifact(tool);
-        launch.addArg("launch");
-        launch.addDirectoryArg(installed_app);
-        launch.has_side_effects = true;
-        launch.step.dependOn(&install_app.step);
-        b.step("run-macos", "Build, quit the running copy and launch the macOS app").dependOn(&launch.step);
-
         const install = b.addRunArtifact(tool);
         install.addArg("install");
         install.addDirectoryArg(installed_app);
         install.has_side_effects = true;
         install.step.dependOn(&install_app.step);
-        b.step("install-macos", "Build and install the macOS app into /Applications, then launch it").dependOn(&install.step);
+        cli.dev.add(b, "macos", "Install the macOS app into /Applications and launch it").dependOn(&install.step);
 
         const uninstall = b.addRunArtifact(tool);
         uninstall.addArg("uninstall");
         if (remove_user_data) uninstall.addArg("--remove-user-data");
         uninstall.has_side_effects = true;
-        b.step("uninstall-macos", "Remove the macOS app and keyboard (-Dmacos-remove-user-data for settings)").dependOn(&uninstall.step);
+        cli.remove.add(b, "macos", "The macOS app and keyboard (-Dmacos-remove-user-data for settings)").dependOn(&uninstall.step);
 
         const dmg = b.addRunArtifact(tool);
         dmg.addArg("dmg");
@@ -310,7 +427,7 @@ pub fn build(b: *std.Build) !void {
         const dmg_dir = dmg.addOutputDirectoryArg("dmg");
         dmg.has_side_effects = true;
         const install_dmg = b.addInstallDirectory(.{ .source_dir = dmg_dir, .install_dir = .prefix, .install_subdir = "pkg" });
-        b.step("release-macos", "Release build → zig-out/pkg/Byakaron.dmg").dependOn(&install_dmg.step);
+        cli.pack.add(b, "macos", "Release build → zig-out/pkg/Byakaron.dmg").dependOn(&install_dmg.step);
 
         // Menu-bar icon (template image), drawn by the Swift generators.
         const icons = b.addUpdateSourceFiles();
@@ -322,14 +439,14 @@ pub fn build(b: *std.Build) !void {
             swift.addFileArg(b.path(gen[0]));
             icons.addCopyFileToSource(swift.addOutputFileArg(gen[1]), b.fmt("apps/macos/Resources/{s}", .{gen[1]}));
         }
-        b.step("macos-icons", "Regenerate apps/macos/Resources/MenuIcon.{pdf,tiff}").dependOn(&icons.step);
+        cli.gen.add(b, "macos-icons", "apps/macos/Resources/MenuIcon.{pdf,tiff}").dependOn(&icons.step);
     }
 
-    addAndroid(b, avro, packSpellDb(b, spell_db_tool, spell_db), locale);
+    addAndroid(b, &cli, avro, packSpellDb(b, spell_db_tool, spell_db), locale);
 
     // Web app (apps/web): a ziex app in this build graph, so it shares the cache.
-    //   zig build run-web    dev server (hot reload)
-    //   zig build serve-web  production-mode server
+    //   zig build web          the server and its assets → zig-out/
+    //   zig build dev -- web   dev server (hot reload)
     // Skipped on Android, where only libbyakaron.so is built.
     if (!is_android) {
         // Engine pieces the page also runs in the browser (autocomplete +
@@ -387,8 +504,13 @@ pub fn build(b: *std.Build) !void {
                 },
                 .client = .{ .bindings = .{ .build = .enabled, .install_subdir = if (is_wasi) "bindings" else null } },
             },
-            .cli = .{ .steps = .{ .dev = "run-web", .serve = "serve-web" } },
+            .cli = .{ .steps = .{ .dev = "web-dev", .serve = null } },
         });
+        // Not a top-level step of its own: `zig build dev -- web` runs it.
+        const web_dev = b.top_level_steps.fetchSwapRemove("web-dev").?.value;
+        web_dev.step.dependOn(&install_spell_db.step);
+        cli.dev.add(b, "web", "apps/web's dev server (hot reload; builds Byakaron.db first)").dependOn(&web_dev.step);
+        b.step("web", "Build the web app → zig-out/bin/web + zig-out/static").dependOn(b.getInstallStep());
         // SQLite backends bound to the app's `zx` module so they share its `zx.Db` type.
         inline for (.{
             .{ "spell_sqlite", "src/Spell/Sqlite.zig", "spell", spell_mod },
@@ -404,17 +526,14 @@ pub fn build(b: *std.Build) !void {
                 },
             }));
         }
-        for ([_][]const u8{ "run-web", "serve-web" }) |name| {
-            b.top_level_steps.get(name).?.step.dependOn(&install_spell_db.step);
-        }
     }
 
-    addWindows(b, avro, spell_db);
+    addWindows(b, &cli, avro, spell_db);
 
     // Regenerate the committed iAvro data from the pinned iAvro sources:
     // `zig build grammars -Diavro` (see src/build/grammars.zig, src/build/lexicon.zig).
     {
-        const step = b.step("grammars", "Regenerate rules.zon / search.zon / lexicon.zon from iAvro (needs -Diavro), canonicalize orva.zon");
+        const step = cli.gen.add(b, "grammars", "rules.zon, search.zon and lexicon.zon from iAvro (needs -Diavro)");
         if (iavro) |dep| {
             const update = b.addUpdateSourceFiles();
 
@@ -438,7 +557,7 @@ pub fn build(b: *std.Build) !void {
 
             step.dependOn(&update.step);
         } else if (!b.user_input_options.contains("iavro")) {
-            step.dependOn(&b.addFail("`zig build grammars` fetches iAvro: run `zig build grammars -Diavro`").step);
+            step.dependOn(&b.addFail("`zig build gen -- grammars` fetches iAvro: run `zig build gen -- grammars -Diavro`").step);
         }
     }
 
@@ -509,7 +628,7 @@ fn addTestRun(b: *std.Build, run: *std.Build.Step.Run, m: *std.Build.Module) voi
     }));
 }
 
-fn addWindows(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void {
+fn addWindows(b: *std.Build, cli: *Cli, avro: AvroData, spell_db: std.Build.LazyPath) void {
     const target = b.resolveTargetQuery(.{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu });
     const engine = addEngine(b, target, .ReleaseFast, avro, false);
     const ffi = b.addLibrary(.{ .linkage = .dynamic, .name = "byakaron", .root_module = engine.root });
@@ -533,22 +652,20 @@ fn addWindows(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
         .win32_module_definition = b.path("apps/windows/Keyboard/ByakaronIME.def"),
     });
 
-    const ime_step = b.step("windows-ime", "Build ByakaronIME.dll + byakaron.dll → zig-out/lib/windows/ime/");
-    ime_step.dependOn(&b.addInstallFileWithDir(ime.getEmittedBin(), .{ .custom = "lib/windows/ime" }, "ByakaronIME.dll").step);
-    ime_step.dependOn(&b.addInstallFileWithDir(ffi.getEmittedBin(), .{ .custom = "lib/windows/ime" }, "byakaron.dll").step);
-
-    // `windows`: the IME DLLs and a Debug build of the WinUI app (what CI
-    // builds), like `linux` and `macos`. The app needs .NET on Windows; from
-    // another host the step says so (`windows-ime` cross-compiles anywhere).
-    const windows_step = b.step("windows", "Build the IME DLLs and the WinUI app (Debug; the app on Windows only)");
-    windows_step.dependOn(ime_step);
+    // `windows`: the IME DLLs (cross-compiled from any host) and, on Windows,
+    // a Debug build of the WinUI app (what CI builds), like `linux` and `macos`.
+    const windows_step = b.step("windows", "Build the IME DLLs → zig-out/bin/ime/ and, on Windows, the WinUI app (Debug)");
+    windows_step.dependOn(&b.addInstallFileWithDir(ime.getEmittedBin(), .{ .custom = "bin/ime" }, "ByakaronIME.dll").step);
+    windows_step.dependOn(&b.addInstallFileWithDir(ffi.getEmittedBin(), .{ .custom = "bin/ime" }, "byakaron.dll").step);
     if (builtin.os.tag != .windows) {
-        windows_step.dependOn(&b.addFail("`zig build windows` builds the WinUI app, which needs Windows; `zig build windows-ime` cross-compiles the IME from here").step);
+        const why = "the WinUI app needs a Windows host (`zig build windows` cross-compiles the IME DLLs from here)";
+        cli.pack.unavailable(b, "windows", "zig-out/pkg/Byakaron-Setup.exe", why);
+        cli.dev.unavailable(b, "windows", "Build and run the WinUI app (Debug)", why);
         return;
     }
 
-    const version = b.option([]const u8, "windows-version", "Installer version for `package-windows` (default: $BYAKARON_VERSION, else 1.0.0)");
-    const iscc_exe = b.option(std.Build.LazyPath, "windows-iscc", "Inno Setup's ISCC.exe for `package-windows` (default: Program Files, then PATH)") orelse
+    const version = b.option([]const u8, "windows-version", "Installer version for `pack -- windows` (default: $BYAKARON_VERSION, else 1.0.0)");
+    const iscc_exe = b.option(std.Build.LazyPath, "windows-iscc", "Inno Setup's ISCC.exe for `pack -- windows` (default: Program Files, then PATH)") orelse
         b.findProgramLazy(.{ .names = &.{
             "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe",
             "C:\\Program Files\\Inno Setup 6\\ISCC.exe",
@@ -557,7 +674,7 @@ fn addWindows(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
     const proj = b.path("apps/windows/Byakaron/Byakaron.csproj");
 
     // The DLLs Byakaron.csproj copies next to the app; Byakaron.db only for
-    // `run-win` and the installer, so `windows` does not build the spell DB.
+    // `dev -- windows` and the installer, so `windows` does not build the spell DB.
     const stage_dlls = b.addUpdateSourceFiles();
     stage_dlls.addCopyFileToSource(ffi.getEmittedBin(), "apps/windows/Byakaron/Native/byakaron.dll");
     stage_dlls.addCopyFileToSource(ime.getEmittedBin(), "apps/windows/Byakaron/ime/ByakaronIME.dll");
@@ -590,7 +707,7 @@ fn addWindows(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
     if (version) |v| iscc.addArg(b.fmt("/DAppVersion={s}", .{v}));
     iscc.addFileArg(b.path("apps/windows/installer/Byakaron.iss"));
     iscc.has_side_effects = true;
-    const package_step = b.step("package-windows", "Build the installer → zig-out/pkg/Byakaron-Setup.exe (on Windows)");
+    const package_step = cli.pack.add(b, "windows", "The installer → zig-out/pkg/Byakaron-Setup.exe");
     package_step.dependOn(&b.addInstallFileWithDir(setup_dir.path(b, "Byakaron-Setup.exe"), .{ .custom = "pkg" }, "Byakaron-Setup.exe").step);
     package_step.dependOn(&b.addInstallDirectory(.{ .source_dir = payload, .install_dir = .{ .custom = "bin" }, .install_subdir = "Byakaron" }).step);
 
@@ -599,7 +716,7 @@ fn addWindows(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath) void 
     run.addArgs(&.{ "-c", "Debug", "-p:Platform=x64", "--no-launch-profile" });
     run.has_side_effects = true;
     run.step.dependOn(&stage.step);
-    b.step("run-win", "Build (Debug) and run the Windows WinUI app").dependOn(&run.step);
+    cli.dev.add(b, "windows", "Build and run the WinUI app (Debug)").dependOn(&run.step);
 }
 
 /// The engine's Zig modules for one target: the FFI root (`byakaron`) and what
@@ -753,25 +870,24 @@ fn module(b: *std.Build, exported: bool, name: []const u8, options: std.Build.Mo
 /// so a Linux, macOS or Windows machine produces the same binaries without the
 /// -dev packages, a Linux box or a container. `-Dlinux-arch` picks the CPU.
 ///
-/// `zig build linux` builds the IBus engine and the GTK companion app (and
-/// GSettings schemas on a Linux host). `linux-app` is an alias for the same
-/// install. `linux-test` and `linux-fcitx5` stay optional separate steps.
+/// `zig build linux` builds the IBus engine and the GTK companion app (and,
+/// on a Linux host, the GSettings schemas and the Fcitx5 addon when its
+/// headers are installed).
 ///
-/// On a Linux host, src/build/linux.zig drives the rest (it replaces
-/// the old apps/linux/scripts/*.sh):
-///   zig build package-linux    → zig-out/pkg/byakaron_<ver>_<arch>.deb (alias linux-deb)
-///   zig build package-linux-arch → zig-out/pkg/byakaron-<ver>-1-<arch>.pkg.tar.zst (Arch)
-///   zig build install-linux    → sudo: install into /usr
-///   zig build uninstall-linux  → sudo: remove it
-///   zig build linux-deps       → sudo: apt packages (`-- --test` adds the test toolchain)
-///   zig build run-linux        → register the engine with the running ibus-daemon
-///   zig build linux-smoke      → build and run the C ABI smoke test
-///   zig build linux-ci         → what CI runs
-///   zig build linux-wayland-e2e → typing into GTK3/GTK4 on a private headless GNOME Shell
-///   zig build linux-install-test → the local .deb in clean Ubuntu/Debian containers (Docker)
-///   zig build package-linux-flatpak → the GTK app as a Flatpak bundle
+/// On a Linux host, src/build/linux.zig drives the rest:
+///   zig build pack -- linux          → zig-out/pkg/byakaron_<ver>_<arch>.deb
+///   zig build pack -- linux-arch     → zig-out/pkg/byakaron-<ver>-1-<arch>.pkg.tar.zst (Arch)
+///   zig build pack -- linux-flatpak  → the GTK app as a Flatpak bundle
+///   zig build dev -- linux           → register the engine with the running ibus-daemon
+///   zig build dev -- linux-app       → run the GTK app
+///   zig build dev -- linux-system    → sudo -E: install into /usr
+///   zig build remove -- linux        → sudo: remove it
+///   zig build deps -- linux          → sudo: apt packages (`deps -- linux --test` adds the test toolchain)
+///   zig build e2e -- linux           → what CI runs (glibc, smoke, IME test, probes, icon, AppStream)
+///   zig build e2e -- linux-wayland   → typing into GTK3/GTK4 on a private headless GNOME Shell
+///   zig build e2e -- linux-install   → the local .deb in clean Ubuntu/Debian containers (Docker)
 ///
-/// package-linux, install-linux and the flatpak always use ReleaseFast builds,
+/// The packages and the system install always use ReleaseFast builds,
 /// whatever `-Doptimize` is.
 ///
 /// `-Dlinux-system-libs` (Linux hosts only) links the system IBus/GTK through
@@ -779,6 +895,7 @@ fn module(b: *std.Build, exported: bool, name: []const u8, options: std.Build.Mo
 /// Running the app, the GSettings schema and Fcitx5 always need a Linux host.
 fn addLinux(
     b: *std.Build,
+    cli: *Cli,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     mod: *std.Build.Module,
@@ -807,7 +924,7 @@ fn addLinux(
     });
     const core = if (native) mod else addEngine(b, linux_target, optimize, avro, false).root;
     const sysroot: ?Sysroot = if (native) null else linuxSysroot(b, arch);
-    // package-linux / install-linux always ship ReleaseFast binaries, whatever
+    // The packages and the system install always ship ReleaseFast binaries, whatever
     // the top-level -Doptimize is (a Debug engine would carry sanitizer runtimes
     // and debug info). With -Doptimize=fast they are the same binaries as `linux`.
     const rel_core = if (optimize == .fast) core else addEngine(b, if (native) target else linux_target, .fast, avro, false).root;
@@ -838,9 +955,18 @@ fn addLinux(
     ime_test.linker_allow_shlib_undefined = true;
 
     const install_ime_test = b.addInstallArtifact(ime_test, .{});
-    const linux_test_step = b.step("linux-test", "Build the Linux IME integration test");
-    if (misuse) |f| linux_test_step.dependOn(f);
-    linux_test_step.dependOn(&install_ime_test.step);
+
+    // Loads an icon with gdk-pixbuf at given sizes (`e2e -- linux` and, inside
+    // the containers, `e2e -- linux-install`), so it is built like the IME
+    // test: for glibc 2.31 against the sysroot.
+    const icon_check = b.addExecutable(.{
+        .name = "byakaron-icon-check",
+        .root_module = b.createModule(.{ .target = linux_target, .optimize = optimize, .link_libc = true }),
+    });
+    icon_check.root_module.addCSourceFiles(.{ .files = &.{"apps/linux/tests/icon_check.c"}, .flags = engine_cflags });
+    linkLinux(b, icon_check.root_module, sysroot, &.{ "gdk-pixbuf-2.0", "gobject-2.0", "glib-2.0" });
+    icon_check.linker_allow_shlib_undefined = true;
+    install_ime_test.step.dependOn(&b.addInstallArtifact(icon_check, .{}).step);
 
     // C ABI smoke test. It compiles the Core glue in (not just links the core)
     // because it drives the composer through it, as the IME shells do; that
@@ -875,9 +1001,6 @@ fn addLinux(
     smoke.root_module.linkLibrary(smoke_core);
     smoke.linker_allow_shlib_undefined = true;
     const install_smoke = b.addInstallArtifact(smoke, .{});
-    const linux_smoke_step = b.step("linux-smoke", "Build and run the Linux C ABI smoke test");
-    if (misuse) |f| linux_smoke_step.dependOn(f);
-    linux_smoke_step.dependOn(&install_smoke.step);
 
     // GTK3 companion app (same `linux` / `linux-app` install). Built against
     // the pinned sysroot like the engine, so no libgtk-3-dev is required.
@@ -887,9 +1010,6 @@ fn addLinux(
 
     const install_app = b.addInstallArtifact(app, .{});
     linux_step.dependOn(&install_app.step);
-    // Thin alias: same install as `linux` (IBus engine + GTK app + schemas).
-    const linux_app_step = b.step("linux-app", "Alias for `linux` (IBus + GTK app → zig-out/bin/)");
-    linux_app_step.dependOn(linux_step);
 
     // Running the app and compiling the GSettings schema (glib-compile-schemas)
     // need a Linux host; elsewhere the build stops at the binaries.
@@ -897,12 +1017,11 @@ fn addLinux(
         const run_app = b.addRunArtifact(app);
         run_app.step.dependOn(&install_app.step);
         run_app.addPassthruArgs();
-        const run_linux_app_step = b.step("run-linux-app", "Build and run the Linux GTK app");
-        run_linux_app_step.dependOn(&run_app.step);
+        cli.dev.add(b, "linux-app", "Run the GTK app").dependOn(&run_app.step);
 
         // GSettings schema: compiled into zig-out/share/glib-2.0/schemas so an
         // uninstalled engine/app can find it next to the binary (or via
-        // GSETTINGS_SCHEMA_DIR for `zig build run-linux-app`, whose artifact
+        // GSETTINGS_SCHEMA_DIR for `zig build dev -- linux-app`, whose artifact
         // lives in the cache rather than zig-out/bin).
         const compile_schemas = b.addSystemCommand(&.{
             "sh",
@@ -928,10 +1047,10 @@ fn addLinux(
         run_app.setEnvironmentVariable("GSETTINGS_SCHEMA_DIR", "zig-out/share/glib-2.0/schemas");
     }
 
-    // Optional Fcitx5 frontend. Same composer as IBus; skipped when the
-    // headers are not installed so a GNOME-only box still `zig build linux`.
-    const fcitx_step = b.step("linux-fcitx5", "Build the optional Fcitx5 addon (needs libfcitx5core-dev)");
-    if (misuse) |f| fcitx_step.dependOn(f);
+    // Optional Fcitx5 frontend. Same composer as IBus; built for `e2e -- linux`
+    // and the system install when the headers are installed, skipped
+    // otherwise so a GNOME-only box still installs.
+    const fcitx_step = &b.addWriteFiles().step;
     var fcitx_so: ?std.Build.LazyPath = null;
     var fcitx_release_so: ?std.Build.LazyPath = null;
     // Fcitx5 is C++ against the host's libFcitx5Core, so it always uses the
@@ -965,20 +1084,36 @@ fn addLinux(
         } else {
             fcitx_release_so = fcitx_so;
         }
-    } else {
-        fcitx_step.dependOn(&b.addFail(if (host_linux)
-            "Fcitx5Core not found — install libfcitx5core-dev or set PKG_CONFIG_PATH"
-        else
-            "the Fcitx5 addon is only built on a Linux host").step);
     }
 
     // GTK4 display-path probes (wayland_probe / wayland_type
     // helpers). Run on the host against the system GTK4, so they are optional:
-    // `linux-ci` runs them when built.
-    const wayland_step = b.step("linux-wayland", "Build the optional GTK4 wayland probe/type tests (needs libgtk-4-dev)");
+    // `e2e -- linux` runs them when built.
+    const wayland_step = &b.addWriteFiles().step;
     var have_wayland = false;
+    // What `e2e -- linux-wayland` types into (one source for GTK 3 and 4) and
+    // drives it with (the RemoteDesktop portal), on the host's libraries.
+    const wayland_e2e_step = &b.addWriteFiles().step;
+    const hostTest = struct {
+        fn add(bb: *std.Build, opt: std.builtin.OptimizeMode, name: []const u8, src: []const u8, lib: []const u8) *std.Build.Step {
+            const exe = bb.addExecutable(.{
+                .name = name,
+                .root_module = bb.createModule(.{ .target = bb.graph.host, .optimize = opt, .link_libc = true }),
+            });
+            exe.root_module.addCSourceFiles(.{ .files = &.{src}, .flags = &.{ "-std=gnu11", "-Wall", "-Wextra" } });
+            exe.root_module.linkSystemLibrary(lib, .{});
+            return &bb.addInstallArtifact(exe, .{}).step;
+        }
+    }.add;
+    if (host_linux and pkgConfigExists(b, "gio-2.0")) {
+        wayland_e2e_step.dependOn(hostTest(b, optimize, "byakaron-wayland-rdtest", "apps/linux/tests/wayland_rdtest.c", "gio-2.0"));
+    }
+    if (host_linux and pkgConfigExists(b, "gtk+-3.0")) {
+        wayland_e2e_step.dependOn(hostTest(b, optimize, "byakaron-wayland-textapp-gtk3", "apps/linux/tests/wayland_textapp.c", "gtk+-3.0"));
+    }
     if (host_linux and pkgConfigExists(b, "gtk4")) {
         have_wayland = true;
+        wayland_e2e_step.dependOn(hostTest(b, optimize, "byakaron-wayland-textapp-gtk4", "apps/linux/tests/wayland_textapp.c", "gtk4"));
         for ([_][2][]const u8{
             .{ "byakaron-wayland-probe", "apps/linux/tests/wayland_probe.c" },
             .{ "byakaron-wayland-type", "apps/linux/tests/wayland_type.c" },
@@ -995,32 +1130,26 @@ fn addLinux(
             exe.root_module.linkSystemLibrary("gtk4", .{});
             wayland_step.dependOn(&b.addInstallArtifact(exe, .{}).step);
         }
-    } else {
-        wayland_step.dependOn(&b.addFail(if (host_linux)
-            "gtk4 not found — install libgtk-4-dev"
-        else
-            "the wayland tests are only built on a Linux host").step);
     }
 
     // Packaging, install and CI go through src/build/linux.zig. The build graph
     // above has already produced every binary they use; the tool never calls
     // `zig build` itself.
-    const package_step = b.step("package-linux", "Build zig-out/pkg/byakaron_<ver>_<arch>.deb (always ReleaseFast)");
-    const deb_alias_step = b.step("linux-deb", "Alias for package-linux");
-    const arch_package_step = b.step("package-linux-arch", "Build zig-out/pkg/byakaron-<ver>-1-<arch>.pkg.tar.zst for Arch Linux (always ReleaseFast)");
-    const flatpak_step = b.step("package-linux-flatpak", "Build zig-out/pkg/dev.nuhu.labs.Byakaron.flatpak, the GTK app only (needs flatpak)");
-    const install_step = b.step("install-linux", "Install the IBus engine + GTK app into /usr (sudo -E; ReleaseFast; -Dlinux-install-db for Byakaron.db)");
-    const uninstall_step = b.step("uninstall-linux", "Remove the system install (sudo)");
-    const deps_step = b.step("linux-deps", "apt-get install the Linux runtime packages (sudo; `-- --test` adds the test toolchain)");
-    const run_step = b.step("run-linux", "Build and register the IBus engine with the running ibus-daemon (Ctrl-C to unregister)");
-    const ci_step = b.step("linux-ci", "Run the Linux CI checks (glibc, smoke, IME test, probes, icon, AppStream)");
-    const e2e_step = b.step("linux-wayland-e2e", "Type into GTK3/GTK4 apps on a private headless GNOME Shell Wayland (needs gnome-shell)");
-    const install_test_step = b.step("linux-install-test", "Install the built .deb in clean Docker images and test it (needs docker)");
-    deb_alias_step.dependOn(package_step);
+    const package_step = cli.pack.add(b, "linux", "zig-out/pkg/byakaron_<ver>_<arch>.deb (always ReleaseFast)");
+    const arch_package_step = cli.pack.add(b, "linux-arch", "zig-out/pkg/byakaron-<ver>-1-<arch>.pkg.tar.zst for Arch Linux");
+    const flatpak_step = cli.pack.add(b, "linux-flatpak", "zig-out/pkg/dev.nuhu.labs.Byakaron.flatpak, the GTK app only (needs flatpak)");
+    const run_step = cli.dev.add(b, "linux", "Register the IBus engine with the running ibus-daemon (Ctrl-C to unregister)");
+    const install_step = cli.dev.add(b, "linux-system", "Install the IBus engine + GTK app into /usr (sudo -E; -Dlinux-install-db for Byakaron.db)");
+    const uninstall_step = cli.remove.add(b, "linux", "The system install (sudo)");
+    const deps_step = cli.deps.add(b, "linux", "apt-get the Linux runtime packages (sudo; `--test` adds the test toolchain)");
+    const ci_step = cli.e2e.add(b, "linux", "The Linux CI checks (glibc, smoke, IME test, probes, icon, AppStream)");
+    const e2e_step = cli.e2e.add(b, "linux-wayland", "Type into GTK3/GTK4 apps on a private headless GNOME Shell (needs gnome-shell)");
+    const install_test_step = cli.e2e.add(b, "linux-install", "Install the built .deb in clean Docker images and test it (needs docker; args: images)");
+    if (misuse) |f| for ([_]*std.Build.Step{ package_step, arch_package_step, run_step, install_step, ci_step, e2e_step, install_test_step }) |s| s.dependOn(f);
 
     if (!host_linux) {
-        for ([_]*std.Build.Step{ package_step, arch_package_step, flatpak_step, install_step, uninstall_step, deps_step, run_step, ci_step, e2e_step, install_test_step, linux_smoke_step }) |s| {
-            s.dependOn(&b.addFail("this step needs a Linux host").step);
+        for ([_]*std.Build.Step{ package_step, arch_package_step, flatpak_step, install_step, uninstall_step, deps_step, run_step, ci_step, e2e_step, install_test_step }) |s| {
+            s.dependOn(&b.addFail("this needs a Linux host").step);
         }
         return;
     }
@@ -1047,15 +1176,6 @@ fn addLinux(
     const rel_ime = if (optimize == .fast) ime else linuxIme(b, linux_target, .fast, rel_core, sysroot);
     const rel_app = if (optimize == .fast) app else linuxApp(b, linux_target, .fast, rel_core, sysroot, locale);
 
-    const run_smoke = b.addRunArtifact(smoke);
-    run_smoke.step.dependOn(&install_smoke.step);
-    run_smoke.has_side_effects = true;
-    if (b.graph.environ_map.get("BYAKARON_SPELL_DB") == null) {
-        const db = rootPath(b, "zig-out/db/Byakaron.db");
-        if (std.Io.Dir.cwd().access(b.graph.io, db, .{})) |_| run_smoke.setEnvironmentVariable("BYAKARON_SPELL_DB", db) else |_| {}
-    }
-    linux_smoke_step.dependOn(&run_smoke.step);
-
     const package = b.addRunArtifact(tool);
     package.addArgs(&.{ "package-deb", root });
     package.addFileArg(rel_ime.getEmittedBin());
@@ -1063,8 +1183,8 @@ fn addLinux(
     package.addFileArg(spell_db);
     const deb_dir = package.addOutputDirectoryArg("deb");
     // No Fcitx5 addon in the .deb: it is built against one Fcitx5's C++ API,
-    // and the .deb is one file for every release. `zig build linux-fcitx5` /
-    // install-linux build it on the machine that uses it.
+    // and the .deb is one file for every release. The system install
+    // (`dev -- linux-system`) builds it on the machine that uses it.
     package.setEnvironmentVariable("BYK_DEB_ARCH", switch (arch) {
         .x86_64 => "amd64",
         .aarch64 => "arm64",
@@ -1089,7 +1209,7 @@ fn addLinux(
     arch_package.step.dependOn(install_spell_db);
     arch_package_step.dependOn(&b.addInstallDirectory(.{ .source_dir = arch_dir, .install_dir = .prefix, .install_subdir = "pkg" }).step);
 
-    const install_db = b.option(bool, "linux-install-db", "install-linux: build Byakaron.db and install it too (default: only if zig-out/db/Byakaron.db exists)") orelse false;
+    const install_db = b.option(bool, "linux-install-db", "dev -- linux-system: build Byakaron.db and install it too (default: only if zig-out/db/Byakaron.db exists)") orelse false;
     const install = b.addRunArtifact(tool);
     install.addArgs(&.{ "install", root });
     install.addFileArg(rel_ime.getEmittedBin());
@@ -1130,12 +1250,12 @@ fn addLinux(
     ci.addArgs(&.{ "ci", root });
     ci.has_side_effects = true;
     ci.step.dependOn(linux_step);
-    ci.step.dependOn(linux_test_step);
+    ci.step.dependOn(&install_ime_test.step);
     ci.step.dependOn(&install_smoke.step);
     if (fcitx_so != null) ci.step.dependOn(fcitx_step);
     // Without Fcitx5's headers the addon is not built, and a byakaron.so left in
     // zig-out by an earlier build (against a Fcitx5 since removed) is not this
-    // build's: linux-ci must not check it.
+    // build's: `e2e -- linux` must not check it.
     ci.setEnvironmentVariable("BYK_FCITX_BUILT", if (fcitx_so != null) "1" else "0");
     if (have_wayland) ci.step.dependOn(wayland_step);
     ci_step.dependOn(&ci.step);
@@ -1158,14 +1278,15 @@ fn addLinux(
     e2e.addFileArg(ime.getEmittedBin());
     e2e.has_side_effects = true;
     e2e.step.dependOn(linux_step); // also compiles the GSettings schema it uses
+    e2e.step.dependOn(wayland_e2e_step);
     e2e_step.dependOn(&e2e.step);
 
     // The built .deb in clean containers. The checker (`linux tested`) runs
     // inside them, so it is built static (musl): it must not need the host's glibc.
     // `-Dlinux-deb=` reuses an already-packaged .deb (cd/release) instead of
     // building another one via the package step.
-    const external_deb = b.option([]const u8, "linux-deb", "Existing .deb (or dir) for linux-install-test; skip re-packaging");
-    const external_arch_pkg = b.option([]const u8, "linux-arch-pkg", "Existing Arch .pkg.tar.zst (or dir) for linux-install-test; skip re-packaging");
+    const external_deb = b.option([]const u8, "linux-deb", "Existing .deb (or dir) for `e2e -- linux-install`; skip re-packaging");
+    const external_arch_pkg = b.option([]const u8, "linux-arch-pkg", "Existing Arch .pkg.tar.zst (or dir) for `e2e -- linux-install`; skip re-packaging");
     const static_tool = b.addExecutable(.{
         .name = "linux-static",
         .root_module = b.createModule(.{
@@ -1196,6 +1317,7 @@ fn addLinux(
         matrix.addPrefixedDirectoryArg("--arch-pkg=", arch_dir);
     }
     matrix.addPrefixedFileArg("--tool=", static_tool.getEmittedBin());
+    matrix.addPrefixedFileArg("--icon-check=", icon_check.getEmittedBin());
     matrix.addPassthruArgs(); // optional docker images after `--`
     matrix.has_side_effects = true;
     matrix.step.dependOn(&install_ime_test.step);
@@ -1427,6 +1549,7 @@ const linux_pkgs = std.StaticStringMap(LinuxPkg).initComptime(.{
     .{ "gobject-2.0", LinuxPkg{ .includes = &.{}, .libs = &.{"gobject-2.0"} } },
     .{ "gio-2.0", LinuxPkg{ .includes = &.{}, .libs = &.{"gio-2.0"} } },
     .{ "ibus-1.0", LinuxPkg{ .includes = &.{"usr/include/ibus-1.0"}, .libs = &.{"ibus-1.0"} } },
+    .{ "gdk-pixbuf-2.0", LinuxPkg{ .includes = &.{"usr/include/gdk-pixbuf-2.0"}, .libs = &.{"gdk_pixbuf-2.0"} } },
     .{ "gtk+-3.0", LinuxPkg{
         .includes = &.{
             "usr/include/gtk-3.0",
@@ -1579,12 +1702,18 @@ fn firstDir(b: *std.Build, paths: []const ?[]const u8) ?[]const u8 {
 /// iOS keyboard (apps/ios/keyboard, the byakaron-ios submodule): the engine as
 /// Byakaron.xcframework (device + simulator static libraries, byakaron.h and
 /// byakaron_strings.h with a `Byakaron` module map) for its Xcode project.
-///   zig build ios-libs → zig-out/lib/ios/Byakaron.xcframework
-fn addIos(b: *std.Build, avro: AvroData, locale: LocaleStrings) void {
-    // Not a named step: `ios` runs it. Builds the engine as
+///   zig build ios              → zig-out/bin/Byakaron-ios.app (simulator, unsigned),
+///                                and zig-out/lib/ios/Byakaron.xcframework for Xcode
+///   zig build dev -- ios       → install and launch it on the booted simulator
+///   zig build e2e -- ios [...] → KeyboardUITests on an iPhone x iOS matrix (src/build/ios_e2e.zig)
+///   zig build gen -- ios-settings | ios-emoji
+fn addIos(b: *std.Build, cli: *Cli, avro: AvroData, locale: LocaleStrings) void {
+    // Not a named step: `ios` and `e2e -- ios` run it. Builds the engine as
     // zig-out/lib/ios/Byakaron.xcframework.
     const step = &b.addWriteFiles().step;
-    const ios = b.step("ios", "Build the iOS keyboard for the simulator (unsigned) → zig-out/pkg/Byakaron-ios.app");
+    const ios = b.step("ios", "Build the iOS keyboard for the simulator (unsigned) → zig-out/bin/Byakaron-ios.app");
+    const dev = cli.dev.add(b, "ios", "Install and launch the iOS app on the booted simulator");
+    const e2e = cli.e2e.add(b, "ios", "KeyboardUITests on an iPhone x iOS simulator matrix (--list, --devices, --os, -j…)");
     const headers = b.addWriteFiles();
     _ = headers.addCopyFile(b.path("src/ffi/byakaron.h"), "byakaron.h");
     _ = headers.addCopyFile(locale.header, "byakaron_strings.h");
@@ -1616,8 +1745,8 @@ fn addIos(b: *std.Build, avro: AvroData, locale: LocaleStrings) void {
         \\
         , "sh" });
     const xcf_dir = xcf.addOutputDirectoryArg("xcf");
-    // iOS 15: the keyboard's deployment target (upstream giellakbd-ios).
-    const ios15: std.Target.Query.OsVersion = .{ .semver = .{ .major = 15, .minor = 0, .patch = 0 } };
+    // iOS 27: the keyboard's deployment target (apps/ios/keyboard).
+    const ios_min: std.Target.Query.OsVersion = .{ .semver = .{ .major = 27, .minor = 0, .patch = 0 } };
     const lib = struct {
         fn build(bb: *std.Build, av: AvroData, q: std.Target.Query) std.Build.LazyPath {
             // ReleaseFast, as for macOS: Xcode's linker has no UBSan runtime.
@@ -1627,11 +1756,11 @@ fn addIos(b: *std.Build, avro: AvroData, locale: LocaleStrings) void {
             return l.getEmittedBin();
         }
     }.build;
-    const device = lib(b, avro, .{ .cpu_arch = .aarch64, .os_tag = .ios, .os_version_min = ios15 });
+    const device = lib(b, avro, .{ .cpu_arch = .aarch64, .os_tag = .ios, .os_version_min = ios_min });
     // One simulator library for Apple silicon and Intel Macs.
     const lipo = b.addSystemCommand(&.{ "lipo", "-create" });
-    lipo.addFileArg(lib(b, avro, .{ .cpu_arch = .aarch64, .os_tag = .ios, .abi = .simulator, .os_version_min = ios15 }));
-    lipo.addFileArg(lib(b, avro, .{ .cpu_arch = .x86_64, .os_tag = .ios, .abi = .simulator, .os_version_min = ios15 }));
+    lipo.addFileArg(lib(b, avro, .{ .cpu_arch = .aarch64, .os_tag = .ios, .abi = .simulator, .os_version_min = ios_min }));
+    lipo.addFileArg(lib(b, avro, .{ .cpu_arch = .x86_64, .os_tag = .ios, .abi = .simulator, .os_version_min = ios_min }));
     lipo.addArg("-output");
     const simulator = lipo.addOutputFileArg("libbyakaron.a");
     for ([_]std.Build.LazyPath{ device, simulator }) |path| {
@@ -1640,11 +1769,10 @@ fn addIos(b: *std.Build, avro: AvroData, locale: LocaleStrings) void {
     }
     const out = xcf_dir.path(b, "Byakaron.xcframework");
     step.dependOn(&b.addInstallDirectory(.{ .source_dir = out, .install_dir = .lib, .install_subdir = "ios/Byakaron.xcframework" }).step);
-    b.step("ios-libs", "Build the iOS engine → zig-out/lib/ios/Byakaron.xcframework").dependOn(step);
 
     // The app's Settings.bundle, from the settings manifest
     // (src/build/settings_bundle.zig). Committed in the submodule, so Xcode
-    // alone builds the app; `ios`, `ios-libs` and `ios-settings` refresh it.
+    // alone builds the app; `ios` and `gen -- ios-settings` refresh it.
     const settings_gen = hostExe(b, "settings_bundle", "src/build/settings_bundle.zig");
     settings_gen.root_module.addImport("settings", b.createModule(.{
         .root_source_file = b.path("src/settings.zig"),
@@ -1656,18 +1784,28 @@ fn addIos(b: *std.Build, avro: AvroData, locale: LocaleStrings) void {
     for ([_][]const u8{ "Root.plist", "en.lproj/Root.strings", "bn.lproj/Root.strings" }) |file| {
         settings_bundle.addCopyFileToSource(settings_dir.path(b, file), b.fmt("apps/ios/keyboard/HostingApp/Settings.bundle/{s}", .{file}));
     }
-    b.step("ios-settings", "Regenerate the iOS app's Settings.bundle from the settings manifest").dependOn(&settings_bundle.step);
+    cli.gen.add(b, "ios-settings", "The iOS app's Settings.bundle from the settings manifest").dependOn(&settings_bundle.step);
+
+    // The emoji picker's list (Keyboard/Models/EmojiData.swift) from Unicode's
+    // emoji-test.txt, which the Android keyboard's checkout carries.
+    {
+        const run = b.addRunArtifact(hostExe(b, "ios_emoji", "src/build/ios_emoji.zig"));
+        run.addFileArg(b.path("apps/android/keyboard/tools/make-emoji-keys/src/main/resources/emoji/ucd/17.0/emoji-test.txt"));
+        const update = b.addUpdateSourceFiles();
+        update.addCopyFileToSource(run.addOutputFileArg("EmojiData.swift"), "apps/ios/keyboard/Keyboard/Models/EmojiData.swift");
+        cli.gen.add(b, "ios-emoji", "The iOS emoji picker's EmojiData.swift from Unicode's emoji-test.txt").dependOn(&update.step);
+    }
 
     const keyboard = rootPath(b, "apps/ios/keyboard");
-    std.Io.Dir.cwd().access(b.graph.io, b.pathJoin(&.{ keyboard, "GiellaKeyboard.xcworkspace" }), .{}) catch {
-        ios.dependOn(&b.addFail("apps/ios/keyboard is not checked out: git submodule update --init apps/ios/keyboard").step);
+    const missing: ?[]const u8 = if (std.Io.Dir.cwd().access(b.graph.io, b.pathJoin(&.{ keyboard, "GiellaKeyboard.xcworkspace" }), .{})) |_|
+        if (std.Io.Dir.cwd().access(b.graph.io, b.pathJoin(&.{ keyboard, "Pods/Manifest.lock" }), .{})) |_| null else |_| "CocoaPods are not installed: run `pod install` in apps/ios/keyboard"
+    else |_|
+        "apps/ios/keyboard is not checked out: git submodule update --init apps/ios/keyboard";
+    if (missing) |why| {
+        for ([_]*std.Build.Step{ ios, dev, e2e }) |s| s.dependOn(&b.addFail(why).step);
         return;
-    };
+    }
     step.dependOn(&settings_bundle.step);
-    std.Io.Dir.cwd().access(b.graph.io, b.pathJoin(&.{ keyboard, "Pods/Manifest.lock" }), .{}) catch {
-        ios.dependOn(&b.addFail("CocoaPods are not installed: run `pod install` in apps/ios/keyboard").step);
-        return;
-    };
     // The app embeds the keyboard extension. Unsigned simulator build; Xcode
     // tracks its own inputs, so it always runs.
     const xcb = b.addSystemCommand(&.{
@@ -1684,17 +1822,43 @@ fn addIos(b: *std.Build, avro: AvroData, locale: LocaleStrings) void {
     xcb.addArg(keyboard);
     xcb.has_side_effects = true;
     xcb.step.dependOn(step);
-    ios.dependOn(&b.addInstallDirectory(.{ .source_dir = app_out, .install_dir = .prefix, .install_subdir = "pkg" }).step);
+    const install_app = b.addInstallDirectory(.{ .source_dir = app_out, .install_dir = .prefix, .install_subdir = "bin" });
+    ios.dependOn(&install_app.step);
+
+    // Onto the booted simulator (Simulator.app opens one if none is).
+    const launch = b.addSystemCommand(&.{ "sh", "-c",
+        \\app=$1
+        \\xcrun simctl list devices booted | grep -q Booted || { echo "no booted simulator: open Simulator.app (or xcrun simctl boot <device>)"; exit 1; }
+        \\id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
+        \\xcrun simctl install booted "$app" && xcrun simctl launch booted "$id"
+        , "sh" });
+    launch.addDirectoryArg(b.graph.path(.install_prefix, "bin/Byakaron-ios.app"));
+    launch.has_side_effects = true;
+    launch.step.dependOn(&install_app.step);
+    dev.dependOn(&launch.step);
+
+    // The tool builds the app and its UI tests itself (xcodebuild
+    // build-for-testing, or --products from an earlier build).
+    const e2e_run = b.addRunArtifact(hostExe(b, "ios_e2e", "src/build/ios_e2e.zig"));
+    e2e_run.addArg(keyboard);
+    e2e_run.addPassthruArgs();
+    e2e_run.has_side_effects = true;
+    e2e_run.step.dependOn(step);
+    e2e.dependOn(&e2e_run.step);
 }
 
-fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath, locale: LocaleStrings) void {
-    // Not a named step: `android`, `install-android` and `release-android` run it.
-    // Builds libbyakaron.so for every ABI → zig-out/lib/android/jniLibs + the keyboard's jniLibs.
+/// Android keyboard (apps/android/keyboard, the byakaron-android submodule):
+///   zig build android          → zig-out/bin/Byakaron-debug.apk
+///   zig build dev -- android   → install it on the connected device and open it
+///   zig build pack -- android  → release build with Byakaron.db → zig-out/pkg/Byakaron.apk + Byakaron.aab
+fn addAndroid(b: *std.Build, cli: *Cli, avro: AvroData, spell_db: std.Build.LazyPath, locale: LocaleStrings) void {
+    // Not a named step: the app steps below run it. Builds libbyakaron.so for
+    // every ABI → zig-out/lib/android/jniLibs + the keyboard's jniLibs.
     const step = &b.addWriteFiles().step;
     const app_steps = [_]*std.Build.Step{
-        b.step("android", "Build the Android keyboard (debug) → zig-out/pkg/Byakaron-debug.apk"),
-        b.step("install-android", "Build the Android keyboard (debug) and install it on the connected device"),
-        b.step("release-android", "Release build with Byakaron.db → zig-out/pkg/Byakaron.apk + Byakaron.aab"),
+        b.step("android", "Build the Android keyboard (debug) → zig-out/bin/Byakaron-debug.apk"),
+        cli.dev.add(b, "android", "Install the debug keyboard on the connected device and open it"),
+        cli.pack.add(b, "android", "Release build with Byakaron.db → zig-out/pkg/Byakaron.apk + Byakaron.aab"),
     };
     for (app_steps) |s| s.dependOn(step);
     // The shared labels as R.string.byakaron_* (used for the settings the Zig
@@ -1783,9 +1947,18 @@ fn addAndroid(b: *std.Build, avro: AvroData, spell_db: std.Build.LazyPath, local
     const debug = gradle(b, gradle_exe, keyboard, ":app:assembleDebug", step);
     debug.addArg(b.pathJoin(&.{ keyboard, "app/build/outputs/apk/debug" }));
     const debug_apk = debug.addOutputFileArg("Byakaron-debug.apk");
-    app_steps[0].dependOn(&b.addInstallFileWithDir(debug_apk, .prefix, "pkg/Byakaron-debug.apk").step);
+    app_steps[0].dependOn(&b.addInstallFileWithDir(debug_apk, .prefix, "bin/Byakaron-debug.apk").step);
 
-    app_steps[1].dependOn(&gradle(b, gradle_exe, keyboard, ":app:installDebug", step).step);
+    // installDebug, then open the app (its settings) on the device.
+    const install = gradle(b, gradle_exe, keyboard, ":app:installDebug", step);
+    const open = b.addSystemCommand(&.{ "sh", "-c",
+        \\adb=adb; [ -n "${ANDROID_HOME:-}" ] && [ -x "$ANDROID_HOME/platform-tools/adb" ] && adb="$ANDROID_HOME/platform-tools/adb"
+        \\"$adb" shell monkey -p com.nuhulabs.byakaron.debug -c android.intent.category.LAUNCHER 1 >/dev/null
+        , "sh" });
+    if (b.graph.environ_map.get("ANDROID_HOME") == null) if (androidSdk(b)) |sdk| open.setEnvironmentVariable("ANDROID_HOME", sdk);
+    open.has_side_effects = true;
+    open.step.dependOn(&install.step);
+    app_steps[1].dependOn(&open.step);
 
     const assets = b.addUpdateSourceFiles();
     assets.addCopyFileToSource(spell_db, "apps/android/keyboard/app/src/main/assets/byakaron/Byakaron.db");
@@ -1870,7 +2043,7 @@ fn addSpellDb(
     host_sql: *std.Build.Module,
     avro_words: std.Build.LazyPath,
 ) struct { db: std.Build.LazyPath, debug_db: std.Build.LazyPath } {
-    const wiki_date = b.option([]const u8, "wiki-date", "bnwiki dump date for `db` (YYYYMMDD)") orelse "20261001";
+    const wiki_date = b.option([]const u8, "wiki-date", "bnwiki dump date for `gen -- db` (YYYYMMDD)") orelse "20261001";
     const wiki_dump = b.option(std.Build.LazyPath, "wiki-dump", "Use a local bnwiki pages-articles .xml/.xml.bz2 instead of downloading");
 
     const host = b.graph.host;

@@ -10,7 +10,7 @@
  * session X11 / Xvfb path is the one that actually proves IM-module typing.
  * text-input-v3 on nested mutter is covered by wayland_probe.
  *
- * Built by `zig build linux-wayland`; run by `zig build linux-ci`.
+ * Built by `zig build e2e -- linux`; run by `zig build e2e -- linux`.
  */
 #include <gtk/gtk.h>
 #include <locale.h>

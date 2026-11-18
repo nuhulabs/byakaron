@@ -11,7 +11,7 @@
         .iavro = .{
             .url = "git+https://github.com/omicronlab/iAvro#107a73283ac34a33faf7f6799c2e9dbfa97e6643",
             .hash = "N-V-__8AALYhYQDtIQyQAYx98bu1pIeFMR-umdg3eAs6Yd2k",
-            // Only for `zig build grammars -Diavro` / `zig build test -Diavro`.
+            // Only for `zig build gen -- grammars -Diavro` / `zig build test -Diavro`.
             .lazy = true,
         },
         .bzip2 = .{

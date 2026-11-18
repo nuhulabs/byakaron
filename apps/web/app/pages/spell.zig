@@ -1,8 +1,8 @@
 //! Thin web façade over byakaron `src/` spell + autocomplete backends.
 //!
 //! Storage is the app database `zx.db`: Cloudflare D1 on the Workers build
-//! (Byakaron.db as migrations from `zig build d1`), and natively
-//! `<install prefix>/db/Byakaron.db` (built by `zig build db`) opened read-only by
+//! (Byakaron.db as migrations from `zig build gen -- d1`), and natively
+//! `<install prefix>/db/Byakaron.db` (built by `zig build gen -- db`) opened read-only by
 //! main.zig. Backends are process-static (no heap) so hot-reload doesn't trip
 //! leak checks.
 
@@ -34,7 +34,7 @@ pub fn openLocalDb() !void {
     const root: []const u8 = if (std.c.getenv("ZIEX_ROOT_DIR")) |r| std.mem.span(r) else "zig-out";
     const path = try std.fs.path.join(allocator, &.{ root, "db", "Byakaron.db" });
     std.Io.Dir.cwd().access(zx.Io.default(), path, .{}) catch {
-        std.log.warn("byakaron: no {s}; spell check is off (run `zig build db`)", .{path});
+        std.log.warn("byakaron: no {s}; spell check is off (run `zig build gen -- db`)", .{path});
         return;
     };
     zx.db = zx.Db.Sqlite.open(allocator, zx.Io.default(), path, .{
@@ -44,7 +44,7 @@ pub fn openLocalDb() !void {
         // connection rejects; one serialized connection is plenty here.
         .max_pool_size = 1,
     }) catch |err| {
-        std.log.err("byakaron: cannot open {s} ({t}); run `zig build db`", .{ path, err });
+        std.log.err("byakaron: cannot open {s} ({t}); run `zig build gen -- db`", .{ path, err });
         return err;
     };
 }

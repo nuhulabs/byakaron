@@ -45,11 +45,11 @@ For a real release:
 
    | Asset | Built by |
    | --- | --- |
-   | `byakaron_amd64.deb`, `byakaron_arm64.deb` | `zig build package-linux` (renamed at publish) |
-   | `byakaron_x86_64.pkg.tar.zst` (Arch Linux) | `zig build package-linux-arch` (renamed at publish) |
-   | `Byakaron.dmg` | `zig build release-macos` |
+   | `byakaron_amd64.deb`, `byakaron_arm64.deb` | `zig build pack -- linux` (renamed at publish) |
+   | `byakaron_x86_64.pkg.tar.zst` (Arch Linux) | `zig build pack -- linux-arch` (renamed at publish) |
+   | `Byakaron.dmg` | `zig build pack -- macos` |
    | `Byakaron-Setup.exe` | `zig build windows` |
-   | `Byakaron.apk`, `Byakaron.aab` | `zig build release-android` |
+   | `Byakaron.apk`, `Byakaron.aab` | `zig build pack -- android` |
    | `SHA256SUMS` | the `publish` job |
 
    - **byakaron** (this repo) gets the same tag as a notes-only GitHub Release.

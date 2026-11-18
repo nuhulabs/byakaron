@@ -7,7 +7,7 @@
  * through the same glue the IBus engine and Fcitx5 addon use (X11 keysyms ->
  * byk_keysym_to_key -> byakaron_composer_key), to prove the shell wiring.
  *
- * Build and run with: zig build linux-smoke
+ * Build and run with: zig build e2e -- linux
  */
 #include <stdio.h>
 #include <string.h>
@@ -224,7 +224,7 @@ int main(void)
             /* Typing and candidates do not need the file; CI never ships the
              * 364 MB database. Skip rather than fail so a fresh checkout still
              * goes green. */
-            puts("  skip Byakaron.db not present (zig build db)");
+            puts("  skip Byakaron.db not present (zig build gen -- db)");
         } else {
             g_free(db_path);
             BykSpell *spell = byk_spell_new(NULL);

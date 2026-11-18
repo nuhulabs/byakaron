@@ -6,7 +6,7 @@
 //! table per Latin onset — `A`, `BH`, `Khandatta`, … — with a `Words` column,
 //! plus `Suffix`) and the autocorrect list `autodict.dct`. Output is a `Lexicon`
 //! (see `AutoComplete/Lexicon.zig`), imported at compile time by
-//! `AutoComplete/Mem.zig`. Run through `zig build grammars -Diavro`;
+//! `AutoComplete/Mem.zig`. Run through `zig build gen -- grammars -Diavro`;
 //! `lexicon_files.zig` derives the word list and Dictionary.json from it.
 
 const std = @import("std");

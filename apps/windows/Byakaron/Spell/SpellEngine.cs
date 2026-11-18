@@ -34,7 +34,7 @@ public sealed class SpellEngine : IDisposable
     }
 
     /// <summary>
-    /// Open bundled <c>native/Byakaron.db</c> next to the app (staged by <c>zig build run-win</c> / <c>package-windows</c>).
+    /// Open bundled <c>native/Byakaron.db</c> next to the app (staged by <c>zig build dev -- windows</c> / <c>zig build pack -- windows</c>).
     /// Returns null if the file is missing or the engine fails to open.
     /// </summary>
     public static SpellEngine? LoadFromAppDirectory()

@@ -1,5 +1,5 @@
 # prepare: Byakaron.db only. Used by release.
-# D1 migrations (zig build d1 + wrangler apply) are run locally when the DB changes.
+# D1 migrations (zig build gen -- d1 + wrangler apply) are run locally when the DB changes.
 name: prepare
 
 on:
@@ -33,7 +33,7 @@ jobs:
         run: |
           sudo mkdir -p /mnt/zig-cache
           sudo chown "$USER" /mnt/zig-cache
-          zig build db --cache-dir /mnt/zig-cache
+          zig build gen --cache-dir /mnt/zig-cache -- db
           ls -lh zig-out/db/Byakaron.db
 
       - uses: actions/upload-artifact@v4
