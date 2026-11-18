@@ -91,7 +91,7 @@ byk_prefs_add_panel_extension (void)
     /* Two because GNOME 45 changed what extension.js is; Shell runs the one
      * that lists its version and skips the other. */
     static const gchar *const uuids[] = {
-        "byakaron-panel@nuhulabs.com", "byakaron-panel-legacy@nuhulabs.com", NULL
+        "byakaron-panel@byakaron.com", "byakaron-panel-legacy@byakaron.com", NULL
     };
     GSettings *shell = g_settings_new ("org.gnome.shell");
     gchar **enabled = g_settings_get_strv (shell, "enabled-extensions");

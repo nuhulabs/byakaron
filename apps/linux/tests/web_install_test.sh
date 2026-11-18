@@ -1,5 +1,6 @@
 #!/bin/bash
-# Checks what the website installer decides on different computers, without
+# Checks what the website installer (apps/web/app/public/install.sh, served
+# as https://byakaron.com/install.sh) decides on different computers, without
 # installing anything: fake uname / dpkg / apt-get / pacman on a PATH of their
 # own, a fake /etc/os-release, and a download URL that does not exist, so a
 # supported system stops right after detection with "could not download".
@@ -8,17 +9,10 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-SRC="$(cd "$HERE/.." && pwd)/web_install.sh"
+SRC="$(cd "$HERE/../../.." && pwd)/apps/web/app/public/install.sh"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-
-# The website serves one installer under three names (install.sh, plus the
-# per-CPU names older links used); copy it the same way here.
-mkdir -p "$WORK/site"
-cp "$SRC" "$WORK/site/install.sh"
-for name in install-amd64.sh install-arm64.sh; do
-    cp "$SRC" "$WORK/site/$name"
-done
+[[ -f "$SRC" ]] || { echo "missing $SRC"; exit 1; }
 
 failures=0
 
@@ -63,7 +57,8 @@ check() {
     out="$(PATH="$dir/bin" BYAKARON_OS_RELEASE="$dir/os-release" \
            BYAKARON_DEB_URL="file://$WORK/missing.deb" \
            BYAKARON_PKG_URL="file://$WORK/missing.pkg.tar.zst" \
-           "$dir/bin/bash" "$WORK/site/$script" 2>&1 || true)"
+           BYAKARON_DMG_URL="file://$WORK/missing.dmg" \
+           "$dir/bin/bash" "$SRC" 2>&1 || true)"
     if [[ "$out" == *"$expect"* ]]; then
         printf '  ok   %-30s -> %s\n' "$label" "$(printf '%s' "$out" | grep -m1 -E 'Detected|error' )"
     else
@@ -81,10 +76,6 @@ check "ubuntu-26.04-amd64"   install.sh       Linux  x86_64  amd64 "Ubuntu 26.04
       "Detected: Ubuntu 26.04.1 LTS, Intel/AMD 64-bit (amd64)"
 check "pi-os-trixie-64bit"   install.sh       Linux  aarch64 arm64 "Debian GNU/Linux 13 (trixie)" \
       "Detected: Debian GNU/Linux 13 (trixie), ARM 64-bit (arm64)"
-check "old-arm-link-on-amd"  install-arm64.sh Linux  x86_64  amd64 "Ubuntu 22.04.4 LTS" \
-      "Detected: Ubuntu 22.04.4 LTS, Intel/AMD 64-bit (amd64)"
-check "old-amd-link-on-arm"  install-amd64.sh Linux  aarch64 arm64 "Ubuntu 24.04.1 LTS" \
-      "Detected: Ubuntu 24.04.1 LTS, ARM 64-bit (arm64)"
 check "supported-reaches-download" install.sh Linux  aarch64 arm64 "Ubuntu 22.04.4 LTS" \
       "could not download"
 check "pi-os-32bit-on-64bit-pi" install.sh    Linux  aarch64 armhf "Raspbian GNU/Linux 12 (bookworm)" \
@@ -99,8 +90,6 @@ check "manjaro"              install.sh       Linux  x86_64  pacman:manjaro:arch
       "Detected: Manjaro Linux, Intel/AMD 64-bit (x86_64)"
 check "endeavouros"          install.sh       Linux  x86_64  pacman:endeavouros:arch "EndeavourOS" \
       "Detected: EndeavourOS, Intel/AMD 64-bit (x86_64)"
-check "arch-old-amd-link"    install-amd64.sh Linux  x86_64  pacman:arch: "Arch Linux" \
-      "Detected: Arch Linux, Intel/AMD 64-bit (x86_64)"
 check "arch-reaches-download" install.sh      Linux  x86_64  pacman:arch: "Arch Linux" \
       "could not download"
 check "arch-linux-arm"       install.sh       Linux  aarch64 pacman:archarm:arch "Arch Linux ARM" \
@@ -109,8 +98,8 @@ check "fedora"               install.sh       Linux  x86_64  ""    "Fedora Linux
       "Byakaron is packaged for Ubuntu, Debian and Arch Linux (apt or pacman). This is Fedora Linux 40 (Workstation Edition)."
 check "pacman-but-not-arch"  install.sh       Linux  x86_64  pacman:fedora: "Fedora Linux 40 (Workstation Edition)" \
       "This is Fedora Linux 40 (Workstation Edition)."
-check "mac"                  install.sh       Darwin arm64   ""    "macOS" \
-      "For a Mac: curl -fsSL https://byakaron.com/install.sh | bash"
+check "mac-reaches-download" install.sh       Darwin arm64   ""    "macOS" \
+      "could not download file://$WORK/missing.dmg"
 
 # Where the package comes from, against a fake Byakaron-Assets on file:// URLs:
 # latest/, or the newest prerelease while there is no latest, and the
@@ -154,33 +143,15 @@ download() {
     fi
 }
 
-# The public command runs apps/web/app/public/install.sh (Linux + macOS);
-# the per-CPU links run apps/linux/web_install.sh. Both share this logic.
-PUBLIC="$(cd "$HERE/../../.." && pwd)/apps/web/app/public/install.sh"
 echo
 echo "where the package comes from:"
-for installer in "$SRC" "$PUBLIC"; do
-    [[ -f "$installer" ]] || { echo "  FAIL missing $installer"; failures=$((failures + 1)); continue; }
-    for kind in deb arch; do
-        tag="$(basename "$(dirname "$installer")")-$kind"
-        download "$tag-latest"      "$installer" latest  "checksum OK" "$kind"
-        download "$tag-preview"     "$installer" preview "no stable release yet: installing the newest preview build" "$kind"
-        download "$tag-preview-sum" "$installer" preview "checksum OK" "$kind"
-        download "$tag-damaged"     "$installer" damaged "does not match SHA256SUMS" "$kind"
-        download "$tag-none"        "$installer" none    "no release has it yet" "$kind"
-    done
+for kind in deb arch; do
+    download "$kind-latest"      "$SRC" latest  "checksum OK" "$kind"
+    download "$kind-preview"     "$SRC" preview "no stable release yet: installing the newest preview build" "$kind"
+    download "$kind-preview-sum" "$SRC" preview "checksum OK" "$kind"
+    download "$kind-damaged"     "$SRC" damaged "does not match SHA256SUMS" "$kind"
+    download "$kind-none"        "$SRC" none    "no release has it yet" "$kind"
 done
-
-# Both installers must run the same Linux code.
-echo
-echo "the two installers:"
-linux_part() { sed -n '/^# One command for every Linux/,/^\(install_macos() {\|command -v curl\)/p' "$1" | sed '$d'; }
-if [[ -n "$(linux_part "$SRC")" ]] && diff <(linux_part "$SRC") <(linux_part "$PUBLIC") >/dev/null; then
-    echo "  ok   same Linux code in web_install.sh and install.sh"
-else
-    echo "  FAIL the Linux code of web_install.sh and install.sh differs"
-    failures=$((failures + 1))
-fi
 
 echo
 if [[ $failures -gt 0 ]]; then

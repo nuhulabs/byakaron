@@ -1,5 +1,5 @@
 //! Privacy policy at /policy (the Google Play listing links here). The text
-//! lives in `body.md`; it moved here from nuhulabs.com/byakaron/policy.
+//! lives in `body.md`.
 
 const zx = @import("zx");
 const Body = @import("body.md");

@@ -1,7 +1,7 @@
 {
-  "uuid": "byakaron-panel-legacy@nuhulabs.com",
+  "uuid": "byakaron-panel@byakaron.com",
   "name": "Byakaron suggestion panel",
   "description": "The compact pill look for the input method suggestion popup.",
   "url": "https://byakaron.com",
-  "shell-version": ["3.36", "3.38", "40", "41", "42", "43", "44"]
+  "shell-version": ["45", "46", "47", "48", "49", "50", "51", "52"]
 }

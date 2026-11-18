@@ -564,17 +564,13 @@ had its own numbering, and without the epoch apt refuses the shared 0.1.x over
 
 The public command, `curl -fsSL https://byakaron.com/install.sh | bash`,
 is served by the website (`apps/web`) from `apps/web/app/public/install.sh`
-(Linux + macOS), so it ships with every web deploy. The per-CPU
-`install-amd64.sh` / `install-arm64.sh` (links shared earlier, before the
-site moved to byakaron.com) are `apps/linux/web_install.sh` and stay on the
-nuhulabs.com repo (`app/public/byakaron/`): copy it there when it changes.
-They read `/etc/os-release` and download `byakaron_<arch>.deb` (apt) or
+(Linux + macOS), so it ships with every web deploy.
+It reads `/etc/os-release` and downloads `byakaron_<arch>.deb` (apt) or
 `byakaron_x86_64.pkg.tar.zst` (pacman, `ID`/`ID_LIKE` arch) from the latest
-release, so a release needs no copy; the copies of 22/10 still asked for `byakaron_<version>_<arch>.deb` and
-failed for everyone from 0.1.0 (26/10) on. `release.yml` now runs the public
-command after each release. `bash apps/linux/tests/web_install_test.sh` checks
-what the installer decides on different systems, and that both installers run
-the same Linux code.
+release (or the newest prerelease while there is none), checked against its
+`SHA256SUMS`, so a release needs no change to it.
+`bash apps/linux/tests/web_install_test.sh` checks what the installer decides
+on different systems and where the package comes from.
 
 ## Fcitx5 (optional)
 
@@ -634,17 +630,14 @@ releases as the keyboard.
 ### Installing on Ubuntu
 
 One command installs the keyboard, the GTK app, and spell-check. It detects
-the computer's processor; the per-CPU scripts from before still work:
+the computer's processor:
 
 ```bash
-curl -fsSL https://byakaron.com/install.sh | sudo bash                   # detects the CPU
-curl -fsSL https://nuhulabs.com/byakaron/install-amd64.sh | sudo bash   # older link: Intel / AMD
-curl -fsSL https://nuhulabs.com/byakaron/install-arm64.sh | sudo bash   # older link: ARM
+curl -fsSL https://byakaron.com/install.sh | sudo bash
 ```
 
-Each per-CPU script stops with the right command if run on the other kind of
-computer. They download the `.deb` from the public
-[nuhulabs/byakaron](https://github.com/nuhulabs/byakaron/releases)
+It downloads the `.deb` from the public
+[nuhulabs/Byakaron-Assets](https://github.com/nuhulabs/Byakaron-Assets/releases)
 releases and runs `apt`. Then **add the input source** (installing the package
 is not enough): Settings → Keyboard → Input Sources → **+** → **Bangla** →
 **Byakaron (Bangla Phonetic)** → Add. Switch with Super+Space.

@@ -639,7 +639,7 @@ const datadir = "/usr/share/byakaron";
 const schemadir = "/usr/share/glib-2.0/schemas";
 const shell_extension_dir = "usr/share/gnome-shell/extensions";
 /// See byk_prefs_add_panel_extension for why there are two.
-const panel_extensions = [_][]const u8{ "byakaron-panel@nuhulabs.com", "byakaron-panel-legacy@nuhulabs.com" };
+const panel_extensions = [_][]const u8{ "byakaron-panel@byakaron.com", "byakaron-panel-legacy@byakaron.com" };
 
 /// The compact suggestion panel on GNOME: Shell draws that popup itself, and an
 /// extension's stylesheet is the one way to restyle it. `root` is the package
