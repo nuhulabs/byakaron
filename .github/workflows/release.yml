@@ -2,18 +2,21 @@
 #
 #   prepare         version + Byakaron.db
 #   pack-<os>       linux, macos, windows, android: one job each, packing
-#                   every CPU arch it ships with `zig build pack`
+#                   every CPU arch it ships with `zig build pack`;
+#                   ios: placeholder; web: the Worker bundle + static site
 #   publish-<dest>  each waits only for what it ships:
-#                     github   every pack (tag, Byakaron-Assets, notes)
+#                     github   every binary pack (tag, Byakaron-Assets, notes)
 #                     android  pack-android (Google Play)
-#                     ios      placeholder (App Store)
-#                     web      publish-github (the site links to latest)
+#                     ios      pack-ios (App Store, placeholder)
+#                     web      pack-web + publish-github (the site links to latest)
 #
 # Artifacts on nuhulabs/Byakaron-Assets (stable names → /releases/latest/download/…):
 #   pack linux    → byakaron_{amd64,arm64}.deb, byakaron_x86_64.pkg.tar.zst (Arch)
 #   pack macos    → Byakaron.dmg
 #   pack windows  → Byakaron-Setup.exe
 #   pack android  → Byakaron.apk + Byakaron.aab (the .aab also goes to Google Play)
+#   pack ios      → nothing yet (App Store only, never on Assets)
+#   pack web      → nothing (Cloudflare Workers, never on Assets)
 #
 # Local `zig build pack -- linux` writes byakaron_<ver>_<arch>.deb (and
 # `pack -- linux-arch` byakaron-<ver>-1-x86_64.pkg.tar.zst); publish renames
@@ -417,6 +420,68 @@ jobs:
             zig-out/pkg/mapping.txt
           if-no-files-found: error
 
+  # App Store: not set up yet. `zig build ios` only builds an unsigned
+  # simulator app; a signed archive (.ipa) needs an Xcode archive/export step
+  # and the Apple distribution certificate + provisioning profile. Until then
+  # this keeps the pack -> publish shape in place.
+  pack-ios:
+    name: pack (ios)
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: placeholder
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: echo "::notice::iOS packing is not set up yet; no .ipa for $VERSION"
+
+  # The website: the Worker bundle (wrangler.jsonc's custom build, bundled
+  # by a wrangler dry run) and the prerendered static site, plus a deploy
+  # config without the build step, so publish-web ships exactly this build
+  # with no Zig.
+  pack-web:
+    name: pack (web)
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pack-setup
+        with:
+          version: ${{ needs.prepare.outputs.version }}
+          zig-version: ${{ env.ZIG_VERSION }}
+
+      - name: pack
+        working-directory: apps/web
+        run: |
+          out="$GITHUB_WORKSPACE/zig-out/web"
+          npx --yes wrangler@4.100.0 deploy --dry-run --outdir "$out/worker"
+          rm -f "$out/worker/README.md"
+          cp -R ../../zig-out/static "$out/static"
+          # wrangler.jsonc minus the build: the bundle is already built.
+          # shellcheck disable=SC2016
+          node -e '
+            const fs = require("fs");
+            const [src, dst] = process.argv.slice(1);
+            const c = new Function("return (" + fs.readFileSync(src, "utf8") + ")")();
+            delete c.build;
+            delete c["$schema"];
+            c.main = "worker/main.js";
+            c.no_bundle = true;
+            c.rules = [{ type: "CompiledWasm", globs: ["**/*.wasm"] }];
+            c.assets.directory = "static";
+            for (const d of c.d1_databases || []) delete d.migrations_dir;
+            fs.writeFileSync(dst, JSON.stringify(c, null, 2) + "\n");
+          ' wrangler.jsonc "$out/wrangler.json"
+          cat "$out/wrangler.json"
+          find "$out" -type f -not -path '*/static/*' -exec ls -l {} +
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: zig-out/web
+          if-no-files-found: error
+
   # ── publish ────────────────────────────────────────────────────────────────
   # One job per destination, each waiting only for the packs it ships.
 
@@ -577,11 +642,11 @@ jobs:
           status: completed
           mappingFile: ${{ env.mapping }}
 
-  # App Store: not set up yet. Will need a pack-ios job.
+  # App Store: not set up yet (see pack-ios).
   publish-ios:
     name: publish (ios)
     if: needs.prepare.outputs.publish == 'true'
-    needs: prepare
+    needs: [prepare, pack-ios]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -590,29 +655,30 @@ jobs:
           TAG: ${{ needs.prepare.outputs.tag }}
         run: echo "::notice::App Store publishing is not set up yet; nothing to do for $TAG"
 
-  # The website (and the install.sh it serves), after the binaries are on
-  # Byakaron-Assets, since its download links and installer pull latest.
+  # The website (and the install.sh it serves), from pack-web's bundle, after
+  # the binaries are on Byakaron-Assets, since its download links and
+  # installer pull latest. It runs only when publish-github did (dry runs skip
+  # it), so it needs nothing else.
   # D1 migrations stay local:
   #   zig build gen -Dspell-db=zig-out/db/Byakaron.db -- d1
   #   cd apps/web && npx wrangler d1 migrations apply DB --remote
   publish-web:
     name: publish (web)
-    if: needs.prepare.outputs.publish == 'true'
-    needs: [prepare, publish-github]
+    needs: [publish-github, pack-web]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     environment: byakaron-web
     concurrency:
       group: deploy-web
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      # wrangler.jsonc runs `zig build zx …` as a custom build before deploy.
-      - uses: mlugg/setup-zig@v2
+      - uses: actions/download-artifact@v4
         with:
-          version: ${{ env.ZIG_VERSION }}
+          name: web
+          path: web
+
       - name: deploy
-        working-directory: apps/web
+        working-directory: web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -621,4 +687,4 @@ jobs:
             echo "::warning::CLOUDFLARE_API_TOKEN unset; skip deploy"
             exit 0
           fi
-          npx --yes wrangler@4.100.0 deploy
+          npx --yes wrangler@4.100.0 deploy --config wrangler.json
