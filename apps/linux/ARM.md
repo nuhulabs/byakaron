@@ -85,7 +85,7 @@ headers and libraries it compiles against (a pinned Ubuntu sysroot).
 
 ## 3. Zig for aarch64
 
-Use Zig **0.17.0** (pinned in `.tool-versions`), the **aarch64** tarball:
+Use Zig **0.17.0** (`minimum_zig_version` in `build.zig.zon`), the **aarch64** tarball:
 
 ```bash
 mkdir -p ~/.local/bin

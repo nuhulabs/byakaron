@@ -90,7 +90,7 @@ jobs:
           zon=$(sed -n 's/^[[:space:]]*\.version = "\([^"]*\)".*/\1/p' build.zig.zon | head -1)
           [[ -n "$zon" ]] || { echo "::error::no .version in build.zig.zon"; exit 1; }
 
-          # A release version must be build.zig.zon's (bump it first, RELEASING.md):
+          # A release version must be build.zig.zon's (bump it first):
           # the zon version itself, a -suffix of it (0.3.0-rc.1), or, when the
           # zon version is a prerelease (27.0.0-dev), a .N build of it. A
           # mismatch used to publish anyway: v0.1.1 and v0.1.2 shipped .debs
@@ -123,7 +123,7 @@ jobs:
           fi
 
           matches "$version" || {
-            echo "::error::version $version does not match build.zig.zon ($zon): bump the versions first (RELEASING.md)"
+            echo "::error::version $version does not match build.zig.zon ($zon): bump the versions first"
             exit 1
           }
           tag="v${version}"
@@ -546,10 +546,12 @@ jobs:
           echo "https://github.com/$SOURCE_REPO/releases/tag/$TAG"
 
       # ── android: the .aab to Google Play ──
-      # PLAY_STORE_JSON_KEY (byakaron-android environment) is a service account
-      # key from the Google Cloud project linked to Play Console; the account
-      # can release to testing tracks only (RELEASING.md). The build rolls out
-      # to the track's testers at once.
+      # PLAY_STORE_JSON_KEY (byakaron-android environment) is the JSON key of
+      # play-publisher@byakaron.iam.gserviceaccount.com (Cloud project
+      # byakaron, Google Play Android Developer API on), which Play Console
+      # lets view Byakaron Keyboard and release it to testing tracks only, so
+      # production stays manual. The build rolls out to the track's testers
+      # at once. Uploads by hand need a versionCode above CI's (see pack).
       - uses: actions/download-artifact@v4
         if: matrix.target == 'android'
         with:

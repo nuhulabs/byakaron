@@ -3,7 +3,7 @@
 A native Bangla keyboard for every major OS, built on one shared Zig engine
 (transliteration, tokenization, spell check, autocomplete).
 
-Requires Zig **0.17.0** (pinned in `.tool-versions`).
+Requires Zig **0.17.0** (`minimum_zig_version` in `build.zig.zon`).
 
 ## Layout
 

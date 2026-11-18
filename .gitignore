@@ -29,7 +29,6 @@ xcuserdata/
 # Local
 .env
 .env.*
-!.env*.example
 !*.example
 .DS_Store
 .idea

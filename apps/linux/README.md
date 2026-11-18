@@ -96,7 +96,7 @@ through pkg-config instead.
 
 ### 2. Zig
 
-Use Zig **0.17.0**, pinned in the repository's `.tool-versions`
+Use Zig **0.17.0**, the repository's `minimum_zig_version` in `build.zig.zon`
 (<https://ziglang.org/download/>). On **ARM64** (Raspberry Pi / Ubuntu
 `aarch64`), see [ARM.md](ARM.md).
 
@@ -566,7 +566,7 @@ The public command, `curl -fsSL https://nuhulabs.com/byakaron/install.sh | bash`
 is served by the nuhulabs.com repo from copies in `app/public/byakaron/`:
 `install.sh` is `apps/web/app/public/install.sh` (Linux + macOS), and
 `install-amd64.sh` / `install-arm64.sh` (links shared earlier) are
-`apps/linux/web_install.sh`. Copy them there when they change (RELEASING.md).
+`apps/linux/web_install.sh`. Copy them there when they change.
 They read `/etc/os-release` and download `byakaron_<arch>.deb` (apt) or
 `byakaron_x86_64.pkg.tar.zst` (pacman, `ID`/`ID_LIKE` arch) from the latest
 release, so a release needs no copy; the copies of 22/10 still asked for `byakaron_<version>_<arch>.deb` and
