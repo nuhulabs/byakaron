@@ -27,14 +27,14 @@
 # The source repo gets a matching GitHub Release (notes + link to Assets, no
 # binary attachments).
 #
-# Versions come from build.zig.zon's .version (27.0.0-dev between releases):
-#   - push tag v<zon version> (or v<zon version>-rc.1, or v<zon version>.N when
-#     the zon version is a prerelease such as 27.0.0-dev): build and publish it.
-#   - dispatch with `prerelease` and no `version`: CI tags the next
-#     v<zon version>.N (27.0.0-dev.1, .2, …), then builds and publishes it.
-#   - dispatch with `version`: CI tags v<version> (it must match the zon
-#     version as above), then builds and publishes it.
-#   - dispatch with neither: dry run, artifacts only.
+# Versions are build.zig.zon's .version without its suffix (27.0.0-dev →
+# 27.0.0) plus the track:
+#   internal, alpha, beta  v27.0.0-<track>.N, N counting from 0 per track
+#                          (27.0.0-internal.0, .1, …), a prerelease
+#   production             v27.0.0, the latest release
+#   - dispatch: CI tags the next version for the chosen track, then builds
+#     and publishes it; with `dry_run`, artifacts only.
+#   - push a tag of that form: build and publish it (its track from the tag).
 # The packages are built with that full version written into build.zig.zon.
 name: release
 
@@ -43,24 +43,20 @@ on:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
-      prerelease:
-        description: Prerelease
-        type: boolean
-        default: false
-      version:
-        description: Version
-        type: string
-        default: ""
-      play_track:
+      track:
         description: Track
         type: choice
-        options: [internal, alpha, beta]
+        options: [internal, alpha, beta, production]
         default: internal
+      dry_run:
+        description: Dry run
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
-# Two dispatched prereleases at once would pick the same N.
+# Two dispatched releases at once would pick the same N.
 concurrency:
   group: release-${{ github.event_name == 'workflow_dispatch' && 'dispatch' || github.ref }}
   cancel-in-progress: false
@@ -80,6 +76,7 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
       tag: ${{ steps.v.outputs.tag }}
+      track: ${{ steps.v.outputs.track }}
       publish: ${{ steps.v.outputs.publish }}
       create_tag: ${{ steps.v.outputs.create_tag }}
     steps:
@@ -91,48 +88,45 @@ jobs:
           EVENT: ${{ github.event_name }}
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
-          INPUT_PRERELEASE: ${{ inputs.prerelease }}
-          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_TRACK: ${{ inputs.track }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
         run: |
           zon=$(sed -n 's/^[[:space:]]*\.version = "\([^"]*\)".*/\1/p' build.zig.zon | head -1)
           [[ -n "$zon" ]] || { echo "::error::no .version in build.zig.zon"; exit 1; }
-
-          # A release version must be build.zig.zon's (bump it first):
-          # the zon version itself, a -suffix of it (0.3.0-rc.1), or, when the
-          # zon version is a prerelease (27.0.0-dev), a .N build of it. A
-          # mismatch used to publish anyway: v0.1.1 and v0.1.2 shipped .debs
-          # saying 0.1.0.
-          matches() {
-            [[ "$1" == "$zon" || "$1" == "$zon"-* ]] && return 0
-            [[ "$zon" == *-* && "$1" =~ ^"$zon"\.[0-9]+$ ]]
-          }
+          # The release is build.zig.zon's version without its suffix: bump
+          # the zon version first (v0.1.1 and v0.1.2 once shipped .debs saying
+          # 0.1.0).
+          base="${zon%%-*}"
 
           publish=true
           create_tag=false
           if [[ "$EVENT" == "push" && "$REF_TYPE" == "tag" ]]; then
             version="${REF_NAME#v}"
-          elif [[ -n "$INPUT_VERSION" ]]; then
-            version="${INPUT_VERSION#v}"
-            create_tag=true
-          elif [[ "$INPUT_PRERELEASE" == "true" ]]; then
-            [[ "$zon" == *-* ]] || {
-              echo "::error::build.zig.zon is at release $zon; set .version to the next prerelease (e.g. $(( ${zon%%.*} + 1 )).0.0-dev) to publish dev builds"
+            if [[ "$version" == "$base" ]]; then
+              track=production
+            elif [[ "$version" =~ ^"$base"-(internal|alpha|beta)\.[0-9]+$ ]]; then
+              track="${BASH_REMATCH[1]}"
+            else
+              echo "::error::tag $REF_NAME is not v$base or v$base-<internal|alpha|beta>.N (build.zig.zon is $zon: bump it first)"
               exit 1
-            }
-            # Next N after the highest v<zon>.N tag on the remote.
-            last=$(git ls-remote --tags --refs origin "refs/tags/v${zon}.*" \
-              | sed -n "s|.*refs/tags/v${zon//./\\.}\.\([0-9][0-9]*\)$|\1|p" | sort -n | tail -1)
-            version="${zon}.$(( ${last:-0} + 1 ))"
-            create_tag=true
+            fi
           else
-            version="$zon"
-            publish=false
+            track="${INPUT_TRACK:-internal}"
+            if [[ "$track" == "production" ]]; then
+              version="$base"
+            else
+              # Next N after the highest v<base>-<track>.N tag on the remote, from 0.
+              last=$(git ls-remote --tags --refs origin "refs/tags/v${base}-${track}.*" \
+                | sed -n "s|.*refs/tags/v${base//./\\.}-${track}\.\([0-9][0-9]*\)$|\1|p" | sort -n | tail -1)
+              version="${base}-${track}.$(( ${last:--1} + 1 ))"
+            fi
+            if [[ "$INPUT_DRY_RUN" == "true" ]]; then
+              publish=false
+            else
+              create_tag=true
+            fi
           fi
 
-          matches "$version" || {
-            echo "::error::version $version does not match build.zig.zon ($zon): bump the versions first"
-            exit 1
-          }
           tag="v${version}"
           if [[ "$create_tag" == "true" ]] && git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
             echo "::error::tag $tag already exists"
@@ -142,10 +136,11 @@ jobs:
           {
             echo "version=$version"
             echo "tag=$tag"
+            echo "track=$track"
             echo "publish=$publish"
             echo "create_tag=$create_tag"
           } >> "$GITHUB_OUTPUT"
-          echo "release $tag (build.zig.zon $zon) publish=$publish create_tag=$create_tag"
+          echo "release $tag ($track, build.zig.zon $zon) publish=$publish create_tag=$create_tag"
 
       # Keyed by src/data/db.zon alone (the dump date and a revision), so the
       # database is rebuilt only when that file changes, not on every edit to
@@ -188,6 +183,13 @@ jobs:
   pack-linux:
     name: pack (linux)
     needs: prepare
+    outputs:
+      # prepare's, passed on so publish jobs need only their pack.
+      version: ${{ needs.prepare.outputs.version }}
+      tag: ${{ needs.prepare.outputs.tag }}
+      track: ${{ needs.prepare.outputs.track }}
+      publish: ${{ needs.prepare.outputs.publish }}
+      create_tag: ${{ needs.prepare.outputs.create_tag }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -224,6 +226,13 @@ jobs:
   pack-macos:
     name: pack (macos)
     needs: prepare
+    outputs:
+      # prepare's, passed on so publish jobs need only their pack.
+      version: ${{ needs.prepare.outputs.version }}
+      tag: ${{ needs.prepare.outputs.tag }}
+      track: ${{ needs.prepare.outputs.track }}
+      publish: ${{ needs.prepare.outputs.publish }}
+      create_tag: ${{ needs.prepare.outputs.create_tag }}
     runs-on: xcode-27
     timeout-minutes: 180
     env:
@@ -296,6 +305,13 @@ jobs:
   pack-windows:
     name: pack (windows)
     needs: prepare
+    outputs:
+      # prepare's, passed on so publish jobs need only their pack.
+      version: ${{ needs.prepare.outputs.version }}
+      tag: ${{ needs.prepare.outputs.tag }}
+      track: ${{ needs.prepare.outputs.track }}
+      publish: ${{ needs.prepare.outputs.publish }}
+      create_tag: ${{ needs.prepare.outputs.create_tag }}
     runs-on: windows-latest
     timeout-minutes: 90
     env:
@@ -343,6 +359,13 @@ jobs:
   pack-android:
     name: pack (android)
     needs: prepare
+    outputs:
+      # prepare's, passed on so publish jobs need only their pack.
+      version: ${{ needs.prepare.outputs.version }}
+      tag: ${{ needs.prepare.outputs.tag }}
+      track: ${{ needs.prepare.outputs.track }}
+      publish: ${{ needs.prepare.outputs.publish }}
+      create_tag: ${{ needs.prepare.outputs.create_tag }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: byakaron-android
@@ -437,6 +460,12 @@ jobs:
     runs-on: xcode-27
     timeout-minutes: 60
     outputs:
+      # prepare's, passed on so publish jobs need only their pack.
+      version: ${{ needs.prepare.outputs.version }}
+      tag: ${{ needs.prepare.outputs.tag }}
+      track: ${{ needs.prepare.outputs.track }}
+      publish: ${{ needs.prepare.outputs.publish }}
+      create_tag: ${{ needs.prepare.outputs.create_tag }}
       signed: ${{ steps.signing.outputs.signed }}
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
@@ -480,7 +509,7 @@ jobs:
       - name: engine
         run: zig build ios
 
-      # App Store versions are at most three numbers (27.0.0-dev.3 → 27.0.0);
+      # App Store versions are at most three numbers (27.0.0-alpha.3 → 27.0.0);
       # the build number is unique per run, as for Google Play.
       - name: version
         working-directory: apps/ios/keyboard
@@ -588,6 +617,13 @@ jobs:
   pack-web:
     name: pack (web)
     needs: prepare
+    outputs:
+      # prepare's, passed on so publish jobs need only their pack.
+      version: ${{ needs.prepare.outputs.version }}
+      tag: ${{ needs.prepare.outputs.tag }}
+      track: ${{ needs.prepare.outputs.track }}
+      publish: ${{ needs.prepare.outputs.publish }}
+      create_tag: ${{ needs.prepare.outputs.create_tag }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -634,15 +670,16 @@ jobs:
   # Tag, every binary on Byakaron-Assets, notes on this repo.
   publish-github:
     name: publish (github)
-    if: needs.prepare.outputs.publish == 'true'
+    if: needs.pack-linux.outputs.publish == 'true'
     needs: [pack-linux, pack-macos, pack-windows, pack-android]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: write
     env:
-      VERSION: ${{ needs.prepare.outputs.version }}
-      TAG: ${{ needs.prepare.outputs.tag }}
+      VERSION: ${{ needs.pack-linux.outputs.version }}
+      TAG: ${{ needs.pack-linux.outputs.tag }}
+      TRACK: ${{ needs.pack-linux.outputs.track }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -651,7 +688,7 @@ jobs:
       # Dispatched releases: tag the commit that was built. GITHUB_TOKEN pushes
       # do not trigger workflows, so this does not start a second release.
       - name: tag
-        if: needs.prepare.outputs.create_tag == 'true'
+        if: needs.pack-linux.outputs.create_tag == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -725,8 +762,11 @@ jobs:
             echo "Latest downloads: https://github.com/${ASSETS_REPO}/releases/latest"
           } >> "$RUNNER_TEMP/notes.md"
 
+          # Only production is the latest release; the others are prereleases
+          # (the site and install.sh fall back to the newest one while there
+          # is no production release).
           flags=(--latest)
-          [[ "$TAG" == *-* ]] && flags=(--prerelease --latest=false)
+          [[ "$TRACK" != "production" ]] && flags=(--prerelease --latest=false)
 
           # Public binaries on Byakaron-Assets (stable asset names).
           gh release delete "$TAG" --repo "$ASSETS_REPO" --yes 2>/dev/null || true
@@ -755,7 +795,9 @@ jobs:
   # by hand need a versionCode above CI's (see pack-android).
   publish-android:
     name: publish (android)
-    if: needs.prepare.outputs.publish == 'true'
+    # The Play service account releases to testing tracks only: a production
+    # release is promoted in Play Console by hand.
+    if: needs.pack-android.outputs.publish == 'true' && needs.pack-android.outputs.track != 'production'
     needs: [pack-android]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -783,8 +825,8 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_JSON_KEY }}
           packageName: ${{ secrets.PLAY_STORE_PACKAGE_NAME || 'com.nuhulabs.byakaron' }}
           releaseFiles: dist/Byakaron.aab
-          releaseName: ${{ needs.prepare.outputs.version }}
-          tracks: ${{ inputs.play_track || 'internal' }}
+          releaseName: ${{ needs.pack-android.outputs.version }}
+          tracks: ${{ needs.pack-android.outputs.track }}
           status: completed
           mappingFile: ${{ env.mapping }}
 
@@ -793,7 +835,7 @@ jobs:
   # signed (no credentials), so a release without them still succeeds.
   publish-ios:
     name: publish (ios)
-    if: needs.prepare.outputs.publish == 'true'
+    if: needs.pack-ios.outputs.publish == 'true'
     needs: [pack-ios]
     runs-on: xcode-27
     timeout-minutes: 30
@@ -804,7 +846,7 @@ jobs:
       - name: check
         env:
           SIGNED: ${{ needs.pack-ios.outputs.signed }}
-          TAG: ${{ needs.prepare.outputs.tag }}
+          TAG: ${{ needs.pack-ios.outputs.tag }}
         run: |
           if [[ "$SIGNED" != "true" ]]; then
             echo "::notice::pack-ios was not signed (no iOS credentials); not uploading $TAG to App Store Connect"
@@ -840,7 +882,7 @@ jobs:
   #   cd apps/web && npx wrangler d1 migrations apply DB --remote
   publish-web:
     name: publish (web)
-    if: needs.prepare.outputs.publish == 'true'
+    if: needs.pack-web.outputs.publish == 'true'
     needs: [pack-web]
     runs-on: ubuntu-latest
     timeout-minutes: 15
