@@ -11,7 +11,7 @@ How the Android keyboard handles information on your device, written for Google 
 This Privacy Policy explains how Byakaron Keyboard (the "App") handles information on Android devices.
 
 - **Application:** Byakaron Keyboard
-- **Package name:** com.nuhulabs.byakaron
+- **Package name:** com.byakaron
 - **Developer:** NuhuLabs
 - **Platform:** Android (minimum Android 5.0 / API 21)
 - **Languages:** Bengali (Avro phonetic and fixed layouts) and English

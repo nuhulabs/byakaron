@@ -1956,7 +1956,7 @@ fn addAndroid(b: *std.Build, cli: *Cli, avro: AvroData, spell_db: std.Build.Lazy
     const install = gradle(b, gradle_exe, keyboard, ":app:installDebug", step);
     const open = b.addSystemCommand(&.{ "sh", "-c",
         \\adb=adb; [ -n "${ANDROID_HOME:-}" ] && [ -x "$ANDROID_HOME/platform-tools/adb" ] && adb="$ANDROID_HOME/platform-tools/adb"
-        \\"$adb" shell monkey -p com.nuhulabs.byakaron.debug -c android.intent.category.LAUNCHER 1 >/dev/null
+        \\"$adb" shell monkey -p com.byakaron.debug -c android.intent.category.LAUNCHER 1 >/dev/null
         , "sh" });
     if (b.graph.environ_map.get("ANDROID_HOME") == null) if (androidSdk(b)) |sdk| open.setEnvironmentVariable("ANDROID_HOME", sdk);
     open.has_side_effects = true;

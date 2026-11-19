@@ -8,7 +8,7 @@
     // Store listings. An empty string means not listed yet (shown as "Coming
     // soon" on the landing page).
     .stores = .{
-        .android = "https://play.google.com/store/apps/details?id=com.nuhulabs.byakaron",
+        .android = "https://play.google.com/store/apps/details?id=com.byakaron",
         .ios = "",
     },
     .assets = .{

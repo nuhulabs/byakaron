@@ -799,7 +799,7 @@ jobs:
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_JSON_KEY }}
-          packageName: ${{ secrets.PLAY_STORE_PACKAGE_NAME || 'com.nuhulabs.byakaron' }}
+          packageName: com.byakaron
           releaseFiles: dist/Byakaron.aab
           releaseName: ${{ needs.pack-android.outputs.version }}
           tracks: ${{ needs.pack-android.outputs.track }}
