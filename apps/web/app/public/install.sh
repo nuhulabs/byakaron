@@ -2,8 +2,13 @@
 # Byakaron: one-command install (Linux & macOS).
 #
 #   curl -fsSL https://<host>/install.sh | bash
+#   curl -fsSL https://<host>/install.sh | bash -s -- --uninstall
+#   curl -fsSL https://<host>/install.sh | bash -s -- --uninstall --purge
 #
-# Downloads the latest installer from nuhulabs/Byakaron-Assets and installs it.
+# Downloads the latest installer from nuhulabs/Byakaron-Assets and installs it,
+# replacing whatever Byakaron is installed, even a newer preview build.
+# --uninstall removes it; --purge also deletes your settings, learned words
+# and personal dictionary (~/.local/share/byakaron).
 # Windows: use install.ps1 instead (irm …/install.ps1 | iex).
 set -euo pipefail
 
@@ -87,11 +92,13 @@ fetch_package() {
 # $3 says how to make IBus start on a desktop that is not GNOME.
 report() {
     local was="$1" now="$2" start_ibus="$3"
-    if [[ -n "$was" && "$was" == "$now" ]]; then
+    if [[ -z "$now" ]]; then
+        die "Byakaron is not installed: the package manager stopped before installing it (see above)"
+    elif [[ -n "$was" && "$was" == "$now" ]]; then
         echo; echo "=== Byakaron $now is already the latest ==="; echo
         return 0
     elif [[ -n "$was" ]]; then
-        echo; echo "=== Byakaron updated: $was -> $now ==="
+        echo; echo "=== Byakaron $was is replaced by $now ==="
         echo "  Your input source stays as it is. Switch with Super+Space."; echo
         return 0
     fi
@@ -141,12 +148,16 @@ install_deb() {
     echo ">>> installing (keyboard + app + spell-check)"
     export DEBIAN_FRONTEND=noninteractive
     was_installed="$(dpkg-query -W -f='${Version}' byakaron 2>/dev/null || true)"
+    # --allow-downgrades: a preview build (27.1.0~beta.1, say) is newer than
+    # the stable release this installs, and apt refuses to go back without it.
+    local ok=1
     if [[ "${EUID}" -eq 0 ]]; then
-        BYAKARON_INSTALLER=1 apt-get install -y "$deb"
+        BYAKARON_INSTALLER=1 apt-get install -y --allow-downgrades "$deb" || ok=0
     else
         need sudo
-        sudo env BYAKARON_INSTALLER=1 apt-get install -y "$deb"
+        sudo env BYAKARON_INSTALLER=1 apt-get install -y --allow-downgrades "$deb" || ok=0
     fi
+    [[ $ok -eq 1 ]] || die "apt-get could not install Byakaron (see above). Run: sudo apt-get update, then this command again."
 
     now_installed="$(dpkg-query -W -f='${Version}' byakaron 2>/dev/null || true)"
     # Shown without the epoch: the .deb is 1:0.1.x so it is newer than the
@@ -228,18 +239,25 @@ install_rpm() {
     [[ "$was_installed" == *" "* ]] && was_installed=""
     # dnf and zypper install ibus and GTK when they are missing. The package
     # is checked against SHA256SUMS above rather than signed.
-    local cmd
+    # A newer preview build installed: dnf install leaves it, dnf downgrade
+    # replaces it; zypper goes back with --oldpackage.
+    local cmd fallback=()
     if command -v dnf >/dev/null; then
         cmd=(dnf install -y "$pkg")
+        fallback=(dnf downgrade -y "$pkg")
     else
-        cmd=(zypper --non-interactive install --allow-unsigned-rpm "$pkg")
+        cmd=(zypper --non-interactive install --allow-unsigned-rpm --oldpackage "$pkg")
     fi
-    local ok=1
-    if [[ "${EUID}" -eq 0 ]]; then
-        BYAKARON_INSTALLER=1 "${cmd[@]}" || ok=0
-    else
+    local ok=1 sudo=()
+    if [[ "${EUID}" -ne 0 ]]; then
         need sudo
-        sudo env BYAKARON_INSTALLER=1 "${cmd[@]}" || ok=0
+        sudo=(sudo)
+    fi
+    ${sudo[@]+"${sudo[@]}"} env BYAKARON_INSTALLER=1 "${cmd[@]}" || ok=0
+    local got
+    got="$(rpm -q --qf '%{VERSION}-%{RELEASE}' byakaron 2>/dev/null || true)"
+    if [[ ${#fallback[@]} -gt 0 && $ok -eq 1 && -n "$was_installed" && "$got" == "$was_installed" ]]; then
+        ${sudo[@]+"${sudo[@]}"} env BYAKARON_INSTALLER=1 "${fallback[@]}" || ok=0
     fi
     [[ $ok -eq 1 ]] || die "${cmd[0]} could not install Byakaron. On RHEL, Rocky or AlmaLinux, enable EPEL first
        for ibus (sudo dnf install epel-release), then run this command again."
@@ -302,7 +320,92 @@ install_macos() {
     open "$dest" 2>/dev/null || true
 }
 
+# Remove Byakaron with the package manager that installed it; --purge also
+# deletes the user's data. The input source goes with the package: log out and
+# back in to clear it from the list.
+uninstall_linux() {
+    local sudo=()
+    [[ "${EUID}" -eq 0 ]] || { need sudo; sudo=(sudo); }
+    local removed=0
+    if command -v dpkg-query >/dev/null && dpkg-query -W byakaron >/dev/null 2>&1; then
+        local pkgs=(byakaron)
+        for p in byakaron-app byakaron-data; do
+            dpkg-query -W "$p" >/dev/null 2>&1 && pkgs+=("$p")
+        done
+        echo ">>> removing ${pkgs[*]}"
+        ${sudo[@]+"${sudo[@]}"} env DEBIAN_FRONTEND=noninteractive apt-get purge -y "${pkgs[@]}"
+        removed=1
+    elif command -v pacman >/dev/null && pacman -Q byakaron >/dev/null 2>&1; then
+        echo ">>> removing byakaron"
+        ${sudo[@]+"${sudo[@]}"} pacman -R --noconfirm byakaron
+        removed=1
+    elif command -v rpm >/dev/null && rpm -q byakaron >/dev/null 2>&1; then
+        echo ">>> removing byakaron"
+        if command -v dnf >/dev/null; then
+            ${sudo[@]+"${sudo[@]}"} dnf remove -y byakaron
+        else
+            ${sudo[@]+"${sudo[@]}"} zypper --non-interactive remove byakaron
+        fi
+        removed=1
+    fi
+    [[ $removed -eq 1 ]] || echo ">>> Byakaron's package is not installed"
+
+    local data="${XDG_DATA_HOME:-$HOME/.local/share}/byakaron"
+    if [[ $PURGE -eq 1 ]]; then
+        rm -rf "$data"
+        echo ">>> removed your Byakaron data ($data)"
+    elif [[ -d "$data" ]]; then
+        echo ">>> kept your settings and words in $data (add --purge to remove them)"
+    fi
+    echo
+    echo "=== Byakaron is uninstalled. Log out and back in to clear it from the input sources. ==="
+    echo
+}
+
+uninstall_macos() {
+    echo ">>> quitting Byakaron"
+    killall Byakaron "Byakaron Keyboard" 2>/dev/null || true
+    for app in "/Applications/Byakaron.app" "$HOME/Library/Input Methods/Byakaron Keyboard.app"; do
+        [[ -e "$app" ]] || continue
+        rm -rf "$app" 2>/dev/null || { need sudo; sudo rm -rf "$app"; }
+        echo ">>> removed $app"
+    done
+    if [[ $PURGE -eq 1 ]]; then
+        # The same list as `zig build remove -- macos` (src/build/macos.zig).
+        rm -rf "$HOME/Library/Application Support/Byakaron" \
+            "$HOME/Library/Preferences/dev.nuhu.labs.Byakaron.shared.plist" \
+            "$HOME/Library/Preferences/dev.nuhu.labs.inputmethod.Byakaron.plist" \
+            "$HOME/Library/Preferences/dev.nuhu.labs.Byakaron.plist" \
+            "$HOME/Library/Saved Application State/dev.nuhu.labs.Byakaron.savedState" 2>/dev/null || true
+        echo ">>> removed your Byakaron settings and words"
+    fi
+    echo
+    echo "=== Byakaron is uninstalled. Remove it from System Settings → Keyboard → Input Sources if it is still listed. ==="
+    echo
+}
+
+ACTION=install PURGE=0
+for arg in "$@"; do
+    case "$arg" in
+        --uninstall|uninstall) ACTION=uninstall ;;
+        --purge) PURGE=1 ;;
+        -h|--help)
+            echo "usage: install.sh [--uninstall [--purge]]"
+            exit 0 ;;
+        *) die "unknown option '$arg' (use --uninstall, optionally with --purge)" ;;
+    esac
+done
+
 os="$(uname -s)"
+if [[ "$ACTION" == uninstall ]]; then
+    case "$os" in
+        Linux) uninstall_linux ;;
+        Darwin) uninstall_macos ;;
+        *) die "unsupported OS '$os' for --uninstall (Linux and macOS only)" ;;
+    esac
+    exit 0
+fi
+
 case "$os" in
     Linux)
         need curl
