@@ -1,0 +1,7 @@
+{
+  "uuid": "panel@byakaron.com",
+  "name": "Byakaron Panel",
+  "description": "Byakaron's compact look for the suggestion popup.",
+  "url": "https://byakaron.com",
+  "shell-version": ["45", "46", "47", "48", "49", "50", "51", "52"]
+}

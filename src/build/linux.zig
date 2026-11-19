@@ -2,6 +2,7 @@
 //!
 //!   linux package-deb <repo-root> <ime> <app> <Byakaron.db> <out-dir> [fcitx.so]
 //!   linux package-arch <repo-root> <ime> <app> <Byakaron.db> <out-dir>
+//!   linux package-rpm <repo-root> <ime> <app> <Byakaron.db> <out-dir>
 //!   linux install <repo-root> <ime> <app> [Byakaron.db] [--fcitx <fcitx.so>]
 //!   linux uninstall
 //!   linux deps [--test]
@@ -55,6 +56,8 @@ fn dispatch(init: std.process.Init) !u8 {
         try packageDeb(&t, rest);
     } else if (eql(u8, command, "package-arch") and rest.len == 5) {
         try packageArch(&t, rest);
+    } else if (eql(u8, command, "package-rpm") and rest.len == 5) {
+        try packageRpm(&t, rest);
     } else if (eql(u8, command, "install") and rest.len >= 3) {
         try install(&t, rest);
     } else if (eql(u8, command, "uninstall") and rest.len == 0) {
@@ -81,6 +84,7 @@ fn dispatch(init: std.process.Init) !u8 {
         std.debug.print(
             \\usage: {s} package-deb <repo-root> <ime> <app> <Byakaron.db> <out-dir> [fcitx.so]
             \\       {s} package-arch <repo-root> <ime> <app> <Byakaron.db> <out-dir>
+            \\       {s} package-rpm <repo-root> <ime> <app> <Byakaron.db> <out-dir>
             \\       {s} install <repo-root> <ime> <app> [Byakaron.db] [--fcitx <fcitx.so>]
             \\       {s} uninstall
             \\       {s} deps [--test]
@@ -93,7 +97,7 @@ fn dispatch(init: std.process.Init) !u8 {
             \\       {s} wayland-e2e <repo-root> <engine-bin>
             \\       {s} package-flatpak <repo-root> <app> <out-dir>
             \\
-        , .{ args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0] });
+        , .{ args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0], args[0] });
         return error.InvalidArguments;
     }
     return 0;
@@ -191,9 +195,9 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
         \\
         \\Then they MUST add it (installing the package is not enough):
         \\    Settings -> Keyboard -> Input Sources -> +
-        \\    Choose Bangla, then Byakaron (Bangla Phonetic) -> Add
+        \\    Choose Bangla, then Byakaron -> Add
         \\    Super+Space to switch
-        \\    Or open the Byakaron app from Activities -> Setup
+        \\    Or open the Byakaron app -> Preferences -> Setup -> Add
         \\
         \\If they previously installed an older byakaron / byakaron-data .deb:
         \\    sudo apt remove byakaron byakaron-app byakaron-data
@@ -314,7 +318,7 @@ const postinst =
     \\        echo "Byakaron installed. The package only registers the engine — add it:"
     \\        if command -v gnome-control-center >/dev/null; then
     \\            echo "  1. Settings -> Keyboard -> Input Sources -> '+'"
-    \\            echo "  2. Choose Bangla, then Byakaron (Bangla Phonetic) -> Add"
+    \\            echo "  2. Choose Bangla, then Byakaron -> Add"
     \\            echo "  3. Switch with Super+Space"
     \\            echo "  If Byakaron is missing from the Bangla list, log out and back in."
     \\            if command -v gnome-shell >/dev/null; then
@@ -325,7 +329,7 @@ const postinst =
     \\            echo "  2. ibus-setup -> Input Method -> Add -> Bangla -> Byakaron"
     \\            echo "  3. Switch with Super+Space"
     \\        fi
-    \\        echo "  Or open the Byakaron app -> Setup, which walks through this."
+    \\        echo "  Or open the Byakaron app -> Preferences -> Setup -> Add."
     \\    fi
     \\fi
     \\
@@ -464,7 +468,7 @@ fn packageArch(t: *Tool, a: []const []const u8) !void {
         \\    sudo pacman -U ./{s}.pkg.tar.zst
         \\
         \\Then add it: GNOME Settings -> Keyboard -> Input Sources -> + -> Bangla ->
-        \\Byakaron, or the Byakaron app -> Setup. Remove with:
+        \\Byakaron, or the Byakaron app -> Preferences -> Setup -> Add. Remove with:
         \\    sudo pacman -R byakaron
         \\
     , .{ out, name });
@@ -560,7 +564,7 @@ const arch_install =
     \\    echo "Byakaron installed. The package only registers the engine — add it:"
     \\    if command -v gnome-control-center >/dev/null; then
     \\        echo "  1. Settings -> Keyboard -> Input Sources -> '+'"
-    \\        echo "  2. Choose Bangla, then Byakaron (Bangla Phonetic) -> Add"
+    \\        echo "  2. Choose Bangla, then Byakaron -> Add"
     \\        echo "  3. Switch with Super+Space"
     \\        echo "  If Byakaron is missing from the Bangla list, log out and back in."
     \\        echo "  Log out and back in once anyway to get Byakaron's suggestion panel."
@@ -571,7 +575,7 @@ const arch_install =
     \\        echo "  2. ibus-setup -> Input Method -> Add -> Bangla -> Byakaron"
     \\        echo "  3. Switch with Super+Space"
     \\    fi
-    \\    echo "  Or open the Byakaron app -> Setup, which walks through this."
+    \\    echo "  Or open the Byakaron app -> Preferences -> Setup -> Add."
     \\}
     \\
     \\post_upgrade() {
@@ -626,6 +630,239 @@ const arch_tar =
 ;
 
 // ---------------------------------------------------------------------------
+// package-rpm
+// ---------------------------------------------------------------------------
+
+/// The .deb's payload as an RPM, for Fedora, RHEL and its rebuilds (Rocky,
+/// AlmaLinux, CentOS Stream with EPEL's ibus) and openSUSE. Built with
+/// rpmbuild from the staged files, so the Ubuntu host that builds the .deb
+/// (CI, `apt install rpm`) builds this too, for either CPU: nothing is
+/// compiled, and the binaries are already stripped.
+fn packageRpm(t: *Tool, a: []const []const u8) !void {
+    const repo = a[0];
+    const out_dir = a[4];
+
+    if (isRoot()) {
+        return fail("do not run this as root: zig-out would become root-owned, and the next\n       non-root build would fail. Run: zig build pack -- linux-rpm", .{});
+    }
+    if (!haveCmd(t, "rpmbuild")) return fail("rpmbuild is required to build the RPM (Ubuntu: sudo apt install rpm)", .{});
+
+    const version = try readVersion(t, repo);
+    const arch = try rpmArch(t);
+    const rpm_version = try std.fmt.allocPrint(t.arena, "{f}", .{rpmVersion(version)});
+    const name = try std.fmt.allocPrint(t.arena, "byakaron-{s}-1.{s}", .{ rpm_version, arch });
+    const top = try join(t, &.{ repo, "apps/linux/build/rpm", name });
+    const stage = try join(t, &.{ top, "stage" });
+    const cwd = Io.Dir.cwd();
+    cwd.deleteTree(t.io, top) catch {};
+    try cwd.createDirPath(t.io, stage);
+
+    // Fedora and openSUSE keep helper programs in /usr/libexec, as Debian does.
+    try stagePayload(t, .{
+        .repo = repo,
+        .ime = a[1],
+        .app = a[2],
+        .spell_db = a[3],
+        .version = version,
+        .engine = libexecdir ++ "/byakaron-ibus",
+    }, stage);
+
+    // Dependencies by library soname rather than package name: Fedora calls
+    // them ibus-libs and gtk3, openSUSE libibus-1_0-5 and libgtk-3-0, and
+    // both provide the same sonames. ibus itself is the daemon that runs the
+    // engine. AutoReq is off because rpmbuild would read ELF files of another
+    // CPU when building the aarch64 package on x86_64.
+    const header = try std.fmt.allocPrint(t.arena,
+        \\# Generated by src/build/linux.zig (zig build pack -- linux-rpm)
+        \\%global debug_package %{{nil}}
+        \\%global __os_install_post %{{nil}}
+        \\%define _build_id_links none
+        \\%define _binary_payload w6T0.xzdio
+        \\
+        \\Name:           byakaron
+        \\Version:        {s}
+        \\Release:        1
+        \\Summary:        Bangla phonetic keyboard (IBus) with a GTK app and spell-check
+        \\License:        MIT
+        \\URL:            https://byakaron.com
+        \\Packager:       Byakaron contributors <byakaron@example.com>
+        \\AutoReqProv:    no
+        \\Requires:       ibus >= 1.5
+        \\Requires:       libibus-1.0.so.5()(64bit)
+        \\Requires:       libglib-2.0.so.0()(64bit)
+        \\Requires:       libgio-2.0.so.0()(64bit)
+        \\Requires:       libgtk-3.so.0()(64bit)
+        \\Requires:       libc.so.6(GLIBC_2.31)(64bit)
+        \\Requires:       curl
+        \\Recommends:     ibus-gtk3
+        \\Provides:       byakaron-app = %{{version}}-%{{release}}
+        \\
+        \\%description
+        \\Type Bangla phonetically from a latin keyboard. Registers as an input
+        \\source in GNOME Settings -> Keyboard -> Input Sources (or IBus
+        \\Preferences elsewhere) and switches with Super+Space, powered by the
+        \\shared Byakaron Zig engine. Includes the GTK companion app and the
+        \\spell-check dictionary.
+        \\
+        \\%install
+        \\cp -a "{s}/." "%{{buildroot}}/"
+        \\
+        \\%post
+        \\
+    , .{ rpm_version, stage });
+    var spec: std.ArrayList(u8) = .empty;
+    try spec.appendSlice(t.arena, header);
+    try spec.appendSlice(t.arena, rpm_scriptlets);
+    try spec.appendSlice(t.arena, "\n%files\n%defattr(-,root,root,-)\n");
+    // Directories that are Byakaron's alone are owned; shared ones
+    // (/usr/share/icons, …) belong to the system.
+    try spec.appendSlice(t.arena, "%dir " ++ datadir ++ "\n");
+    for (panel_extensions) |uuid| {
+        try spec.appendSlice(t.arena, try std.fmt.allocPrint(t.arena, "%dir /{s}/{s}\n", .{ shell_extension_dir, uuid }));
+    }
+    const files = capture(t, &.{ "bash", "-c", "cd \"$1\" && LC_ALL=C find usr -type f | LC_ALL=C sort", "rpm-files", stage }) orelse
+        return fail("could not list {s}", .{stage});
+    var lines = std.mem.splitScalar(u8, files, '\n');
+    while (lines.next()) |line| {
+        if (line.len == 0) continue;
+        if (std.mem.indexOfAny(u8, line, " %*?[") != null) return fail("{s}: a character %files would treat as a pattern", .{line});
+        try spec.appendSlice(t.arena, try std.fmt.allocPrint(t.arena, "/{s}\n", .{line}));
+    }
+    const spec_path = try join(t, &.{ top, "byakaron.spec" });
+    try writeFile(t, spec_path, spec.items, "644");
+
+    try cwd.createDirPath(t.io, out_dir);
+    const out = try std.fmt.allocPrint(t.arena, "{s}/{s}.rpm", .{ out_dir, name });
+    cwd.deleteFile(t.io, out) catch {};
+    std.debug.print(">>> rpmbuild ({s})\n", .{arch});
+    try run(t, &.{
+        "rpmbuild",                                                "-bb",
+        "--target",                                                arch,
+        "--define",                                                try std.fmt.allocPrint(t.arena, "_topdir {s}", .{top}),
+        "--define",                                                try std.fmt.allocPrint(t.arena, "_rpmdir {s}", .{top}),
+        "--define",                                                "_rpmfilename %{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}.rpm",
+        spec_path,
+    });
+    try run(t, &.{ "mv", try std.fmt.allocPrint(t.arena, "{s}/{s}.rpm", .{ top, name }), out });
+
+    std.debug.print(
+        \\
+        \\=== Built: {s} ===
+        \\
+        \\The same keyboard, app and spell-check as the .deb, for Fedora, RHEL and
+        \\its rebuilds, and openSUSE. dnf or zypper installs ibus and GTK if they
+        \\are missing:
+        \\
+        \\    sudo dnf install ./{s}.rpm
+        \\    sudo zypper install --allow-unsigned-rpm ./{s}.rpm
+        \\
+        \\Then add it: the Byakaron app -> Preferences -> Setup -> Add, or GNOME
+        \\Settings -> Keyboard -> Input Sources -> + -> Bangla -> Byakaron.
+        \\Remove with:
+        \\    sudo dnf remove byakaron
+        \\
+    , .{ out, name, name });
+}
+
+/// rpm's name for the CPU: BYK_RPM_ARCH (set by the build from
+/// -Dlinux-arch), else the host's. The same names pacman uses.
+fn rpmArch(t: *Tool) ![]const u8 {
+    if (t.env.get("BYK_RPM_ARCH")) |a| if (a.len > 0) return a;
+    return switch (@import("builtin").cpu.arch) {
+        .x86_64 => "x86_64",
+        .aarch64 => "aarch64",
+        else => return fail("cannot tell the RPM architecture; set BYK_RPM_ARCH", .{}),
+    };
+}
+
+/// build.zig.zon's version as an RPM Version, which cannot hold a `-`: the
+/// first one (the SemVer prerelease) becomes `~`, which rpm sorts before the
+/// release (27.0.0~dev.3 < 27.0.0) as dpkg does; a later one becomes `_`.
+/// Core/update.c's byk_update_rpm_version agrees.
+fn rpmVersion(version: []const u8) RpmVersion {
+    return .{ .v = version };
+}
+
+const RpmVersion = struct {
+    v: []const u8,
+
+    pub fn format(self: RpmVersion, w: *Io.Writer) Io.Writer.Error!void {
+        var seen = false;
+        for (self.v) |c| {
+            if (c != '-') {
+                try w.writeByte(c);
+            } else {
+                try w.writeByte(if (seen) '_' else '~');
+                seen = true;
+            }
+        }
+    }
+};
+
+test rpmVersion {
+    var buf: [64]u8 = undefined;
+    try std.testing.expectEqualStrings("27.0.0~dev.3", try std.fmt.bufPrint(&buf, "{f}", .{rpmVersion("27.0.0-dev.3")}));
+    try std.testing.expectEqualStrings("27.0.0", try std.fmt.bufPrint(&buf, "{f}", .{rpmVersion("27.0.0")}));
+    try std.testing.expectEqualStrings("27.0.0~rc.1_x", try std.fmt.bufPrint(&buf, "{f}", .{rpmVersion("27.0.0-rc.1-x")}));
+}
+
+// rpm runs these as root; $1 is how many copies are installed after the
+// transaction (1 on a first install, 2 on an upgrade, 0 after removal). The
+// schema, icon cache and desktop database are refreshed here as well as by
+// Fedora's file triggers, for the systems without them. The ibus daemon and
+// its cache belong to each logged-in session, as in the .deb's postinst.
+const rpm_scriptlets =
+    \\as_session_user() {
+    \\    local uid_dir="$1"
+    \\    shift
+    \\    local uid user
+    \\    uid="$(basename "$uid_dir")"
+    \\    user="$(getent passwd "$uid" | cut -d: -f1)"
+    \\    [ -n "$user" ] || return 0
+    \\    runuser -u "$user" -- env \
+    \\        DBUS_SESSION_BUS_ADDRESS="unix:path=$uid_dir/bus" \
+    \\        "$@" >/dev/null 2>&1 || true
+    \\}
+    \\glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || :
+    \\update-desktop-database /usr/share/applications >/dev/null 2>&1 || :
+    \\gtk-update-icon-cache -qtf /usr/share/icons/hicolor >/dev/null 2>&1 || :
+    \\for uid_dir in /run/user/*; do
+    \\    [ -S "$uid_dir/bus" ] || continue
+    \\    as_session_user "$uid_dir" ibus write-cache
+    \\    as_session_user "$uid_dir" ibus restart
+    \\done
+    \\if [ "$1" -gt 1 ]; then
+    \\    echo "Byakaron updated. Your input source stays as it is."
+    \\elif [ -z "${BYAKARON_INSTALLER:-}" ]; then
+    \\    echo ""
+    \\    echo "Byakaron installed. The package only registers the engine. Add it:"
+    \\    echo "  Open the Byakaron app -> Preferences -> Setup -> Add"
+    \\    echo "  or Settings -> Keyboard -> Input Sources -> + -> Bangla -> Byakaron"
+    \\    echo "  Then switch with Super+Space."
+    \\fi
+    \\exit 0
+    \\
+    \\%postun
+    \\if [ "$1" -eq 0 ]; then
+    \\    glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || :
+    \\    update-desktop-database /usr/share/applications >/dev/null 2>&1 || :
+    \\    gtk-update-icon-cache -qtf /usr/share/icons/hicolor >/dev/null 2>&1 || :
+    \\    for uid_dir in /run/user/*; do
+    \\        [ -S "$uid_dir/bus" ] || continue
+    \\        uid="$(basename "$uid_dir")"
+    \\        user="$(getent passwd "$uid" | cut -d: -f1)"
+    \\        [ -n "$user" ] || continue
+    \\        runuser -u "$user" -- env DBUS_SESSION_BUS_ADDRESS="unix:path=$uid_dir/bus" \
+    \\            ibus write-cache >/dev/null 2>&1 || :
+    \\        runuser -u "$user" -- env DBUS_SESSION_BUS_ADDRESS="unix:path=$uid_dir/bus" \
+    \\            ibus restart >/dev/null 2>&1 || :
+    \\    done
+    \\fi
+    \\exit 0
+    \\
+;
+
+// ---------------------------------------------------------------------------
 // install / uninstall
 // ---------------------------------------------------------------------------
 
@@ -639,7 +876,9 @@ const datadir = "/usr/share/byakaron";
 const schemadir = "/usr/share/glib-2.0/schemas";
 const shell_extension_dir = "usr/share/gnome-shell/extensions";
 /// See byk_prefs_add_panel_extension for why there are two.
-const panel_extensions = [_][]const u8{ "byakaron-panel@byakaron.com", "byakaron-panel-legacy@byakaron.com" };
+const panel_extensions = [_][]const u8{ "panel@byakaron.com", "panel-legacy@byakaron.com" };
+/// The UUIDs those had up to 0.1.x; uninstall still removes them.
+const old_panel_extensions = [_][]const u8{ "byakaron-panel@byakaron.com", "byakaron-panel-legacy@byakaron.com" };
 
 /// The compact suggestion panel on GNOME: Shell draws that popup itself, and an
 /// extension's stylesheet is the one way to restyle it. `root` is the package
@@ -695,8 +934,11 @@ fn install(t: *Tool, a: []const []const u8) !void {
     try run(t, &.{ "glib-compile-schemas", schemadir });
     std.debug.print(">>> Installed: {s}/{s}.gschema.xml\n", .{ schemadir, app_id });
 
+    for (old_panel_extensions) |uuid| {
+        try run(t, &.{ "rm", "-rf", try join(t, &.{ "/", shell_extension_dir, uuid }) });
+    }
     try installPanelExtensions(t, res, "/");
-    std.debug.print(">>> Installed: /{s}/byakaron-panel*\n", .{shell_extension_dir});
+    std.debug.print(">>> Installed: /{s}/panel*@byakaron.com\n", .{shell_extension_dir});
 
     // The app goes in /usr/bin, not /usr/libexec: it is something the user
     // launches, unlike the engine, which only ibus-daemon ever execs.
@@ -776,7 +1018,7 @@ fn install(t: *Tool, a: []const []const u8) !void {
         \\
         \\To start typing Bangla:
         \\  1. Settings -> Keyboard -> Input Sources -> '+'
-        \\  2. Choose Bangla, then Byakaron (Bangla Phonetic) -> Add
+        \\  2. Choose Bangla, then Byakaron -> Add
         \\  3. Switch with Super+Space
         \\  (the first dialog is a language list; searching Byakaron there finds nothing)
         \\
@@ -802,7 +1044,7 @@ fn uninstall(t: *Tool) !void {
         "/usr/share/fcitx5/addon/byakaron.conf",
         "/usr/share/fcitx5/inputmethod/byakaron.conf",
     };
-    for (panel_extensions) |uuid| {
+    for (panel_extensions ++ old_panel_extensions) |uuid| {
         try run(t, &.{ "rm", "-rf", try join(t, &.{ "/", shell_extension_dir, uuid }) });
     }
 
@@ -1949,7 +2191,7 @@ const matrix_inside =
     \\        /usr/share/ibus/component/byakaron.xml /usr/share/icons/hicolor/scalable/apps/byakaron.svg \
     \\        /usr/share/applications/dev.nuhu.labs.Byakaron.desktop /usr/share/metainfo/dev.nuhu.labs.Byakaron.metainfo.xml \
     \\        /usr/share/glib-2.0/schemas/dev.nuhu.labs.Byakaron.gschema.xml \
-    \\        /usr/share/gnome-shell/extensions/byakaron-panel* 2>/dev/null)"
+    \\        /usr/share/gnome-shell/extensions/*@byakaron.com 2>/dev/null)"
     \\    gsettings list-schemas | grep -qx dev.nuhu.labs.Byakaron && left="$left compiled schema"
     \\    [ -z "$left" ] && echo "  ok   pacman -R left nothing behind" \
     \\        || { echo "  FAIL left behind after pacman -R: $left"; exit 1; }

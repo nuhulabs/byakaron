@@ -7,7 +7,7 @@
   -->
   <!--
     Byakaron logo: a silver ব on a near-black tile. Used as the app icon and as
-    the input-source icon next to "Byakaron (Bangla Phonetic)".
+    the input-source icon next to "Byakaron".
   
     The glyph is the same outline as the macOS icon (Byakaron_FG.svg), drawn as a
     plain <path> rather than <text> so it does not depend on a Bangla font being

@@ -86,6 +86,31 @@ byk_update_arch_version (const gchar *tag)
 }
 
 gchar *
+byk_update_rpm_version (const gchar *tag)
+{
+    gboolean seen_dash = FALSE;
+    GString *v;
+
+    if (!byk_update_tag_ok (tag))
+        return NULL;
+
+    /* src/build/linux.zig's rpmVersion: the first `-` (the SemVer prerelease)
+     * becomes `~`, which rpm sorts before the release as dpkg does; a later
+     * one, which an rpm Version cannot hold, becomes `_`. Release is 1. */
+    v = g_string_new (NULL);
+    for (const gchar *c = tag + 1; *c != '\0'; c++) {
+        if (*c != '-')
+            g_string_append_c (v, *c);
+        else
+            g_string_append_c (v, seen_dash ? '_' : '~');
+        if (*c == '-')
+            seen_dash = TRUE;
+    }
+    g_string_append (v, "-1");
+    return g_string_free (v, FALSE);
+}
+
+gchar *
 byk_update_package_version (BykPackage package, const gchar *tag)
 {
     switch (package) {
@@ -93,6 +118,8 @@ byk_update_package_version (BykPackage package, const gchar *tag)
         return byk_update_deb_version (tag);
     case BYK_PACKAGE_ARCH:
         return byk_update_arch_version (tag);
+    case BYK_PACKAGE_RPM:
+        return byk_update_rpm_version (tag);
     default:
         return NULL;
     }
@@ -105,6 +132,15 @@ byk_update_shown_version (BykPackage package, const gchar *version)
 
     if (version == NULL)
         return NULL;
+    if (package == BYK_PACKAGE_RPM) {
+        /* 27.0.0~dev.2-1: drop the release, `~` back to `-`. */
+        gchar *rel = strrchr (version, '-');
+        v = rel != NULL ? g_strndup (version, (gsize) (rel - version)) : g_strdup (version);
+        for (gchar *c = v; *c != '\0'; c++)
+            if (*c == '~')
+                *c = '-';
+        return v;
+    }
     if (package == BYK_PACKAGE_ARCH) {
         /* 27.0.0dev.2-1: drop the pkgrel, put the `-` back before the first
          * letter. */
@@ -183,15 +219,20 @@ byk_update_installed_version (BykPackage *package)
 {
     static const gchar *const dpkg[] = { "dpkg-query", "-W", "-f=${Version}", "byakaron", NULL };
     static const gchar *const pacman[] = { "pacman", "-Q", "byakaron", NULL };
+    static const gchar *const rpm[] = { "rpm", "-q", "--qf", "%{VERSION}-%{RELEASE}",
+                                        "byakaron", NULL };
     const gchar *env = g_getenv ("BYAKARON_INSTALLED_VERSION");
     BykPackage found = BYK_PACKAGE_NONE;
     gchar *v;
 
     if (env != NULL) {
         v = *env != '\0' ? g_strdup (env) : NULL;
-        if (v != NULL)
-            found = g_strcmp0 (g_getenv ("BYAKARON_INSTALLED_PACKAGE"), "arch") == 0
-                ? BYK_PACKAGE_ARCH : BYK_PACKAGE_DEB;
+        if (v != NULL) {
+            const gchar *kind = g_getenv ("BYAKARON_INSTALLED_PACKAGE");
+            found = g_strcmp0 (kind, "arch") == 0  ? BYK_PACKAGE_ARCH
+                  : g_strcmp0 (kind, "rpm") == 0   ? BYK_PACKAGE_RPM
+                                                   : BYK_PACKAGE_DEB;
+        }
     } else if ((v = byk_update_run (dpkg, NULL)) != NULL && *v != '\0') {
         found = BYK_PACKAGE_DEB;
     } else {
@@ -204,6 +245,13 @@ byk_update_installed_version (BykPackage *package)
             found = BYK_PACKAGE_ARCH;
         }
         g_free (line);
+        /* rpm -q prints "package byakaron is not installed" and exits 1. */
+        if (v == NULL && (v = byk_update_run (rpm, NULL)) != NULL) {
+            if (*v != '\0')
+                found = BYK_PACKAGE_RPM;
+            else
+                g_clear_pointer (&v, g_free);
+        }
     }
     if (package != NULL)
         *package = found;
@@ -226,6 +274,18 @@ byk_update_newer (BykPackage package, const gchar *a, const gchar *b)
         g_free (out);
         return newer;
     }
+    if (package == BYK_PACKAGE_RPM) {
+        /* rpm's own ordering, through its Lua (rpm 4.16+: Fedora 33, openSUSE
+         * Leap 15.4 and newer). Versions pass tag_ok's character check, so
+         * they cannot break out of the quotes. */
+        gchar *lua = g_strdup_printf ("%%{lua: print(rpm.vercmp(\"%s\", \"%s\"))}", a, b);
+        const gchar *argv[] = { "rpm", "--eval", lua, NULL };
+        out = byk_update_run (argv, &status);
+        const gboolean newer = out != NULL && strcmp (out, "1") == 0;
+        g_free (out);
+        g_free (lua);
+        return newer;
+    }
     const gchar *argv[] = { "dpkg", "--compare-versions", a, "gt", b, NULL };
     out = byk_update_run (argv, &status);
     g_free (out);
@@ -235,13 +295,16 @@ byk_update_newer (BykPackage package, const gchar *a, const gchar *b)
 gchar *
 byk_update_package_name (BykPackage package)
 {
-    if (package == BYK_PACKAGE_ARCH) {
-        /* Only an x86_64 Arch package is published (Arch has no ARM images
-         * to test one in). */
+    if (package == BYK_PACKAGE_ARCH || package == BYK_PACKAGE_RPM) {
+        /* Published for x86_64 and aarch64 (Arch Linux ARM, Fedora and
+         * openSUSE on ARM). */
         struct utsname u;
-        if (uname (&u) != 0 || strcmp (u.machine, "x86_64") != 0)
+        if (uname (&u) != 0 ||
+            (strcmp (u.machine, "x86_64") != 0 && strcmp (u.machine, "aarch64") != 0))
             return NULL;
-        return g_strdup ("byakaron_x86_64.pkg.tar.zst");
+        return g_strdup_printf (package == BYK_PACKAGE_ARCH ? "byakaron_%s.pkg.tar.zst"
+                                                            : "byakaron_%s.rpm",
+                                u.machine);
     }
     if (package != BYK_PACKAGE_DEB)
         return NULL;

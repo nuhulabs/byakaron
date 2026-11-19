@@ -13,6 +13,9 @@
 #define BYK_INPUT_SOURCES_SCHEMA "org.gnome.desktop.input-sources"
 /* Outside GNOME (Raspberry Pi OS, KDE, Xfce) IBus keeps its own list. */
 #define BYK_IBUS_GENERAL_SCHEMA  "org.freedesktop.ibus.general"
+/* Where IBus's own tray icon is switched on: the input-method switcher on
+ * desktops whose shell has none of its own. */
+#define BYK_IBUS_PANEL_SCHEMA    "org.freedesktop.ibus.panel"
 
 typedef enum {
     BYK_KEYBOARD_MISSING, /* not installed on the system */
@@ -28,6 +31,7 @@ struct _BykSetupPage {
     GtkWidget *status_subtitle;
     GtkWidget *status_icon;
     GtkWidget *install_hint; /* only shown when nothing is installed */
+    GtkWidget *add_hint;     /* only shown when installed but not added */
     GtkWidget *toast;
     gboolean gnome;          /* GNOME Settings manages input sources here */
 
@@ -213,7 +217,118 @@ byk_keyboard_state (gboolean gnome)
         ? BYK_KEYBOARD_ADDED : BYK_KEYBOARD_READY;
 }
 
+/* ── adding it to the system's switcher ─────────────────────────────────── */
+
+/* A GSettings object for `schema_id` if it is installed and has `key`, else
+ * NULL: g_settings_new aborts on an unknown schema. */
+static GSettings *
+byk_settings_try (const gchar *schema_id, const gchar *key)
+{
+    GSettingsSchemaSource *source = g_settings_schema_source_get_default ();
+    GSettingsSchema *schema = source != NULL
+        ? g_settings_schema_source_lookup (source, schema_id, TRUE)
+        : NULL;
+    gboolean has_key = FALSE;
+
+    if (schema != NULL) {
+        has_key = g_settings_schema_has_key (schema, key);
+        g_settings_schema_unref (schema);
+    }
+    return has_key ? g_settings_new (schema_id) : NULL;
+}
+
+/*
+ * GNOME: append ('ibus', 'byakaron') to the input sources, the list behind
+ * GNOME Shell's own input-source menu in the top bar and Super+Space. The
+ * user's layouts stay first, so the keyboard they had stays the default.
+ */
+static gboolean
+byk_add_gnome_source (void)
+{
+    GSettings *settings = byk_settings_try (BYK_INPUT_SOURCES_SCHEMA, "sources");
+    if (settings == NULL)
+        return FALSE;
+
+    GVariant *sources = g_settings_get_value (settings, "sources");
+    GVariantBuilder builder;
+    GVariantIter iter;
+    const gchar *backend = NULL;
+    const gchar *id = NULL;
+    gboolean has_layout = FALSE;
+
+    g_variant_builder_init (&builder, G_VARIANT_TYPE ("a(ss)"));
+    g_variant_iter_init (&iter, sources);
+    while (g_variant_iter_next (&iter, "(&s&s)", &backend, &id)) {
+        g_variant_builder_add (&builder, "(ss)", backend, id);
+        if (g_strcmp0 (backend, "xkb") == 0)
+            has_layout = TRUE;
+    }
+    /* Byakaron types on a US layout; an empty list would leave nothing to
+     * switch back to. */
+    if (!has_layout)
+        g_variant_builder_add (&builder, "(ss)", "xkb", "us");
+    g_variant_builder_add (&builder, "(ss)", "ibus", BYK_ENGINE_NAME);
+
+    const gboolean ok = g_settings_set_value (settings, "sources", g_variant_builder_end (&builder));
+    g_variant_unref (sources);
+    g_settings_sync ();
+    g_object_unref (settings);
+    return ok;
+}
+
+/*
+ * Other desktops: IBus's preload-engines is the list its tray menu and
+ * Super+Space cycle through, and its tray icon is the switcher KDE, Xfce,
+ * Cinnamon, MATE and LXQt show in the system tray. The same list and icon
+ * IBus Preferences sets, so nothing here is Byakaron's own.
+ */
+static gboolean
+byk_add_ibus_engine (void)
+{
+    GSettings *general = byk_settings_try (BYK_IBUS_GENERAL_SCHEMA, "preload-engines");
+    if (general == NULL)
+        return FALSE;
+
+    gchar **engines = g_settings_get_strv (general, "preload-engines");
+    GPtrArray *wanted = g_ptr_array_new ();
+    /* An empty list means "the system layout" to IBus; keep one to return to. */
+    if (engines[0] == NULL)
+        g_ptr_array_add (wanted, (gpointer) "xkb:us::eng");
+    for (gchar **e = engines; *e != NULL; e++)
+        g_ptr_array_add (wanted, *e);
+    g_ptr_array_add (wanted, (gpointer) BYK_ENGINE_NAME);
+    g_ptr_array_add (wanted, NULL);
+
+    gboolean ok = g_settings_set_strv (general, "preload-engines",
+                                       (const gchar *const *) wanted->pdata);
+    g_ptr_array_free (wanted, TRUE);
+    g_strfreev (engines);
+    g_object_unref (general);
+
+    GSettings *panel = byk_settings_try (BYK_IBUS_PANEL_SCHEMA, "show-icon-on-systray");
+    if (panel != NULL) {
+        g_settings_set_boolean (panel, "show-icon-on-systray", TRUE);
+        g_object_unref (panel);
+    }
+    g_settings_sync ();
+    return ok;
+}
+
 /* ── actions ─────────────────────────────────────────────────────────────── */
+
+static void
+on_add_clicked (GtkButton *button, gpointer user_data)
+{
+    BykSetupPage *self = BYK_SETUP_PAGE (user_data);
+    (void) button;
+
+    const gboolean ok = self->gnome ? byk_add_gnome_source () : byk_add_ibus_engine ();
+    byk_toast_show (GTK_LABEL (self->toast),
+                    !ok ? "Could not add it here: use the steps below"
+                    : self->gnome ? "Added. Switch from the input source menu in the top bar, or Super+Space"
+                                  : "Added. Switch from the IBus icon in the system tray, or Super+Space");
+    byk_setup_page_refresh (self);
+}
 
 static void
 on_recheck_clicked (GtkButton *button, gpointer user_data)
@@ -302,14 +417,6 @@ byk_setup_link_row (const gchar *title, const gchar *uri)
     return byk_row (NULL, title, NULL, link);
 }
 
-static GtkWidget *
-byk_setup_switch_row (const gchar *title, const gchar *subtitle, GtkWidget **out_switch)
-{
-    GtkWidget *sw = gtk_switch_new ();
-    *out_switch = sw;
-    return byk_row (NULL, title, subtitle, sw);
-}
-
 
 /* ── construction ────────────────────────────────────────────────────────── */
 
@@ -342,6 +449,20 @@ byk_setup_page_build_status (BykSetupPage *self)
     byk_hide_until_shown (self->install_hint);
     byk_box_add (list, self->install_hint);
 
+    GtkWidget *add = gtk_button_new_with_label ("Add");
+    byk_css_add (add, "suggested-action");
+    gtk_widget_set_valign (add, GTK_ALIGN_CENTER);
+    g_signal_connect (add, "clicked", G_CALLBACK (on_add_clicked), self);
+
+    self->add_hint = byk_row (
+        NULL,
+        "Add Byakaron to your input sources",
+        self->gnome ? "It then appears in the top bar’s input source menu"
+                    : "It then appears in the IBus icon in the system tray",
+        add);
+    byk_hide_until_shown (self->add_hint);
+    byk_box_add (list, self->add_hint);
+
     return group;
 }
 
@@ -371,7 +492,9 @@ byk_setup_page_build_steps (BykSetupPage *self)
     }
     byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
     byk_box_add (list, byk_setup_step_row (
-        3, "Switch to it with Super+Space", NULL));
+        3, "Switch to it with Super+Space",
+        self->gnome ? "or from the input source menu in the top bar"
+                    : "or from the IBus icon in the system tray"));
 
     GtkWidget *open = gtk_button_new_with_label (self->gnome ? "Open Input Sources"
                                                              : "Open IBus Preferences");
@@ -406,7 +529,7 @@ byk_setup_page_build_typing (void)
         { "Space", "commits the word you typed" },
         { "1\u20139", "picks a candidate while the list is showing" },
         { "\u2193 \u2191  then Enter", "highlights a candidate and types it" },
-        { "0\u20139", "Bangla numerals otherwise (2024 \u2192 ২০২৪); off in Settings" },
+        { "0\u20139", "Bangla numerals otherwise (2024 \u2192 ২০২৪); off in Typing" },
         { ".", "dari (ami. \u2192 আমি।)" },
         { "Page Up / Page Down", "moves through pages of candidates" },
         { "Backspace", "deletes the last character" },
@@ -519,7 +642,9 @@ byk_setup_page_refresh (BykSetupPage *self)
     case BYK_KEYBOARD_ADDED:
         icon = "emblem-ok-symbolic";
         title = "Keyboard is added";
-        subtitle = "Press Super+Space to switch to Byakaron.";
+        subtitle = self->gnome
+            ? "Switch with Super+Space or the input source menu in the top bar."
+            : "Switch with Super+Space or the IBus icon in the system tray.";
         css = "success";
         break;
     }
@@ -534,4 +659,5 @@ byk_setup_page_refresh (BykSetupPage *self)
     byk_css_add (self->status_icon, css);
 
     gtk_widget_set_visible (self->install_hint, state == BYK_KEYBOARD_MISSING);
+    gtk_widget_set_visible (self->add_hint, state == BYK_KEYBOARD_READY);
 }

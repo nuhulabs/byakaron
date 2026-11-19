@@ -35,7 +35,7 @@
       <author>Byakaron contributors</author>
       <icon>@BYK_ICON@</icon>
       <layout>us</layout>
-      <longname>Byakaron (Bangla Phonetic)</longname>
+      <longname>Byakaron</longname>
       <description>Type Bangla phonetically using the latin keyboard</description>
       <rank>99</rank>
       <symbol>ব</symbol>

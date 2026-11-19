@@ -877,6 +877,7 @@ fn module(b: *std.Build, exported: bool, name: []const u8, options: std.Build.Mo
 /// On a Linux host, src/build/linux.zig drives the rest:
 ///   zig build pack -- linux          → zig-out/pkg/byakaron_<ver>_<arch>.deb
 ///   zig build pack -- linux-arch     → zig-out/pkg/byakaron-<ver>-1-<arch>.pkg.tar.zst (Arch)
+///   zig build pack -- linux-rpm      → zig-out/pkg/byakaron-<ver>-1.<arch>.rpm (Fedora, RHEL, openSUSE)
 ///   zig build pack -- linux-flatpak  → the GTK app as a Flatpak bundle
 ///   zig build dev -- linux           → register the engine with the running ibus-daemon
 ///   zig build dev -- linux-app       → run the GTK app
@@ -1137,6 +1138,7 @@ fn addLinux(
     // `zig build` itself.
     const package_step = cli.pack.add(b, "linux", "zig-out/pkg/byakaron_<ver>_<arch>.deb (always ReleaseFast)");
     const arch_package_step = cli.pack.add(b, "linux-arch", "zig-out/pkg/byakaron-<ver>-1-<arch>.pkg.tar.zst for Arch Linux");
+    const rpm_package_step = cli.pack.add(b, "linux-rpm", "zig-out/pkg/byakaron-<ver>-1.<arch>.rpm for Fedora, RHEL and openSUSE (needs rpmbuild)");
     const flatpak_step = cli.pack.add(b, "linux-flatpak", "zig-out/pkg/dev.nuhu.labs.Byakaron.flatpak, the GTK app only (needs flatpak)");
     const run_step = cli.dev.add(b, "linux", "Register the IBus engine with the running ibus-daemon (Ctrl-C to unregister)");
     const install_step = cli.dev.add(b, "linux-system", "Install the IBus engine + GTK app into /usr (sudo -E; -Dlinux-install-db for Byakaron.db)");
@@ -1145,10 +1147,10 @@ fn addLinux(
     const ci_step = cli.e2e.add(b, "linux", "The Linux CI checks (glibc, smoke, IME test, probes, icon, AppStream)");
     const e2e_step = cli.e2e.add(b, "linux-wayland", "Type into GTK3/GTK4 apps on a private headless GNOME Shell (needs gnome-shell)");
     const install_test_step = cli.e2e.add(b, "linux-install", "Install the built .deb in clean Docker images and test it (needs docker; args: images)");
-    if (misuse) |f| for ([_]*std.Build.Step{ package_step, arch_package_step, run_step, install_step, ci_step, e2e_step, install_test_step }) |s| s.dependOn(f);
+    if (misuse) |f| for ([_]*std.Build.Step{ package_step, arch_package_step, rpm_package_step, run_step, install_step, ci_step, e2e_step, install_test_step }) |s| s.dependOn(f);
 
     if (!host_linux) {
-        for ([_]*std.Build.Step{ package_step, arch_package_step, flatpak_step, install_step, uninstall_step, deps_step, run_step, ci_step, e2e_step, install_test_step }) |s| {
+        for ([_]*std.Build.Step{ package_step, arch_package_step, rpm_package_step, flatpak_step, install_step, uninstall_step, deps_step, run_step, ci_step, e2e_step, install_test_step }) |s| {
             s.dependOn(&b.addFail("this needs a Linux host").step);
         }
         return;
@@ -1163,10 +1165,10 @@ fn addLinux(
         "apps/linux/Resources/dev.nuhu.labs.Byakaron.gschema.xml",
         "apps/linux/Resources/dev.nuhu.labs.Byakaron.metainfo.xml",
         "apps/linux/Resources/gnome-shell/panel.css",
-        "apps/linux/Resources/gnome-shell/byakaron-panel@byakaron.com/metadata.json",
-        "apps/linux/Resources/gnome-shell/byakaron-panel@byakaron.com/extension.js",
-        "apps/linux/Resources/gnome-shell/byakaron-panel-legacy@byakaron.com/metadata.json",
-        "apps/linux/Resources/gnome-shell/byakaron-panel-legacy@byakaron.com/extension.js",
+        "apps/linux/Resources/gnome-shell/panel@byakaron.com/metadata.json",
+        "apps/linux/Resources/gnome-shell/panel@byakaron.com/extension.js",
+        "apps/linux/Resources/gnome-shell/panel-legacy@byakaron.com/metadata.json",
+        "apps/linux/Resources/gnome-shell/panel-legacy@byakaron.com/extension.js",
         "apps/linux/Fcitx5/byakaron-addon.conf",
         "apps/linux/Fcitx5/byakaron.conf",
     };
@@ -1208,6 +1210,21 @@ fn addLinux(
     for (resources) |r| arch_package.addFileInput(b.path(r));
     arch_package.step.dependOn(install_spell_db);
     arch_package_step.dependOn(&b.addInstallDirectory(.{ .source_dir = arch_dir, .install_dir = .prefix, .install_subdir = "pkg" }).step);
+
+    // And as an RPM, for Fedora, RHEL and its rebuilds, and openSUSE.
+    const rpm_package = b.addRunArtifact(tool);
+    rpm_package.addArgs(&.{ "package-rpm", root });
+    rpm_package.addFileArg(rel_ime.getEmittedBin());
+    rpm_package.addFileArg(rel_app.getEmittedBin());
+    rpm_package.addFileArg(spell_db);
+    const rpm_dir = rpm_package.addOutputDirectoryArg("rpm");
+    rpm_package.setEnvironmentVariable("BYK_RPM_ARCH", switch (arch) {
+        .x86_64 => "x86_64",
+        .aarch64 => "aarch64",
+    });
+    for (resources) |r| rpm_package.addFileInput(b.path(r));
+    rpm_package.step.dependOn(install_spell_db);
+    rpm_package_step.dependOn(&b.addInstallDirectory(.{ .source_dir = rpm_dir, .install_dir = .prefix, .install_subdir = "pkg" }).step);
 
     const install_db = b.option(bool, "linux-install-db", "dev -- linux-system: build Byakaron.db and install it too (default: only if zig-out/db/Byakaron.db exists)") orelse false;
     const install = b.addRunArtifact(tool);
@@ -1399,6 +1416,7 @@ fn linuxApp(
         .files = &.{
             "apps/linux/App/main.c",
             "apps/linux/App/window.c",
+            "apps/linux/App/preferences.c",
             "apps/linux/App/spelling.c",
             "apps/linux/App/layout.c",
             "apps/linux/App/setup.c",

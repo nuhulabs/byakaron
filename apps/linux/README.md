@@ -286,18 +286,36 @@ keyboard's.
 
 A separate process (`byakaron`) from the engine, sharing only `Core/` and the
 Zig core underneath. The input method works whether or not it is installed or
-running. Four pages, reached from the header-bar menu; the window opens on
-**Spelling** and the header title names the current page. `byakaron --page=setup`
-opens Setup (that is what the IBus panel **Preferences** button runs);
-`--page=settings` opens Settings. *Personal Dictionary…* in the menu opens the
-saved-word list.
+running.
 
-| Page | What it is for |
+The window is laid out like the macOS and Windows apps: the issue list on the
+left, the editor, the correction bar and a status line, and the controls in
+the header bar as symbolic icons. Left: show the issue list (F9), Open
+(Ctrl+O) and Save (Ctrl+S). Right: **Bangla typing** (Ctrl+T), then Fix All,
+Copy (Shift+Ctrl+C) and Clear, then the primary menu.
+
+Everything about the keyboard is in **Preferences**, reached the GNOME way:
+the primary menu or Ctrl+comma, with Keyboard Shortcuts (Ctrl+?) and About
+next to it. Its tabs are the macOS Settings window's, in the same order.
+`byakaron --page=setup` opens Preferences on Setup (that is what the IBus
+panel **Preferences** button runs); `--page=typing` and `--page=layout` open
+the other tabs. *Personal Dictionary…* in the menu opens the saved-word list.
+
+| Where | What it is for |
 | --- | --- |
-| **Spelling** | Editor with an issue list, red squiggles, and Fix All |
-| **Layout** | The Avro key map, as a lookup table |
-| **Setup** | Keyboard status, the steps to add it, a typing cheat-sheet |
-| **Settings** | The keyboard's switches and the personal dictionary |
+| **Main window** | Editor with an issue list, red squiggles, and Fix All |
+| **Preferences → Setup** | Keyboard status, one-click Add, the steps, a typing cheat-sheet |
+| **Preferences → Typing** | The keyboard's switches and the personal dictionary |
+| **Preferences → Layout** | The Avro key map, as a lookup table |
+
+**Switching uses the desktop's own switcher.** Setup's **Add** button puts
+Byakaron in the same list the desktop's input-source switcher reads, and adds
+nothing of Byakaron's own to the panel or tray: on GNOME it appends
+`('ibus', 'byakaron')` to `org.gnome.desktop.input-sources sources`, so it is
+in the top bar's input source menu and on Super+Space; elsewhere it appends to
+IBus's `preload-engines` and turns on IBus's tray icon
+(`org.freedesktop.ibus.panel show-icon-on-systray`), the switcher KDE, Xfce,
+Cinnamon, MATE and LXQt show. The user's layouts stay first.
 
 **Spelling checks per word, not with `byakaron_spell_check`.** The bulk call
 returns a JSON array of tokens with nested suggestion objects; the app already
@@ -310,7 +328,7 @@ Bangla digits are skipped because `২০২৪` is not a misspelling.
 The issue list shows only the misspelled words; suggestions appear in the bar
 under the editor, one place for both ways of reaching a word.
 
-**Bangla typing**, the switch in the Spelling page's toolbar (on by default,
+**Bangla typing**, the keyboard toggle in the header bar (on by default,
 remembered in the `spelling-typing` GSetting), makes the editor
 type Bangla with no system keyboard change and no effect on other apps. Keys go
 to a composer of the app's own, opened with `spell` on the same worker thread so
@@ -437,7 +455,7 @@ pointing at a missing binary gives a button that silently does nothing.
 After installing:
 
 1. Settings → Keyboard → Input Sources → **+**
-2. Choose **Bangla**, then **Byakaron (Bangla Phonetic)** → Add
+2. Choose **Bangla**, then **Byakaron** → Add
    (the first dialog is a language list — searching "Byakaron" there finds nothing)
 3. Switch with **Super+Space**
 
@@ -640,7 +658,7 @@ It downloads the `.deb` from the public
 [nuhulabs/Byakaron-Assets](https://github.com/nuhulabs/Byakaron-Assets/releases)
 releases and runs `apt`. Then **add the input source** (installing the package
 is not enough): Settings → Keyboard → Input Sources → **+** → **Bangla** →
-**Byakaron (Bangla Phonetic)** → Add. Switch with Super+Space.
+**Byakaron** → Add. Switch with Super+Space.
 
 ### Installing on Arch Linux
 

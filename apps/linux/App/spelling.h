@@ -26,6 +26,13 @@ void byk_spell_page_finish_word (BykSpellPage *self);
 /* Corrections arrived for the word being typed. Call on the main thread. */
 void byk_spell_page_typing_refresh (BykSpellPage *self);
 
+/* open, save, copy, clear, fix-all, and the toggles sidebar and typing. The
+ * window inserts them as "spell". */
+GActionGroup *byk_spell_page_get_actions (BykSpellPage *self);
+
+/* Put the page's controls into the window's header bar. */
+void byk_spell_page_pack_header (BykSpellPage *self, GtkHeaderBar *header);
+
 /* Put the caret in the editor, once it can take text. */
 void byk_spell_page_focus_editor (BykSpellPage *self);
 

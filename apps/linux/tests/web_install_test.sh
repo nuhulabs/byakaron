@@ -19,7 +19,8 @@ failures=0
 # fake_system <dir> <uname -s> <uname -m> <system> <PRETTY_NAME>
 # <system> is a dpkg architecture (the system has apt and dpkg),
 # pacman:<ID>:<ID_LIKE> (it has pacman, and that os-release ID / ID_LIKE),
-# or "" (neither).
+# dnf:<ID>:<ID_LIKE> or zypper:<ID>:<ID_LIKE> (rpm and that installer), or ""
+# (none of them).
 fake_system() {
     local dir="$1" sys="$2" machine="$3" system="$4" name="$5"
     local id="" like=""
@@ -37,6 +38,14 @@ fake_system() {
             # Not installed yet (-Q fails); -U "installs".
             printf '#!/bin/bash\ncase "$1" in -Q) exit 1 ;; *) exit 0 ;; esac\n' > "$dir/bin/pacman"
             chmod +x "$dir/bin/pacman"
+            ;;
+        dnf:*|zypper:*)
+            local installer
+            IFS=: read -r installer id like <<< "$system"
+            # Not installed yet (-q prints "not installed" and fails).
+            printf '#!/bin/bash\necho "package byakaron is not installed"; exit 1\n' > "$dir/bin/rpm"
+            printf '#!/bin/bash\nexit 0\n' > "$dir/bin/$installer"
+            chmod +x "$dir/bin/rpm" "$dir/bin/$installer"
             ;;
         *)
             printf '#!/bin/bash\n[[ "$1" == --print-architecture ]] && echo %s\n' "$system" > "$dir/bin/dpkg"
@@ -57,6 +66,7 @@ check() {
     out="$(PATH="$dir/bin" BYAKARON_OS_RELEASE="$dir/os-release" \
            BYAKARON_DEB_URL="file://$WORK/missing.deb" \
            BYAKARON_PKG_URL="file://$WORK/missing.pkg.tar.zst" \
+           BYAKARON_RPM_URL="file://$WORK/missing.rpm" \
            BYAKARON_DMG_URL="file://$WORK/missing.dmg" \
            "$dir/bin/bash" "$SRC" 2>&1 || true)"
     if [[ "$out" == *"$expect"* ]]; then
@@ -93,9 +103,19 @@ check "endeavouros"          install.sh       Linux  x86_64  pacman:endeavouros:
 check "arch-reaches-download" install.sh      Linux  x86_64  pacman:arch: "Arch Linux" \
       "could not download"
 check "arch-linux-arm"       install.sh       Linux  aarch64 pacman:archarm:arch "Arch Linux ARM" \
-      "this is Arch Linux ARM (Arch Linux ARM). Byakaron's Arch package is for Intel/AMD 64-bit"
-check "fedora"               install.sh       Linux  x86_64  ""    "Fedora Linux 40 (Workstation Edition)" \
-      "Byakaron is packaged for Ubuntu, Debian and Arch Linux (apt or pacman). This is Fedora Linux 40 (Workstation Edition)."
+      "Detected: Arch Linux ARM, ARM 64-bit (aarch64)"
+check "fedora"               install.sh       Linux  x86_64  dnf:fedora: "Fedora Linux 40 (Workstation Edition)" \
+      "Detected: Fedora Linux 40 (Workstation Edition), Intel/AMD 64-bit (x86_64)"
+check "fedora-arm"           install.sh       Linux  aarch64 dnf:fedora: "Fedora Linux 40 (Workstation Edition)" \
+      "Detected: Fedora Linux 40 (Workstation Edition), ARM 64-bit (aarch64)"
+check "rocky"                install.sh       Linux  x86_64  dnf:rocky:"rhel centos fedora" "Rocky Linux 9.4 (Blue Onyx)" \
+      "Detected: Rocky Linux 9.4 (Blue Onyx), Intel/AMD 64-bit (x86_64)"
+check "opensuse"             install.sh       Linux  x86_64  zypper:opensuse-tumbleweed:"opensuse suse" "openSUSE Tumbleweed" \
+      "Detected: openSUSE Tumbleweed, Intel/AMD 64-bit (x86_64)"
+check "rpm-reaches-download" install.sh       Linux  x86_64  dnf:fedora: "Fedora Linux 40 (Workstation Edition)" \
+      "could not download file://$WORK/missing.rpm"
+check "no-package-manager"   install.sh       Linux  x86_64  ""    "Gentoo Linux" \
+      "Byakaron is packaged for Ubuntu, Debian, Arch Linux, Fedora, RHEL and openSUSE (apt, pacman, dnf or zypper). This is Gentoo Linux."
 check "pacman-but-not-arch"  install.sh       Linux  x86_64  pacman:fedora: "Fedora Linux 40 (Workstation Edition)" \
       "This is Fedora Linux 40 (Workstation Edition)."
 check "mac-reaches-download" install.sh       Darwin arm64   ""    "macOS" \

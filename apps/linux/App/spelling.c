@@ -45,7 +45,6 @@ struct _BykSpellPage {
     GtkWidget *pill;           /* candidate panel, over the editor */
     GtkWidget *pill_items;
     GtkWidget *pill_pages;     /* the up/down chevrons */
-    GtkWidget *typing_switch;
 
     GtkWidget *issues_list;
     GtkWidget *issues_title;
@@ -64,7 +63,10 @@ struct _BykSpellPage {
     GtkWidget *status_chars;
     GtkWidget *status_issues;
 
-    GtkWidget *fix_all;
+    /* The header bar's controls act through these ("spell.*"), so the
+     * window inserts the group and the shortcuts reach them too. */
+    GSimpleActionGroup *actions;
+    GtkWidget *fix_all;       /* in the header bar; NULL until packed */
     GtkWidget *toast;
 
     gchar *file_path;       /* last Open / Save path; Save writes here again */
@@ -174,11 +176,14 @@ byk_spell_page_update_status (BykSpellPage *self, gint words)
         byk_css_add (self->status_issues, "warning");
     }
 
-    gtk_widget_set_sensitive (self->fix_all, issues > 0);
-    if (issues > 0)
-        byk_css_add (self->fix_all, "suggested-action");
-    else
-        byk_css_remove (self->fix_all, "suggested-action");
+    GAction *fix_all = g_action_map_lookup_action (G_ACTION_MAP (self->actions), "fix-all");
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (fix_all), issues > 0);
+    if (self->fix_all != NULL) {
+        if (issues > 0)
+            byk_css_add (self->fix_all, "suggested-action");
+        else
+            byk_css_remove (self->fix_all, "suggested-action");
+    }
 }
 
 /* The list starts with no_show_all so the first window show_all leaves it
@@ -1095,28 +1100,13 @@ on_save_clicked (GtkButton *button, gpointer user_data)
     gtk_widget_destroy (dialog);
 }
 
-/* Ctrl+O / Ctrl+S while typing. On the editor rather than as app accels: they
- * mean nothing on the Layout or Setup pages. Every other key may be Bangla. */
+/* Ctrl+O, Ctrl+S and the rest are window shortcuts (main.c), which GTK
+ * handles before the editor sees the key. Every other key may be Bangla. */
 static gboolean
 on_editor_key_press (GtkWidget *widget, GdkEventKey *event, gpointer user_data)
 {
-    BykSpellPage *self = BYK_SPELL_PAGE (user_data);
     (void) widget;
-
-    if ((event->state & gtk_accelerator_get_default_mod_mask ()) == GDK_CONTROL_MASK) {
-        switch (gdk_keyval_to_lower (event->keyval)) {
-        case GDK_KEY_o:
-            on_open_clicked (NULL, self);
-            return GDK_EVENT_STOP;
-        case GDK_KEY_s:
-            on_save_clicked (NULL, self);
-            return GDK_EVENT_STOP;
-        default:
-            break;
-        }
-    }
-
-    return byk_spell_page_type_key (self, event);
+    return byk_spell_page_type_key (BYK_SPELL_PAGE (user_data), event);
 }
 
 /* Before the click moves the caret, or the word lands where the click went. */
@@ -1157,12 +1147,6 @@ on_editor_style_updated (GtkWidget *editor, gpointer user_data)
     g_object_set (self->squiggle, "underline-rgba", &squiggle, NULL);
 }
 
-static void
-on_sidebar_toggled (GtkToggleButton *toggle, gpointer user_data)
-{
-    BykSpellPage *self = BYK_SPELL_PAGE (user_data);
-    gtk_widget_set_visible (self->sidebar, gtk_toggle_button_get_active (toggle));
-}
 
 /* ── signals ─────────────────────────────────────────────────────────────── */
 
@@ -1307,86 +1291,125 @@ byk_spell_page_set_typing (BykSpellPage *self, gboolean typing)
     gtk_text_view_reset_im_context (GTK_TEXT_VIEW (self->editor));
 }
 
+/* ── actions (the header bar's buttons and the shortcuts) ────────────────── */
+
 static void
-on_typing_switched (GObject *object, GParamSpec *pspec, gpointer user_data)
+on_typing_changed (GSimpleAction *action, GVariant *value, gpointer user_data)
 {
     BykSpellPage *self = BYK_SPELL_PAGE (user_data);
-    const gboolean on = gtk_switch_get_active (GTK_SWITCH (object));
-    (void) pspec;
+    const gboolean on = g_variant_get_boolean (value);
 
+    g_simple_action_set_state (action, value);
     byk_prefs_set_boolean (self->prefs, BYK_PREFS_SPELLING_TYPING, on);
     byk_spell_page_set_typing (self, on);
-    gtk_widget_grab_focus (self->editor);
+    if (self->engines->spell != NULL)
+        gtk_widget_grab_focus (self->editor);
+}
+
+static void
+on_sidebar_changed (GSimpleAction *action, GVariant *value, gpointer user_data)
+{
+    BykSpellPage *self = BYK_SPELL_PAGE (user_data);
+
+    g_simple_action_set_state (action, value);
+    gtk_widget_set_visible (self->sidebar, g_variant_get_boolean (value));
+}
+
+/* A stateful boolean action activated with no parameter flips its state. */
+static void
+on_toggle_activate (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+    GVariant *state = g_action_get_state (G_ACTION (action));
+    (void) parameter;
+    (void) user_data;
+
+    g_action_change_state (G_ACTION (action),
+                           g_variant_new_boolean (!g_variant_get_boolean (state)));
+    g_variant_unref (state);
+}
+
+static void
+on_copy_clicked (GtkButton *button, gpointer user_data)
+{
+    BykSpellPage *self = BYK_SPELL_PAGE (user_data);
+    GtkTextIter start, end;
+    (void) button;
+
+    byk_spell_page_finish_word (self);
+    gtk_text_buffer_get_bounds (self->buffer, &start, &end);
+    gchar *text = gtk_text_buffer_get_text (self->buffer, &start, &end, FALSE);
+    byk_clipboard_set (self->editor, text);
+    byk_toast_show (GTK_LABEL (self->toast), text[0] == '\0' ? "Nothing to copy" : "Copied");
+    g_free (text);
+}
+
+#define BYK_ACTION_CALLBACK(name, handler)                                     \
+    static void                                                               \
+    name (GSimpleAction *action, GVariant *parameter, gpointer user_data)     \
+    {                                                                         \
+        (void) action;                                                        \
+        (void) parameter;                                                     \
+        handler (NULL, user_data);                                            \
+    }
+
+BYK_ACTION_CALLBACK (on_open_activate, on_open_clicked)
+BYK_ACTION_CALLBACK (on_save_activate, on_save_clicked)
+BYK_ACTION_CALLBACK (on_copy_activate, on_copy_clicked)
+BYK_ACTION_CALLBACK (on_clear_activate, on_clear_clicked)
+BYK_ACTION_CALLBACK (on_fix_all_activate, on_fix_all_clicked)
+
+static void
+byk_spell_page_add_action (BykSpellPage *self, const gchar *name, GCallback activate)
+{
+    GSimpleAction *action = g_simple_action_new (name, NULL);
+    g_signal_connect (action, "activate", activate, self);
+    g_action_map_add_action (G_ACTION_MAP (self->actions), G_ACTION (action));
+    g_object_unref (action);
+}
+
+static void
+byk_spell_page_add_toggle (BykSpellPage *self, const gchar *name, gboolean state,
+                           GCallback changed)
+{
+    GSimpleAction *action = g_simple_action_new_stateful (name, NULL,
+                                                          g_variant_new_boolean (state));
+    g_signal_connect (action, "activate", G_CALLBACK (on_toggle_activate), self);
+    g_signal_connect (action, "change-state", changed, self);
+    g_action_map_add_action (G_ACTION_MAP (self->actions), G_ACTION (action));
+    g_object_unref (action);
+}
+
+/* GActionEntry is not used: 24.04's GLib added a padding field that 20.04
+ * does not have (see main.c). */
+static void
+byk_spell_page_build_actions (BykSpellPage *self)
+{
+    self->actions = g_simple_action_group_new ();
+    byk_spell_page_add_action (self, "open", G_CALLBACK (on_open_activate));
+    byk_spell_page_add_action (self, "save", G_CALLBACK (on_save_activate));
+    byk_spell_page_add_action (self, "copy", G_CALLBACK (on_copy_activate));
+    byk_spell_page_add_action (self, "clear", G_CALLBACK (on_clear_activate));
+    byk_spell_page_add_action (self, "fix-all", G_CALLBACK (on_fix_all_activate));
+    byk_spell_page_add_toggle (self, "sidebar", TRUE, G_CALLBACK (on_sidebar_changed));
+    byk_spell_page_add_toggle (self, "typing",
+                               byk_prefs_boolean (self->prefs, BYK_PREFS_SPELLING_TYPING, TRUE),
+                               G_CALLBACK (on_typing_changed));
+
+    GAction *fix_all = g_action_map_lookup_action (G_ACTION_MAP (self->actions), "fix-all");
+    g_simple_action_set_enabled (G_SIMPLE_ACTION (fix_all), FALSE);
 }
 
 static GtkWidget *
-byk_spell_page_build_typing_switch (BykSpellPage *self)
+byk_header_button (const gchar *icon, const gchar *tooltip, const gchar *action, gboolean toggle)
 {
-    GtkWidget *toggle = gtk_switch_new ();
-    gtk_widget_set_valign (toggle, GTK_ALIGN_CENTER);
-    gtk_switch_set_active (GTK_SWITCH (toggle),
-                           byk_prefs_boolean (self->prefs, BYK_PREFS_SPELLING_TYPING, TRUE));
-    g_signal_connect (toggle, "notify::active", G_CALLBACK (on_typing_switched), self);
-    self->typing_switch = toggle;
+    GtkWidget *button = toggle ? gtk_toggle_button_new () : gtk_button_new ();
 
-    GtkWidget *box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
-    gtk_widget_set_tooltip_text (box, "Type Bangla here without changing the system keyboard");
-    byk_box_add (box, gtk_label_new ("Bangla typing"));
-    byk_box_add (box, toggle);
-    return box;
-}
-
-static GtkWidget *
-byk_spell_page_build_toolbar (BykSpellPage *self)
-{
-    GtkWidget *bar = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
-    gtk_widget_set_margin_top (bar, 6);
-    gtk_widget_set_margin_bottom (bar, 6);
-    gtk_widget_set_margin_start (bar, 12);
-    gtk_widget_set_margin_end (bar, 12);
-
-    GtkWidget *toggle = gtk_toggle_button_new ();
-    gtk_button_set_image (GTK_BUTTON (toggle),
-                          gtk_image_new_from_icon_name ("view-list-symbolic",
-                                                        GTK_ICON_SIZE_BUTTON));
-    gtk_widget_set_tooltip_text (toggle, "Show the issue list");
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (toggle), TRUE);
-    g_signal_connect (toggle, "toggled", G_CALLBACK (on_sidebar_toggled), self);
-
-    GtkWidget *spacer = gtk_label_new (NULL);
-    gtk_widget_set_hexpand (spacer, TRUE);
-
-    self->fix_all = gtk_button_new_with_label ("Fix All");
-    gtk_widget_set_tooltip_text (self->fix_all, "Replace every issue with its top suggestion");
-    gtk_widget_set_sensitive (self->fix_all, FALSE);
-    g_signal_connect (self->fix_all, "clicked", G_CALLBACK (on_fix_all_clicked), self);
-
-    GtkWidget *open = byk_icon_button ("document-open-symbolic");
-    gtk_widget_set_tooltip_text (open, "Open a text file (Ctrl+O)");
-    g_signal_connect (open, "clicked", G_CALLBACK (on_open_clicked), self);
-
-    GtkWidget *save = byk_icon_button ("document-save-symbolic");
-    gtk_widget_set_tooltip_text (save, "Save to a file (Ctrl+S)");
-    g_signal_connect (save, "clicked", G_CALLBACK (on_save_clicked), self);
-
-    GtkWidget *clear = byk_icon_button ("edit-clear-all-symbolic");
-    gtk_widget_set_tooltip_text (clear, "Clear the editor");
-    g_signal_connect (clear, "clicked", G_CALLBACK (on_clear_clicked), self);
-
-    /* A linked pair: file in / out. */
-    GtkWidget *file_group = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
-    byk_css_add (file_group, "linked");
-    byk_box_add (file_group, open);
-    byk_box_add (file_group, save);
-
-    byk_box_add (bar, toggle);
-    byk_box_add (bar, file_group);
-    byk_box_add_expand (bar, spacer);
-    byk_box_add (bar, byk_spell_page_build_typing_switch (self));
-    byk_box_add (bar, clear);
-    byk_box_add (bar, self->fix_all);
-
-    return bar;
+    gtk_button_set_image (GTK_BUTTON (button),
+                          gtk_image_new_from_icon_name (icon, GTK_ICON_SIZE_BUTTON));
+    gtk_widget_set_tooltip_text (button, tooltip);
+    gtk_widget_set_valign (button, GTK_ALIGN_CENTER);
+    gtk_actionable_set_action_name (GTK_ACTIONABLE (button), action);
+    return button;
 }
 
 static GtkWidget *
@@ -1540,7 +1563,6 @@ byk_spell_page_build_ready (BykSpellPage *self)
     gtk_widget_set_size_request (self->sidebar, 220, -1);
 
     GtkWidget *content = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
-    byk_box_add (content, byk_spell_page_build_toolbar (self));
     byk_box_add_expand (content, byk_spell_page_build_editor (self));
     byk_box_add (content, byk_spell_page_build_correction_bar (self));
     byk_box_add (content, byk_spell_page_build_status_bar (self));
@@ -1595,6 +1617,7 @@ byk_spell_page_init (BykSpellPage *self)
     self->ignored = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
     self->selected = -1;
     self->prefs = byk_prefs_try_open ();
+    byk_spell_page_build_actions (self);
 }
 
 static void
@@ -1610,6 +1633,7 @@ byk_spell_page_dispose (GObject *object)
     g_clear_pointer (&self->found, g_array_unref);
     g_clear_pointer (&self->ignored, g_hash_table_unref);
     g_clear_object (&self->prefs);
+    g_clear_object (&self->actions);
 
     G_OBJECT_CLASS (byk_spell_page_parent_class)->dispose (object);
 }
@@ -1636,9 +1660,10 @@ byk_spell_page_new (BykEngines *engines)
 
     byk_box_add_expand (GTK_WIDGET (self), self->stack);
 
-    /* The switch only reports changes; the page has to start in its state. */
-    byk_spell_page_set_typing (self,
-                               gtk_switch_get_active (GTK_SWITCH (self->typing_switch)));
+    /* The action only reports changes; the page has to start in its state. */
+    GVariant *typing = g_action_group_get_action_state (G_ACTION_GROUP (self->actions), "typing");
+    byk_spell_page_set_typing (self, g_variant_get_boolean (typing));
+    g_variant_unref (typing);
 
     return GTK_WIDGET (self);
 }
@@ -1664,4 +1689,64 @@ byk_spell_page_engine_ready (BykSpellPage *self)
 
     gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "ready");
     byk_spell_page_check_now (self);
+}
+
+GActionGroup *
+byk_spell_page_get_actions (BykSpellPage *self)
+{
+    g_return_val_if_fail (BYK_IS_SPELL_PAGE (self), NULL);
+    return G_ACTION_GROUP (self->actions);
+}
+
+/*
+ * The same controls, in the same order, as the macOS and Windows toolbars:
+ * the issue list on the left; Bangla typing, then Fix All, Copy and Clear on
+ * the right, before the window's main menu. File Open and Save sit next to
+ * the list toggle, where GNOME apps keep them.
+ */
+void
+byk_spell_page_pack_header (BykSpellPage *self, GtkHeaderBar *header)
+{
+    g_return_if_fail (BYK_IS_SPELL_PAGE (self));
+
+    GtkWidget *sidebar = byk_header_button ("view-sidebar-start-symbolic",
+                                            "Show the issue list (F9)",
+                                            "spell.sidebar", TRUE);
+    /* Older icon themes (20.04's Yaru) have no view-sidebar-start. */
+    if (!gtk_icon_theme_has_icon (gtk_icon_theme_get_default (), "view-sidebar-start-symbolic"))
+        gtk_button_set_image (GTK_BUTTON (sidebar),
+                              gtk_image_new_from_icon_name ("view-list-symbolic",
+                                                            GTK_ICON_SIZE_BUTTON));
+
+    GtkWidget *files = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+    byk_css_add (files, "linked");
+    gtk_widget_set_valign (files, GTK_ALIGN_CENTER);
+    byk_box_add (files, byk_header_button ("document-open-symbolic",
+                                           "Open a text file (Ctrl+O)", "spell.open", FALSE));
+    byk_box_add (files, byk_header_button ("document-save-symbolic",
+                                           "Save to a file (Ctrl+S)", "spell.save", FALSE));
+
+    gtk_header_bar_pack_start (header, sidebar);
+    gtk_header_bar_pack_start (header, files);
+
+    /* pack_end goes right to left. */
+    GtkWidget *edit = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+    byk_css_add (edit, "linked");
+    gtk_widget_set_valign (edit, GTK_ALIGN_CENTER);
+    self->fix_all = byk_header_button ("tools-check-spelling-symbolic",
+                                       "Fix all: replace every issue with its top suggestion",
+                                       "spell.fix-all", FALSE);
+    byk_box_add (edit, self->fix_all);
+    byk_box_add (edit, byk_header_button ("edit-copy-symbolic",
+                                          "Copy the text (Shift+Ctrl+C)", "spell.copy", FALSE));
+    byk_box_add (edit, byk_header_button ("edit-clear-all-symbolic",
+                                          "Clear the editor", "spell.clear", FALSE));
+    gtk_header_bar_pack_end (header, edit);
+
+    gtk_header_bar_pack_end (header,
+                             byk_header_button ("input-keyboard-symbolic",
+                                                "Bangla typing: type with the Byakaron keyboard "
+                                                "here without changing the system keyboard "
+                                                "(Ctrl+T)",
+                                                "spell.typing", TRUE));
 }

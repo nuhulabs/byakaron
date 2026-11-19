@@ -380,6 +380,25 @@ int main(void)
             g_free(shown);
         }
 
+        /* The RPM's version-release, as src/build/linux.zig's rpmVersion
+         * writes it. */
+        static const struct { const char *tag, *rpm, *shown; } RPM_VERSIONS[] = {
+            { "v27.0.0", "27.0.0-1", "27.0.0" },
+            { "v27.0.0-dev.2", "27.0.0~dev.2-1", "27.0.0-dev.2" },
+            { "v27.0.0-rc.1-x", "27.0.0~rc.1_x-1", "27.0.0-rc.1_x" },
+            { "latest", NULL, NULL },
+            { "v27.0.0;rm", NULL, NULL },
+        };
+        for (size_t i = 0; i < sizeof RPM_VERSIONS / sizeof RPM_VERSIONS[0]; i++) {
+            gchar *rpm = byk_update_package_version(BYK_PACKAGE_RPM, RPM_VERSIONS[i].tag);
+            gchar *shown = byk_update_shown_version(BYK_PACKAGE_RPM, rpm);
+            expect(g_strcmp0(rpm, RPM_VERSIONS[i].rpm) == 0 &&
+                   g_strcmp0(shown, RPM_VERSIONS[i].shown) == 0,
+                   RPM_VERSIONS[i].tag, rpm ? rpm : "(none)");
+            g_free(rpm);
+            g_free(shown);
+        }
+
         /* dpkg's order, as apt will see it. */
         gchar *dpkg = g_find_program_in_path("dpkg");
         if (dpkg != NULL) {
@@ -425,6 +444,12 @@ int main(void)
         expect(g_strcmp0(installed, "27.0.0dev.2-1") == 0 && package == BYK_PACKAGE_ARCH,
                "installed by pacman (override)", installed);
         g_free(installed);
+        g_setenv("BYAKARON_INSTALLED_PACKAGE", "rpm", TRUE);
+        g_setenv("BYAKARON_INSTALLED_VERSION", "27.0.0~dev.2-1", TRUE);
+        installed = byk_update_installed_version(&package);
+        expect(g_strcmp0(installed, "27.0.0~dev.2-1") == 0 && package == BYK_PACKAGE_RPM,
+               "installed by rpm (override)", installed);
+        g_free(installed);
         g_unsetenv("BYAKARON_INSTALLED_PACKAGE");
         g_setenv("BYAKARON_INSTALLED_VERSION", "", TRUE);
         installed = byk_update_installed_version(&package);
@@ -433,13 +458,19 @@ int main(void)
         g_free(installed);
         g_unsetenv("BYAKARON_INSTALLED_VERSION");
 
-        /* Only an x86_64 Arch package is published. */
+        /* Arch and RPM packages are published for x86_64 and aarch64. */
         struct utsname host;
+        const gboolean packaged_cpu = uname(&host) == 0 &&
+            (strcmp(host.machine, "x86_64") == 0 || strcmp(host.machine, "aarch64") == 0);
         gchar *name = byk_update_package_name(BYK_PACKAGE_ARCH);
-        if (uname(&host) == 0 && strcmp(host.machine, "x86_64") == 0)
-            expect(g_strcmp0(name, "byakaron_x86_64.pkg.tar.zst") == 0, "Arch package name", name ? name : "(none)");
-        else
-            expect(name == NULL, "no Arch package for this CPU", name ? name : "(none)");
+        gchar *want = packaged_cpu ? g_strdup_printf("byakaron_%s.pkg.tar.zst", host.machine) : NULL;
+        expect(g_strcmp0(name, want) == 0, "Arch package name", name ? name : "(none)");
+        g_free(want);
+        g_free(name);
+        name = byk_update_package_name(BYK_PACKAGE_RPM);
+        want = packaged_cpu ? g_strdup_printf("byakaron_%s.rpm", host.machine) : NULL;
+        expect(g_strcmp0(name, want) == 0, "RPM package name", name ? name : "(none)");
+        g_free(want);
         g_free(name);
         name = byk_update_package_name(BYK_PACKAGE_NONE);
         expect(name == NULL, "no package name without a package", name ? name : "(none)");

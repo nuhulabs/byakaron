@@ -30,7 +30,7 @@ can fetch IBus and GTK if they are missing.
 **Ubuntu and other GNOME desktops**
 
 1. Open **Settings → Keyboard → Input Sources** and press **+**.
-2. Choose **Bangla**, then **Byakaron (Bangla Phonetic)**, and press **Add**.
+2. Choose **Bangla**, then **Byakaron**, and press **Add**.
 3. Press **Super+Space** to switch between English and Byakaron.
 4. Log out and back in once. GNOME then shows Byakaron's suggestion list, in
    blue, in every app.
@@ -62,21 +62,25 @@ The Byakaron app's **Setup** page walks through the same steps.
   word, **1–9** pick one, the **arrow keys** move through the list and **Esc**
   cancels the word.
 - Byakaron remembers the word you picked and offers it first next time.
-- For numbers in English digits (0–9), turn off **Settings → Bangla digits**
+- For numbers in English digits (0–9), turn off **Preferences → Typing → Bangla digits**
   in the Byakaron app.
 
 ## The Byakaron app
 
 Open **Byakaron** from your apps.
 
-- **Spelling**: paste or type Bangla text and wrong words are marked, with
-  corrections in the bar under the text. **Fix All** puts in the first
-  correction for every marked word that has one.
-  With the **Bangla typing** switch on, you can type Bangla here without
-  changing your keyboard.
-- **Layout**: which English letters make which Bangla letter.
-- **Settings**: suggestions, spelling corrections, Bangla digits, the list's
-  direction, and updates.
+- **Spelling** is the main window: paste or type Bangla text and wrong words
+  are marked, with corrections in the bar under the text. The buttons at the
+  top are the same as on Mac and Windows: the issue list, Open and Save on the
+  left; **Bangla typing** (type Bangla here without changing your keyboard),
+  **Fix All**, **Copy** and **Clear** on the right.
+- **Preferences** (the menu at the top right, or Ctrl+,) has three tabs:
+  - **Setup**: whether the keyboard is added, with an **Add** button that puts
+    it in your desktop's own input source switcher (the top bar on GNOME, the
+    IBus icon in the system tray elsewhere).
+  - **Typing**: suggestions, spelling corrections, Bangla digits, the list's
+    direction, updates, and your personal dictionary.
+  - **Layout**: which English letters make which Bangla letter.
 - **Personal Dictionary** (in the menu): your own words, which Byakaron then
   suggests and never marks as wrong.
 
@@ -87,7 +91,7 @@ The app checks once a day. When there is a new version, a bar at the top says
 keyboard restarts by itself, then press **Restart** for the app.
 
 You can also run the install command again at any time, or press **Check Now**
-in **Settings → Updates**. To stop the daily check, turn off **Check for
+in **Preferences → Typing → Updates**. To stop the daily check, turn off **Check for
 updates** there.
 
 ## Uninstall

@@ -5,10 +5,10 @@
  * not, so this app stays on GTK3 rather than shipping a UI that only the
  * newest release can open.
  *
- * Three jobs: check spelling in text they already have (Spelling), look up
- * the Avro key map (Layout), and get the keyboard added to their input
- * sources (Setup). Navigation is the header-bar menu; the window opens on
- * Spelling. `byakaron --page=setup` (IBus Preferences) opens Setup instead.
+ * The window is the spelling editor, laid out like the macOS and Windows apps
+ * (issue list, editor, the controls in the header bar). Setup, Typing and the
+ * Avro key map are in Preferences, reached the GNOME way: the primary menu or
+ * Ctrl+comma. `byakaron --page=setup` (IBus Preferences) opens Setup.
  *
  * It is a separate process from byakaron-ibus and shares nothing with it at
  * runtime but the Core/ glue and the Zig engine underneath — the input method
@@ -114,7 +114,7 @@ static const char *const AUTHORS[] = { "Nurul Huda (Apon)", NULL };
 static const GOptionEntry extra_options[] = {
     { "version", 'V', 0, G_OPTION_ARG_NONE, NULL, "Print the version and exit", NULL },
     { "page", 'p', 0, G_OPTION_ARG_STRING, NULL,
-      "Open this page: spelling, layout, or setup", "PAGE" },
+      "Open this page: spelling, setup, typing, or layout", "PAGE" },
     { NULL }
 };
 
@@ -193,8 +193,20 @@ on_startup (GApplication *app, gpointer user_data)
     byk_add_app_action (app, "about", G_CALLBACK (on_about_activate));
     byk_add_app_action (app, "quit", G_CALLBACK (on_quit_activate));
 
-    const gchar *quit_accels[] = { "<Control>q", NULL };
-    gtk_application_set_accels_for_action (GTK_APPLICATION (app), "app.quit", quit_accels);
+    /* GNOME's standard keys, and the editor's. */
+    static const struct { const gchar *action; const gchar *accels[3]; } shortcuts[] = {
+        { "app.quit", { "<Control>q", NULL } },
+        { "win.preferences('')", { "<Control>comma", NULL } },
+        { "win.show-help-overlay", { "<Control>question", NULL } },
+        { "spell.open", { "<Control>o", NULL } },
+        { "spell.save", { "<Control>s", NULL } },
+        { "spell.copy", { "<Control><Shift>c", NULL } },
+        { "spell.typing", { "<Control>t", NULL } },
+        { "spell.sidebar", { "F9", NULL } },
+    };
+    for (gsize i = 0; i < G_N_ELEMENTS (shortcuts); i++)
+        gtk_application_set_accels_for_action (GTK_APPLICATION (app), shortcuts[i].action,
+                                               shortcuts[i].accels);
 }
 
 /* Single-instance: a second launch (from the IBus panel's preferences button,
@@ -204,12 +216,15 @@ byk_app_present (GtkApplication *app, const gchar *page)
 {
     GtkWindow *window = gtk_application_get_active_window (app);
 
-    if (window == NULL)
+    /* The active window may be Preferences; the main one owns it. */
+    if (window != NULL && !BYK_IS_WINDOW (window))
+        window = gtk_window_get_transient_for (window);
+    if (window == NULL || !BYK_IS_WINDOW (window))
         window = GTK_WINDOW (byk_window_new (app));
-    if (page != NULL && page[0] != '\0')
-        byk_window_show_page (BYK_WINDOW (window), page);
 
     gtk_window_present (window);
+    if (page != NULL && page[0] != '\0')
+        byk_window_show_page (BYK_WINDOW (window), page);
 }
 
 static void

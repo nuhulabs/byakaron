@@ -15,7 +15,8 @@ need() { command -v "$1" >/dev/null || die "need $1"; }
 
 # One command for every Linux Byakaron is packaged for: the .deb with apt on
 # Ubuntu, Debian and Raspberry Pi OS, the Arch package with pacman on Arch
-# Linux and the systems built on it (Manjaro, EndeavourOS, …).
+# Linux and the systems built on it (Manjaro, EndeavourOS, …), and the .rpm
+# with dnf on Fedora, RHEL and its rebuilds, or zypper on openSUSE.
 install_linux() {
     OS_RELEASE="${BYAKARON_OS_RELEASE:-/etc/os-release}"
     OS_NAME="Linux" OS_ID="" OS_LIKE=""
@@ -29,8 +30,10 @@ install_linux() {
         install_deb
     elif command -v pacman >/dev/null && [[ " $OS_ID $OS_LIKE " == *" arch "* ]]; then
         install_arch
+    elif command -v rpm >/dev/null && { command -v dnf >/dev/null || command -v zypper >/dev/null; }; then
+        install_rpm
     else
-        die "Byakaron is packaged for Ubuntu, Debian and Arch Linux (apt or pacman). This is $OS_NAME."
+        die "Byakaron is packaged for Ubuntu, Debian, Arch Linux, Fedora, RHEL and openSUSE (apt, pacman, dnf or zypper). This is $OS_NAME."
     fi
 }
 
@@ -64,7 +67,7 @@ fetch_package() {
 
     echo ">>> downloading $url"
     curl -fL --progress-bar -o "$dest" "$url" \
-        || die "could not download $url (publish ${name} on ${REPO}, or set BYAKARON_DEB_URL / BYAKARON_PKG_URL)"
+        || die "could not download $url (publish ${name} on ${REPO}, or set BYAKARON_DEB_URL / BYAKARON_PKG_URL / BYAKARON_RPM_URL)"
 
     # Same release's SHA256SUMS: a cut-off or damaged download stops here.
     [[ -z "$pinned" ]] || return 0
@@ -97,9 +100,9 @@ report() {
     echo "=== Byakaron $now is installed. Add it as an input source: ==="
     if command -v gnome-control-center >/dev/null; then
         echo "  1. Settings → Keyboard → Input Sources → '+'"
-        echo "  2. Bangla → Byakaron (Bangla Phonetic) → Add"
+        echo "  2. Bangla → Byakaron → Add"
         echo "  3. Switch with Super+Space and type ami then Space (আমি )"
-        echo "  Or open the Byakaron app → Setup."
+        echo "  Or open the Byakaron app → Preferences → Setup → Add."
         echo "  If it is missing from the Bangla list, log out and back in."
         command -v gnome-shell >/dev/null \
             && echo "  Log out and back in once anyway to get Byakaron's suggestion panel."
@@ -107,7 +110,7 @@ report() {
         echo "  1. $start_ibus"
         echo "  2. ibus-setup → Input Method → Add → Bangla → Byakaron"
         echo "  3. Switch with Super+Space and type ami then Space (আমি )"
-        echo "  Or open the Byakaron app → Setup."
+        echo "  Or open the Byakaron app → Preferences → Setup → Add."
     fi
     echo
 }
@@ -167,8 +170,8 @@ install_arch() {
     cpu="$(uname -m)"
     case "$cpu" in
         x86_64) CPU_NAME="Intel/AMD 64-bit (x86_64)" ;;
-        aarch64) die "this is Arch Linux ARM ($OS_NAME). Byakaron's Arch package is for Intel/AMD 64-bit (x86_64) so far." ;;
-        *) die "unsupported CPU '$cpu' ($OS_NAME). Byakaron's Arch package is for Intel/AMD 64-bit (x86_64)." ;;
+        aarch64) CPU_NAME="ARM 64-bit (aarch64)" ;;
+        *) die "unsupported CPU '$cpu' ($OS_NAME). Byakaron's Arch package is for x86_64 and aarch64." ;;
     esac
     echo ">>> Detected: $OS_NAME, $CPU_NAME"
 
@@ -196,6 +199,54 @@ install_arch() {
     now_installed="$(pacman -Q byakaron 2>/dev/null | cut -d ' ' -f 2 || true)"
     report "$(arch_shown "$was_installed")" "$(arch_shown "$now_installed")" \
         "Make IBus start with your desktop. KDE Plasma (Wayland): System Settings → Keyboard → Virtual Keyboard → IBus Wayland. Elsewhere: ibus-daemon -drxR at login (wiki.archlinux.org/title/IBus)"
+}
+
+# rpm's 27.0.0~dev.1-1 as people know it: 27.0.0-dev.1.
+rpm_shown() {
+    local v="${1%-*}"
+    printf '%s' "${v//\~/-}"
+}
+
+install_rpm() {
+    local cpu
+    cpu="$(uname -m)"
+    case "$cpu" in
+        x86_64) CPU_NAME="Intel/AMD 64-bit (x86_64)" ;;
+        aarch64) CPU_NAME="ARM 64-bit (aarch64)" ;;
+        *) die "unsupported CPU '$cpu' ($OS_NAME). Byakaron's RPM is for x86_64 and aarch64." ;;
+    esac
+    echo ">>> Detected: $OS_NAME, $CPU_NAME"
+
+    local name="byakaron_${cpu}.rpm"
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' RETURN
+    local pkg="$tmp/$name"
+    fetch_package "$name" "$pkg" "${BYAKARON_RPM_URL:-}"
+
+    echo ">>> installing (keyboard + app + spell-check)"
+    was_installed="$(rpm -q --qf '%{VERSION}-%{RELEASE}' byakaron 2>/dev/null || true)"
+    [[ "$was_installed" == *" "* ]] && was_installed=""
+    # dnf and zypper install ibus and GTK when they are missing. The package
+    # is checked against SHA256SUMS above rather than signed.
+    local cmd
+    if command -v dnf >/dev/null; then
+        cmd=(dnf install -y "$pkg")
+    else
+        cmd=(zypper --non-interactive install --allow-unsigned-rpm "$pkg")
+    fi
+    local ok=1
+    if [[ "${EUID}" -eq 0 ]]; then
+        BYAKARON_INSTALLER=1 "${cmd[@]}" || ok=0
+    else
+        need sudo
+        sudo env BYAKARON_INSTALLER=1 "${cmd[@]}" || ok=0
+    fi
+    [[ $ok -eq 1 ]] || die "${cmd[0]} could not install Byakaron. On RHEL, Rocky or AlmaLinux, enable EPEL first
+       for ibus (sudo dnf install epel-release), then run this command again."
+
+    now_installed="$(rpm -q --qf '%{VERSION}-%{RELEASE}' byakaron 2>/dev/null || true)"
+    report "$(rpm_shown "$was_installed")" "$(rpm_shown "$now_installed")" \
+        "Make IBus start with your desktop: imsettings-switch ibus (Fedora), or ibus-daemon -drxR at login, then log out and back in"
 }
 
 install_macos() {

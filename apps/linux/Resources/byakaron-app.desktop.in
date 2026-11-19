@@ -15,3 +15,13 @@ StartupNotify=true
 # Must match BYK_APP_ID in App/app.h, or the shell shows a second, iconless
 # entry in the dock for the running window instead of reusing this one.
 StartupWMClass=dev.nuhu.labs.Byakaron
+# Right-click actions in the dock and app grid, as GNOME and KDE show them.
+Actions=preferences;setup;
+
+[Desktop Action preferences]
+Name=Preferences
+Exec=@BYK_APP_EXEC@ --page=typing
+
+[Desktop Action setup]
+Name=Keyboard Setup
+Exec=@BYK_APP_EXEC@ --page=setup

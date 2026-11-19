@@ -1,8 +1,9 @@
 # ci: on every push, the unit tests once, then a build of every platform (a
 # matrix, one job each) once they pass.
 #
-# Kept fast on purpose: no packaging, installers, e2e or install-matrix here.
-# Those run in release.yml (packages) and e2e.yml (by hand).
+# Kept fast on purpose: no installers, e2e or install-matrix here. Those run
+# in release.yml (packages) and e2e.yml (by hand). Linux does build its
+# packages (tiny Byakaron.db), since each distribution's format is its own code.
 name: ci
 
 on:
@@ -35,7 +36,8 @@ jobs:
     name: build (${{ matrix.platform }})
     needs: test
     runs-on: ${{ matrix.runs-on }}
-    timeout-minutes: 30
+    # Linux also builds both CPUs and its three packages.
+    timeout-minutes: ${{ matrix.platform == 'linux' && 50 || 30 }}
     strategy:
       fail-fast: false
       matrix:
@@ -102,7 +104,25 @@ jobs:
           if [ -d zig-pkg ]; then sudo chown -R "$USER" zig-pkg; fi
       - name: build (linux)
         if: matrix.platform == 'linux'
-        run: zig build linux -Dlinux-system-libs -Dwiki-dump=.github/ci/bnwiki-tiny.xml
+        run: |
+          zig build linux -Dlinux-system-libs -Dwiki-dump=.github/ci/bnwiki-tiny.xml
+          # The shipped binaries: glibc 2.31 sysroot, both CPUs.
+          zig build linux -Dlinux-arch=x86_64
+          zig build linux -Dlinux-arch=aarch64
+      # Ubuntu/Debian .deb, Arch package and Fedora/RHEL/openSUSE .rpm, checked
+      # with each format's own tool.
+      - name: pack (linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get install -y -qq rpm zstd
+          zig build pack -Dlinux-arch=x86_64 -Dwiki-dump=.github/ci/bnwiki-tiny.xml -- linux linux-arch linux-rpm
+          ls -l zig-out/pkg
+          dpkg-deb --info zig-out/pkg/byakaron_*_amd64.deb
+          rpm -qip zig-out/pkg/byakaron-*.x86_64.rpm
+          rpm -qpR zig-out/pkg/byakaron-*.x86_64.rpm
+          rpm -qpl zig-out/pkg/byakaron-*.x86_64.rpm | grep -x /usr/share/ibus/component/byakaron.xml
+          rpm -qpl zig-out/pkg/byakaron-*.x86_64.rpm | grep -x /usr/share/gnome-shell/extensions/panel@byakaron.com/metadata.json
+          tar --zstd -tf zig-out/pkg/byakaron-*-x86_64.pkg.tar.zst | grep -x .PKGINFO
       - name: build (macos)
         if: matrix.platform == 'macos'
         run: |

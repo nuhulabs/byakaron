@@ -40,7 +40,7 @@ Tested in CI on every push: the installer in clean Ubuntu 20.04, 22.04, 24.04,
 ## After installing
 
 **Ubuntu (GNOME):** Settings → Keyboard → Input Sources → **+** → **Bangla** →
-**Byakaron (Bangla Phonetic)** → Add, then Super+Space.
+**Byakaron** → Add, then Super+Space.
 
 **Raspberry Pi OS, KDE, Xfce and other desktops** (no GNOME Settings):
 
@@ -150,7 +150,7 @@ That file is `arm64`, not `amd64`. Use `apt`, not `dpkg -i`.
 ## 5. Use it
 
 1. Settings → Keyboard → Input Sources → **+**
-2. Choose **Bangla**, then **Byakaron (Bangla Phonetic)** → Add  
+2. Choose **Bangla**, then **Byakaron** → Add  
    The first dialog is a language list — searching “Byakaron” there finds nothing.
 3. Switch with **Super+Space**
 4. Type `ami` then Space — you should get `আমি `

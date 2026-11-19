@@ -172,7 +172,9 @@ byk_updates_curl_hint (BykUpdates *u, const gchar *what)
 {
     static gchar text[128];
     g_snprintf (text, sizeof text, "%s needs curl: %s", what,
-                u->package == BYK_PACKAGE_ARCH ? "sudo pacman -S curl" : "sudo apt install curl");
+                u->package == BYK_PACKAGE_ARCH  ? "sudo pacman -S curl"
+                : u->package == BYK_PACKAGE_RPM ? "sudo dnf install curl"
+                                                : "sudo apt install curl");
     return text;
 }
 
@@ -217,6 +219,8 @@ byk_updates_install (BykUpdates *u)
     gchar *deb = g_build_filename (u->dir, u->file_name, NULL);
     gchar *apt = g_find_program_in_path ("apt-get");
     gchar *pacman = g_find_program_in_path ("pacman");
+    gchar *dnf = g_find_program_in_path ("dnf");
+    gchar *zypper = g_find_program_in_path ("zypper");
     gchar *pkexec = g_find_program_in_path ("pkexec");
     gboolean root = geteuid () == 0;
     gboolean started = FALSE;
@@ -235,6 +239,17 @@ byk_updates_install (BykUpdates *u)
         const gchar *as_root[] = { pacman, "-U", "--noconfirm", deb, NULL };
         const gchar *with_prompt[] = { pkexec, pacman, "-U", "--noconfirm", deb, NULL };
         started = byk_updates_run (u, root ? as_root : with_prompt, on_installed);
+    } else if (u->package == BYK_PACKAGE_RPM && dnf != NULL && (root || pkexec != NULL)) {
+        const gchar *as_root[] = { dnf, "install", "-y", deb, NULL };
+        const gchar *with_prompt[] = { pkexec, dnf, "install", "-y", deb, NULL };
+        started = byk_updates_run (u, root ? as_root : with_prompt, on_installed);
+    } else if (u->package == BYK_PACKAGE_RPM && zypper != NULL && (root || pkexec != NULL)) {
+        /* The release's RPM is checked against SHA256SUMS, not signed. */
+        const gchar *as_root[] = { zypper, "--non-interactive", "install",
+                                   "--allow-unsigned-rpm", deb, NULL };
+        const gchar *with_prompt[] = { pkexec, zypper, "--non-interactive", "install",
+                                       "--allow-unsigned-rpm", deb, NULL };
+        started = byk_updates_run (u, root ? as_root : with_prompt, on_installed);
     }
     if (started) {
         byk_updates_show (u, GTK_MESSAGE_INFO,
@@ -252,6 +267,8 @@ byk_updates_install (BykUpdates *u)
     g_free (deb);
     g_free (apt);
     g_free (pacman);
+    g_free (dnf);
+    g_free (zypper);
     g_free (pkexec);
 }
 
@@ -442,7 +459,7 @@ byk_updates_check (GtkWidget *bar, gboolean asked)
     if (u->installed == NULL) {
         if (asked)
             byk_updates_show (u, GTK_MESSAGE_INFO,
-                              "This Byakaron was not installed from a package (.deb or Arch), "
+                              "This Byakaron was not installed from a package (.deb, Arch or .rpm), "
                               "so it cannot update itself.",
                               FALSE, TRUE, FALSE);
         return;

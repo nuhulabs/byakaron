@@ -12,7 +12,8 @@
 #                     web      pack-web (the site links to latest)
 #
 # Artifacts on nuhulabs/Byakaron-Assets (stable names → /releases/latest/download/…):
-#   pack linux    → byakaron_{amd64,arm64}.deb, byakaron_x86_64.pkg.tar.zst (Arch)
+#   pack linux    → byakaron_{amd64,arm64}.deb, byakaron_{x86_64,aarch64}.pkg.tar.zst (Arch),
+#                   byakaron_{x86_64,aarch64}.rpm (Fedora, RHEL, openSUSE)
 #   pack macos    → Byakaron.dmg
 #   pack windows  → Byakaron-Setup.exe
 #   pack android  → Byakaron.apk + Byakaron.aab (the .aab also goes to Google Play)
@@ -20,7 +21,8 @@
 #   pack web      → nothing (Cloudflare Workers, never on Assets)
 #
 # Local `zig build pack -- linux` writes byakaron_<ver>_<arch>.deb (and
-# `pack -- linux-arch` byakaron-<ver>-1-x86_64.pkg.tar.zst); publish renames
+# `pack -- linux-arch` byakaron-<ver>-1-<arch>.pkg.tar.zst, `pack -- linux-rpm`
+# byakaron-<ver>-1.<arch>.rpm); publish renames
 # them for the public Assets release so the website/installer never need a
 # versioned URL. Byakaron.db is baked into packages, not uploaded to Assets.
 #
@@ -206,13 +208,14 @@ jobs:
             zig build deps -- linux
           # sudo fetched packages into zig-pkg/ as root; later builds run as the runner.
           if [ -d zig-pkg ]; then sudo chown -R "$USER" zig-pkg; fi
+          # rpmbuild, for the Fedora / RHEL / openSUSE package.
+          sudo apt-get install -y -qq rpm
 
-      # amd64 + arm64 .deb; the Arch package is x86_64 only (Arch Linux has no
-      # ARM images to test one in).
+      # .deb, Arch package and .rpm, each for x86_64 and aarch64.
       - name: pack
         run: |
-          zig build pack -Dlinux-arch=x86_64 -Dspell-db=zig-out/db/Byakaron.db -- linux linux-arch
-          zig build pack -Dlinux-arch=aarch64 -Dspell-db=zig-out/db/Byakaron.db -- linux
+          zig build pack -Dlinux-arch=x86_64 -Dspell-db=zig-out/db/Byakaron.db -- linux linux-arch linux-rpm
+          zig build pack -Dlinux-arch=aarch64 -Dspell-db=zig-out/db/Byakaron.db -- linux linux-arch linux-rpm
           ls -l zig-out/pkg
 
       - uses: actions/upload-artifact@v4
@@ -221,6 +224,7 @@ jobs:
           path: |
             zig-out/pkg/byakaron_*.deb
             zig-out/pkg/byakaron-*.pkg.tar.zst
+            zig-out/pkg/byakaron-*.rpm
           if-no-files-found: error
 
   pack-macos:
@@ -712,13 +716,19 @@ jobs:
             # Stable public name so /releases/latest/download/byakaron_${arch}.deb works.
             mv -f "${matches[0]}" "byakaron_${arch}.deb"
           done
-          # The Arch Linux package (x86_64 only), under a stable name as well.
-          mapfile -t matches < <(compgen -G "byakaron-*-x86_64.pkg.tar.zst" || true)
-          [[ ${#matches[@]} -eq 1 ]] || {
-            echo "::error::expected one byakaron-*-x86_64.pkg.tar.zst, got: ${matches[*]-<none>}"
-            exit 1
-          }
-          mv -f "${matches[0]}" "byakaron_x86_64.pkg.tar.zst"
+          # The Arch Linux package and the RPM, under stable names as well.
+          for arch in x86_64 aarch64; do
+            for pattern in "byakaron-*-${arch}.pkg.tar.zst:byakaron_${arch}.pkg.tar.zst" \
+                           "byakaron-*.${arch}.rpm:byakaron_${arch}.rpm"; do
+              glob="${pattern%%:*}" stable="${pattern#*:}"
+              mapfile -t matches < <(compgen -G "$glob" || true)
+              [[ ${#matches[@]} -eq 1 ]] || {
+                echo "::error::expected one $glob, got: ${matches[*]-<none>}"
+                exit 1
+              }
+              mv -f "${matches[0]}" "$stable"
+            done
+          done
           sha256sum -- * > SHA256SUMS
           cat SHA256SUMS
 
