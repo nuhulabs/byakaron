@@ -209,10 +209,19 @@ install_macos() {
     curl -fL --progress-bar -o "$dmg" "$dmg_url" \
         || die "could not download $dmg_url (publish Byakaron.dmg on ${REPO}, or set BYAKARON_DMG_URL)"
 
+    # Mount at a path we pick: the volume name has spaces ("Byakaron 0.1.3"),
+    # so reading it back out of the attach output is fragile. macOS 27
+    # deprecates `hdiutil attach` in favour of `diskutil image attach`.
     echo ">>> mounting disk image"
-    attach_out="$(hdiutil attach -nobrowse -readonly "$dmg")"
-    mnt="$(printf '%s\n' "$attach_out" | awk '/\/Volumes\//{print $NF; exit}')"
-    [[ -n "$mnt" && -d "$mnt" ]] || die "could not mount $dmg"
+    mnt="$tmp/mnt"
+    if diskutil image attach --help >/dev/null 2>&1; then
+        diskutil image attach --readOnly --nobrowse --mountPoint "$mnt" "$dmg" >/dev/null \
+            || die "could not mount $dmg"
+    else
+        hdiutil attach -nobrowse -readonly -noverify -mountpoint "$mnt" "$dmg" >/dev/null \
+            || die "could not mount $dmg"
+    fi
+    trap 'hdiutil detach "$mnt" -quiet -force 2>/dev/null || true; rm -rf "$tmp"' RETURN
 
     app=""
     for candidate in "$mnt"/Byakaron.app "$mnt"/*.app; do
@@ -220,7 +229,7 @@ install_macos() {
         app="$candidate"
         break
     done
-    [[ -n "$app" ]] || { hdiutil detach "$mnt" -quiet || true; die "no .app found inside the disk image"; }
+    [[ -n "$app" ]] || { hdiutil detach "$mnt" -quiet -force || true; die "no .app found inside the disk image"; }
 
     dest="/Applications/$(basename "$app")"
     echo ">>> installing to $dest"
