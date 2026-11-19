@@ -138,7 +138,10 @@ struct BanglaSpellTextView: NSViewRepresentable {
 
         /// Scroll the selected misspelling into view when the sidebar selection moves.
         func revealSelectionIfNeeded() {
-            guard let textView, let selected = parent.selectedRange else { return }
+            guard let textView, let selected = parent.selectedRange else {
+                lastRevealed = nil  // so picking the same issue again reveals it
+                return
+            }
             guard selected != lastRevealed else { return }
             lastRevealed = selected
             let nsRange = NSRange(selected, in: parent.text)

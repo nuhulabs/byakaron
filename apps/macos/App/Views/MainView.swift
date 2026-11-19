@@ -14,6 +14,11 @@ struct MainView: View {
     /// The issue currently selected in the sidebar.
     @State private var selection: Misspelling.ID?
 
+    /// The issue the editor should scroll to and select: set only when the
+    /// user picks one (or a fix moves on to the next), never when a recheck
+    /// re-picks the first issue, so typing keeps the caret where it is.
+    @State private var revealID: Misspelling.ID?
+
     /// After apply/ignore, wait for the refreshed issue list then select the
     /// misspelling at or after this UTF-16 offset (adjusted for the edit).
     @State private var pendingJumpUTF16: Int?
@@ -91,7 +96,10 @@ struct MainView: View {
     // MARK: - Sidebar
 
     private var sidebar: some View {
-        List(selection: $selection) {
+        List(selection: Binding(
+            get: { selection },
+            set: { selection = $0; revealID = $0 }
+        )) {
             Section(checker.misspellings.isEmpty ? "Issues" : "Issues (\(checker.misspellings.count))") {
                 if checker.misspellings.isEmpty {
                     Label(
@@ -154,7 +162,7 @@ struct MainView: View {
             ZStack(alignment: .topLeading) {
                 BanglaSpellTextView(
                     text: $checker.text,
-                    selectedRange: selectedMisspelling?.range,
+                    selectedRange: revealedMisspelling?.range,
                     isCorrect: { checker.isCorrect($0) },
                     suggestions: { word, range in
                         checker.suggestions(for: word, at: range)
@@ -262,6 +270,11 @@ struct MainView: View {
         checker.misspellings.first { $0.id == selection }
     }
 
+    private var revealedMisspelling: Misspelling? {
+        guard let revealID, revealID == selection else { return nil }
+        return checker.misspellings.first { $0.id == revealID }
+    }
+
     /// Remember where to land after the next misspellings refresh.
     private func queueAdvance(after miss: Misspelling, utf16Delta: Int) {
         let misses = checker.misspellings
@@ -293,6 +306,8 @@ struct MainView: View {
     private func resolvePendingJump(in new: [Misspelling]) {
         guard let jump = pendingJumpUTF16 else {
             // Keep selection valid across refreshes; auto-pick first if none.
+            // Each recheck makes new issues, so this runs after every edit:
+            // it must not move the caret (`revealID` stays put).
             if let selection, new.contains(where: { $0.id == selection }) { return }
             selection = new.first?.id
             return
@@ -305,6 +320,7 @@ struct MainView: View {
         selection = new.first { miss in
             checker.utf16Offset(of: miss.range.lowerBound) >= jump
         }?.id ?? new.first?.id
+        revealID = selection
     }
 }
 
