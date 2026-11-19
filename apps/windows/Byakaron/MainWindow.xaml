@@ -43,7 +43,7 @@
                 Margin="8,0,0,0"
                 VerticalAlignment="Center"
                 FontSize="12"
-                Foreground="{StaticResource AppMutedTextBrush}"
+                Foreground="{ThemeResource AppMutedTextBrush}"
                 Text="Byakaron" />
         </Grid>
 
@@ -58,8 +58,8 @@
             <Border
                 x:Name="SidebarPane"
                 Grid.Column="0"
-                Background="{StaticResource AppSidebarBrush}"
-                BorderBrush="{StaticResource AppHairlineBrush}"
+                Background="{ThemeResource AppSidebarBrush}"
+                BorderBrush="{ThemeResource AppHairlineBrush}"
                 BorderThickness="0,0,1,0">
                 <Grid Padding="10,4,8,10" RowSpacing="6">
                     <Grid.RowDefinitions>
@@ -72,7 +72,7 @@
                         Margin="8,8,8,4"
                         FontSize="12"
                         FontWeight="SemiBold"
-                        Foreground="{StaticResource AppMutedTextBrush}"
+                        Foreground="{ThemeResource AppMutedTextBrush}"
                         Text="Issues" />
 
                     <ListView
@@ -95,7 +95,7 @@
                                     <FontIcon
                                         VerticalAlignment="Center"
                                         FontSize="14"
-                                        Foreground="{StaticResource AppIssueIconBrush}"
+                                        Foreground="{ThemeResource AppIssueIconBrush}"
                                         Glyph="&#xE8D2;" />
 
                                     <TextBlock
@@ -114,13 +114,13 @@
                                         Height="20"
                                         Padding="6,0"
                                         VerticalAlignment="Center"
-                                        Background="{StaticResource AppBadgeBrush}"
+                                        Background="{ThemeResource AppBadgeBrush}"
                                         CornerRadius="10">
                                         <TextBlock
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center"
                                             FontSize="11"
-                                            Foreground="{StaticResource AppMutedTextBrush}"
+                                            Foreground="{ThemeResource AppMutedTextBrush}"
                                             Text="{x:Bind SuggestionCount, Mode=OneWay}" />
                                     </Border>
                                 </Grid>
@@ -131,7 +131,7 @@
             </Border>
 
             <!-- Detail: header + editor + correction + status -->
-            <Grid Grid.Column="1" Background="{StaticResource AppEditorBrush}">
+            <Grid Grid.Column="1" Background="{ThemeResource AppEditorBrush}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
@@ -142,7 +142,7 @@
                 <!-- Document header (macOS navigationTitle + toolbar) -->
                 <Grid
                     Padding="20,10,16,10"
-                    BorderBrush="{StaticResource AppHairlineBrush}"
+                    BorderBrush="{ThemeResource AppHairlineBrush}"
                     BorderThickness="0,0,0,1"
                     ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
@@ -158,7 +158,7 @@
                         <TextBlock
                             x:Name="SubtitleText"
                             FontSize="12"
-                            Foreground="{StaticResource AppSecondaryTextBrush}"
+                            Foreground="{ThemeResource AppSecondaryTextBrush}"
                             Text="বাংলা বানান পরীক্ষক" />
                     </StackPanel>
 
@@ -167,6 +167,20 @@
                         Orientation="Horizontal"
                         Spacing="2"
                         VerticalAlignment="Center">
+                        <!-- Avro typing: type with the keyboard's engine here, as the
+                             macOS app's toolbar toggle does. -->
+                        <ToggleButton
+                            x:Name="AvroTypingToggle"
+                            Width="36"
+                            Height="32"
+                            Padding="0"
+                            CornerRadius="4"
+                            BorderThickness="0"
+                            VerticalAlignment="Center"
+                            Click="AvroTypingToggle_Click"
+                            ToolTipService.ToolTip="Avro typing: type with the Byakaron keyboard here (its suggestions, settings and learned choices) without switching keyboards">
+                            <TextBlock FontFamily="Nirmala UI" FontSize="15" Text="অ" />
+                        </ToggleButton>
                         <Button
                             x:Name="SettingsButton"
                             Style="{StaticResource TitleIconButtonStyle}"
@@ -222,7 +236,19 @@
                         FontSize="18"
                         PlaceholderText="এখানে বাংলা লিখুন বা পেস্ট করুন…"
                         TextWrapping="Wrap"
-                        TextChanged="EditorTextBox_TextChanged" />
+                        TextChanged="EditorTextBox_TextChanged"
+                        PreviewKeyDown="EditorTextBox_PreviewKeyDown"
+                        SelectionChanged="EditorTextBox_SelectionChanged"
+                        LostFocus="EditorTextBox_LostFocus">
+                        <!-- The editor is the page: no box when hovered or focused,
+                             in light or dark. -->
+                        <TextBox.Resources>
+                            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                        </TextBox.Resources>
+                    </TextBox>
                 </ScrollViewer>
 
                 <!-- Correction bar (selected issue) -->
@@ -230,8 +256,8 @@
                     x:Name="CorrectionBar"
                     Grid.Row="2"
                     Padding="16,12"
-                    Background="{StaticResource AppBarBrush}"
-                    BorderBrush="{StaticResource AppHairlineBrush}"
+                    Background="{ThemeResource AppBarBrush}"
+                    BorderBrush="{ThemeResource AppHairlineBrush}"
                     BorderThickness="0,1,0,0"
                     Visibility="Collapsed">
                     <Grid ColumnSpacing="12">
@@ -250,7 +276,7 @@
                                 Text="" />
                             <TextBlock
                                 FontSize="11"
-                                Foreground="{StaticResource AppMutedTextBrush}"
+                                Foreground="{ThemeResource AppMutedTextBrush}"
                                 Text="Replace with" />
                         </StackPanel>
 
@@ -278,8 +304,8 @@
                 <Border
                     Grid.Row="3"
                     Padding="16,6"
-                    Background="{StaticResource AppBarBrush}"
-                    BorderBrush="{StaticResource AppHairlineBrush}"
+                    Background="{ThemeResource AppBarBrush}"
+                    BorderBrush="{ThemeResource AppHairlineBrush}"
                     BorderThickness="0,1,0,0">
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -291,23 +317,23 @@
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon
                                     FontSize="12"
-                                    Foreground="{StaticResource AppMutedTextBrush}"
+                                    Foreground="{ThemeResource AppMutedTextBrush}"
                                     Glyph="&#xE8D2;" />
                                 <TextBlock
                                     x:Name="WordCountText"
                                     FontSize="11"
-                                    Foreground="{StaticResource AppMutedTextBrush}"
+                                    Foreground="{ThemeResource AppMutedTextBrush}"
                                     Text="0 words" />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <FontIcon
                                     FontSize="12"
-                                    Foreground="{StaticResource AppMutedTextBrush}"
+                                    Foreground="{ThemeResource AppMutedTextBrush}"
                                     Glyph="&#xE8C1;" />
                                 <TextBlock
                                     x:Name="CharCountText"
                                     FontSize="11"
-                                    Foreground="{StaticResource AppMutedTextBrush}"
+                                    Foreground="{ThemeResource AppMutedTextBrush}"
                                     Text="0 characters" />
                             </StackPanel>
                         </StackPanel>
@@ -320,18 +346,26 @@
                             <FontIcon
                                 x:Name="IssuesStatusIcon"
                                 FontSize="12"
-                                Foreground="{StaticResource AppWarningBrush}"
+                                Foreground="{ThemeResource AppWarningBrush}"
                                 Glyph="&#xE7BA;" />
                             <TextBlock
                                 x:Name="IssuesStatusText"
                                 FontSize="11"
                                 FontWeight="SemiBold"
-                                Foreground="{StaticResource AppWarningBrush}"
+                                Foreground="{ThemeResource AppWarningBrush}"
                                 Text="0 issues" />
                         </StackPanel>
                     </Grid>
                 </Border>
             </Grid>
         </Grid>
+        <!-- Avro typing's suggestion pills (MainWindow.AvroTyping.cs). -->
+        <Popup
+            x:Name="CandidatePopup"
+            Grid.RowSpan="2"
+            IsLightDismissEnabled="False"
+            ShouldConstrainToRootBounds="False">
+            <Border x:Name="CandidatePill" Padding="2" BorderThickness="1" />
+        </Popup>
     </Grid>
 </Window>

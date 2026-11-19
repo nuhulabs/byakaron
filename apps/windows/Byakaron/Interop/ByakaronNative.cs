@@ -62,6 +62,65 @@ internal static partial class ByakaronNative
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
     internal static partial void ComposerDestroy(nint composer);
 
+    // ── Composer (typing: the keyboard's engine, for the editor's Avro typing) ─
+
+    internal const int KeyChar = 0, KeySpace = 1, KeyEnter = 2, KeyTab = 3, KeyBackspace = 4, KeyEscape = 5,
+        KeyUp = 6, KeyDown = 7, KeyLeft = 8, KeyRight = 9, KeyPageUp = 10, KeyPageDown = 11, KeyOther = 12;
+    internal const uint ModShift = 1, ModCtrl = 2, ModAlt = 4, ModMeta = 8;
+
+    /// <summary>ByakaronKeyResult: <c>Commit</c> is UTF-8, not owned, valid until the next composer call.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct KeyResult
+    {
+        public int Handled;
+        public nint Commit;
+    }
+
+    /// <summary>ByakaronComposerState: pointers valid until the next composer call.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct ComposerState
+    {
+        public int Composing;
+        public nint Preedit;
+        public int PanelVisible;
+        public int Vertical;
+        public nint Candidates;
+        public nuint CandidateCount;
+        public nuint Highlight;
+        public nuint Page;
+        public nuint PageCount;
+        public nint Latin;
+        public nint Literal;
+    }
+
+    /// <summary>Called on the composer's worker thread when spelling corrections arrive.</summary>
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void UpdateFn(nint userdata);
+
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_composer_key")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial KeyResult ComposerKey(nint composer, int kind, uint ch, uint modifiers);
+
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_composer_pick")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial KeyResult ComposerPick(nint composer, nuint index);
+
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_composer_flush")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial nint ComposerFlush(nint composer);
+
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_composer_reset")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial void ComposerReset(nint composer);
+
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_composer_refresh")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial void ComposerRefresh(nint composer);
+
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_composer_state")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial void ComposerGetState(nint composer, out ComposerState state);
+
     /// <summary>One setting by key as a number (toggle 0/1, choice index, number). 0, or -1 for an unknown key.</summary>
     [LibraryImport(LibraryName, EntryPoint = "byakaron_setting_get", StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]

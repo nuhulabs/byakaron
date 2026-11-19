@@ -33,6 +33,17 @@ public sealed partial class MainWindow : Window
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+        // Caption buttons in the app's light or dark, over the Mica title bar.
+        AppWindow.TitleBar.PreferredTheme = Microsoft.UI.Windowing.TitleBarTheme.UseDefaultAppMode;
+        AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
+        AppWindow.TitleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+        // Brushes set from code (status, chips) are redone when the theme changes.
+        RootGrid.ActualThemeChanged += (_, _) =>
+        {
+            UpdateChrome();
+            UpdateCorrectionBar();
+            if (_avro is not null && _wordStart >= 0) DrawPills(_avro.State());
+        };
 
         IssuesList.ItemsSource = _issues;
         _checker.Changed += Checker_Changed;
@@ -46,6 +57,7 @@ public sealed partial class MainWindow : Window
         FixAllButton.IsEnabled = false;
         UpdateChrome();
 
+        InitAvroTyping();
         _ = LoadEngineAsync();
     }
 
@@ -78,6 +90,9 @@ public sealed partial class MainWindow : Window
         }
         else if (!string.Equals(EditorTextBox.Text, _checker.Text, StringComparison.Ordinal))
         {
+            // Cleared, or a correction rewrote the text: a word being typed
+            // with Avro typing has no place in it any more.
+            DropWord();
             _suppressEditorSync = true;
             EditorTextBox.Text = _checker.Text;
             _suppressEditorSync = false;
@@ -301,7 +316,7 @@ public sealed partial class MainWindow : Window
             {
                 Text = "No suggestions",
                 FontSize = 13,
-                Foreground = (Brush)Application.Current.Resources["AppSecondaryTextBrush"],
+                Foreground = ThemeBrush("AppSecondaryTextBrush"),
                 VerticalAlignment = VerticalAlignment.Center,
             });
             return;
@@ -353,22 +368,40 @@ public sealed partial class MainWindow : Window
         if (issueCount == 0)
         {
             IssuesStatusIcon.Glyph = "\uE73E";
-            IssuesStatusIcon.Foreground = (Brush)Application.Current.Resources["AppSuccessBrush"];
+            IssuesStatusIcon.Foreground = ThemeBrush("AppSuccessBrush");
             IssuesStatusText.Text = "No issues";
-            IssuesStatusText.Foreground = (Brush)Application.Current.Resources["AppSuccessBrush"];
+            IssuesStatusText.Foreground = ThemeBrush("AppSuccessBrush");
         }
         else
         {
             IssuesStatusIcon.Glyph = "\uE7BA";
-            IssuesStatusIcon.Foreground = (Brush)Application.Current.Resources["AppWarningBrush"];
+            IssuesStatusIcon.Foreground = ThemeBrush("AppWarningBrush");
             IssuesStatusText.Text = $"{issueCount} issue{(issueCount == 1 ? string.Empty : "s")}";
-            IssuesStatusText.Foreground = (Brush)Application.Current.Resources["AppWarningBrush"];
+            IssuesStatusText.Foreground = ThemeBrush("AppWarningBrush");
         }
 
         var hasText = !string.IsNullOrEmpty(text);
         FixAllButton.IsEnabled = _checker.IsReady && _issues.Count > 0;
         CopyButton.IsEnabled = hasText;
         ClearButton.IsEnabled = hasText;
+    }
+
+    /// <summary>
+    /// An app brush (App.xaml) in the window's current theme. Code cannot say
+    /// ThemeResource, and Application.Resources answers in the app's theme at
+    /// launch, so a switch to dark while running kept the light brushes.
+    /// </summary>
+    private Brush ThemeBrush(string key)
+    {
+        var theme = new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast
+            ? "HighContrast"
+            : RootGrid.ActualTheme == ElementTheme.Dark ? "Dark" : "Light";
+        if (Application.Current.Resources.ThemeDictionaries.TryGetValue(theme, out var found) &&
+            found is ResourceDictionary dict && dict.TryGetValue(key, out var brush))
+        {
+            return (Brush)brush;
+        }
+        return (Brush)Application.Current.Resources[key];
     }
 
     private static int CountWords(string text)
