@@ -22,10 +22,12 @@ on:
         options: [all, linux, ios]
         default: all
       ios-os:
-        # The releases the keyboard's layouts are measured on; one not on the
-        # runner yet (27.3) is skipped until the image has it.
-        description: "iOS versions (`--os`): 27.0,27.3 (default), 27+, 27.2, ..."
-        default: "27.0,27.3"
+        # The release the keyboard's layouts are checked on: an iPhone on the
+        # 27.3 beta matches them, while the 27.0 and 27.2 release simulators
+        # put the system keyboard 7pt lower than that iPhone does. Until the
+        # runner image has 27.3 the iOS runs are skipped (the build still runs).
+        description: "iOS versions (`--os`): 27.3 (default), 27+, 27.0, ..."
+        default: "27.3"
       ios-devices:
         description: "iPhones (`--devices`), comma-separated globs"
         default: "iPhone 1*,iPhone Air*"
@@ -127,6 +129,9 @@ jobs:
           matrix=$(zig build e2e -- ios --list --json --os "$OS" --devices "$DEVICES")
           echo "$matrix"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          if [ "$matrix" = "[]" ]; then
+            echo "::notice::no simulator on this runner matches iOS \"$OS\" / \"$DEVICES\": the iOS runs are skipped"
+          fi
       - name: build
         working-directory: apps/ios/keyboard
         run: |
@@ -145,6 +150,7 @@ jobs:
   ios:
     name: e2e (ios ${{ matrix.os }}, ${{ matrix.device }})
     needs: ios-build
+    if: needs.ios-build.outputs.matrix != '[]'
     runs-on: xcode-27
     timeout-minutes: 30
     strategy:

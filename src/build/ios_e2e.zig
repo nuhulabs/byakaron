@@ -964,7 +964,9 @@ fn runMain(t: *Tool, args: []const []const u8) !u8 {
     const pairs = try matrix(t, o);
     if (pairs.len == 0) {
         std.debug.print("no simulator matches: see `xcrun simctl list runtimes` and --devices / --os\n", .{});
-        return 1;
+        // CI's job matrix: an empty one (no runtime wanted on this runner
+        // yet) skips the runs instead of failing the build.
+        if (!(o.list and o.json)) return 1;
     }
     if (o.list) {
         var buf: [4096]u8 = undefined;
