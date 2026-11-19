@@ -22,8 +22,10 @@ on:
         options: [all, linux, ios]
         default: all
       ios-os:
-        description: "iOS versions (`--os`): 27+, 27.2, 27.0,27.2, ..."
-        default: "27+"
+        # The releases the keyboard's layouts are measured on; one not on the
+        # runner yet (27.3) is skipped until the image has it.
+        description: "iOS versions (`--os`): 27.0,27.3 (default), 27+, 27.2, ..."
+        default: "27.0,27.3"
       ios-devices:
         description: "iPhones (`--devices`), comma-separated globs"
         default: "iPhone 1*,iPhone Air*"
