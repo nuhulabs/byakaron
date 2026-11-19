@@ -6,8 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    MinWidth="360"
-    MaxWidth="440">
+    Width="480">
 
     <UserControl.Resources>
         <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
@@ -25,57 +24,87 @@
         </Style>
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Spacing="20" Padding="4,0,4,8">
-            <TextBlock
-                x:Name="UnavailableText"
-                Visibility="Collapsed"
-                FontSize="12"
-                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                TextWrapping="Wrap"
-                Text="Keyboard settings are unavailable: byakaron_ffi.dll could not be loaded." />
+    <!-- The macOS app's Settings tabs: Setup, Typing, Suggestions, Personal
+         dictionary and Layout, in that order. -->
+    <Grid RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-            <!-- The shared settings, built from the core's manifest at load. -->
-            <StackPanel x:Name="ManifestPanel" Spacing="20" />
+        <SelectorBar x:Name="Tabs" SelectionChanged="Tabs_SelectionChanged">
+            <SelectorBarItem x:Name="SetupTab" Text="Setup" Tag="setup" IsSelected="True" />
+            <SelectorBarItem x:Name="TypingTab" Text="Typing" Tag="typing" />
+            <SelectorBarItem x:Name="CandidatesTab" Text="Suggestions" Tag="candidates" />
+            <SelectorBarItem x:Name="DictionaryTab" Text="Dictionary" Tag="dictionary" />
+            <SelectorBarItem x:Name="LayoutTab" Text="Layout" Tag="layout" />
+        </SelectorBar>
 
-            <StackPanel Spacing="8">
-                <TextBlock
-                    FontSize="12"
-                    FontWeight="SemiBold"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="Personal dictionary" />
-                <TextBlock
-                    FontSize="12"
-                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                    TextWrapping="Wrap"
-                    Text="Your words are suggested after Avro's while you type." />
-                <Grid ColumnSpacing="8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBox
-                        x:Name="NewWordBox"
-                        PlaceholderText="Add a Bangla word" />
-                    <Button
-                        x:Name="AddWordButton"
-                        Grid.Column="1"
-                        Content="Add"
-                        Click="AddWord_Click" />
-                </Grid>
-                <TextBlock
-                    x:Name="WordStatusText"
-                    Visibility="Collapsed"
-                    FontSize="12"
-                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    x:Name="UserWordsEmptyText"
-                    FontSize="12"
-                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                    Text="No words yet." />
-                <StackPanel x:Name="UserWordsPanel" Spacing="2" />
-            </StackPanel>
-        </StackPanel>
-    </ScrollViewer>
+        <TextBlock
+            x:Name="UnavailableText"
+            Grid.Row="1"
+            Visibility="Collapsed"
+            FontSize="12"
+            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+            TextWrapping="Wrap"
+            Text="Keyboard settings are unavailable: byakaron.dll could not be loaded." />
+
+        <ScrollViewer Grid.Row="2" Height="460" VerticalScrollBarVisibility="Auto">
+            <Grid Padding="4,0,12,8">
+                <!-- Setup: install the keyboard, switch to it, how typing works. -->
+                <StackPanel x:Name="SetupPage" Spacing="16">
+                    <InfoBar x:Name="KeyboardStatusBar" IsOpen="True" IsClosable="False" />
+                    <StackPanel Spacing="8">
+                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Set up" />
+                        <StackPanel x:Name="SetupSteps" Spacing="10" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="InstallButton" Style="{StaticResource AccentButtonStyle}" Content="Install keyboard" Click="InstallButton_Click" />
+                        <Button Content="Language settings" Click="LanguageSettings_Click" />
+                    </StackPanel>
+                    <StackPanel Spacing="8">
+                        <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Typing" />
+                        <StackPanel x:Name="TypingTips" Spacing="6" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- The shared settings, one manifest section per tab, built at load. -->
+                <StackPanel x:Name="TypingPage" Spacing="12" Visibility="Collapsed" />
+                <StackPanel x:Name="CandidatesPage" Spacing="12" Visibility="Collapsed" />
+
+                <StackPanel x:Name="DictionaryPage" Spacing="8" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Personal dictionary" />
+                    <TextBlock Style="{StaticResource HintStyle}" Text="Your words are suggested after Avro's while you type." />
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox
+                            x:Name="NewWordBox"
+                            PlaceholderText="Add a Bangla word"
+                            KeyDown="NewWordBox_KeyDown" />
+                        <Button
+                            x:Name="AddWordButton"
+                            Grid.Column="1"
+                            Content="Add"
+                            Click="AddWord_Click" />
+                    </Grid>
+                    <TextBlock
+                        x:Name="WordStatusText"
+                        Visibility="Collapsed"
+                        Style="{StaticResource HintStyle}" />
+                    <TextBlock
+                        x:Name="UserWordsEmptyText"
+                        Style="{StaticResource HintStyle}"
+                        Text="No words yet." />
+                    <StackPanel x:Name="UserWordsPanel" Spacing="2" />
+                </StackPanel>
+
+                <!-- The Avro phonetic key map. -->
+                <StackPanel x:Name="LayoutPage" Spacing="16" Visibility="Collapsed" />
+            </Grid>
+        </ScrollViewer>
+    </Grid>
 </UserControl>
