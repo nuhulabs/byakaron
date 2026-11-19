@@ -301,26 +301,21 @@ void CByakaronTextService::Redraw(ITfContext* pic, TfEditCookie ec)
         _candidateWindow.End();
         return;
     }
-    const POINT at = CandidateOrigin(pic, ec);
     // Negotiates with ITfUIElementMgr; the host may draw it (UI-less) or let us.
-    _candidateWindow.Present(st.candidates, (int)st.highlight, st.vertical, at.x, at.y);
+    _candidateWindow.Present(st.candidates, (int)st.highlight, st.vertical, st.page, st.pageCount,
+                             CandidateAnchor(pic, ec));
 }
 
-POINT CByakaronTextService::CandidateOrigin(ITfContext* pic, TfEditCookie ec) const
+RECT CByakaronTextService::CandidateAnchor(ITfContext* pic, TfEditCookie ec) const
 {
-    POINT at = {};
     RECT rc = {};
-    if (GetCompositionScreenRect(pic, ec, &rc))
-    {
-        at.x = rc.left;
-        at.y = rc.bottom + 2;
-        return at;
-    }
+    if (GetCompositionScreenRect(pic, ec, &rc)) return rc;
+    // No text extent from the app: the system caret, if it has one.
+    POINT at = {};
     GetCaretPos(&at);
     HWND fg = GetForegroundWindow();
     if (fg) ClientToScreen(fg, &at);
-    at.y += 24;
-    return at;
+    return RECT{ at.x, at.y, at.x + 1, at.y + 22 };
 }
 
 bool CByakaronTextService::GetCompositionScreenRect(ITfContext* pic, TfEditCookie ec, RECT* out) const
@@ -367,6 +362,15 @@ void CByakaronTextService::OnCandidatePicked(UINT index)
     EditComposition([this, index](ITfContext* ctx, TfEditCookie ec)
     {
         Apply(ctx, ec, _composer.Pick(index).commit);
+    });
+}
+
+void CByakaronTextService::OnCandidatePage(bool next)
+{
+    EditComposition([this, next](ITfContext* ctx, TfEditCookie ec)
+    {
+        const int key = next ? BYAKARON_KEY_PAGE_DOWN : BYAKARON_KEY_PAGE_UP;
+        Apply(ctx, ec, _composer.Key(key, 0, 0).commit);
     });
 }
 

@@ -5,6 +5,10 @@
 #include <vector>
 
 class CByakaronTextService;
+struct ID2D1Factory;
+struct ID2D1DCRenderTarget;
+struct IDWriteFactory;
+struct IDWriteTextFormat;
 
 // Official TSF candidate UI (SampleIME / UI-less mode pattern):
 // ITfUIElement + ITfCandidateListUIElement + ITfCandidateListUIElementBehavior,
@@ -44,17 +48,27 @@ public:
     STDMETHODIMP Finalize() override;
     STDMETHODIMP Abort() override;
 
-    // Show one page of candidates (labels 1..N) with `highlight` selected, at
-    // screen x, y; End hides it. Both report to TSF for UI-less hosts.
-    void Present(const std::vector<std::wstring>& items, int highlight, bool vertical, int x, int y);
+    // Show one page of candidates (labels 1..N) with `highlight` selected,
+    // just below `anchor` (the word being typed, in screen pixels; above it
+    // when there is no room below). `page` of `pageCount` draws the paging
+    // chevrons. End hides it. Both report to TSF for UI-less hosts.
+    void Present(const std::vector<std::wstring>& items, int highlight, bool vertical,
+                 size_t page, size_t pageCount, const RECT& anchor);
     void End();
 
 private:
+    // A rectangle in window pixels.
+    struct Box { float left, top, right, bottom; bool Contains(float x, float y) const; };
+
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     bool EnsureWindow();
-    void OnPaint(HDC hdc);
-    int HitTest(int x, int y) const;
-    void Layout();
+    bool EnsureGraphics();
+    void ReleaseGraphics();
+    // Measure, place and draw the panel, then hand the pixels to the window.
+    void Render();
+    float ScaleAt(const RECT& anchor) const;
+    void OnMouseMove(int x, int y);
+    void OnClick(int x, int y);
     void ShowTipWindow(BOOL show);
     void CallUpdateUIElement();
 
@@ -72,6 +86,21 @@ private:
     bool _hostAllowsTipUi = true;
     bool _visible = false;
     bool _vertical = false;
-    int _itemW = 0;
-    int _itemH = 28;
+
+    // What the pill panel draws (see CandidateWindow.cpp).
+    size_t _page = 0;
+    size_t _pageTotal = 1;
+    RECT _anchor = {};
+    int _hover = -1;
+    bool _trackingMouse = false;
+    std::vector<Box> _itemBoxes;
+    Box _upBox = {}, _downBox = {};
+    bool _hasPages = false;
+
+    ID2D1Factory* _d2d = nullptr;
+    ID2D1DCRenderTarget* _target = nullptr;
+    IDWriteFactory* _dwrite = nullptr;
+    IDWriteTextFormat* _wordFormat = nullptr;
+    IDWriteTextFormat* _numberFormat = nullptr;
+    float _formatScale = 0;
 };

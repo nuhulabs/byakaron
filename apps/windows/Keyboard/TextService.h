@@ -55,6 +55,8 @@ public:
     // ITfCandidateListUIElementBehavior (SetSelection picks; Finalize commits
     // the word, Abort drops it).
     void OnCandidatePicked(UINT index);
+    // A paging chevron was clicked: the next page, or the previous.
+    void OnCandidatePage(bool next);
     void OnCandidateFinalize(bool commit);
 
 private:
@@ -75,7 +77,7 @@ private:
     void Apply(ITfContext* pic, TfEditCookie ec, const std::wstring& commit);
     void Redraw(ITfContext* pic, TfEditCookie ec);
     void InsertCommit(ITfContext* pic, TfEditCookie ec, const std::wstring& text);
-    POINT CandidateOrigin(ITfContext* pic, TfEditCookie ec) const;
+    RECT CandidateAnchor(ITfContext* pic, TfEditCookie ec) const;
 
     // Run fn in an edit session on the open composition's context, if it is
     // still the open composition when the session runs.

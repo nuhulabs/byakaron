@@ -642,7 +642,7 @@ fn addWindows(b: *std.Build, cli: *Cli, avro: AvroData, spell_db: std.Build.Lazy
     });
     ime_mod.addIncludePath(b.path("apps/windows/Keyboard"));
     ime_mod.addIncludePath(b.path("src/ffi"));
-    for ([_][]const u8{ "ole32", "oleaut32", "uuid", "advapi32", "user32", "gdi32" }) |lib| {
+    for ([_][]const u8{ "ole32", "oleaut32", "uuid", "advapi32", "user32", "gdi32", "d2d1", "dwrite" }) |lib| {
         ime_mod.linkSystemLibrary(lib, .{});
     }
     const ime = b.addLibrary(.{
