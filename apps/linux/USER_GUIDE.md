@@ -83,7 +83,7 @@ Open **Byakaron** from your apps.
     digits and New line on Enter.
   - **Suggestions**: the list's direction and how many words it shows per page.
   - **Dictionary**: your own words, which Byakaron then suggests and never
-    marks as wrong. Add one by hand or remove any. **Personal Dictionary** in
+    marks as wrong. Add one by hand or remove any. **Dictionary** in
     the menu opens the same list.
   - **Layout**: which English letters make which Bangla letter.
   - **Updates**: automatic updates, the release channel and **Check Now**.

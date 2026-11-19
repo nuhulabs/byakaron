@@ -9,8 +9,8 @@
     <name>Nuhu Labs</name>
   </developer>
   <description>
-    <p>Byakaron is a Bangla phonetic input method and companion app. Type with a Latin keyboard and compose Bangla with Avro phonetic rules.</p>
-    <p>The app provides a Bangla spell checker, an Avro key-map reference, and a guide for adding the system input source in GNOME.</p>
+    <p>Byakaron is a Bangla phonetic input method and companion app. Type Bangla the way it sounds, with the keyboard you already have.</p>
+    <p>The app provides a Bangla spell checker, a key map reference, and a guide for adding the system input source in GNOME.</p>
   </description>
   <launchable type="desktop-id">dev.nuhu.labs.Byakaron.desktop</launchable>
   <provides><binary>byakaron</binary></provides>

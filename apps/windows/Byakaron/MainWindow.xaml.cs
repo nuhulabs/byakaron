@@ -246,13 +246,12 @@ public sealed partial class MainWindow : Window
             Content = new TextBlock
             {
                 Text =
-                    "Installs a system Text Input Processor (TSF) under Bangla (Bangladesh).\n\n" +
-                    "Shown as \"Byakaron Phonetic\" — a composition TIP, not a physical " +
-                    "keyboard layout, and not Bangla (India). After install, switch with " +
-                    "Win+Space or the taskbar input indicator, then type Avro phonetic " +
-                    "(ami → আমি).\n\n" +
+                    "Adds the Byakaron Phonetic keyboard under Bangla (Bangladesh), so you can " +
+                    "type Bangla in every app.\n\n" +
+                    "After installing, switch to it with Win+Space or the language button on " +
+                    "the taskbar, then type Bangla the way it sounds (ami → আমি).\n\n" +
                     (Keyboard.KeyboardInstaller.IsTipPresentOnDisk()
-                        ? $"Installed at:\n{Keyboard.KeyboardInstaller.InstallDirectory}"
+                        ? "The keyboard is installed."
                         : "Not installed yet."),
                 TextWrapping = TextWrapping.Wrap,
             },

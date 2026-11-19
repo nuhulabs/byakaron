@@ -132,8 +132,8 @@ pub fn SpellApp(ctx: *zx.ComponentContext) zx.Component {
                         <button
                             class={if (transliterate_on) "tool-btn tool-toggle is-on" else "tool-btn tool-toggle"}
                             type="button"
-                            title={if (transliterate_on) "Avro transliteration on: English typing becomes Bangla" else "Avro transliteration off"}
-                            aria-label="Toggle Avro transliteration"
+                            title={if (transliterate_on) "Phonetic typing on: English letters become Bangla" else "Phonetic typing off"}
+                            aria-label="Toggle phonetic typing"
                             aria-pressed={if (transliterate_on) "true" else "false"}
                             onclick={onToggleTransliterate}
                         >{if (transliterate_on) "অ" else "A"}</button>

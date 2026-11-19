@@ -272,7 +272,7 @@ composer's `byakaron_userdict_*`:
 
 - **App:** "Add to Dictionary" next to Ignore in the Spelling page (Ignore
   still lasts only until the app closes), and **Preferences → Dictionary** (or
-  *Personal Dictionary…* in the main menu, the same list in a dialog) to add a
+  *Dictionary…* in the main menu, the same list in a dialog) to add a
   word by hand or remove one.
   Saved words are never flagged.
 - **Keyboard:** saved words that start with what is being typed are suggested
@@ -301,7 +301,7 @@ next to it. Its tabs are the macOS and Windows Settings tabs, with the same
 names in the same order. `byakaron --page=setup` opens Preferences on Setup
 (that is what the IBus panel **Preferences** button runs); `--page=typing`,
 `candidates`, `dictionary`, `layout` and `updates` open the other tabs
-(`settings`, the old name, opens Typing). *Personal Dictionary…* in the menu
+(`settings`, the old name, opens Typing). *Dictionary…* in the menu
 opens the Dictionary tab's list in a dialog. About is the standard GTK About
 dialog from the menu, not a tab.
 

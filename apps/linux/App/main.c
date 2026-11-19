@@ -148,8 +148,8 @@ on_about_activate (GSimpleAction *action, GVariant *parameter, gpointer user_dat
                            "license-type", GTK_LICENSE_MIT_X11,
                            "website", BYK_URL_WEBSITE,
                            "comments",
-                           "Bangla phonetic input method and spell checker, "
-                           "over a shared Zig engine.",
+                           "Type Bangla the way it sounds, "
+                           "and check its spelling.",
                            NULL);
 }
 

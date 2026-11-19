@@ -14,7 +14,7 @@ This Privacy Policy explains how Byakaron Keyboard (the "App") handles informati
 - **Package name:** com.byakaron
 - **Developer:** NuhuLabs
 - **Platform:** Android (minimum Android 5.0 / API 21)
-- **Languages:** Bengali (Avro phonetic and fixed layouts) and English
+- **Languages:** Bengali (phonetic and fixed layouts) and English
 
 The App is a third-party input method (keyboard). Because a keyboard processes everything you type, we treat the handling of your keystrokes as the central privacy concern for this App. This policy is written to be specific about that.
 

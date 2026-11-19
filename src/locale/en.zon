@@ -12,7 +12,7 @@
     // Pages and tabs.
     .setup = "Setup",
     .layout = "Layout",
-    .layout_hint = "Byakaron types Avro Phonetic. Capitals are keys of their own: T is ট, t is ত.",
+    .layout_hint = "Type Bangla the way it sounds, in English letters. Capitals are keys of their own: T is ট, t is ত.",
     .settings = "Settings",
 
     // Typing settings.
@@ -41,7 +41,7 @@
 
     // Updates (macOS, Windows, Linux).
     .updates = "Updates",
-    .updates_hint = "Byakaron asks github.com once a day for a newer version. Nothing about you or what you type is sent.",
+    .updates_hint = "Byakaron checks for a newer version once a day. Nothing about you or what you type is sent.",
     .auto_update = "Auto-update",
     .auto_update_hint = "Offers a newer Byakaron when there is one.",
     .update_channel = "Channel",

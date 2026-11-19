@@ -134,7 +134,7 @@ struct MainView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Toggle(isOn: $avroTyping) {
-                        Label("Avro Typing", systemImage: "keyboard")
+                        Label("Phonetic Typing", systemImage: "keyboard")
                     }
                     .toggleStyle(.button)
                     .help("Type with the Byakaron keyboard here (its suggestions, settings and learned choices) without installing it")

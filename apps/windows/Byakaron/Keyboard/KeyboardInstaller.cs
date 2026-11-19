@@ -41,7 +41,7 @@ public static class KeyboardInstaller
             if (staged is null)
             {
                 return KeyboardInstallResult.Failed(
-                    "IME payload not found. Build the app with zig build dev -- windows");
+                    "The keyboard files are missing. Reinstall Byakaron to fix this.");
             }
 
             Directory.CreateDirectory(InstallDirectory);

@@ -67,7 +67,7 @@ public sealed partial class MainWindow
         if (on && AvroEngine() is null)
         {
             AvroTypingToggle.IsChecked = false;
-            SubtitleText.Text = "Avro typing is unavailable: byakaron_ffi.dll could not be loaded.";
+            SubtitleText.Text = "Phonetic typing is unavailable. Reinstall Byakaron to fix this.";
             return;
         }
         if (!on) FlushWord();

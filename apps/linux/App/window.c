@@ -189,7 +189,7 @@ byk_window_build_menu_button (BykWindow *self)
     GMenu *keyboard = g_menu_new ();
     byk_menu_append (keyboard, "Keyboard _Setup", "win.preferences", "setup");
     byk_menu_append (keyboard, "Keyboard _Layout", "win.preferences", "layout");
-    byk_menu_append (keyboard, "Personal _Dictionary…", "win.dictionary", NULL);
+    byk_menu_append (keyboard, "_Dictionary…", "win.dictionary", NULL);
 
     GMenu *app_items = g_menu_new ();
     byk_menu_append (app_items, "_Preferences", "win.preferences", "");

@@ -178,7 +178,7 @@
                             BorderThickness="0"
                             VerticalAlignment="Center"
                             Click="AvroTypingToggle_Click"
-                            ToolTipService.ToolTip="Avro typing: type with the Byakaron keyboard here (its suggestions, settings and learned choices) without switching keyboards">
+                            ToolTipService.ToolTip="Phonetic typing: type Bangla here with the Byakaron keyboard (its suggestions, settings and learned choices) without switching keyboards">
                             <TextBlock FontFamily="Nirmala UI" FontSize="15" Text="অ" />
                         </ToggleButton>
                         <Button

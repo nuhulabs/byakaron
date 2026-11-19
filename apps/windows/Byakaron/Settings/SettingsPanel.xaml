@@ -49,7 +49,7 @@
             FontSize="12"
             Foreground="{ThemeResource SystemFillColorCriticalBrush}"
             TextWrapping="Wrap"
-            Text="Keyboard settings are unavailable: byakaron.dll could not be loaded." />
+            Text="Keyboard settings are unavailable. Reinstall Byakaron to fix this." />
 
         <ScrollViewer Grid.Row="2" Height="460" VerticalScrollBarVisibility="Auto">
             <Grid Padding="4,0,12,8">
@@ -103,12 +103,12 @@
                     <StackPanel x:Name="UserWordsPanel" Spacing="2" />
                 </StackPanel>
 
-                <!-- The Avro phonetic key map, from the core (LayoutReference). -->
+                <!-- The phonetic key map, from the core (LayoutReference). -->
                 <StackPanel x:Name="LayoutPage" Spacing="16" Visibility="Collapsed">
                     <TextBlock
                         Style="{StaticResource HintStyle}"
                         FontSize="13"
-                        Text="Byakaron types Avro Phonetic. Capitals are keys of their own: T is ট, t is ত." />
+                        Text="Type Bangla the way it sounds, in English letters. Capitals are keys of their own: T is ট, t is ত." />
                 </StackPanel>
 
                 <!-- Updates: the shared update settings, then Check Now. -->
