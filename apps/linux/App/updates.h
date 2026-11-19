@@ -7,17 +7,23 @@
  * so the keyboard is new at once; the app asks to be restarted.
  *
  * Checks happen once a day at most, only while "Check for updates" is on
- * (GSettings check-updates), and only for a Byakaron installed from a package.
- * A check is one request to github.com, nothing else is sent.
+ * (the shared `auto_update` setting), and only for a Byakaron installed from a
+ * package. A check is one request to github.com for the release list, nothing
+ * else is sent; the shared core (src/Update.zig, byakaron_update_pick) picks
+ * the release for the `update_channel` setting, the package manager confirms
+ * it is newer.
  */
 #pragma once
 
 #include <gtk/gtk.h>
 
+#include "byakaron.h"
+
 G_BEGIN_DECLS
 
-/* The bar, hidden until there is something to say. */
-GtkWidget *byk_updates_bar_new (void);
+/* The bar, hidden until there is something to say. `composer` (the window's,
+ * may be NULL) holds the update settings; it must outlive the bar. */
+GtkWidget *byk_updates_bar_new (ByakaronComposer *composer);
 
 /* Check now. `asked`: someone pressed Check now, so also say when there is
  * nothing newer, or why it cannot check. */

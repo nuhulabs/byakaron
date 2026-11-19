@@ -4,9 +4,8 @@
  * and the SHA256SUMS lookup. The window part is App/updates.c.
  *
  * Releases are the packages on nuhulabs/Byakaron-Assets: a `.deb`, an Arch
- * package and an `.rpm` for each CPU. GitHub's /releases/latest redirects to
- * /releases/tag/<tag> for the newest normal release and skips prereleases, so
- * a prerelease is never offered as an update.
+ * package and an `.rpm` for each CPU, for every channel. Which release to
+ * offer is the shared core's call (byakaron_update_pick, src/Update.zig).
  */
 #pragma once
 
@@ -23,12 +22,8 @@ typedef enum {
 } BykPackage;
 
 /* https://github.com/nuhulabs/Byakaron-Assets, or BYAKARON_UPDATE_BASE (tests
- * serve releases/latest and releases/download/<tag>/<file> from there). */
+ * serve releases/download/<tag>/<file> from there). */
 gchar *byk_update_base (void);
-
-/* "…/releases/tag/v27.0.0" → "v27.0.0"; NULL when the URL names no tag, as
- * GitHub's redirect does while there is no normal release. */
-gchar *byk_update_tag_from_url (const gchar *url);
 
 /* The .deb version a release tag builds, as the packaging writes it:
  * "v27.0.0" → "1:27.0.0", "v27.0.0-dev.2" → "1:27.0.0~dev.2". NULL when the

@@ -39,6 +39,7 @@
             <SelectorBarItem x:Name="CandidatesTab" Text="Suggestions" Tag="candidates" />
             <SelectorBarItem x:Name="DictionaryTab" Text="Dictionary" Tag="dictionary" />
             <SelectorBarItem x:Name="LayoutTab" Text="Layout" Tag="layout" />
+            <SelectorBarItem x:Name="UpdatesTab" Text="Updates" Tag="updates" />
         </SelectorBar>
 
         <TextBlock
@@ -104,6 +105,16 @@
 
                 <!-- The Avro phonetic key map. -->
                 <StackPanel x:Name="LayoutPage" Spacing="16" Visibility="Collapsed" />
+
+                <!-- Updates: the shared update settings, then Check Now. -->
+                <StackPanel x:Name="UpdatesPage" Spacing="12" Visibility="Collapsed">
+                    <StackPanel x:Name="UpdatesSettings" Spacing="12" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button x:Name="UpdateButton" Content="Check now" Click="UpdateButton_Click" />
+                        <ProgressRing x:Name="UpdateProgress" IsActive="False" Width="20" Height="20" />
+                    </StackPanel>
+                    <TextBlock x:Name="UpdateStatusText" TextWrapping="Wrap" />
+                </StackPanel>
             </Grid>
         </ScrollViewer>
     </Grid>

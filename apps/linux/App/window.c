@@ -285,7 +285,7 @@ byk_window_init (BykWindow *self)
     byk_spell_page_pack_header (BYK_SPELL_PAGE (self->spell_page), GTK_HEADER_BAR (header));
 
     GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
-    self->updates = byk_updates_bar_new ();
+    self->updates = byk_updates_bar_new (self->engines.composer);
     gtk_box_pack_start (GTK_BOX (box), self->updates, FALSE, FALSE, 0);
     gtk_box_pack_start (GTK_BOX (box), self->spell_page, TRUE, TRUE, 0);
 

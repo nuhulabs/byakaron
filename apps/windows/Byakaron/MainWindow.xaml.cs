@@ -58,7 +58,36 @@ public sealed partial class MainWindow : Window
         UpdateChrome();
 
         InitAvroTyping();
+        InitUpdateBar();
         _ = LoadEngineAsync();
+    }
+
+    /// <summary>"Byakaron X is ready", top right, once an update is downloaded (Updates/Updater.cs).</summary>
+    private void InitUpdateBar()
+    {
+        var restart = new Button { Content = "Restart to update" };
+        restart.Click += (_, _) => Updates.Updater.Shared.RestartAndInstall();
+        var bar = new InfoBar
+        {
+            Title = "Update ready",
+            Severity = InfoBarSeverity.Informational,
+            IsClosable = true,
+            IsOpen = false,
+            ActionButton = restart,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 8, 16, 0),
+            MaxWidth = 440,
+        };
+        Grid.SetRow(bar, 1);
+        Canvas.SetZIndex(bar, 10);
+        RootGrid.Children.Add(bar);
+        Updates.Updater.Shared.StateChanged += () =>
+        {
+            var ready = Updates.Updater.Shared.State == Updates.UpdateState.Ready;
+            if (ready) bar.Message = Updates.Updater.Shared.StatusText;
+            bar.IsOpen = ready;
+        };
     }
 
     private async Task LoadEngineAsync()

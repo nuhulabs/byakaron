@@ -63,6 +63,10 @@ PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 UninstallDisplayIcon={app}\{#MyAppExeName}
 CloseApplications=yes
+; Only Byakaron itself: ByakaronIME.dll is loaded by every app that takes
+; text, which must not be closed for an update (the DLL is replaced at the
+; next restart instead, see [Files]).
+CloseApplicationsFilter=Byakaron.exe
 RestartApplications=no
 MinVersion=10.0.17763
 
@@ -75,7 +79,10 @@ Name: "installkeyboard"; Description: "Install Byakaron Phonetic keyboard (Bangl
 
 [Files]
 ; Full self-contained WinUI payload (includes ime\ for TIP registration)
-Source: "{#PublishRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PublishRoot}\*"; DestDir: "{app}"; Excludes: "ime\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+; The keyboard, loaded into every app that takes text: when it is in use (an
+; update), it is replaced at the next restart.
+Source: "{#PublishRoot}\ime\*"; DestDir: "{app}\ime"; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace uninsrestartdelete
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -85,6 +92,15 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 ; Register TSF TIP from the installed app tree (stable Program Files path)
 Filename: "{sys}\regsvr32.exe"; Parameters: "/s ""{app}\ime\ByakaronIME.dll"""; StatusMsg: "Registering Bangla keyboard..."; Flags: runhidden waituntilterminated; Tasks: installkeyboard
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+; The app's own update (Updates/Updater.cs) runs this silently with /RELAUNCH=1.
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait runasoriginaluser; Check: Relaunch
 
 [UninstallRun]
 Filename: "{sys}\regsvr32.exe"; Parameters: "/u /s ""{app}\ime\ByakaronIME.dll"""; RunOnceId: "UnregisterByakaronIME"; Flags: runhidden waituntilterminated
+
+[Code]
+// /RELAUNCH=1: started by the app's updater, so open Byakaron again after.
+function Relaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;

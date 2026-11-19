@@ -29,6 +29,18 @@
     .candidates_per_page = "প্রতি পাতায় শব্দ",
     .candidates_per_page_hint = "বাকিগুলো পরের পাতায়।",
 
+    // Updates (macOS, Windows, Linux).
+    .updates = "আপডেট",
+    .updates_hint = "ব্যাকরণ দিনে একবার github.com-এ নতুন সংস্করণ খোঁজে। আপনার বা আপনার লেখার কিছুই পাঠানো হয় না।",
+    .auto_update = "আপডেট খুঁজুন",
+    .auto_update_hint = "নতুন ব্যাকরণ এলে জানায়।",
+    .update_channel = "রিলিজ চ্যানেল",
+    .update_channel_hint = "বেটা ও আলফা নতুন জিনিস আগে পায়, ত্রুটিও বেশি থাকে।",
+    .production = "স্থিতিশীল",
+    .beta = "বেটা",
+    .alpha = "আলফা",
+    .internal = "অভ্যন্তরীণ",
+
     // Settings a platform keeps itself.
     .english = "ইংরেজি",
     .english_hint = "উপরে ডানের একটি কী বাংলা ও ইংরেজির মধ্যে বদলায়।",

@@ -6,7 +6,7 @@ import SwiftUI
 /// can deep-link to a specific tab by writing `selectionKey` before opening
 /// Settings.
 enum SettingsTab: String, CaseIterable {
-    case setup, typing, suggestions, dictionary, layout
+    case setup, typing, suggestions, dictionary, layout, updates
 
     /// UserDefaults key (in the shared suite) backing the selected tab.
     static let selectionKey = "ByakaronSettingsTab"
@@ -39,6 +39,10 @@ struct SettingsView: View {
             LayoutTab()
                 .tabItem { Label(tr(BYK_STR_LAYOUT), systemImage: "keyboard.badge.ellipsis") }
                 .tag(SettingsTab.layout.rawValue)
+
+            UpdatesTab(model: model)
+                .tabItem { Label(tr(BYK_STR_UPDATES), systemImage: "arrow.down.circle") }
+                .tag(SettingsTab.updates.rawValue)
         }
         .frame(width: 580, height: 620)
         .onAppear {
@@ -116,9 +120,11 @@ final class KeyboardSettingsModel: ObservableObject {
 
 /// One section of the shared manifest (Typing, Suggestion list): a control per
 /// field, its title and hint as every Byakaron app shows them.
-private struct ManifestSettings: View {
+private struct ManifestSettings<Extra: View>: View {
     @ObservedObject var model: KeyboardSettingsModel
     let section: String
+    /// More sections under the manifest's (Updates' status and Check Now).
+    @ViewBuilder var extra: () -> Extra
 
     var body: some View {
         Form {
@@ -135,6 +141,7 @@ private struct ManifestSettings: View {
                     }
                 }
             }
+            extra()
         }
         .formStyle(.grouped)
     }
@@ -162,6 +169,66 @@ private struct ManifestSettings: View {
                 Text(field.title)
                 if let hint = field.hint { Text(hint) }
             }
+        }
+    }
+}
+
+extension ManifestSettings where Extra == EmptyView {
+    init(model: KeyboardSettingsModel, section: String) {
+        self.init(model: model, section: section) { EmptyView() }
+    }
+}
+
+// MARK: - Updates
+
+/// The shared Updates settings (check for updates, release channel), then
+/// where the updater stands and Check Now.
+private struct UpdatesTab: View {
+    @ObservedObject var model: KeyboardSettingsModel
+    @ObservedObject private var updater = Updater.shared
+
+    var body: some View {
+        ManifestSettings(model: model, section: "updates") {
+            Section {
+                LabeledContent {
+                    HStack {
+                        if updater.state == .checking || isDownloading { ProgressView().controlSize(.small) }
+                        if case .ready = updater.state {
+                            Button("Restart to Update") { updater.restartAndInstall() }
+                                .buttonStyle(.borderedProminent)
+                        } else {
+                            Button("Check Now") { Task { await updater.check(announce: false) } }
+                                .disabled(updater.state == .checking || isDownloading)
+                        }
+                    }
+                } label: {
+                    Text("Byakaron \(updater.currentVersion)")
+                    Text(status)
+                }
+            }
+        }
+        .onChange(of: model.values["update_channel"]) { old, new in
+            if old != nil, old != new { updater.channelChanged() }
+        }
+    }
+
+    private var isDownloading: Bool {
+        if case .downloading = updater.state { return true }
+        return false
+    }
+
+    private var status: String {
+        switch updater.state {
+        case .idle:
+            if let last = updater.lastChecked {
+                return "Last checked \(last.formatted(.relative(presentation: .named)))."
+            }
+            return updater.isRelease ? "Not checked yet." : "A local build: checks only when asked."
+        case .checking: return "Checking…"
+        case .upToDate: return "This is the newest version on this channel."
+        case .downloading(let version): return "Downloading Byakaron \(version)…"
+        case .ready(let version): return "Byakaron \(version) is ready. Restart Byakaron to finish."
+        case .failed(let message): return message
         }
     }
 }

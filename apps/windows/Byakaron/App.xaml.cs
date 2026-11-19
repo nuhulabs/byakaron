@@ -15,6 +15,7 @@ namespace Byakaron
         {
             _window = new MainWindow();
             _window.Activate();
+            Updates.Updater.Shared.Start(_window.DispatcherQueue);
         }
     }
 }

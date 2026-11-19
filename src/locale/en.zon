@@ -38,6 +38,18 @@
     .candidates_per_page = "Words per page",
     .candidates_per_page_hint = "The rest are a page away.",
 
+    // Updates (macOS, Windows, Linux).
+    .updates = "Updates",
+    .updates_hint = "Byakaron asks github.com once a day for a newer version. Nothing about you or what you type is sent.",
+    .auto_update = "Check for updates",
+    .auto_update_hint = "Offers a newer Byakaron when there is one.",
+    .update_channel = "Release channel",
+    .update_channel_hint = "Beta and alpha get new things first, with more bugs.",
+    .production = "Stable",
+    .beta = "Beta",
+    .alpha = "Alpha",
+    .internal = "Internal",
+
     // Settings a platform keeps itself (Settings.zig's `platform_fields`).
     .english = "English",
     .english_hint = "A key at the top right switches between Bangla and English.",

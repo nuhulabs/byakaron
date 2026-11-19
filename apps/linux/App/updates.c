@@ -7,6 +7,7 @@
 #include <glib/gstdio.h>
 
 #include "app.h"
+#include "byakaron.h"
 #include "prefs.h"
 #include "update.h"
 
@@ -26,6 +27,7 @@ typedef struct {
     gboolean busy;
     gboolean gone;        /* the window is closing: no more UI */
     gboolean asked;
+    ByakaronComposer *composer; /* the window's: auto_update, update_channel */
     gchar *base;
     BykPackage package;   /* which package manager installed it */
     gchar *installed;     /* its version, e.g. 1:0.1.5 (deb) or 27.0.0-1 (Arch) */
@@ -405,20 +407,42 @@ byk_updates_download (BykUpdates *u)
 
 /* ── 1. checked GitHub ───────────────────────────────────────────────────── */
 
+/* The `update_channel` setting: the one picked, else this build's. */
+static gint
+byk_updates_channel (BykUpdates *u)
+{
+    gint channel = byakaron_update_build_channel ();
+    if (u->composer == NULL || byakaron_setting_get (u->composer, "update_channel", &channel) != 0)
+        channel = MAX (channel, BYAKARON_CHANNEL_PRODUCTION);
+    return channel;
+}
+
 static void
 on_checked (BykUpdates *u, gint status, const gchar *output)
 {
-    gchar *tag = status == 0 ? byk_update_tag_from_url (g_strstrip ((gchar *) output)) : NULL;
-    gchar *version = byk_update_package_version (u->package, tag);
     gchar *mine = byk_update_shown_version (u->package, u->installed);
+    gchar *tag = NULL;
+    gint found = -1;
     GSettings *prefs = byk_prefs_try_open ();
 
+    /* The shared core picks: the newest release the channel takes that is
+     * newer than the installed one and has this machine's package. */
+    if (status == 0) {
+        ByakaronRelease release = { 0 };
+        found = byakaron_update_pick (output, mine, byk_updates_channel (u), u->file_name, &release);
+        if (found == 1)
+            tag = g_strdup (release.tag);
+        byakaron_update_free (&release);
+    }
+    gchar *version = byk_update_package_version (u->package, tag);
+
     u->busy = FALSE;
-    if (status == 0)
+    if (found >= 0)
         byk_prefs_set_int64 (prefs, BYK_PREFS_LAST_UPDATE_CHECK,
                              g_get_real_time () / G_USEC_PER_SEC);
     g_clear_object (&prefs);
 
+    /* The package manager has the last word on what is newer. */
     if (version != NULL && byk_update_newer (u->package, version, u->installed)) {
         gchar *shown = byk_update_shown_version (u->package, version);
         gchar *text = g_strdup_printf ("Byakaron %s is available. You have %s.", shown, mine);
@@ -430,10 +454,10 @@ on_checked (BykUpdates *u, gint status, const gchar *output)
         g_free (text);
         g_free (shown);
     } else if (u->asked) {
-        gchar *text = status == 0
-            ? g_strdup_printf ("Byakaron %s is the newest version.", mine)
+        gchar *text = found >= 0
+            ? g_strdup_printf ("Byakaron %s is the newest version on this channel.", mine)
             : g_strdup ("Could not reach github.com to check. Try again later.");
-        byk_updates_show (u, status == 0 ? GTK_MESSAGE_INFO : GTK_MESSAGE_WARNING,
+        byk_updates_show (u, found >= 0 ? GTK_MESSAGE_INFO : GTK_MESSAGE_WARNING,
                           text, FALSE, TRUE, FALSE);
         g_free (text);
     }
@@ -447,7 +471,7 @@ void
 byk_updates_check (GtkWidget *bar, gboolean asked)
 {
     BykUpdates *u = byk_updates_get (bar);
-    gchar *latest;
+    gchar *agent;
 
     g_return_if_fail (u != NULL);
     if (u->busy)
@@ -474,11 +498,11 @@ byk_updates_check (GtkWidget *bar, gboolean asked)
         return;
     }
 
-    /* /releases/latest redirects to /releases/tag/<newest normal release>;
-     * the redirect itself is the answer, so it is not followed. */
-    latest = g_strdup_printf ("%s/releases/latest", u->base);
-    const gchar *argv[] = { "curl", "-sS", "-o", "/dev/null", "-w", "%{redirect_url}",
-                            "--max-time", "20", latest, NULL };
+    /* GitHub's release list, every channel's; on_checked picks from it. */
+    agent = g_strdup_printf ("Byakaron/%s (Linux)", byakaron_version ());
+    const gchar *argv[] = { "curl", "-fsSL", "--max-time", "30", "-A", agent,
+                            "-H", "Accept: application/vnd.github+json",
+                            byakaron_update_feed_url (), NULL };
     u->busy = TRUE;
     g_object_ref (u->bar);
     if (!byk_updates_run (u, argv, on_checked)) {
@@ -487,18 +511,44 @@ byk_updates_check (GtkWidget *bar, gboolean asked)
             byk_updates_show (u, GTK_MESSAGE_WARNING, byk_updates_curl_hint (u, "Checking for updates"),
                               FALSE, TRUE, FALSE);
     }
-    g_free (latest);
+    g_free (agent);
+}
+
+/* "Check for updates" moved from GSettings (check-updates) to the shared
+ * settings (auto_update): someone who turned it off keeps it off. */
+static void
+byk_updates_migrate (BykUpdates *u, GSettings *prefs)
+{
+    GVariant *old;
+
+    if (u->composer == NULL || !byk_prefs_has_key (prefs, BYK_PREFS_CHECK_UPDATES))
+        return;
+    old = g_settings_get_user_value (prefs, BYK_PREFS_CHECK_UPDATES);
+    if (old == NULL)
+        return;
+    if (!g_variant_get_boolean (old))
+        byakaron_setting_set (u->composer, "auto_update", 0);
+    g_settings_reset (prefs, BYK_PREFS_CHECK_UPDATES);
+    g_variant_unref (old);
 }
 
 void
 byk_updates_check_if_due (GtkWidget *bar)
 {
+    BykUpdates *u = byk_updates_get (bar);
     GSettings *prefs = byk_prefs_try_open ();
     gboolean due = FALSE;
+    gint on = 1;
 
-    /* Without the schema (a build run from zig-out) there is no switch to
-     * respect, so only Check now checks. */
-    if (prefs != NULL && byk_prefs_boolean (prefs, BYK_PREFS_CHECK_UPDATES, FALSE)) {
+    g_return_if_fail (u != NULL);
+    if (prefs != NULL)
+        byk_updates_migrate (u, prefs);
+    if (u->composer != NULL)
+        byakaron_setting_get (u->composer, "auto_update", &on);
+
+    /* Without the schema (a build run from zig-out) there is nowhere to keep
+     * the last check, so only Check now checks. */
+    if (prefs != NULL && on) {
         const gint64 last = byk_prefs_int64 (prefs, BYK_PREFS_LAST_UPDATE_CHECK, 0);
         const gint64 now = g_get_real_time () / G_USEC_PER_SEC;
         due = now - last >= BYK_UPDATE_EVERY || now < last;
@@ -559,12 +609,13 @@ on_bar_destroy (GtkWidget *bar, gpointer user_data)
 }
 
 GtkWidget *
-byk_updates_bar_new (void)
+byk_updates_bar_new (ByakaronComposer *composer)
 {
     BykUpdates *u = g_new0 (BykUpdates, 1);
     GtkWidget *bar = gtk_info_bar_new ();
 
     u->bar = bar;
+    u->composer = composer;
     u->cancel = g_cancellable_new ();
     u->base = byk_update_base ();
 

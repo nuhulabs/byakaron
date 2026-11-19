@@ -26,6 +26,7 @@ const builtin = @import("builtin");
 const AutoComplete = @import("autocomplete");
 const AutoCompleteMem = @import("autocomplete_mem");
 pub const Settings = @import("Composer/Settings.zig");
+pub const Update = @import("Update.zig");
 pub const Store = @import("Composer/Store.zig");
 pub const FileStore = @import("Composer/FileStore.zig");
 pub const UserWords = @import("Composer/UserWords.zig");
@@ -537,6 +538,7 @@ const testing = std.testing;
 
 test {
     _ = Settings;
+    _ = Update;
     _ = Store;
     _ = FileStore;
     _ = UserWords;

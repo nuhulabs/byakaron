@@ -331,19 +331,6 @@ int main(void)
 
     printf("update check (Core/update.c):\n");
     {
-        static const struct { const char *in, *want; } TAGS[] = {
-            { "https://github.com/nuhulabs/Byakaron-Assets/releases/tag/v27.0.0", "v27.0.0" },
-            { "https://github.com/x/y/releases/tag/v27.0.0-dev.2\r\n", "v27.0.0-dev.2" },
-            /* No normal release: GitHub redirects to the list instead. */
-            { "https://github.com/nuhulabs/Byakaron-Assets/releases", NULL },
-            { "", NULL },
-        };
-        for (size_t i = 0; i < sizeof TAGS / sizeof TAGS[0]; i++) {
-            gchar *got = byk_update_tag_from_url(TAGS[i].in);
-            expect(g_strcmp0(got, TAGS[i].want) == 0, "tag from redirect", got ? got : "(none)");
-            g_free(got);
-        }
-
         static const struct { const char *tag, *deb, *shown; } VERSIONS[] = {
             { "v27.0.0", "1:27.0.0", "27.0.0" },
             { "v27.0.0-dev.2", "1:27.0.0~dev.2", "27.0.0-dev.2" },

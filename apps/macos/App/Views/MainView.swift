@@ -130,6 +130,9 @@ struct MainView: View {
             .navigationSubtitle(checker.text.isEmpty ? "বাংলা বানান পরীক্ষক" : statusSummary)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
+                    UpdateReadyButton()
+                }
+                ToolbarItem(placement: .primaryAction) {
                     Toggle(isOn: $avroTyping) {
                         Label("Avro Typing", systemImage: "keyboard")
                     }
@@ -556,3 +559,20 @@ private struct StatusBarPreview: View {
     .frame(width: 560)
 }
 #endif
+
+/// "Restart to Update" once an update is downloaded (Updater); nothing before.
+private struct UpdateReadyButton: View {
+    @ObservedObject private var updater = Updater.shared
+
+    var body: some View {
+        if case .ready(let version) = updater.state {
+            Button {
+                updater.restartAndInstall()
+            } label: {
+                Label("Restart to Update", systemImage: "arrow.down.circle.fill")
+            }
+            .tint(.accentColor)
+            .help("Byakaron \(version) is downloaded. Restart Byakaron to finish updating.")
+        }
+    }
+}

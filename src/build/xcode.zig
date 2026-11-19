@@ -1,6 +1,6 @@
 //! Build-time driver for `xcodebuild`, run by `zig build macos`.
 //!
-//!   xcode <project> <scheme> <configuration> <derived-data> <out-dir> <log-dir>
+//!   xcode <project> <scheme> <configuration> <derived-data> <out-dir> <log-dir> [SETTING=value…]
 //!
 //! Runs the Xcode build with ad-hoc signing, turns its task lines into a
 //! `std.Progress` tree (one node per target, with the current task under it),
@@ -17,8 +17,8 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
 
     const args = try init.minimal.args.toSlice(arena);
-    if (args.len != 7) {
-        std.debug.print("usage: {s} <project> <scheme> <configuration> <derived-data> <out-dir> <log-dir>\n", .{args[0]});
+    if (args.len < 7) {
+        std.debug.print("usage: {s} <project> <scheme> <configuration> <derived-data> <out-dir> <log-dir> [SETTING=value…]\n", .{args[0]});
         return error.InvalidArguments;
     }
     const project, const scheme, const configuration, const derived_data, const out_dir, const log_dir =
@@ -35,28 +35,33 @@ pub fn main(init: std.process.Init) !void {
     var stderr_file = try cwd.createFile(io, try std.fs.path.join(arena, &.{ log_dir, "stderr.log" }), .{});
     defer stderr_file.close(io);
 
+    // Build settings from the command line (MARKETING_VERSION=…) go before `build`.
+    var argv: std.ArrayList([]const u8) = .empty;
+    try argv.appendSlice(arena, &.{
+        "xcodebuild",
+        "-project",
+        project,
+        "-scheme",
+        scheme,
+        "-configuration",
+        configuration,
+        "-derivedDataPath",
+        derived_data,
+        // Ad-hoc signed so the result installs and runs without a developer
+        // certificate. Each target's entitlements come from its
+        // CODE_SIGN_ENTITLEMENTS setting.
+        "CODE_SIGN_STYLE=Manual",
+        "CODE_SIGN_IDENTITY=-",
+        "DEVELOPMENT_TEAM=",
+        "PROVISIONING_PROFILE_SPECIFIER=",
+        "CODE_SIGNING_REQUIRED=YES",
+        "CODE_SIGNING_ALLOWED=YES",
+    });
+    try argv.appendSlice(arena, args[7..]);
+    try argv.append(arena, "build");
+
     var child = try std.process.spawn(io, .{
-        .argv = &.{
-            "xcodebuild",
-            "-project",
-            project,
-            "-scheme",
-            scheme,
-            "-configuration",
-            configuration,
-            "-derivedDataPath",
-            derived_data,
-            // Ad-hoc signed so the result installs and runs without a developer
-            // certificate. Each target's entitlements come from its
-            // CODE_SIGN_ENTITLEMENTS setting.
-            "CODE_SIGN_STYLE=Manual",
-            "CODE_SIGN_IDENTITY=-",
-            "DEVELOPMENT_TEAM=",
-            "PROVISIONING_PROFILE_SPECIFIER=",
-            "CODE_SIGNING_REQUIRED=YES",
-            "CODE_SIGNING_ALLOWED=YES",
-            "build",
-        },
+        .argv = argv.items,
         .stdin = .ignore,
         .stdout = .pipe,
         .stderr = .{ .file = stderr_file },

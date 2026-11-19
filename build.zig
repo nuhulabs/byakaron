@@ -393,6 +393,11 @@ pub fn build(b: *std.Build) !void {
                 run.addDirectoryArg(bb.graph.path(.local_cache, bb.fmt("xcode/{s}", .{name})));
                 const out = run.addOutputDirectoryArg("app");
                 _ = run.addOutputDirectoryArg("log");
+                // The bundle versions: build.zig.zon's version without its
+                // prerelease (27.0.0-beta.3 → 27.0.0), as Info.plist wants.
+                const version = @import("build.zig.zon").version;
+                const core = version[0 .. std.mem.indexOfScalar(u8, version, '-') orelse version.len];
+                run.addArgs(&.{ bb.fmt("MARKETING_VERSION={s}", .{core}), bb.fmt("CURRENT_PROJECT_VERSION={s}", .{core}) });
                 // Xcode tracks its own inputs; always let it decide what to rebuild.
                 run.has_side_effects = true;
                 for (deps) |d| run.step.dependOn(d);
@@ -467,6 +472,7 @@ pub fn build(b: *std.Build) !void {
             .imports = &.{
                 .{ .name = "autocomplete", .module = web_autocomplete },
                 .{ .name = "autocomplete_mem", .module = web_autocomplete_mem },
+                .{ .name = "build_info", .module = buildInfo(b) },
             },
         });
 
@@ -824,6 +830,7 @@ fn addEngine(
         .imports = &.{
             .{ .name = "autocomplete", .module = autocomplete_mod },
             .{ .name = "autocomplete_mem", .module = autocomplete_mem_mod },
+            .{ .name = "build_info", .module = buildInfo(b) },
         },
     });
 
@@ -859,6 +866,14 @@ fn addEngine(
         .jni = jni_mod,
         .root = mod,
     };
+}
+
+/// What src/Update.zig knows of this build (`build_info`): build.zig.zon's
+/// version, which the release workflow sets to the release's (27.0.0-beta.3).
+fn buildInfo(b: *std.Build) *std.Build.Module {
+    const options = b.addOptions();
+    options.addOption([]const u8, "version", @import("build.zig.zon").version);
+    return options.createModule();
 }
 
 fn module(b: *std.Build, exported: bool, name: []const u8, options: std.Build.Module.CreateOptions) *std.Build.Module {
@@ -1799,6 +1814,7 @@ fn addIos(b: *std.Build, cli: *Cli, avro: AvroData, locale: LocaleStrings) void 
         .root_source_file = b.path("src/settings.zig"),
         .target = b.graph.host,
         .optimize = .Debug,
+        .imports = &.{.{ .name = "build_info", .module = buildInfo(b) }},
     }));
     const settings_dir = b.addRunArtifact(settings_gen).addOutputDirectoryArg("Settings.bundle");
     const settings_bundle = b.addUpdateSourceFiles();
@@ -1847,12 +1863,15 @@ fn addIos(b: *std.Build, cli: *Cli, avro: AvroData, locale: LocaleStrings) void 
     ios.dependOn(&install_app.step);
 
     // Onto the booted simulator (Simulator.app opens one if none is).
-    const launch = b.addSystemCommand(&.{ "sh", "-c",
+    const launch = b.addSystemCommand(&.{
+        "sh", "-c",
         \\app=$1
         \\xcrun simctl list devices booted | grep -q Booted || { echo "no booted simulator: open Simulator.app (or xcrun simctl boot <device>)"; exit 1; }
         \\id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
         \\xcrun simctl install booted "$app" && xcrun simctl launch booted "$id"
-        , "sh" });
+        ,
+        "sh",
+    });
     launch.addDirectoryArg(b.graph.path(.install_prefix, "bin/Byakaron-ios.app"));
     launch.has_side_effects = true;
     launch.step.dependOn(&install_app.step);
@@ -1972,10 +1991,13 @@ fn addAndroid(b: *std.Build, cli: *Cli, avro: AvroData, spell_db: std.Build.Lazy
 
     // installDebug, then open the app (its settings) on the device.
     const install = gradle(b, gradle_exe, keyboard, ":app:installDebug", step);
-    const open = b.addSystemCommand(&.{ "sh", "-c",
+    const open = b.addSystemCommand(&.{
+        "sh", "-c",
         \\adb=adb; [ -n "${ANDROID_HOME:-}" ] && [ -x "$ANDROID_HOME/platform-tools/adb" ] && adb="$ANDROID_HOME/platform-tools/adb"
         \\"$adb" shell monkey -p com.byakaron.debug -c android.intent.category.LAUNCHER 1 >/dev/null
-        , "sh" });
+        ,
+        "sh",
+    });
     if (b.graph.environ_map.get("ANDROID_HOME") == null) if (androidSdk(b)) |sdk| open.setEnvironmentVariable("ANDROID_HOME", sdk);
     open.has_side_effects = true;
     open.step.dependOn(&install.step);

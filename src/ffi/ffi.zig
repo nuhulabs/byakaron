@@ -741,7 +741,7 @@ comptime {
 }
 
 fn languageOf(lang: ?[*:0]const u8) usize {
-    return @intFromEnum(Settings.language(if (lang) |p| std.mem.span(p) else ""));
+    return @backingInt(Settings.language(if (lang) |p| std.mem.span(p) else ""));
 }
 
 pub export fn byakaron_settings_section_count() usize {
@@ -770,7 +770,7 @@ pub export fn byakaron_settings_field_info(index: usize, lang: ?[*:0]const u8, o
     o.* = .{
         .key = f.key.ptr,
         .section = f.section,
-        .control = @intFromEnum(f.control),
+        .control = @backingInt(f.control),
         .title = f.title[l].ptr,
         .hint = if (f.hint) |h| h[l].ptr else null,
         .min = f.min,
@@ -781,6 +781,90 @@ pub export fn byakaron_settings_field_info(index: usize, lang: ?[*:0]const u8, o
         .platforms = f.platforms,
     };
     return 0;
+}
+
+// —— Updates (src/Update.zig) ——
+
+const Update = Composer.Update;
+
+/// byakaron.h's ByakaronRelease.
+pub const ByakaronRelease = extern struct {
+    tag: ?[*:0]u8 = null,
+    version: ?[*:0]u8 = null,
+    url: ?[*:0]u8 = null,
+    sha256: ?[*:0]u8 = null,
+    page: ?[*:0]u8 = null,
+    size: u64 = 0,
+    channel: c_int = -1,
+};
+
+/// The version this library was built as: "27.0.0", "27.0.0-beta.3", or a
+/// local build's "27.0.0-dev". Static; do not free.
+pub export fn byakaron_version() [*:0]const u8 {
+    return @ptrCast(build_version_z);
+}
+const build_version_z = Update.build_version ++ "\x00";
+
+/// This build's channel (BYAKARON_CHANNEL_*), or -1 for a local build.
+pub export fn byakaron_update_build_channel() c_int {
+    return if (Update.build_channel) |c| @backingInt(c) else -1;
+}
+
+/// The release feed to fetch: $BYAKARON_UPDATE_FEED when set (tests), else
+/// GitHub's release list of nuhulabs/Byakaron-Assets. Do not free.
+pub export fn byakaron_update_feed_url() [*:0]const u8 {
+    if (std.c.getenv("BYAKARON_UPDATE_FEED")) |env| if (env[0] != 0) return env;
+    return Update.feed_url;
+}
+
+/// The release `current` (NULL: this build) should update to on `channel`,
+/// with `asset` (its file name on the release). 1 and `out` filled (free with
+/// byakaron_update_free), 0 when there is none, -1 when the feed or version
+/// is not understood.
+pub export fn byakaron_update_pick(
+    feed_json: ?[*:0]const u8,
+    current: ?[*:0]const u8,
+    channel: c_int,
+    asset: ?[*:0]const u8,
+    out: ?*ByakaronRelease,
+) c_int {
+    const o = out orelse return -1;
+    o.* = .{};
+    const feed = feed_json orelse return -1;
+    const name = asset orelse return -1;
+    if (channel < 0 or channel > @backingInt(Update.Channel.internal)) return -1;
+    var arena: std.heap.ArenaAllocator = .init(std.heap.c_allocator);
+    defer arena.deinit();
+    const found = Update.pick(
+        arena.allocator(),
+        std.mem.span(feed),
+        if (current) |c| std.mem.span(c) else Update.build_version,
+        @fromBackingInt(@intCast(channel)),
+        std.mem.span(name),
+    ) catch return -1;
+    const p = found orelse return 0;
+    const a = std.heap.c_allocator;
+    o.* = .{
+        .tag = dupeCString(a, p.tag),
+        .version = dupeCString(a, p.version),
+        .url = dupeCString(a, p.url),
+        .sha256 = if (p.sha256) |h| dupeCString(a, h) else null,
+        .page = dupeCString(a, p.page),
+        .size = p.size,
+        .channel = @backingInt(p.channel),
+    };
+    if (o.tag == null or o.version == null or o.url == null or o.page == null or (p.sha256 != null and o.sha256 == null)) {
+        byakaron_update_free(o);
+        return -1;
+    }
+    return 1;
+}
+
+/// Free what byakaron_update_pick filled in, and clear it. NULL is ignored.
+pub export fn byakaron_update_free(update: ?*ByakaronRelease) void {
+    const u = update orelse return;
+    inline for (.{ "tag", "version", "url", "sha256", "page" }) |field| byakaron_string_free(@field(u, field));
+    u.* = .{};
 }
 
 /// The personal dictionary as a JSON array of words; free with
@@ -860,6 +944,13 @@ test "composer ABI: type, draw, commit, settings, personal words" {
     try testing.expectEqualStrings("[\"বাংলাভাষী\"]", std.mem.span(words));
     try testing.expectEqual(@as(c_int, 1), byakaron_userdict_remove(c, "বাংলাভাষী"));
 
+    // The update channel: unpicked follows this build.
+    var v_channel: c_int = -1;
+    try testing.expectEqual(@as(c_int, 0), byakaron_setting_get(c, "update_channel", &v_channel));
+    try testing.expectEqual(@as(c_int, @backingInt(Update.default_channel)), v_channel);
+    try testing.expectEqual(@as(c_int, 0), byakaron_setting_get(c, "auto_update", &v_channel));
+    try testing.expectEqual(@as(c_int, 1), v_channel);
+
     // One setting at a time, by key; the manifest says what to draw.
     var v: c_int = -1;
     try testing.expectEqual(@as(c_int, 0), byakaron_setting_get(c, "suggestions", &v));
@@ -903,4 +994,37 @@ test "composer ABI: type, draw, commit, settings, personal words" {
     for ("bhalo") |ch| _ = byakaron_composer_key(d, 0, ch, 0);
     byakaron_composer_state(d, &st);
     try testing.expectEqual(@as(c_int, 0), st.panel_visible);
+}
+
+test "update ABI: pick, free, this build" {
+    const testing = std.testing;
+    const feed =
+        \\[{"tag_name":"v99.0.0-beta.1","published_at":"2026-11-02T00:00:00Z","html_url":"page",
+        \\  "assets":[{"name":"Byakaron.dmg","browser_download_url":"https://x/Byakaron.dmg","size":7,
+        \\    "digest":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}]},
+        \\ {"tag_name":"v99.0.0","published_at":"2026-11-01T00:00:00Z","html_url":"p","assets":[]}]
+    ;
+    var u: ByakaronRelease = .{};
+    try testing.expectEqual(@as(c_int, 1), byakaron_update_pick(feed, "27.0.0", 1, "Byakaron.dmg", &u));
+    try testing.expectEqualStrings("v99.0.0-beta.1", std.mem.span(u.tag.?));
+    try testing.expectEqualStrings("99.0.0-beta.1", std.mem.span(u.version.?));
+    try testing.expectEqualStrings("https://x/Byakaron.dmg", std.mem.span(u.url.?));
+    try testing.expectEqual(@as(usize, 64), std.mem.span(u.sha256.?).len);
+    try testing.expectEqual(@as(u64, 7), u.size);
+    try testing.expectEqual(@as(c_int, 1), u.channel);
+    byakaron_update_free(&u);
+    try testing.expectEqual(@as(?[*:0]u8, null), u.tag);
+    byakaron_update_free(null);
+
+    try testing.expectEqual(@as(c_int, 0), byakaron_update_pick(feed, "27.0.0", 0, "Byakaron.dmg", &u));
+    try testing.expectEqual(@as(c_int, -1), byakaron_update_pick("{}", "27.0.0", 0, "Byakaron.dmg", &u));
+    try testing.expectEqual(@as(c_int, -1), byakaron_update_pick(feed, "27.0.0", 4, "Byakaron.dmg", &u));
+    try testing.expectEqual(@as(c_int, -1), byakaron_update_pick(feed, null, 0, null, &u));
+    // NULL is this build, which is older than 99.
+    try testing.expectEqual(@as(c_int, 1), byakaron_update_pick(feed, null, 3, "Byakaron.dmg", &u));
+    byakaron_update_free(&u);
+
+    try testing.expectEqualStrings(Update.build_version, std.mem.span(byakaron_version()));
+    try testing.expectEqual(if (Update.build_channel) |ch| @as(c_int, @backingInt(ch)) else -1, byakaron_update_build_channel());
+    try testing.expect(std.mem.startsWith(u8, std.mem.span(byakaron_update_feed_url()), "https://"));
 }

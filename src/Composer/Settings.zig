@@ -11,6 +11,7 @@
 const Settings = @This();
 
 const std = @import("std");
+const Update = @import("../Update.zig");
 
 pub const Orientation = enum { horizontal, vertical };
 
@@ -42,6 +43,12 @@ candidates_per_page: u8 = max_candidates_per_page,
 /// Strip mode for mobile keyboards: candidate panel stays active while composing,
 /// even for single candidate results, and prefix autocompletions are included.
 strip_mode: bool = false,
+/// The desktop app checks for a newer Byakaron once a day and offers it.
+auto_update: bool = true,
+/// The releases the app updates to (Update.zig's `Channel`). Null until
+/// someone picks one: the channel of the build that is installed, so a beta
+/// download keeps getting betas.
+update_channel: ?Update.Channel = null,
 
 /// Settings from JSON. Unknown fields are ignored, missing ones take their
 /// default, and out-of-range values are clamped, so any older or newer file
@@ -65,6 +72,13 @@ pub fn stringify(self: Settings, allocator: std.mem.Allocator) ![]u8 {
 
 pub fn clamp(self: *Settings) void {
     self.candidates_per_page = std.math.clamp(self.candidates_per_page, min_candidates_per_page, max_candidates_per_page);
+    // Internal was picked on an internal build, and this one is not.
+    if (self.update_channel == .internal and !Update.internal_offered) self.update_channel = null;
+}
+
+/// The channel updates come from: the one picked, else this build's.
+pub fn updateChannel(self: Settings) Update.Channel {
+    return self.update_channel orelse Update.default_channel;
 }
 
 // —— Manifest: what a settings screen shows ——
@@ -113,7 +127,7 @@ pub const Platform = enum(u5) {
     web,
 
     pub fn bit(p: Platform) u32 {
-        return @as(u32, 1) << @intFromEnum(p);
+        return @as(u32, 1) << @backingInt(p);
     }
 };
 
@@ -125,6 +139,9 @@ fn platforms(comptime list: []const Platform) u32 {
 
 const everywhere = platforms(std.enums.values(Platform));
 const desktop = platforms(&.{ .macos, .linux, .windows, .web });
+/// The apps that update themselves (phones update from their stores, the web
+/// is always new).
+const self_updating = platforms(&.{ .macos, .linux, .windows });
 
 pub const Control = enum(u8) {
     /// On or off (a bool field): 0 or 1.
@@ -168,6 +185,7 @@ pub const Field = struct {
 pub const sections = [_]Section{
     .{ .id = "typing", .title = text("typing"), .hint = text("typing_hint") },
     .{ .id = "candidates", .title = text("candidates"), .hint = text("candidates_hint") },
+    .{ .id = "updates", .title = text("updates"), .hint = text("updates_hint") },
 };
 
 /// Fields no settings screen shows: the file's version, and what a keyboard
@@ -187,6 +205,8 @@ pub const manifest = [_]Field{
     // Phones show a bar, not a panel.
     field("candidate_orientation", 1, desktop),
     field("candidates_per_page", 1, everywhere),
+    field("auto_update", 2, self_updating),
+    field("update_channel", 2, self_updating),
 };
 
 fn field(comptime key: [:0]const u8, comptime section: u8, comptime shown: u32) Field {
@@ -202,10 +222,17 @@ fn field(comptime key: [:0]const u8, comptime section: u8, comptime shown: u32) 
         .max = 1,
         .platforms = shown,
     };
-    switch (@typeInfo(T)) {
+    const Value = switch (@typeInfo(T)) {
+        .optional => |o| o.child,
+        else => T,
+    };
+    switch (@typeInfo(Value)) {
         .bool => f.control = .toggle,
         .@"enum" => {
-            const tags = std.enums.values(T);
+            // Internal is offered only on an internal build; it is the last
+            // channel, so the other options keep their index.
+            const all = std.enums.values(Value);
+            const tags = if (Value == Update.Channel and !Update.internal_offered) all[0 .. all.len - 1] else all;
             var options: [tags.len]Option = undefined;
             for (tags, &options) |tag, *o| o.* = .{ .value = @tagName(tag), .label = text(@tagName(tag)) };
             const final = options;
@@ -271,13 +298,14 @@ pub const platform_fields = [_]PlatformField{
 pub const ios_system_note = text("system_settings_hint");
 
 /// A setting as a number: 0 or 1 for a toggle, the option's index for a
-/// choice, the number itself. Null for a key not in `manifest`.
+/// choice, the number itself. Null for a key not in `manifest`. An unpicked
+/// `update_channel` is the channel it follows.
 pub fn value(self: Settings, key: []const u8) ?i32 {
     inline for (manifest) |f| if (std.mem.eql(u8, f.key, key)) {
-        const v = @field(self, f.key);
+        const v = if (comptime std.mem.eql(u8, f.key, "update_channel")) self.updateChannel() else @field(self, f.key);
         return switch (f.control) {
             .toggle => @intFromBool(v),
-            .choice => @intFromEnum(v),
+            .choice => @backingInt(v),
             .number => v,
         };
     };
@@ -289,10 +317,13 @@ pub fn value(self: Settings, key: []const u8) ?i32 {
 pub fn setValue(self: *Settings, key: []const u8, v: i32) bool {
     inline for (manifest) |f| if (std.mem.eql(u8, f.key, key)) {
         const n = std.math.clamp(v, f.min, f.max);
-        const T = @FieldType(Settings, f.key);
+        const T = switch (@typeInfo(@FieldType(Settings, f.key))) {
+            .optional => |o| o.child,
+            else => @FieldType(Settings, f.key),
+        };
         @field(self, f.key) = switch (f.control) {
             .toggle => n != 0,
-            .choice => @as(T, @enumFromInt(n)),
+            .choice => @as(T, @fromBackingInt(@intCast(n))),
             .number => @as(T, @intCast(n)),
         };
         return true;
@@ -343,8 +374,8 @@ test "manifest text in each language, and the language for a tag" {
         for (f.title) |t| try testing.expect(t.len > 0);
         if (f.control == .choice) try testing.expectEqual(f.options.len, @as(usize, @intCast(f.max + 1)));
     }
-    const per_page = manifest[manifest.len - 1];
-    try testing.expectEqualStrings("Words per page", per_page.title[@intFromEnum(Language.en)]);
+    const per_page = manifest[6];
+    try testing.expectEqualStrings("Words per page", per_page.title[@backingInt(Language.en)]);
     try testing.expect(!manifest[1].shownOn(.ios));
     try testing.expect(manifest[0].shownOn(.ios));
 }
@@ -354,6 +385,39 @@ test "defaults follow iAvro" {
     try testing.expect(s.suggestions); // IncludeDictionary = true
     try testing.expect(s.newline_on_enter); // iAvro's CommitNewLineOnEnter is false: Enter sends here
     try testing.expectEqual(@as(u8, 9), s.candidates_per_page);
+}
+
+test "update settings: on, following this build's channel until one is picked" {
+    const a = testing.allocator;
+    var s: Settings = .{};
+    try testing.expect(s.auto_update);
+    try testing.expectEqual(@as(?Update.Channel, null), s.update_channel);
+    try testing.expectEqual(Update.default_channel, s.updateChannel());
+    try testing.expectEqual(@as(?i32, @backingInt(Update.default_channel)), s.value("update_channel"));
+
+    try testing.expect(s.setValue("update_channel", 1));
+    try testing.expectEqual(Update.Channel.beta, s.update_channel.?);
+    // Internal only where it is offered: past the last option clamps.
+    try testing.expect(s.setValue("update_channel", 3));
+    try testing.expectEqual(if (Update.internal_offered) Update.Channel.internal else Update.Channel.alpha, s.update_channel.?);
+
+    const json = try s.stringify(a);
+    defer a.free(json);
+    try testing.expectEqualDeep(s, try Settings.parse(a, json));
+    // An older file has no update fields; an unpicked channel stays unpicked.
+    try testing.expectEqual(@as(?Update.Channel, null), (try Settings.parse(a, "{\"update_channel\":null}")).update_channel);
+    try testing.expectEqual(@as(?Update.Channel, null), (try Settings.parse(a, "{}")).update_channel);
+    const picked_internal = try Settings.parse(a, "{\"update_channel\":\"internal\"}");
+    try testing.expectEqual(if (Update.internal_offered) @as(?Update.Channel, .internal) else null, picked_internal.update_channel);
+
+    const channel = manifest[8];
+    try testing.expectEqualStrings("update_channel", channel.key);
+    try testing.expectEqual(Control.choice, channel.control);
+    try testing.expectEqual(@as(usize, if (Update.internal_offered) 4 else 3), channel.options.len);
+    try testing.expectEqualStrings("production", channel.options[0].value);
+    try testing.expectEqualStrings("Stable", channel.options[0].label[0]);
+    try testing.expect(channel.shownOn(.macos) and channel.shownOn(.windows) and channel.shownOn(.linux));
+    try testing.expect(!channel.shownOn(.ios) and !channel.shownOn(.android) and !channel.shownOn(.web));
 }
 
 test "round trip" {

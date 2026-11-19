@@ -395,14 +395,18 @@ so they can still be read for that; nothing else reads them.
 
 ### Updates
 
-The app offers new releases itself (`App/updates.c`, `Core/update.c`). Once a
-day when **Settings → Updates → Check for updates** is on (`check-updates`,
-default on; the time is in `last-update-check`), or on **Check Now**:
+The app offers new releases itself (`App/updates.c`, `Core/update.c`, and
+the shared core's `src/Update.zig`, which macOS and Windows use too). Once a
+day when **Settings → Updates → Check for updates** is on (the shared
+`auto_update` setting, default on; the time is in `last-update-check`), or on
+**Check Now**:
 
-1. `curl` asks for `Byakaron-Assets/releases/latest` without following it. The
-   redirect names the newest normal release (`…/releases/tag/v27.0.0`); GitHub
-   skips prereleases, so a dev build is never offered. While there is no
-   normal release the redirect has no tag and nothing is offered.
+1. `curl` fetches GitHub's release list of Byakaron-Assets, and the core
+   (`byakaron_update_pick`) picks the newest release the **Release channel**
+   (`update_channel`) takes that is newer than what is installed and has this
+   machine's package. Stable takes `v27.0.0`; Beta also `v27.0.0-beta.N`;
+   Alpha also `-alpha.N`; Internal (offered only on an internal build) all of
+   them. Until one is picked, the channel is the installed build's own.
 2. The tag becomes the version as the packaging writes it and is compared
    with what is installed. dpkg is asked first: `.deb` versions (`v27.0.0` →
    `1:27.0.0`, `v27.0.0-dev.2` → `1:27.0.0~dev.2`) in dpkg's order. Then
@@ -417,8 +421,8 @@ default on; the time is in `last-update-check`), or on **Check Now**:
    keyboard is new at once; the bar then offers **Restart** for the app.
 
 The hash catches a broken download; it is not a signature, since both files
-come from the same release. `BYAKARON_UPDATE_BASE` points the check at
-another server and `BYAKARON_INSTALLED_VERSION` overrides the installed
+come from the same release. `BYAKARON_UPDATE_FEED` points the check at
+another release list, `BYAKARON_UPDATE_BASE` the downloads at another server, and `BYAKARON_INSTALLED_VERSION` overrides the installed
 version, for tests.
 
 ## Installing permanently

@@ -80,7 +80,11 @@
             let embeddedVersion = bundleVersion(at: embedded)
             let installedVersion = bundleVersion(at: dest)
 
-            if installedVersion == nil || installedVersion != embeddedVersion {
+            // Every build of one version shares a bundle version, so an update
+            // (27.0.0-beta.1 → beta.2) is told apart by the executable.
+            if installedVersion == nil || installedVersion != embeddedVersion
+                || executableDiffers(embedded, dest)
+            {
                 install(from: embedded, to: dest)
             }
 
@@ -224,6 +228,12 @@
         private static func property(_ source: TISInputSource, _ key: CFString) -> String? {
             guard let ptr = TISGetInputSourceProperty(source, key) else { return nil }
             return Unmanaged<CFString>.fromOpaque(ptr).takeUnretainedValue() as String
+        }
+
+        private static func executableDiffers(_ a: URL, _ b: URL) -> Bool {
+            let path = "Contents/MacOS/\(imeExecutableName)"
+            return !FileManager.default.contentsEqual(
+                atPath: a.appendingPathComponent(path).path, andPath: b.appendingPathComponent(path).path)
         }
 
         private static func bundleVersion(at appURL: URL) -> String? {

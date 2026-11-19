@@ -31,6 +31,9 @@ public sealed partial class SettingsPanel : UserControl
         BuildSettings();
         BuildLayout();
         RefreshUserWords();
+        Updates.Updater.Shared.StateChanged += RefreshUpdateStatus;
+        Unloaded += (_, _) => Updates.Updater.Shared.StateChanged -= RefreshUpdateStatus;
+        RefreshUpdateStatus();
         if (_store is null)
         {
             UnavailableText.Visibility = Visibility.Visible;
@@ -47,13 +50,14 @@ public sealed partial class SettingsPanel : UserControl
     private void Tabs_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
         // Raised while the XAML loads, before the pages exist.
-        if (SetupPage is null || LayoutPage is null) return;
+        if (SetupPage is null || LayoutPage is null || UpdatesPage is null) return;
         var tag = sender.SelectedItem?.Tag as string ?? "setup";
         SetupPage.Visibility = tag == "setup" ? Visibility.Visible : Visibility.Collapsed;
         TypingPage.Visibility = tag == "typing" ? Visibility.Visible : Visibility.Collapsed;
         CandidatesPage.Visibility = tag == "candidates" ? Visibility.Visible : Visibility.Collapsed;
         DictionaryPage.Visibility = tag == "dictionary" ? Visibility.Visible : Visibility.Collapsed;
         LayoutPage.Visibility = tag == "layout" ? Visibility.Visible : Visibility.Collapsed;
+        UpdatesPage.Visibility = tag == "updates" ? Visibility.Visible : Visibility.Collapsed;
         if (tag == "setup") RefreshKeyboardStatus();
     }
 
@@ -170,6 +174,7 @@ public sealed partial class SettingsPanel : UserControl
             {
                 "typing" => TypingPage,
                 "candidates" => CandidatesPage,
+                "updates" => UpdatesSettings,
                 _ => null,
             };
             if (page is null) continue;
@@ -185,6 +190,29 @@ public sealed partial class SettingsPanel : UserControl
                 page.Children.Add(Hint(section.Hint));
             }
         }
+    }
+
+    // ── Updates ──
+
+    private void RefreshUpdateStatus()
+    {
+        var updater = Updates.Updater.Shared;
+        var busy = updater.State is Updates.UpdateState.Checking or Updates.UpdateState.Downloading;
+        UpdateProgress.IsActive = busy;
+        UpdateButton.IsEnabled = !busy;
+        UpdateButton.Content = updater.State == Updates.UpdateState.Ready ? "Restart to update" : "Check now";
+        UpdateStatusText.Text = $"Byakaron {updater.CurrentVersion}. {updater.StatusText}";
+    }
+
+    private async void UpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        var updater = Updates.Updater.Shared;
+        if (updater.State == Updates.UpdateState.Ready)
+        {
+            updater.RestartAndInstall();
+            return;
+        }
+        await updater.CheckAsync();
     }
 
     // ── Layout ──
@@ -289,6 +317,8 @@ public sealed partial class SettingsPanel : UserControl
     {
         if (_loading) return;
         _store?.Set(key, value);
+        // What was found for the old channel may not be right for the new one.
+        if (key == "update_channel") Updates.Updater.Shared.ChannelChanged();
     }
 
     private TextBlock Hint(string text) => new() { Text = text, Style = ResourceStyle("HintStyle") };

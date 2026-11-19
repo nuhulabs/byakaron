@@ -19,6 +19,7 @@ struct ByakaronApp: App {
     init() {
         #if os(macOS)
         KeyboardInstaller.ensureInstalled()
+        Updater.shared.start()
         #endif
     }
 
@@ -29,7 +30,10 @@ struct ByakaronApp: App {
         }
         #if os(macOS)
         .defaultSize(width: 720, height: 560)
-        .commands { GuideCommands() }
+        .commands {
+            GuideCommands()
+            UpdateCommands()
+        }
         #endif
 
         #if os(macOS)
@@ -42,6 +46,17 @@ struct ByakaronApp: App {
 }
 
 #if os(macOS)
+/// Byakaron › Check for Updates…, under About.
+private struct UpdateCommands: Commands {
+    var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") {
+                Task { await Updater.shared.check(announce: true) }
+            }
+        }
+    }
+}
+
 /// Points the standard Help menu (the rightmost app menu) at the Setup tab, which
 /// now lives in Settings — exactly where macOS users expect setup/how-to material.
 private struct GuideCommands: Commands {

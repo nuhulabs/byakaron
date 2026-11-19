@@ -58,8 +58,8 @@
       <default>true</default>
       <summary>Check for updates</summary>
       <description>
-        When true, the app asks github.com once a day whether a newer Byakaron
-        has been released, and offers to install it. Nothing else is sent.
+        Deprecated: the shared settings.json's auto_update holds this now. The
+        app carries a false here into it once, then resets this key.
       </description>
     </key>
     <key name="last-update-check" type="x">

@@ -426,6 +426,57 @@ size_t byakaron_settings_field_count(void);
 /* 0, or -1 past the end. */
 int byakaron_settings_field_info(size_t index, const char *lang, ByakaronSettingsField *out);
 
+/*
+ * Updates (macOS, Windows, Linux; src/Update.zig).
+ *
+ * The app fetches byakaron_update_feed_url() (GitHub's release list: send a
+ * User-Agent), and byakaron_update_pick says which release to install for
+ * the channel in the `update_channel` setting (byakaron_setting_get). The app
+ * downloads `url`, checks it against `sha256`, and installs it.
+ *
+ * A channel takes its own releases and those of every steadier channel, and
+ * never one older than the installed version.
+ */
+enum {
+    BYAKARON_CHANNEL_PRODUCTION = 0,
+    BYAKARON_CHANNEL_BETA = 1,
+    BYAKARON_CHANNEL_ALPHA = 2,
+    BYAKARON_CHANNEL_INTERNAL = 3
+};
+
+typedef struct ByakaronRelease {
+    char *tag;                  /* "v27.1.0-beta.2" */
+    char *version;              /* "27.1.0-beta.2" */
+    char *url;                  /* the asset's download URL */
+    char *sha256;               /* lowercase hex, or NULL: check SHA256SUMS */
+    char *page;                 /* the release's page */
+    unsigned long long size;    /* bytes */
+    int channel;                /* BYAKARON_CHANNEL_* of the release */
+} ByakaronRelease;
+
+/* The version this library was built as: "27.0.0", "27.0.0-beta.3", or a
+ * local build's "27.0.0-dev". Static. */
+const char *byakaron_version(void);
+
+/* This build's BYAKARON_CHANNEL_*, or -1 for a local build (not a release:
+ * it does not check for updates by itself). */
+int byakaron_update_build_channel(void);
+
+/* The feed to fetch: $BYAKARON_UPDATE_FEED when set, else
+ * https://api.github.com/repos/nuhulabs/Byakaron-Assets/releases. Static. */
+const char *byakaron_update_feed_url(void);
+
+/* The release `current_version` (NULL: this build's) should update to on
+ * `channel`, one that has a file named `asset` ("Byakaron.dmg",
+ * "Byakaron-Setup.exe", "byakaron_amd64.deb"). 1 with `out` filled (free
+ * with byakaron_update_free), 0 when there is nothing newer, -1 when the
+ * feed (e.g. a rate-limit error) or the version is not understood. */
+int byakaron_update_pick(const char *feed_json, const char *current_version, int channel,
+                         const char *asset, ByakaronRelease *out);
+
+/* Free and clear what byakaron_update_pick filled in. NULL is ignored. */
+void byakaron_update_free(ByakaronRelease *release);
+
 #ifdef __cplusplus
 }
 #endif

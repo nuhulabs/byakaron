@@ -14,23 +14,6 @@ byk_update_base (void)
     return g_strdup ("https://github.com/nuhulabs/Byakaron-Assets");
 }
 
-gchar *
-byk_update_tag_from_url (const gchar *url)
-{
-    static const gchar marker[] = "/releases/tag/";
-    const gchar *p;
-    gsize n;
-
-    if (url == NULL)
-        return NULL;
-    p = strstr (url, marker);
-    if (p == NULL)
-        return NULL;
-    p += sizeof marker - 1;
-    n = strcspn (p, "/?#\r\n\t ");
-    return n > 0 ? g_strndup (p, n) : NULL;
-}
-
 /* v<digit> and then only version characters. */
 static gboolean
 byk_update_tag_ok (const gchar *tag)

@@ -199,6 +199,45 @@ internal static partial class ByakaronNative
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
     internal static partial int SettingsFieldInfo(nuint index, string? lang, out SettingsField field);
 
+    // ── Updates (src/Update.zig) ────────────────────────────────────────────
+
+    /// <summary>byakaron.h's ByakaronRelease; free with <see cref="UpdateFree"/>.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Release
+    {
+        public nint Tag;
+        public nint Version;
+        public nint Url;
+        public nint Sha256;
+        public nint Page;
+        public ulong Size;
+        public int Channel;
+    }
+
+    /// <summary>This build's version ("27.0.0-beta.3"); static.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_version")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial nint Version();
+
+    /// <summary>This build's channel, or -1 for a local build.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_update_build_channel")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial int UpdateBuildChannel();
+
+    /// <summary>The release feed URL; static.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_update_feed_url")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial nint UpdateFeedUrl();
+
+    /// <summary>1 with <paramref name="release"/> filled, 0 for nothing newer, -1 for a bad feed.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_update_pick", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial int UpdatePick(string feedJson, string? currentVersion, int channel, string asset, ref Release release);
+
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_update_free")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial void UpdateFree(ref Release release);
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     /// <summary>A static or borrowed UTF-8 C string (not freed); null for a null pointer.</summary>
