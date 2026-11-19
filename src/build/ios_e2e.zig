@@ -470,6 +470,7 @@ fn matrix(t: *Tool, o: Options) ![]Pair {
         }
     }
 
+    var empty: std.ArrayList([]const u8) = .empty;
     var named: std.ArrayList(*Runtime) = .empty;
     // Major version → the latest runtime of it, in the order majors appear.
     var latest: std.AutoArrayHashMapUnmanaged(u64, *Runtime) = .empty;
@@ -482,7 +483,13 @@ fn matrix(t: *Tool, o: Options) ![]Pair {
         const version = str(get(rt, "version")) orelse continue;
         const runtime = try t.arena.create(Runtime);
         runtime.* = .{ .version = version, .identifier = str(get(rt, "identifier")) orelse continue, .kinds = try kindsOf(t, rt, o.devices) };
-        if (runtime.kinds.len == 0) std.debug.print("iOS {s}: no iPhone matches --devices \"{s}\" ({d} device types)\n", .{ version, o.devices, items(get(rt, "supportedDeviceTypes")).len });
+        // A runtime with none of the iPhones (CI images carry partial ones)
+        // must not stand in for its major version: skip it, and say so only
+        // if nothing is left.
+        if (runtime.kinds.len == 0) {
+            try empty.append(t.arena, t.fmt("iOS {s}: no iPhone matches --devices \"{s}\" ({d} device types)", .{ version, o.devices, items(get(rt, "supportedDeviceTypes")).len }));
+            continue;
+        }
 
         const is_named = for (exact.items) |v| {
             if (std.mem.eql(u8, version, v) or (std.mem.startsWith(u8, version, v) and version.len > v.len and version[v.len] == '.')) break true;
@@ -528,6 +535,7 @@ fn matrix(t: *Tool, o: Options) ![]Pair {
             }
         }
     }.lessThan);
+    if (pairs.items.len == 0) for (empty.items) |line| std.debug.print("{s}\n", .{line});
     return pairs.items;
 }
 

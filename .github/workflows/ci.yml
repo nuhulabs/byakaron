@@ -86,17 +86,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         if: matrix.platform == 'android'
 
-      # The keyboard app is a private repo pinned by the submodule gitlink.
-      - name: keyboard (ios)
-        if: matrix.platform == 'ios'
-        run: echo "ios_sha=$(git ls-tree HEAD apps/ios/keyboard | awk '$2 == "commit" { print $3 }')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v4
+      # The keyboard app (a private repo) and its CocoaPods workspace.
+      - uses: ./.github/actions/ios-keyboard
         if: matrix.platform == 'ios'
         with:
-          repository: nuhulabs/byakaron-ios
-          ref: ${{ env.ios_sha }}
-          path: apps/ios/keyboard
-          ssh-key: ${{ secrets.IOS_DEPLOY_KEY }}
+          deploy-key: ${{ secrets.IOS_DEPLOY_KEY }}
 
       - name: deps (linux)
         if: matrix.platform == 'linux'
@@ -116,9 +110,7 @@ jobs:
           codesign --verify --deep --strict zig-out/bin/Byakaron.app
       - name: build (ios)
         if: matrix.platform == 'ios'
-        run: |
-          (cd apps/ios/keyboard && pod install)
-          zig build ios
+        run: zig build ios
       - name: build (windows)
         if: matrix.platform == 'windows'
         run: zig build windows

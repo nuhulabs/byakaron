@@ -1,14 +1,16 @@
-# e2e: the slow end-to-end checks, run by hand (Actions → e2e → Run), one
-# job group per OS:
+# e2e: the slow end-to-end checks, run by hand (Actions → e2e → Run). One job
+# per suite, each `zig build e2e -- <suite>` as run locally:
 #
-#   linux  a matrix of `zig build e2e` suites, all at once:
-#            wayland  type into GTK3/GTK4 apps on a headless GNOME Shell
-#            install  pack the .deb and the Arch package, install them in
-#                     clean Docker images (Ubuntu, Debian, archlinux)
-#   ios    build the app and KeyboardUITests once, then one job per iPhone x
-#          iOS (one iPhone per screen width on each iOS picked), every one
-#          checked by `zig build e2e -- ios` (keys line up with the system
-#          keyboard's, the switch does not flicker)
+#   linux-wayland  type into GTK3/GTK4 apps on a headless GNOME Shell
+#   linux-install  pack the .deb and the Arch package and install them in
+#                  clean Docker images (Ubuntu, Debian, archlinux)
+#   ios-build      build the app and KeyboardUITests once, and pick the
+#                  iPhone x iOS matrix from the runner's simulators (one
+#                  iPhone per screen width on each iOS, as a local run does)
+#   ios            one job per iPhone x iOS on those products: Byakaron's keys
+#                  line up with the system keyboard's, the switch does not
+#                  flicker. Screenshots, video and report.json are uploaded
+#                  as ios-e2e-<iPhone>-<iOS>.
 name: e2e
 
 on:
@@ -20,10 +22,10 @@ on:
         options: [all, linux, ios]
         default: all
       ios-os:
-        description: "iOS versions for the ios matrix (`zig build e2e -- ios --os`): 27+, 27.0, ..."
+        description: "iOS versions (`--os`): 27+, 27.2, 27.0,27.2, ..."
         default: "27+"
       ios-devices:
-        description: "iPhone names for the ios matrix, comma-separated globs (`zig build e2e -- ios --devices`)"
+        description: "iPhones (`--devices`), comma-separated globs"
         default: "iPhone 1*,iPhone Air*"
 
 permissions:
@@ -39,61 +41,54 @@ env:
 
 jobs:
   # ── linux ──────────────────────────────────────────────────────────────────
-  linux:
-    name: e2e (linux ${{ matrix.suite }})
-    if: inputs.os == 'all' || inputs.os == 'linux'
+  # apt directly rather than `sudo zig build deps`: one update, one install,
+  # and no root-owned Zig cache.
+
+  linux-wayland:
+    name: e2e (linux-wayland)
+    if: inputs.os != 'ios'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - suite: wayland
-            # The runtime set plus the C toolchain and -dev packages the test
-            # helpers build with (`zig build deps -- linux --test`), and a
-            # headless GNOME Shell to type into.
-            apt: >-
-              ibus ibus-gtk3 ibus-gtk4 libglib2.0-bin gettext librsvg2-common
-              build-essential pkg-config libibus-1.0-dev libglib2.0-dev
-              libgtk-3-dev libgtk-4-dev
-            # Without recommends (gnome-shell's would pull in a display manager).
-            apt_bare: >-
-              gnome-shell mutter dbus-x11 libgl1-mesa-dri
-              xdg-desktop-portal gsettings-desktop-schemas
-          - suite: install
-            # What packing needs (msgfmt, glib-compile-schemas); the installs
-            # themselves run in Docker.
-            apt: ibus ibus-gtk3 libglib2.0-bin gettext
-            apt_bare: xvfb dbus-x11
     steps:
       - uses: actions/checkout@v4
-
-      # apt directly, not `sudo zig build deps`: one update and one install,
-      # and no root-owned Zig cache.
+      # The runtime set plus the C toolchain and -dev packages the test helpers
+      # build with (`zig build deps -- linux --test`), and a headless GNOME
+      # Shell, without recommends (they would pull in a display manager).
       - name: deps
-        env:
-          APT: ${{ matrix.apt }}
-          APT_BARE: ${{ matrix.apt_bare }}
         run: |
           sudo -E apt-get update -qq
-          # shellcheck disable=SC2086
-          sudo -E apt-get install -y -qq $APT >/dev/null
-          # shellcheck disable=SC2086
-          sudo -E apt-get install -y -qq --no-install-recommends $APT_BARE >/dev/null
-
+          sudo -E apt-get install -y -qq >/dev/null \
+            ibus ibus-gtk3 ibus-gtk4 libglib2.0-bin gettext librsvg2-common \
+            build-essential pkg-config libibus-1.0-dev libglib2.0-dev libgtk-3-dev libgtk-4-dev
+          sudo -E apt-get install -y -qq --no-install-recommends >/dev/null \
+            gnome-shell mutter dbus-x11 libgl1-mesa-dri xdg-desktop-portal gsettings-desktop-schemas
       - uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
-
-      - name: e2e (wayland)
-        if: matrix.suite == 'wayland'
+      - name: e2e
         run: zig build e2e -- linux-wayland
 
-      # Tiny wiki dump keeps Byakaron.db cheap.
-      - name: e2e (install)
-        if: matrix.suite == 'install'
+  linux-install:
+    name: e2e (linux-install)
+    if: inputs.os != 'ios'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      # What packing needs (msgfmt, glib-compile-schemas); the installs run in Docker.
+      - name: deps
         run: |
-          zig build pack -Dlinux-arch=x86_64 -Dwiki-dump=.github/ci/bnwiki-tiny.xml -- linux linux-arch
+          sudo -E apt-get update -qq
+          sudo -E apt-get install -y -qq >/dev/null ibus ibus-gtk3 libglib2.0-bin gettext
+          sudo -E apt-get install -y -qq --no-install-recommends >/dev/null xvfb dbus-x11
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      # The tiny wiki dump keeps Byakaron.db cheap.
+      - name: pack
+        run: zig build pack -Dlinux-arch=x86_64 -Dwiki-dump=.github/ci/bnwiki-tiny.xml -- linux linux-arch
+      - name: e2e
+        run: |
           zig build e2e \
             -Dlinux-arch=x86_64 \
             -Dspell-db=zig-out/db/Byakaron.db \
@@ -102,44 +97,24 @@ jobs:
             -- linux-install
 
   # ── ios ────────────────────────────────────────────────────────────────────
-  # Builds the app and KeyboardUITests once, and works out the matrix on the
-  # runner's simulators with the same rules as a local run (`--list --json`).
+
   ios-build:
     name: e2e (ios build)
-    if: inputs.os == 'all' || inputs.os == 'ios'
+    if: inputs.os != 'linux'
     runs-on: xcode-27
     timeout-minutes: 45
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: keyboard (ios)
-        run: echo "ios_sha=$(git ls-tree HEAD apps/ios/keyboard | awk '$2 == "commit" { print $3 }')" >> "$GITHUB_ENV"
-
-      - uses: actions/checkout@v4
-        with:
-          repository: nuhulabs/byakaron-ios
-          ref: ${{ env.ios_sha }}
-          path: apps/ios/keyboard
-          ssh-key: ${{ secrets.IOS_DEPLOY_KEY }}
-
       - uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
-
-      # build.zig's ios targets need the CocoaPods workspace.
-      - uses: actions/cache@v4
+      - uses: ./.github/actions/ios-keyboard
         with:
-          path: apps/ios/keyboard/Pods
-          key: pods-${{ runner.os }}-${{ hashFiles('apps/ios/keyboard/Podfile.lock') }}
-
-      - name: pods
-        working-directory: apps/ios/keyboard
-        run: pod install
-
-      # Also builds zig-out/lib/ios/Byakaron.xcframework, which the Xcode
-      # project links, so the app needs no `zig build ios` of its own.
+          deploy-key: ${{ secrets.IOS_DEPLOY_KEY }}
+      # `--list` also builds zig-out/lib/ios/Byakaron.xcframework, which the
+      # Xcode project links.
       - name: matrix
         id: matrix
         env:
@@ -147,10 +122,9 @@ jobs:
           DEVICES: ${{ inputs.ios-devices }}
         run: |
           xcrun simctl list runtimes
-          zig build e2e -- ios --list --json --os "$OS" --devices "$DEVICES" > "$RUNNER_TEMP/matrix.json"
-          cat "$RUNNER_TEMP/matrix.json"
-          echo "matrix=$(cat "$RUNNER_TEMP/matrix.json")" >> "$GITHUB_OUTPUT"
-
+          matrix=$(zig build e2e -- ios --list --json --os "$OS" --devices "$DEVICES")
+          echo "$matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
       - name: build
         working-directory: apps/ios/keyboard
         run: |
@@ -159,7 +133,6 @@ jobs:
             -destination "generic/platform=iOS Simulator" \
             -derivedDataPath DerivedData/E2E/Build \
             CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
-
       - uses: actions/upload-artifact@v4
         with:
           name: ios-e2e-products
@@ -167,7 +140,6 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # Runs the prebuilt tests (`--products`): no app build.
   ios:
     name: e2e (ios ${{ matrix.os }}, ${{ matrix.device }})
     needs: ios-build
@@ -181,42 +153,22 @@ jobs:
         include: ${{ fromJSON(needs.ios-build.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: keyboard (ios)
-        run: echo "ios_sha=$(git ls-tree HEAD apps/ios/keyboard | awk '$2 == "commit" { print $3 }')" >> "$GITHUB_ENV"
-
-      - uses: actions/checkout@v4
-        with:
-          repository: nuhulabs/byakaron-ios
-          ref: ${{ env.ios_sha }}
-          path: apps/ios/keyboard
-          ssh-key: ${{ secrets.IOS_DEPLOY_KEY }}
-
       - uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
-
-      # build.zig's ios targets need the CocoaPods workspace.
-      - uses: actions/cache@v4
+      - uses: ./.github/actions/ios-keyboard
         with:
-          path: apps/ios/keyboard/Pods
-          key: pods-${{ runner.os }}-${{ hashFiles('apps/ios/keyboard/Podfile.lock') }}
-
-      - name: pods
-        working-directory: apps/ios/keyboard
-        run: pod install
-
+          deploy-key: ${{ secrets.IOS_DEPLOY_KEY }}
       - uses: actions/download-artifact@v4
         with:
           name: ios-e2e-products
           path: ${{ runner.temp }}/products
-
+      # The prebuilt app and tests (`--products`): no build here.
       - name: e2e
         env:
           DEVICE: ${{ matrix.device }}
           OS: ${{ matrix.os }}
         run: zig build e2e -- ios --products "$RUNNER_TEMP/products" --devices "$DEVICE" --os "$OS"
-
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -476,33 +476,9 @@ jobs:
           version: ${{ needs.prepare.outputs.version }}
           zig-version: ${{ env.ZIG_VERSION }}
 
-      # The keyboard is a private repo pinned by the submodule gitlink.
-      - name: keyboard
-        id: keyboard
-        env:
-          DEPLOY_KEY: ${{ secrets.IOS_DEPLOY_KEY }}
-        run: |
-          sha=$(git ls-tree HEAD apps/ios/keyboard | awk '$2 == "commit" { print $3 }')
-          [[ -n "$sha" ]] || { echo "::error::no gitlink at apps/ios/keyboard"; exit 1; }
-          [[ -n "$DEPLOY_KEY" ]] || { echo "::error::IOS_DEPLOY_KEY unset: cannot clone byakaron-ios@$sha"; exit 1; }
-          echo "ios keyboard@$sha"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/checkout@v4
+      - uses: ./.github/actions/ios-keyboard
         with:
-          repository: nuhulabs/byakaron-ios
-          ref: ${{ steps.keyboard.outputs.sha }}
-          path: apps/ios/keyboard
-          ssh-key: ${{ secrets.IOS_DEPLOY_KEY }}
-
-      - uses: actions/cache@v4
-        with:
-          path: apps/ios/keyboard/Pods
-          key: pods-${{ runner.os }}-${{ hashFiles('apps/ios/keyboard/Podfile.lock') }}
-
-      - name: pods
-        working-directory: apps/ios/keyboard
-        run: pod install
+          deploy-key: ${{ secrets.IOS_DEPLOY_KEY }}
 
       # Byakaron.xcframework (which the Xcode project links) and the
       # Settings.bundle; also a simulator build of the app.

@@ -1,0 +1,42 @@
+name: ios keyboard
+description: >-
+  apps/ios/keyboard (the private byakaron-ios repo, at the commit the
+  submodule gitlink pins) with its CocoaPods workspace, which build.zig's ios
+  targets need.
+
+inputs:
+  deploy-key:
+    description: SSH deploy key for nuhulabs/byakaron-ios (secrets.IOS_DEPLOY_KEY)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: keyboard
+      id: keyboard
+      shell: bash
+      env:
+        DEPLOY_KEY: ${{ inputs.deploy-key }}
+      run: |
+        sha=$(git ls-tree HEAD apps/ios/keyboard | awk '$2 == "commit" { print $3 }')
+        [[ -n "$sha" ]] || { echo "::error::no gitlink at apps/ios/keyboard"; exit 1; }
+        [[ -n "$DEPLOY_KEY" ]] || { echo "::error::IOS_DEPLOY_KEY unset: cannot clone byakaron-ios@$sha"; exit 1; }
+        echo "ios keyboard@$sha"
+        echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/checkout@v4
+      with:
+        repository: nuhulabs/byakaron-ios
+        ref: ${{ steps.keyboard.outputs.sha }}
+        path: apps/ios/keyboard
+        ssh-key: ${{ inputs.deploy-key }}
+
+    - uses: actions/cache@v4
+      with:
+        path: apps/ios/keyboard/Pods
+        key: pods-${{ runner.os }}-${{ hashFiles('apps/ios/keyboard/Podfile.lock') }}
+
+    - name: pods
+      shell: bash
+      working-directory: apps/ios/keyboard
+      run: pod install
