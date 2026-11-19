@@ -62,6 +62,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 UninstallDisplayIcon={app}\{#MyAppExeName}
+SetupIconFile={#RepoRoot}\apps\windows\Byakaron\Assets\Byakaron.ico
 CloseApplications=yes
 ; Only Byakaron itself: ByakaronIME.dll is loaded by every app that takes
 ; text, which must not be closed for an update (the DLL is replaced at the
