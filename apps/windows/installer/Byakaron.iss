@@ -38,7 +38,7 @@
 
 #define MyAppName "Byakaron"
 #define MyAppPublisher "Nuhu Labs"
-#define MyAppURL "https://github.com/nuhu-labs/byakaron"
+#define MyAppURL "https://byakaron.com"
 #define MyAppExeName "Byakaron.exe"
 
 [Setup]

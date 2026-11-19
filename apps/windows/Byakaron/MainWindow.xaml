@@ -189,6 +189,13 @@
                             <FontIcon FontSize="14" Glyph="&#xE713;" />
                         </Button>
                         <Button
+                            x:Name="AboutButton"
+                            Style="{StaticResource TitleIconButtonStyle}"
+                            Click="AboutButton_Click"
+                            ToolTipService.ToolTip="About Byakaron">
+                            <FontIcon FontSize="14" Glyph="&#xE946;" />
+                        </Button>
+                        <Button
                             x:Name="KeyboardButton"
                             Style="{StaticResource TitleIconButtonStyle}"
                             Click="KeyboardButton_Click"

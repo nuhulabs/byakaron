@@ -74,15 +74,20 @@ Open **Byakaron** from your apps.
   top are the same as on Mac and Windows: the issue list, Open and Save on the
   left; **Bangla typing** (type Bangla here without changing your keyboard),
   **Fix All**, **Copy** and **Clear** on the right.
-- **Preferences** (the menu at the top right, or Ctrl+,) has three tabs:
+- **Preferences** (the menu at the top right, or Ctrl+,) has the same tabs as
+  on Mac and Windows:
   - **Setup**: whether the keyboard is added, with an **Add** button that puts
     it in your desktop's own input source switcher (the top bar on GNOME, the
-    IBus icon in the system tray elsewhere).
-  - **Typing**: suggestions, spelling corrections, Bangla digits, the list's
-    direction, updates, and your personal dictionary.
+    IBus icon in the system tray elsewhere), and typing tips.
+  - **Typing**: auto-correction, spelling fixes, learning your choices, Bangla
+    digits and New line on Enter.
+  - **Suggestions**: the list's direction and how many words it shows per page.
+  - **Dictionary**: your own words, which Byakaron then suggests and never
+    marks as wrong. Add one by hand or remove any. **Personal Dictionary** in
+    the menu opens the same list.
   - **Layout**: which English letters make which Bangla letter.
-- **Personal Dictionary** (in the menu): your own words, which Byakaron then
-  suggests and never marks as wrong.
+  - **Updates**: automatic updates, the release channel and **Check Now**.
+- **About Byakaron** (in the menu): the version and the website.
 
 ## Updates
 
@@ -91,18 +96,24 @@ The app checks once a day. When there is a new version, a bar at the top says
 keyboard restarts by itself, then press **Restart** for the app.
 
 You can also run the install command again at any time, or press **Check Now**
-in **Preferences → Typing → Updates**. To stop the daily check, turn off **Check for
-updates** there.
+in **Preferences → Updates**. To stop the daily check, turn off **Auto-update**
+there.
 
 ## Uninstall
 
+One command for every distribution:
+
 ```sh
-sudo apt remove byakaron       # Ubuntu, Debian, Raspberry Pi OS
-sudo pacman -R byakaron        # Arch, Manjaro, EndeavourOS
+curl -fsSL https://byakaron.com/install.sh | bash -s -- --uninstall
 ```
 
-Your own words and choices stay in `~/.local/share/byakaron`. Delete that
-folder to remove them too.
+Your own words and choices stay in `~/.local/share/byakaron`. Add `--purge`
+to remove them too (`bash -s -- --uninstall --purge`). Log out and back in to
+clear Byakaron from the input sources.
+
+For a clean reinstall, uninstall with `--purge`, then run the install command
+again. The install command always installs the latest stable release, even
+over a newer preview build.
 
 ## If something is wrong
 

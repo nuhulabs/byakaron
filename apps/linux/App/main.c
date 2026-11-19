@@ -6,9 +6,10 @@
  * newest release can open.
  *
  * The window is the spelling editor, laid out like the macOS and Windows apps
- * (issue list, editor, the controls in the header bar). Setup, Typing and the
- * Avro key map are in Preferences, reached the GNOME way: the primary menu or
- * Ctrl+comma. `byakaron --page=setup` (IBus Preferences) opens Setup.
+ * (issue list, editor, the controls in the header bar). Setup, the settings,
+ * the personal dictionary and the Avro key map are in Preferences, reached the
+ * GNOME way: the primary menu or Ctrl+comma; About is in the same menu.
+ * `byakaron --page=setup` (IBus Preferences) opens Setup.
  *
  * It is a separate process from byakaron-ibus and shares nothing with it at
  * runtime but the Core/ glue and the Zig engine underneath — the input method
@@ -109,12 +110,12 @@ static const char BYK_CSS[] =
     "  font-weight: bold;\n"
     "}\n";
 
-static const char *const AUTHORS[] = { "Nurul Huda (Apon)", NULL };
+static const char *const AUTHORS[] = { "Nuhu Labs", NULL };
 
 static const GOptionEntry extra_options[] = {
     { "version", 'V', 0, G_OPTION_ARG_NONE, NULL, "Print the version and exit", NULL },
     { "page", 'p', 0, G_OPTION_ARG_STRING, NULL,
-      "Open this page: spelling, setup, typing, or layout", "PAGE" },
+      "Open this page: spelling, setup, typing, candidates, dictionary, layout, or updates", "PAGE" },
     { NULL }
 };
 
@@ -143,7 +144,7 @@ on_about_activate (GSimpleAction *action, GVariant *parameter, gpointer user_dat
                            "logo-icon-name", "byakaron",
                            "version", BYK_APP_VERSION,
                            "authors", AUTHORS,
-                           "copyright", "Nurul Huda (Apon)",
+                           "copyright", "Nuhu Labs",
                            "license-type", GTK_LICENSE_MIT_X11,
                            "website", BYK_URL_WEBSITE,
                            "comments",

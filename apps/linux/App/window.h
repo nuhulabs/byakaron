@@ -17,8 +17,9 @@ G_DECLARE_FINAL_TYPE (BykWindow, byk_window, BYK, WINDOW, GtkApplicationWindow)
 GtkWidget *byk_window_new (GtkApplication *app);
 
 /*
- * NULL or "spelling" raises this window; "setup", "typing" ("settings") or
- * "layout" opens Preferences on that page, and "" on the page it was on.
+ * NULL or "spelling" raises this window; "setup", "typing" ("settings"),
+ * "candidates", "dictionary", "layout" or "updates" opens Preferences on that
+ * page, and "" on the page it was on.
  * Used by the main menu and by `byakaron --page=`.
  */
 void byk_window_show_page (BykWindow *self, const gchar *name);

@@ -155,7 +155,8 @@ That file is `arm64`, not `amd64`. Use `apt`, not `dpkg -i`.
 3. Switch with **Super+Space**
 4. Type `ami` then Space — you should get `আমি `
 
-The **Byakaron** app (Spelling / Layout / Setup) is optional. The keyboard
+The **Byakaron** app (the spelling editor, and Preferences with Setup and
+the Avro layout) is optional. The keyboard
 works without it. Launch the app and open Setup if you prefer that path over
 GNOME Settings.
 

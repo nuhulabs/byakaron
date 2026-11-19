@@ -3,16 +3,17 @@
     // Pages and tabs.
     .setup = "সেটআপ",
     .layout = "লেআউট",
+    .layout_hint = "ব্যাকরণ অভ্র ফোনেটিকে টাইপ করে। বড় হাতের অক্ষর আলাদা কী: T হলো ট, t হলো ত।",
     .settings = "সেটিংস",
 
     // Typing settings.
     .typing = "টাইপিং",
     .typing_hint = "পরের শব্দ থেকে কার্যকর হয়।",
-    .suggestions = "পরামর্শ",
-    .suggestions_hint = "টাইপের সময় মিলে যাওয়া শব্দ দেখায়। বন্ধ থাকলে প্রতিটি শব্দ ঠিক যেমন বানান করেন তেমন টাইপ হয়।",
+    .suggestions = "স্বয়ংক্রিয় সংশোধন",
+    .suggestions_hint = "টাইপের সময় শব্দ দেখায় ও ঠিক করে। বন্ধ থাকলে প্রতিটি শব্দ ঠিক যেমন বানান করেন তেমন টাইপ হয়।",
     .spelling_corrections = "বানান ঠিক করুন",
     .spelling_corrections_hint = "sonar লিখে সনার এলে সোনার দেখায়।",
-    .learn_choices = "আমার বাছাই শিখুন",
+    .learn_choices = "বাছাই শিখুন",
     .learn_choices_hint = "যে শব্দ বাছেন, পরের বার সেটি আগে আসে।",
     .bangla_digits = "বাংলা অঙ্ক",
     .bangla_digits_hint = "0–9 চাপলে ০–৯ টাইপ হয়।",
@@ -20,7 +21,7 @@
     .newline_on_enter_hint = "এন্টার শব্দ বসিয়ে নতুন লাইন শুরু করে।",
 
     // Candidate list.
-    .candidates = "পরামর্শ তালিকা",
+    .candidates = "পরামর্শ",
     .candidates_hint = "টাইপের সময় তালিকা কেমন দেখাবে।",
     .candidate_orientation = "দিক",
     .candidate_orientation_hint = "পাশাপাশি, নাকি একটির নিচে আরেকটি।",
@@ -32,9 +33,9 @@
     // Updates (macOS, Windows, Linux).
     .updates = "আপডেট",
     .updates_hint = "ব্যাকরণ দিনে একবার github.com-এ নতুন সংস্করণ খোঁজে। আপনার বা আপনার লেখার কিছুই পাঠানো হয় না।",
-    .auto_update = "আপডেট খুঁজুন",
+    .auto_update = "স্বয়ংক্রিয় আপডেট",
     .auto_update_hint = "নতুন ব্যাকরণ এলে জানায়।",
-    .update_channel = "রিলিজ চ্যানেল",
+    .update_channel = "চ্যানেল",
     .update_channel_hint = "বেটা ও আলফা নতুন জিনিস আগে পায়, ত্রুটিও বেশি থাকে।",
     .production = "স্থিতিশীল",
     .beta = "বেটা",
@@ -49,10 +50,10 @@
     .automatic = "স্বয়ংক্রিয়",
     .always = "সবসময়",
     .never = "কখনো না",
-    .system_settings_hint = "শব্দ, হ্যাপটিক, স্বয়ংক্রিয় বড় হাতের অক্ষর, “.” শর্টকাট ও প্রেডিক্টিভ টেক্সট iOS সেটিংস › সাধারণ › কিবোর্ড মেনে চলে।",
+    .system_settings_hint = "স্বয়ংক্রিয় সংশোধন, প্রেডিক্টিভ টেক্সট, শব্দ, হ্যাপটিক, স্বয়ংক্রিয় বড় হাতের অক্ষর ও “.” শর্টকাট iOS সেটিংস › সাধারণ › কিবোর্ড মেনে চলে।",
 
     // Personal dictionary.
-    .personal_dictionary = "ব্যক্তিগত অভিধান",
+    .personal_dictionary = "অভিধান",
     .personal_dictionary_hint = "আপনার সংরক্ষিত শব্দ। সবসময় পরামর্শে আসে, কখনো ভুল ধরা হয় না।",
     .add_word = "শব্দ যোগ করুন",
     .add = "যোগ করুন",

@@ -31,6 +31,7 @@ pub const Store = @import("Composer/Store.zig");
 pub const FileStore = @import("Composer/FileStore.zig");
 pub const UserWords = @import("Composer/UserWords.zig");
 pub const Corrector = @import("Composer/Corrector.zig");
+pub const Layout = @import("Composer/Layout.zig");
 
 /// Personal-dictionary words listed after Avro's.
 const user_word_limit = 5;
@@ -538,6 +539,7 @@ const testing = std.testing;
 
 test {
     _ = Settings;
+    _ = Layout;
     _ = Update;
     _ = Store;
     _ = FileStore;

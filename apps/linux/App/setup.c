@@ -410,13 +410,6 @@ byk_setup_tip_row (const gchar *key, const gchar *meaning)
     return byk_row (NULL, key, NULL, value);
 }
 
-static GtkWidget *
-byk_setup_link_row (const gchar *title, const gchar *uri)
-{
-    GtkWidget *link = gtk_link_button_new_with_label (uri, "Open");
-    return byk_row (NULL, title, NULL, link);
-}
-
 
 /* ── construction ────────────────────────────────────────────────────────── */
 
@@ -545,23 +538,6 @@ byk_setup_page_build_typing (void)
     return group;
 }
 
-static GtkWidget *
-byk_setup_page_build_about (void)
-{
-    GtkWidget *list = NULL;
-    GtkWidget *group = byk_framed_list ("About", "Developed by Nurul Huda (Apon)", &list);
-
-    GtkWidget *version = gtk_label_new (BYK_APP_VERSION);
-    byk_css_add (version, "dim-label");
-    byk_box_add (list, byk_row (NULL, "Version", NULL, version));
-    byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
-    byk_box_add (list, byk_setup_link_row ("Website", BYK_URL_WEBSITE));
-    byk_box_add (list, gtk_separator_new (GTK_ORIENTATION_HORIZONTAL));
-    byk_box_add (list, byk_setup_link_row ("Downloads", BYK_URL_DOWNLOADS));
-
-    return group;
-}
-
 static void
 byk_setup_page_init (BykSetupPage *self)
 {
@@ -593,7 +569,6 @@ byk_setup_page_new (void)
     byk_box_add (column, byk_setup_page_build_status (self));
     byk_box_add (column, byk_setup_page_build_steps (self));
     byk_box_add (column, byk_setup_page_build_typing ());
-    byk_box_add (column, byk_setup_page_build_about ());
 
     self->toast = gtk_label_new ("");
     byk_css_add (self->toast, "byk-toast");

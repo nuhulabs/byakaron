@@ -1,6 +1,6 @@
 /*
- * The Preferences window: Setup, Typing (the keyboard's settings and the
- * personal dictionary) and Layout, as tabs in its header bar.
+ * The Preferences window: Setup, Typing, Suggestions, Dictionary, Layout and
+ * Updates, as tabs in its header bar, the order and names macOS and Windows use.
  *
  * The Linux counterpart of the macOS Settings window (⌘,) and the Windows
  * Settings button: the main window is the spelling editor alone, and
@@ -26,12 +26,13 @@ GtkWidget *byk_preferences_new (GtkWindow *parent, BykEngines *engines,
                                 GCallback on_dictionary_changed, gpointer data);
 
 /*
- * Present the window on `page`: "setup", "typing" or "layout" ("settings" is
- * the old name for typing). NULL or "" keeps the page it was on.
+ * Present the window on `page`: "setup", "typing", "candidates", "dictionary",
+ * "layout" or "updates" ("settings" is the old name for typing). NULL or ""
+ * keeps the page it was on.
  */
 void byk_preferences_present (BykPreferences *self, const gchar *page);
 
-/* Re-read what other windows may have changed (the saved-word count). */
+/* Re-read what other windows may have changed (keyboard status, saved words). */
 void byk_preferences_refresh (BykPreferences *self);
 
 G_END_DECLS

@@ -2,8 +2,6 @@
 
 #include <locale.h>
 
-#include "byakaron_strings.h"
-#include "dictionary.h"
 #include "prefs.h"
 #include "uiutil.h"
 
@@ -12,9 +10,6 @@ struct _BykSettingsPage {
 
     BykEngines *engines;
     GSettings *prefs;          /* qt-click-fix; NULL when the schema is not installed */
-    GtkWidget *dict_count;
-    GCallback dictionary_changed;
-    gpointer dictionary_changed_data;
 };
 
 G_DEFINE_TYPE (BykSettingsPage, byk_settings_page, GTK_TYPE_BOX)
@@ -103,9 +98,12 @@ byk_settings_control (BykSettingsPage *self, const ByakaronSettingsField *f)
     return control;
 }
 
-/* The shared settings, one group per manifest section (Settings.zig). */
-static void
-byk_settings_build_shared (BykSettingsPage *self, GtkWidget *column)
+/*
+ * One manifest section (Settings.zig) as a group, or NULL when no field of it
+ * applies to Linux. Each tab shows one section, as on macOS and Windows.
+ */
+static GtkWidget *
+byk_settings_build_section (BykSettingsPage *self, const gchar *section_id)
 {
     const gchar *lang = byk_settings_lang ();
     const gsize n_sections = byakaron_settings_section_count ();
@@ -113,7 +111,8 @@ byk_settings_build_shared (BykSettingsPage *self, GtkWidget *column)
 
     for (gsize s = 0; s < n_sections; s++) {
         ByakaronSettingsSection section;
-        if (byakaron_settings_section_info (s, lang, &section) != 0)
+        if (byakaron_settings_section_info (s, lang, &section) != 0 ||
+            g_strcmp0 (section.id, section_id) != 0)
             continue;
 
         GtkWidget *list = NULL;
@@ -128,7 +127,7 @@ byk_settings_build_shared (BykSettingsPage *self, GtkWidget *column)
             byk_settings_add_row (list, f.title, f.hint, byk_settings_control (self, &f));
         }
         if (group == NULL)
-            continue;
+            return NULL;
         /* Under the update settings: Check Now (updates.c, through the window). */
         if (g_strcmp0 (section.id, "updates") == 0) {
             GtkWidget *now = gtk_button_new_with_label ("Check Now");
@@ -139,8 +138,9 @@ byk_settings_build_shared (BykSettingsPage *self, GtkWidget *column)
         }
         if (self->engines->composer == NULL)
             gtk_widget_set_sensitive (list, FALSE);
-        byk_box_add (column, group);
+        return group;
     }
+    return NULL;
 }
 
 /* Linux only, and only for IBus older than 1.5.27: kept in GSettings. */
@@ -157,52 +157,6 @@ byk_settings_build_compat (BykSettingsPage *self)
                           "In other apps a word still being typed is dropped if you click away "
                           "before Space. Not needed on Ubuntu 24.04.",
                           sw);
-    return group;
-}
-
-void
-byk_settings_page_refresh (BykSettingsPage *self)
-{
-    g_return_if_fail (BYK_IS_SETTINGS_PAGE (self));
-    ByakaronComposer *composer = self->engines->composer;
-    const guint n = composer != NULL ? (guint) byakaron_userdict_count (composer) : 0;
-    gchar *text = g_strdup_printf (n == 1 ? "%u saved word" : "%u saved words", n);
-    gtk_label_set_text (GTK_LABEL (self->dict_count), text);
-    g_free (text);
-}
-
-static void
-on_dictionary_changed (gpointer user_data)
-{
-    BykSettingsPage *self = BYK_SETTINGS_PAGE (user_data);
-    byk_settings_page_refresh (self);
-    if (self->dictionary_changed != NULL)
-        ((void (*) (gpointer)) self->dictionary_changed) (self->dictionary_changed_data);
-}
-
-static void
-on_manage_clicked (GtkButton *button, gpointer user_data)
-{
-    BykSettingsPage *self = BYK_SETTINGS_PAGE (user_data);
-    GtkWidget *top = gtk_widget_get_toplevel (GTK_WIDGET (button));
-    byk_dictionary_show (GTK_IS_WINDOW (top) ? GTK_WINDOW (top) : NULL,
-                         self->engines->composer, G_CALLBACK (on_dictionary_changed), self);
-}
-
-static GtkWidget *
-byk_settings_build_dictionary (BykSettingsPage *self)
-{
-    GtkWidget *list = NULL;
-    GtkWidget *group = byk_framed_list (
-        byk_str (BYK_STR_PERSONAL_DICTIONARY), byk_str (BYK_STR_PERSONAL_DICTIONARY_HINT),
-        &list);
-
-    GtkWidget *manage = gtk_button_new_with_label ("Manage…");
-    g_signal_connect (manage, "clicked", G_CALLBACK (on_manage_clicked), self);
-    GtkWidget *row = byk_row (NULL, "", NULL, manage);
-    self->dict_count = g_object_get_data (G_OBJECT (row), "byk-title");
-    byk_box_add (list, row);
-    byk_settings_page_refresh (self);
     return group;
 }
 
@@ -227,22 +181,27 @@ byk_settings_page_class_init (BykSettingsPageClass *klass)
 }
 
 GtkWidget *
-byk_settings_page_new (BykEngines *engines, GCallback on_dictionary_changed_cb, gpointer data)
+byk_settings_page_new (BykEngines *engines, const gchar *section_id)
 {
     BykSettingsPage *self = g_object_new (BYK_TYPE_SETTINGS_PAGE, NULL);
     self->engines = engines;
-    self->prefs = byk_prefs_try_open ();
-    self->dictionary_changed = on_dictionary_changed_cb;
-    self->dictionary_changed_data = data;
 
     GtkWidget *column = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
     gtk_widget_set_halign (column, GTK_ALIGN_CENTER);
     gtk_widget_set_size_request (column, 420, -1);
     gtk_widget_set_margin_bottom (column, 24);
-    byk_settings_build_shared (self, column);
-    if (self->prefs != NULL)
-        byk_box_add (column, byk_settings_build_compat (self));
-    byk_box_add (column, byk_settings_build_dictionary (self));
+
+    GtkWidget *group = byk_settings_build_section (self, section_id);
+    if (group != NULL)
+        byk_box_add (column, group);
+
+    /* The Qt click fix is about typing, so it sits under the Typing settings,
+     * as the one Linux-only group. */
+    if (g_strcmp0 (section_id, "typing") == 0) {
+        self->prefs = byk_prefs_try_open ();
+        if (self->prefs != NULL)
+            byk_box_add (column, byk_settings_build_compat (self));
+    }
 
     GtkWidget *scroller = byk_scroller (column, GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_widget_set_vexpand (scroller, TRUE);

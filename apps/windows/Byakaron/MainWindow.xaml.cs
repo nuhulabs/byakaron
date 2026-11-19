@@ -205,6 +205,34 @@ public sealed partial class MainWindow : Window
         await dialog.ShowAsync();
     }
 
+    private const string WebsiteUrl = "https://byakaron.com";
+
+    private async void AboutButton_Click(object sender, RoutedEventArgs e)
+    {
+        var website = new HyperlinkButton { Content = "byakaron.com", Padding = new Thickness(0) };
+        website.Click += async (_, _) => await Windows.System.Launcher.LaunchUriAsync(new Uri(WebsiteUrl));
+
+        var content = new StackPanel { Spacing = 6 };
+        content.Children.Add(new TextBlock { Text = "Byakaron", FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        content.Children.Add(new TextBlock
+        {
+            Text = $"Version {Updates.Updater.Shared.CurrentVersion}",
+            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+        });
+        content.Children.Add(new TextBlock { Text = "Developed by Nuhu Labs", Margin = new Thickness(0, 6, 0, 0) });
+        content.Children.Add(website);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = "About Byakaron",
+            CloseButtonText = "Close",
+            DefaultButton = ContentDialogButton.Close,
+            Content = content,
+        };
+        await dialog.ShowAsync();
+    }
+
     private async void KeyboardButton_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new ContentDialog

@@ -618,6 +618,71 @@ body {
     color: var(--muted);
 }
 
+.settings-tabs {
+    flex-wrap: wrap;
+    margin-bottom: 0.6rem;
+}
+
+@media (max-width: 560px) {
+    .settings-tabs .seg {
+        padding: 0.25rem 0.45rem;
+        font-size: 0.85rem;
+    }
+}
+
+.settings-section.is-hidden {
+    display: none;
+}
+
+.settings-hint {
+    margin: 0 0 0.3rem;
+    font-size: 0.82rem;
+    color: var(--muted-2);
+}
+
+.layout-section {
+    margin-top: 0.7rem;
+}
+
+.layout-title {
+    margin: 0 0 0.35rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.layout-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+    gap: 0.3rem;
+}
+
+.layout-key {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.4rem;
+    min-width: 0;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+}
+
+.layout-bangla {
+    font-size: 1.05rem;
+    overflow-wrap: anywhere;
+}
+
+.layout-keys {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    color: var(--muted-2);
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
 .setting-row {
     display: flex;
     align-items: center;

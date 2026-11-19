@@ -290,6 +290,53 @@ int main(void)
                  (f.control != BYAKARON_CONTROL_CHOICE || f.option_count > 0);
         }
         expect(ok && shown > 0, "every Linux field is drawable", ok ? "yes" : "no");
+
+        /* Preferences builds one tab per section id; a renamed id would leave
+         * that tab empty rather than fail. */
+        static const char *const TABS[] = { "typing", "candidates", "updates" };
+        for (size_t t = 0; t < G_N_ELEMENTS(TABS); t++) {
+            int found = 0;
+            for (size_t s = 0; s < byakaron_settings_section_count(); s++) {
+                ByakaronSettingsSection section;
+                if (byakaron_settings_section_info(s, "en_US.UTF-8", &section) == 0 &&
+                    g_strcmp0(section.id, TABS[t]) == 0)
+                    found = 1;
+            }
+            expect(found, "settings section for a tab", TABS[t]);
+        }
+    }
+
+    /* The Layout tab draws this table and nothing else. */
+    puts("layout key map:");
+    {
+        const size_t sections = byakaron_layout_section_count();
+        size_t entries = 0;
+        int ok = sections > 0;
+        for (size_t s = 0; ok && s < sections; s++) {
+            const char *title = NULL;
+            size_t count = 0;
+            ok = byakaron_layout_section_info(s, &title, &count) == 0 &&
+                 title != NULL && title[0] != '\0' && count > 0;
+            for (size_t i = 0; ok && i < count; i++) {
+                ByakaronLayoutEntry e;
+                ok = byakaron_layout_entry(s, i, &e) == 0 && e.bangla != NULL &&
+                     e.keys != NULL && e.keys[0] != '\0';
+            }
+            /* One past the end is an error, not a stale entry. */
+            ByakaronLayoutEntry past;
+            ok = ok && byakaron_layout_entry(s, count, &past) != 0;
+            entries += count;
+        }
+        ok = ok && byakaron_layout_section_info(sections, NULL, NULL) != 0;
+        gchar *got = g_strdup_printf("%zu sections, %zu entries", sections, entries);
+        expect(ok, "every section and entry is drawable", got);
+        g_free(got);
+
+        /* The first consonant, as the table in the app has always started. */
+        ByakaronLayoutEntry first;
+        const int ka = byakaron_layout_entry(0, 0, &first) == 0 &&
+                       g_strcmp0(first.bangla, "ক") == 0 && g_strcmp0(first.keys, "k") == 0;
+        expect(ka, "first entry is ক = k", ka ? first.keys : "no");
     }
 
     puts("JSON string-array parser:");

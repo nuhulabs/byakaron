@@ -12,16 +12,17 @@
     // Pages and tabs.
     .setup = "Setup",
     .layout = "Layout",
+    .layout_hint = "Byakaron types Avro Phonetic. Capitals are keys of their own: T is ট, t is ত.",
     .settings = "Settings",
 
     // Typing settings.
     .typing = "Typing",
     .typing_hint = "Changes apply from your next word.",
-    .suggestions = "Suggestions",
-    .suggestions_hint = "Shows matching words as you type. Off, each word is typed exactly as you spell it.",
+    .suggestions = "Auto-correction",
+    .suggestions_hint = "Suggests and fixes words as you type. Off, each word is typed exactly as you spell it.",
     .spelling_corrections = "Fix spelling",
     .spelling_corrections_hint = "Suggest সোনার when sonar comes out as সনার.",
-    .learn_choices = "Learn my choices",
+    .learn_choices = "Learn choices",
     .learn_choices_hint = "The word you pick comes first next time.",
     .bangla_digits = "Bangla digits",
     .bangla_digits_hint = "Type ০–৯ for 0–9.",
@@ -29,7 +30,7 @@
     .newline_on_enter_hint = "Enter finishes the word and starts a new line.",
 
     // Candidate list.
-    .candidates = "Suggestion list",
+    .candidates = "Suggestions",
     .candidates_hint = "How the list looks while you type.",
     .candidate_orientation = "Direction",
     .candidate_orientation_hint = "Side by side or one under another.",
@@ -41,9 +42,9 @@
     // Updates (macOS, Windows, Linux).
     .updates = "Updates",
     .updates_hint = "Byakaron asks github.com once a day for a newer version. Nothing about you or what you type is sent.",
-    .auto_update = "Check for updates",
+    .auto_update = "Auto-update",
     .auto_update_hint = "Offers a newer Byakaron when there is one.",
-    .update_channel = "Release channel",
+    .update_channel = "Channel",
     .update_channel_hint = "Beta and alpha get new things first, with more bugs.",
     .production = "Stable",
     .beta = "Beta",
@@ -58,10 +59,10 @@
     .automatic = "Automatic",
     .always = "Always",
     .never = "Never",
-    .system_settings_hint = "Sound, haptics, auto-caps, the “.” shortcut and predictive text follow iOS Settings › General › Keyboard.",
+    .system_settings_hint = "Auto-correction, predictive text, sound, haptics, auto-caps and the “.” shortcut follow iOS Settings › General › Keyboard.",
 
     // Personal dictionary.
-    .personal_dictionary = "Personal dictionary",
+    .personal_dictionary = "Dictionary",
     .personal_dictionary_hint = "Words you saved. Always suggested, never marked wrong.",
     .add_word = "Add a word",
     .add = "Add",

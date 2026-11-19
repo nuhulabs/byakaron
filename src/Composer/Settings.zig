@@ -22,8 +22,8 @@ pub const min_candidates_per_page = 3;
 pub const max_candidates_per_page = 9;
 
 version: u32 = current_version,
-/// Avro dictionary mode (iAvro "IncludeDictionary"): candidates, autocorrect and
-/// suffix forms. Off is plain phonetic mode: what is typed is transliterated
+/// Auto-correction: Avro dictionary mode (iAvro "IncludeDictionary"):
+/// candidates, autocorrect and suffix forms. Off is plain phonetic mode: what is typed is transliterated
 /// exactly, with no candidate list.
 suggestions: bool = true,
 /// After Avro's list, spelling corrections from Byakaron.db when Avro found no
@@ -196,7 +196,8 @@ pub const internal = [_][]const u8{ "version", "strip_mode" };
 /// hints `<key>_hint`, option labels the option's name; the control, range and
 /// options follow the field's type.
 pub const manifest = [_]Field{
-    field("suggestions", 0, everywhere),
+    // iOS follows its own Settings › General › Keyboard › Auto-Correction.
+    field("suggestions", 0, everywhere & ~Platform.ios.bit()),
     // Needs Byakaron.db, which the iOS engine cannot open (see src/ffi/ffi.zig).
     field("spelling_corrections", 0, everywhere & ~Platform.ios.bit()),
     field("learn_choices", 0, everywhere),
@@ -376,8 +377,10 @@ test "manifest text in each language, and the language for a tag" {
     }
     const per_page = manifest[6];
     try testing.expectEqualStrings("Words per page", per_page.title[@backingInt(Language.en)]);
+    try testing.expect(!manifest[0].shownOn(.ios));
     try testing.expect(!manifest[1].shownOn(.ios));
-    try testing.expect(manifest[0].shownOn(.ios));
+    try testing.expect(manifest[2].shownOn(.ios));
+    try testing.expect(manifest[0].shownOn(.android));
 }
 
 test "defaults follow iAvro" {

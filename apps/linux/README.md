@@ -49,7 +49,7 @@ build system and no extra language runtime on the per-keystroke path.
 
 ```
 apps/linux/
-├── App/         GTK3 app (main, window, spelling, layout, setup)
+├── App/         GTK3 app (main, window, spelling, preferences: setup, settings, dictionary, layout)
 ├── Core/        Shared C glue over byakaron.h (composer glue, spell, prefs)
 │                — IBus, Fcitx5, and the app all use this
 ├── Keyboard/    The IBus engine (thin shell over the Zig composer)
@@ -271,8 +271,9 @@ Words the user marks as correct live in
 composer's `byakaron_userdict_*`:
 
 - **App:** "Add to Dictionary" next to Ignore in the Spelling page (Ignore
-  still lasts only until the app closes), and *Personal Dictionary…* in the
-  main menu (or Settings → **Manage…**) to add a word by hand or remove one.
+  still lasts only until the app closes), and **Preferences → Dictionary** (or
+  *Personal Dictionary…* in the main menu, the same list in a dialog) to add a
+  word by hand or remove one.
   Saved words are never flagged.
 - **Keyboard:** saved words that start with what is being typed are suggested
   after Avro's candidates, and a saved word is never offered corrections. The
@@ -296,17 +297,23 @@ Copy (Shift+Ctrl+C) and Clear, then the primary menu.
 
 Everything about the keyboard is in **Preferences**, reached the GNOME way:
 the primary menu or Ctrl+comma, with Keyboard Shortcuts (Ctrl+?) and About
-next to it. Its tabs are the macOS Settings window's, in the same order.
-`byakaron --page=setup` opens Preferences on Setup (that is what the IBus
-panel **Preferences** button runs); `--page=typing` and `--page=layout` open
-the other tabs. *Personal Dictionary…* in the menu opens the saved-word list.
+next to it. Its tabs are the macOS and Windows Settings tabs, with the same
+names in the same order. `byakaron --page=setup` opens Preferences on Setup
+(that is what the IBus panel **Preferences** button runs); `--page=typing`,
+`candidates`, `dictionary`, `layout` and `updates` open the other tabs
+(`settings`, the old name, opens Typing). *Personal Dictionary…* in the menu
+opens the Dictionary tab's list in a dialog. About is the standard GTK About
+dialog from the menu, not a tab.
 
 | Where | What it is for |
 | --- | --- |
 | **Main window** | Editor with an issue list, red squiggles, and Fix All |
 | **Preferences → Setup** | Keyboard status, one-click Add, the steps, a typing cheat-sheet |
-| **Preferences → Typing** | The keyboard's switches and the personal dictionary |
-| **Preferences → Layout** | The Avro key map, as a lookup table |
+| **Preferences → Typing** | The shared "typing" settings, plus the Linux-only Qt click fix |
+| **Preferences → Suggestions** | The candidate list: direction and words per page |
+| **Preferences → Dictionary** | The personal dictionary: add, list, remove |
+| **Preferences → Layout** | The Avro key map (src/Composer/Layout.zig), as a lookup table |
+| **Preferences → Updates** | Auto-update, the channel, and Check Now |
 
 **Switching uses the desktop's own switcher.** Setup's **Add** button puts
 Byakaron in the same list the desktop's input-source switcher reads, and adds
@@ -359,7 +366,7 @@ since `g_settings_new` aborts the process on an unknown schema and that schema
 does not exist outside GNOME.
 
 **Settings live in `settings.json`**, shared with every Byakaron platform
-(`src/Composer/Settings.zig`). The app draws its settings page from that
+(`src/Composer/Settings.zig`). The app draws its settings tabs from that
 manifest (`byakaron_settings_field_info`, the fields marked for Linux), opens
 its own composer on the keyboard's data directory and writes each one with
 `byakaron_setting_set`; the IBus engine
@@ -376,11 +383,12 @@ IPC.
 | **Suggestion list** — Horizontal / Vertical | `candidate_orientation` | horizontal |
 | **Suggestions per page** — 3–9 | `candidates_per_page` | 9 |
 
-The Settings page also shows the saved-word count with **Manage…** for the
-personal dictionary.
+Preferences draws one tab per manifest section: **Typing** (`typing`, the
+first five), **Suggestions** (`candidates`, the list's two) and **Updates**
+(`updates`, below). The personal dictionary has its own **Dictionary** tab.
 
 One Linux-only switch stays in GSettings (`dev.nuhu.labs.Byakaron`), shown
-under **Compatibility** when the schema is installed:
+under **Compatibility** on the Typing tab when the schema is installed:
 
 | Switch | Key | Default |
 | --- | --- | --- |
@@ -397,7 +405,7 @@ so they can still be read for that; nothing else reads them.
 
 The app offers new releases itself (`App/updates.c`, `Core/update.c`, and
 the shared core's `src/Update.zig`, which macOS and Windows use too). Once a
-day when **Settings → Updates → Check for updates** is on (the shared
+day when **Preferences → Updates → Auto-update** is on (the shared
 `auto_update` setting, default on; the time is in `last-update-check`), or on
 **Check Now**:
 

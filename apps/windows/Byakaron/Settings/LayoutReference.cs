@@ -1,96 +1,44 @@
+using System;
+using System.Collections.Generic;
+using Byakaron.Interop;
+
 namespace Byakaron.Settings;
 
 /// <summary>
-/// The Avro phonetic key map shown on the Layout tab: the same table as the macOS
-/// app (apps/macos/App/Views/LayoutView.swift). Change them together.
+/// The Avro phonetic key map shown on the Layout tab, read from the core
+/// (src/Composer/Layout.zig) so every app shows the same table.
 /// </summary>
 public static class LayoutReference
 {
-    public sealed record Section(string Title, (string Bangla, string Keys)[] Entries);
+    public sealed record Section(string Title, IReadOnlyList<(string Bangla, string Keys)> Entries);
 
-    public static readonly Section[] Sections =
+    /// <summary>The layout's sections in order. Empty when byakaron_ffi.dll is unavailable.</summary>
+    public static List<Section> Load()
     {
-        new("Consonants (ব্যঞ্জনবর্ণ)", new[]
+        var result = new List<Section>();
+        try
         {
-            ("ক", "k"),
-            ("ট", "T"),
-            ("প", "p"),
-            ("স", "s"),
-            ("খ", "kh"),
-            ("ঠ", "Th"),
-            ("ফ", "ph, f"),
-            ("হ", "h"),
-            ("গ", "g"),
-            ("ড", "D"),
-            ("ব", "b"),
-            ("ড়", "R"),
-            ("ঘ", "gh"),
-            ("ঢ", "Dh"),
-            ("ভ", "bh, v"),
-            ("ঢ়", "Rh"),
-            ("ঙ", "Ng"),
-            ("ণ", "N"),
-            ("ম", "m"),
-            ("য়", "y, Y"),
-            ("চ", "c"),
-            ("ত", "t"),
-            ("য", "z"),
-            ("শ", "sh, S"),
-            ("ছ", "ch"),
-            ("থ", "th"),
-            ("র", "r"),
-            ("ষ", "Sh"),
-            ("জ", "j"),
-            ("দ", "d"),
-            ("ল", "l"),
-            ("ং", "ng"),
-            ("ঝ", "jh"),
-            ("ধ", "dh"),
-            ("ঃ", ":"),
-            ("ঁ", "^"),
-            ("ঞ", "NG"),
-            ("ন", "n"),
-            ("ৎ", "t``"),
-        }),
-        new("Vowels (স্বরবর্ণ)", new[]
+            var count = ByakaronNative.LayoutSectionCount();
+            for (nuint s = 0; s < count; s++)
+            {
+                if (ByakaronNative.LayoutSectionInfo(s, out var title, out var entryCount) != 0) continue;
+                var entries = new List<(string, string)>((int)entryCount);
+                for (nuint e = 0; e < entryCount; e++)
+                {
+                    if (ByakaronNative.LayoutEntryAt(s, e, out var entry) != 0) continue;
+                    entries.Add((
+                        ByakaronNative.Utf8String(entry.Bangla) ?? string.Empty,
+                        ByakaronNative.Utf8String(entry.Keys) ?? string.Empty));
+                }
+                result.Add(new Section(ByakaronNative.Utf8String(title) ?? string.Empty, entries));
+            }
+        }
+        catch (DllNotFoundException)
         {
-            ("অ", "o"),
-            ("ই / কি", "i"),
-            ("উ / কু", "u"),
-            ("আ / কা", "a"),
-            ("ঈ / কী", "I"),
-            ("ঊ / কূ", "U"),
-            ("ঋ / কৃ", "rri"),
-            ("এ / কে", "e"),
-            ("ও / কো", "O"),
-            ("ঐ / কৈ", "OI"),
-            ("ঔ / কৌ", "OU"),
-        }),
-        new("Special", new[]
+        }
+        catch (EntryPointNotFoundException)
         {
-            ("্ হসন্ত", ",,"),
-            ("ব-ফলা", "w"),
-            ("রেফ", "rr (v)"),
-            ("় নুক্তা", ".."),
-            ("য-ফলা", "y, Z"),
-            ("। দাড়ি", "."),
-            ("ZWJ", "`"),
-            ("র-ফলা", "r"),
-            ("৳ টাকা", "$"),
-            ("ZWNJ", "~"),
-        }),
-        new("Numbers (সংখ্যা)", new[]
-        {
-            ("০", "0"),
-            ("১", "1"),
-            ("২", "2"),
-            ("৩", "3"),
-            ("৪", "4"),
-            ("৫", "5"),
-            ("৬", "6"),
-            ("৭", "7"),
-            ("৮", "8"),
-            ("৯", "9"),
-        }),
-    };
+        }
+        return result;
+    }
 }

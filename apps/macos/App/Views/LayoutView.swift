@@ -3,19 +3,19 @@ import SwiftUI
 // MARK: - Avro Layout Reference
 
 private struct LayoutEntry: Identifiable {
-    let id = UUID()
+    let id: Int
     let bengali: String
     let key: String
 }
 
 private struct LayoutSection: Identifiable {
-    let id = UUID()
+    let id: Int
     let title: String
-    let columns: Int
     let entries: [LayoutEntry]
 }
 
-/// The full Avro phonetic key map, shown as a reference inside the Settings window.
+/// The Avro Phonetic key map, shown as a reference inside the Settings window.
+/// The table is the one every Byakaron app shows (src/Composer/Layout.zig).
 struct LayoutTab: View {
     private let sections: [LayoutSection] = LayoutData.sections
 
@@ -25,6 +25,11 @@ struct LayoutTab: View {
 
     var body: some View {
         Form {
+            Section {
+                Text(tr(BYK_STR_LAYOUT_HINT))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             ForEach(sections) { section in
                 Section(section.title) {
                     LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 8) {
@@ -45,7 +50,6 @@ struct LayoutTab: View {
                 .frame(minWidth: 32, alignment: .leading)
             Text(entry.key)
                 .font(.callout.monospaced())
-                .foregroundStyle(.secondary)
             Spacer(minLength: 0)
         }
     }
@@ -53,53 +57,18 @@ struct LayoutTab: View {
 
 // MARK: - Avro Layout Data
 
+/// src/Composer/Layout.zig through byakaron.h's byakaron_layout_*.
 private enum LayoutData {
-    static let sections: [LayoutSection] = [
-        LayoutSection(
-            title: "Consonants (ব্যঞ্জনবর্ণ)", columns: 4,
-            entries: pairs([
-                ("ক", "k"), ("ট", "T"), ("প", "p"), ("স", "s"),
-                ("খ", "kh"), ("ঠ", "Th"), ("ফ", "ph, f"), ("হ", "h"),
-                ("গ", "g"), ("ড", "D"), ("ব", "b"), ("ড়", "R"),
-                ("ঘ", "gh"), ("ঢ", "Dh"), ("ভ", "bh, v"), ("ঢ়", "Rh"),
-                ("ঙ", "Ng"), ("ণ", "N"), ("ম", "m"), ("য়", "y, Y"),
-                ("চ", "c"), ("ত", "t"), ("য", "z"), ("শ", "sh, S"),
-                ("ছ", "ch"), ("থ", "th"), ("র", "r"), ("ষ", "Sh"),
-                ("জ", "j"), ("দ", "d"), ("ল", "l"), ("ং", "ng"),
-                ("ঝ", "jh"), ("ধ", "dh"), ("ঃ", ":"), ("ঁ", "^"),
-                ("ঞ", "NG"), ("ন", "n"), ("ৎ", "t``"),
-            ])
-        ),
-        LayoutSection(
-            title: "Vowels (স্বরবর্ণ)", columns: 3,
-            entries: pairs([
-                ("অ", "o"), ("ই / কি", "i"), ("উ / কু", "u"),
-                ("আ / কা", "a"), ("ঈ / কী", "I"), ("ঊ / কূ", "U"),
-                ("ঋ / কৃ", "rri"), ("এ / কে", "e"), ("ও / কো", "O"),
-                ("ঐ / কৈ", "OI"), ("ঔ / কৌ", "OU"),
-            ])
-        ),
-        LayoutSection(
-            title: "Special", columns: 3,
-            entries: pairs([
-                ("্ হসন্ত", ",,"), ("ব-ফলা", "w"), ("রেফ", "rr (v)"),
-                ("় নুক্তা", ".."), ("য-ফলা", "y, Z"), ("। দাড়ি", "."),
-                ("ZWJ", "`"), ("র-ফলা", "r"), ("৳ টাকা", "$"),
-                ("ZWNJ", "~"),
-            ])
-        ),
-        LayoutSection(
-            title: "Numbers (সংখ্যা)", columns: 5,
-            
-            entries: pairs([
-                ("০", "0"), ("১", "1"), ("২", "2"), ("৩", "3"), ("৪", "4"),
-                ("৫", "5"), ("৬", "6"), ("৭", "7"), ("৮", "8"), ("৯", "9"),
-            ])
-        ),
-    ]
-
-    private static func pairs(_ raw: [(String, String)]) -> [LayoutEntry] {
-        raw.map { LayoutEntry(bengali: $0.0, key: $0.1) }
+    static let sections: [LayoutSection] = (0..<byakaron_layout_section_count()).compactMap { s in
+        var title: UnsafePointer<CChar>?
+        var count = 0
+        guard byakaron_layout_section_info(s, &title, &count) == 0, let title else { return nil }
+        let entries: [LayoutEntry] = (0..<count).compactMap { i in
+            var e = ByakaronLayoutEntry()
+            guard byakaron_layout_entry(s, i, &e) == 0 else { return nil }
+            return LayoutEntry(id: i, bengali: String(cString: e.bangla), key: String(cString: e.keys))
+        }
+        return LayoutSection(id: s, title: String(cString: title), entries: entries)
     }
 }
 

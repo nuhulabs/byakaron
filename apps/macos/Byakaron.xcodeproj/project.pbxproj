@@ -443,7 +443,7 @@
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/lib/macos";
 				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "© Nuhu Labs";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -484,7 +484,7 @@
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/lib/macos";
 				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "© Nuhu Labs";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -659,7 +659,7 @@
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../zig-out/lib/macos";
 				INFOPLIST_KEY_CFBundleDisplayName = Byakaron;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "© Nuhu Labs";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

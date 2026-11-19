@@ -199,6 +199,30 @@ internal static partial class ByakaronNative
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
     internal static partial int SettingsFieldInfo(nuint index, string? lang, out SettingsField field);
 
+    // ── Avro layout (src/Composer/Layout.zig; static strings: do not free) ─
+
+    /// <summary>ByakaronLayoutEntry: "ক" and "k" (or several keys: "ph, f").</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct LayoutEntry
+    {
+        public nint Bangla;
+        public nint Keys;
+    }
+
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_layout_section_count")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial nuint LayoutSectionCount();
+
+    /// <summary>The section's title and entry count. 0, or -1 past the end.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_layout_section_info")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial int LayoutSectionInfo(nuint index, out nint title, out nuint entryCount);
+
+    /// <summary>0, or -1 past the end.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "byakaron_layout_entry")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    internal static partial int LayoutEntryAt(nuint section, nuint index, out LayoutEntry entry);
+
     // ── Updates (src/Update.zig) ────────────────────────────────────────────
 
     /// <summary>byakaron.h's ByakaronRelease; free with <see cref="UpdateFree"/>.</summary>

@@ -427,6 +427,21 @@ size_t byakaron_settings_field_count(void);
 int byakaron_settings_field_info(size_t index, const char *lang, ByakaronSettingsField *out);
 
 /*
+ * The Avro Phonetic key map (src/Composer/Layout.zig) every Layout tab shows:
+ * sections in order, each with its entries. Every string is static.
+ */
+typedef struct {
+    const char *bangla; /* "ক", "আ / কা" */
+    const char *keys;   /* "k", or several: "ph, f" */
+} ByakaronLayoutEntry;
+
+size_t byakaron_layout_section_count(void);
+/* The title and number of entries (either may be NULL). 0, or -1 past the end. */
+int byakaron_layout_section_info(size_t index, const char **title, size_t *entry_count);
+/* 0, or -1 past the end. */
+int byakaron_layout_entry(size_t section, size_t index, ByakaronLayoutEntry *out);
+
+/*
  * Updates (macOS, Windows, Linux; src/Update.zig).
  *
  * The app fetches byakaron_update_feed_url() (GitHub's release list: send a

@@ -7,9 +7,9 @@ import SwiftUI
 // MARK: - Getting Started Tab
 
 /// The Setup tab shown inside the Settings window: keyboard status, how to enable
-/// it, a manual install fallback, and a typing cheat-sheet.
+/// it, a manual install fallback, and a typing cheat-sheet. Version, updates and
+/// the developer are in Byakaron › About Byakaron and the Updates tab.
 struct GettingStartedTab: View {
-    @State private var updateStatus: UpdateChecker.Status = .idle
     @State private var keyboardAdded = KeyboardInstaller.isInputSourceAdded()
 
     private let setupSteps: [(String, String?)] = [
@@ -73,8 +73,6 @@ struct GettingStartedTab: View {
                     }
                 }
             }
-
-            footer
         }
         .formStyle(.grouped)
         .onAppear { keyboardAdded = KeyboardInstaller.isInputSourceAdded() }
@@ -145,149 +143,6 @@ struct GettingStartedTab: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 2)
-    }
-
-    private var footer: some View {
-        Section {
-            LabeledContent {
-                HStack(spacing: 8) {
-                    updateStatusLabel
-                    Button(action: checkForUpdate) {
-                        if case .checking = updateStatus {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Text("Check for Update")
-                        }
-                    }
-                    .disabled(updateStatus == .checking)
-                }
-            } label: {
-                Text("Version")
-                Text(appVersion)
-            }
-        } header: {
-            Text("About")
-        } footer: {
-            HStack(spacing: 6) {
-                Text("Developed by Nurul Huda (Apon)")
-                Spacer(minLength: 0)
-                Link("GitHub", destination: URL(string: "https://github.com/nuhulabs")!)
-                Text("·").foregroundStyle(.secondary)
-                Link("Website", destination: URL(string: "https://nuhulabs.github.io")!)
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-    }
-
-    private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
-    }
-
-    @ViewBuilder
-    private var updateStatusLabel: some View {
-        switch updateStatus {
-        case .idle, .checking:
-            EmptyView()
-        case .upToDate:
-            Text("Up to date")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        case .available(let version, _):
-            Text("Update \(version) available")
-                .font(.caption)
-                .foregroundStyle(Color.accentColor)
-        case .failed(let message):
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.red)
-                .lineLimit(1)
-        }
-    }
-
-    private func checkForUpdate() {
-        updateStatus = .checking
-        UpdateChecker.check { status in
-            self.updateStatus = status
-            if case .available(let version, let url) = status {
-                Self.presentUpdateAlert(version: version, url: url)
-            }
-        }
-    }
-
-    private static func presentUpdateAlert(version: String, url: URL) {
-        let alert = NSAlert()
-        alert.messageText = "Update Available"
-        let current =
-            Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
-        alert.informativeText =
-            "Byakaron \(version) is available. You are currently running \(current)."
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "Download")
-        alert.addButton(withTitle: "Later")
-        if alert.runModal() == .alertFirstButtonReturn {
-            NSWorkspace.shared.open(url)
-        }
-    }
-}
-
-// MARK: - Update Checker
-
-enum UpdateChecker {
-    enum Status: Equatable {
-        case idle
-        case checking
-        case upToDate(String)
-        case available(String, URL)
-        case failed(String)
-    }
-
-    static func check(completion: @escaping (Status) -> Void) {
-        let currentVersion =
-            Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
-        let url = URL(string: "https://api.github.com/repos/nuhulabs/Byakaron/releases/latest")!
-
-        var request = URLRequest(url: url)
-        request.setValue("Byakaron/\(currentVersion)", forHTTPHeaderField: "User-Agent")
-        request.timeoutInterval = 10
-
-        URLSession.shared.dataTask(with: request) { data, _, error in
-            DispatchQueue.main.async {
-                if error != nil {
-                    completion(.failed("Could not check for updates."))
-                    return
-                }
-                guard let data = data,
-                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                    let tagName = json["tag_name"] as? String
-                else {
-                    completion(.failed("Could not read release info."))
-                    return
-                }
-
-                let latest = tagName.hasPrefix("v") ? String(tagName.dropFirst()) : tagName
-                if isVersion(latest, newerThan: currentVersion) {
-                    let html =
-                        json["html_url"] as? String
-                        ?? "https://github.com/nuhulabs/Byakaron/releases/latest"
-                    completion(.available(latest, URL(string: html)!))
-                } else {
-                    completion(.upToDate(currentVersion))
-                }
-            }
-        }.resume()
-    }
-
-    private static func isVersion(_ a: String, newerThan b: String) -> Bool {
-        let aParts = a.split(separator: ".").compactMap { Int($0) }
-        let bParts = b.split(separator: ".").compactMap { Int($0) }
-        for i in 0..<max(aParts.count, bParts.count) {
-            let aVal = i < aParts.count ? aParts[i] : 0
-            let bVal = i < bParts.count ? bParts[i] : 0
-            if aVal > bVal { return true }
-            if aVal < bVal { return false }
-        }
-        return false
     }
 }
 

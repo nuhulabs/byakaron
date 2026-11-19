@@ -31,6 +31,7 @@ struct ByakaronApp: App {
         #if os(macOS)
         .defaultSize(width: 720, height: 560)
         .commands {
+            AboutCommands()
             GuideCommands()
             UpdateCommands()
         }
@@ -46,6 +47,42 @@ struct ByakaronApp: App {
 }
 
 #if os(macOS)
+/// Byakaron's website, linked from About and the Help menu.
+let byakaronWebsite = URL(string: "https://byakaron.com")!
+
+/// Byakaron › About Byakaron: the standard panel (name, icon, version) with the
+/// developer and the website. Settings has no About of its own.
+private struct AboutCommands: Commands {
+    var body: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button("About Byakaron") {
+                let credits = NSMutableAttributedString(
+                    string: "Developed by Nuhu Labs\n",
+                    attributes: [
+                        .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                        .foregroundColor: NSColor.secondaryLabelColor,
+                    ])
+                credits.append(
+                    NSAttributedString(
+                        string: "byakaron.com",
+                        attributes: [
+                            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                            .link: byakaronWebsite,
+                        ]))
+                let centered = NSMutableParagraphStyle()
+                centered.alignment = .center
+                credits.addAttribute(
+                    .paragraphStyle, value: centered, range: NSRange(location: 0, length: credits.length))
+                NSApp.orderFrontStandardAboutPanel(options: [
+                    .credits: credits,
+                    NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): "© Nuhu Labs",
+                ])
+                NSApp.activate()
+            }
+        }
+    }
+}
+
 /// Byakaron › Check for Updates…, under About.
 private struct UpdateCommands: Commands {
     var body: some Commands {
@@ -69,8 +106,7 @@ private struct GuideCommands: Commands {
 
             Divider()
 
-            Link("Byakaron on GitHub",
-                 destination: URL(string: "https://github.com/nuhulabs/Byakaron")!)
+            Link("Byakaron Website", destination: byakaronWebsite)
         }
     }
 }

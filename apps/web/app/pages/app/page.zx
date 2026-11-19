@@ -646,6 +646,25 @@ fn onToggleSettingsPanel(_: zx.client.Event) void {
     zx.client.rerender();
 }
 
+/// The settings section shown, like the tabs of the desktop apps' Settings.
+const SettingsTab = enum { typing, candidates, dictionary, layout };
+var settings_tab: SettingsTab = .typing;
+
+fn onSetSettingsTab(e: zx.client.Event) void {
+    settings_tab = std.meta.stringToEnum(SettingsTab, e.value() orelse return) orelse return;
+    zx.client.rerender();
+}
+
+fn tabClass(tab: SettingsTab) []const u8 {
+    return if (settings_tab == tab) "seg is-on" else "seg";
+}
+
+/// Every section stays in the tree and only the shown one is visible, so
+/// switching tabs never reshapes the DOM under the input or the word list.
+fn sectionClass(tab: SettingsTab) []const u8 {
+    return if (settings_tab == tab) "settings-section" else "settings-section is-hidden";
+}
+
 pub fn SettingsPanel(ctx: *zx.ComponentContext) zx.Component {
     const c = ensureComposer();
     const s: Composer.Settings = if (c) |cc| cc.settings else .{};
@@ -653,47 +672,82 @@ pub fn SettingsPanel(ctx: *zx.ComponentContext) zx.Component {
     const per_page = std.fmt.allocPrint(ctx.allocator, "{d}", .{s.candidates_per_page}) catch "";
     return (
         <section @allocator={ctx.allocator} class="settings-panel" aria-label="Keyboard settings">
-            <h2 class="settings-title">{L.typing}</h2>
-            <SettingRow name="suggestions" label={L.suggestions} hint={L.suggestions_hint} on={s.suggestions} />
-            <SettingRow name="spelling_corrections" label={L.spelling_corrections} hint={L.spelling_corrections_hint} on={s.spelling_corrections} />
-            <SettingRow name="learn_choices" label={L.learn_choices} hint={L.learn_choices_hint} on={s.learn_choices} />
-            <SettingRow name="bangla_digits" label={L.bangla_digits} hint={L.bangla_digits_hint} on={s.bangla_digits} />
-            <SettingRow name="newline_on_enter" label={L.newline_on_enter} hint={L.newline_on_enter_hint} on={s.newline_on_enter} />
-            <div class="setting-row">
-                <div class="setting-text">
-                    <span class="setting-label">{L.candidate_orientation}</span>
+            <div class="segmented settings-tabs" role="tablist">
+                <button type="button" role="tab" class={tabClass(.typing)} aria-selected={if (settings_tab == .typing) "true" else "false"} value="typing" onclick={onSetSettingsTab}>{L.typing}</button>
+                <button type="button" role="tab" class={tabClass(.candidates)} aria-selected={if (settings_tab == .candidates) "true" else "false"} value="candidates" onclick={onSetSettingsTab}>{L.candidates}</button>
+                <button type="button" role="tab" class={tabClass(.dictionary)} aria-selected={if (settings_tab == .dictionary) "true" else "false"} value="dictionary" onclick={onSetSettingsTab}>{L.personal_dictionary}</button>
+                <button type="button" role="tab" class={tabClass(.layout)} aria-selected={if (settings_tab == .layout) "true" else "false"} value="layout" onclick={onSetSettingsTab}>{L.layout}</button>
+            </div>
+            <div class={sectionClass(.typing)} role="tabpanel">
+                <h2 class="settings-title">{L.typing}</h2>
+                <p class="settings-hint">{L.typing_hint}</p>
+                <SettingRow name="suggestions" label={L.suggestions} hint={L.suggestions_hint} on={s.suggestions} />
+                <SettingRow name="spelling_corrections" label={L.spelling_corrections} hint={L.spelling_corrections_hint} on={s.spelling_corrections} />
+                <SettingRow name="learn_choices" label={L.learn_choices} hint={L.learn_choices_hint} on={s.learn_choices} />
+                <SettingRow name="bangla_digits" label={L.bangla_digits} hint={L.bangla_digits_hint} on={s.bangla_digits} />
+                <SettingRow name="newline_on_enter" label={L.newline_on_enter} hint={L.newline_on_enter_hint} on={s.newline_on_enter} />
+            </div>
+            <div class={sectionClass(.candidates)} role="tabpanel">
+                <h2 class="settings-title">{L.candidates}</h2>
+                <p class="settings-hint">{L.candidates_hint}</p>
+                <div class="setting-row">
+                    <div class="setting-text">
+                        <span class="setting-label">{L.candidate_orientation}</span>
+                        <span class="setting-hint">{L.candidate_orientation_hint}</span>
+                    </div>
+                    <div class="segmented">
+                        <button type="button" class={if (s.candidate_orientation == .horizontal) "seg is-on" else "seg"} value="horizontal" onclick={onSetOrientation}>{L.horizontal}</button>
+                        <button type="button" class={if (s.candidate_orientation == .vertical) "seg is-on" else "seg"} value="vertical" onclick={onSetOrientation}>{L.vertical}</button>
+                    </div>
                 </div>
-                <div class="segmented">
-                    <button type="button" class={if (s.candidate_orientation == .horizontal) "seg is-on" else "seg"} value="horizontal" onclick={onSetOrientation}>{L.horizontal}</button>
-                    <button type="button" class={if (s.candidate_orientation == .vertical) "seg is-on" else "seg"} value="vertical" onclick={onSetOrientation}>{L.vertical}</button>
+                <div class="setting-row">
+                    <div class="setting-text">
+                        <span class="setting-label">{L.candidates_per_page}</span>
+                        <span class="setting-hint">{L.candidates_per_page_hint}</span>
+                    </div>
+                    <div class="stepper">
+                        <button type="button" class="seg" value="-1" onclick={onStepPerPage}>−</button>
+                        <span class="stepper-value">{per_page}</span>
+                        <button type="button" class="seg" value="1" onclick={onStepPerPage}>+</button>
+                    </div>
                 </div>
             </div>
-            <div class="setting-row">
-                <div class="setting-text">
-                    <span class="setting-label">{L.candidates_per_page}</span>
+            <div class={sectionClass(.dictionary)} role="tabpanel">
+                <h2 class="settings-title">{L.personal_dictionary}</h2>
+                <p class="settings-hint">{L.personal_dictionary_hint}</p>
+                <div class="userdict-add">
+                    <input id="userdict-word" class="userdict-input" type="text" placeholder="নতুন শব্দ" autocomplete="off" spellcheck="false" />
+                    <button type="button" class="seg is-on" onclick={onAddUserWord}>{L.add}</button>
                 </div>
-                <div class="stepper">
-                    <button type="button" class="seg" value="-1" onclick={onStepPerPage}>−</button>
-                    <span class="stepper-value">{per_page}</span>
-                    <button type="button" class="seg" value="1" onclick={onStepPerPage}>+</button>
-                </div>
+                <ul class="userdict-list">
+                    {if (words.len == 0) (
+                        <li class="userdict-empty">{L.no_words}</li>
+                    )}
+                    {for (words) |w| (
+                        <li class="userdict-item">
+                            <span>{w}</span>
+                            <button type="button" class="userdict-remove" value={w} onclick={onRemoveUserWord} aria-label={L.remove}>×</button>
+                        </li>
+                    )}
+                </ul>
             </div>
-            <h2 class="settings-title">{L.personal_dictionary}</h2>
-            <div class="userdict-add">
-                <input id="userdict-word" class="userdict-input" type="text" placeholder="নতুন শব্দ" autocomplete="off" spellcheck="false" />
-                <button type="button" class="seg is-on" onclick={onAddUserWord}>{L.add}</button>
-            </div>
-            <ul class="userdict-list">
-                {if (words.len == 0) (
-                    <li class="userdict-empty">{L.no_words}</li>
+            <div class={sectionClass(.layout)} role="tabpanel">
+                <h2 class="settings-title">{L.layout}</h2>
+                <p class="settings-hint">{L.layout_hint}</p>
+                {for (Composer.Layout.sections) |sec| (
+                    <div class="layout-section">
+                        <h3 class="layout-title">{sec.title}</h3>
+                        <ul class="layout-grid">
+                            {for (sec.entries) |entry| (
+                                <li class="layout-key">
+                                    <span class="layout-bangla">{entry.bangla}</span>
+                                    <code class="layout-keys">{entry.keys}</code>
+                                </li>
+                            )}
+                        </ul>
+                    </div>
                 )}
-                {for (words) |w| (
-                    <li class="userdict-item">
-                        <span>{w}</span>
-                        <button type="button" class="userdict-remove" value={w} onclick={onRemoveUserWord} aria-label={L.remove}>×</button>
-                    </li>
-                )}
-            </ul>
+            </div>
         </section>
     );
 }

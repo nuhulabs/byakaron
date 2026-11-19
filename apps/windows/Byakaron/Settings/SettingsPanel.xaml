@@ -24,8 +24,8 @@
         </Style>
     </UserControl.Resources>
 
-    <!-- The macOS app's Settings tabs: Setup, Typing, Suggestions, Personal
-         dictionary and Layout, in that order. -->
+    <!-- The macOS app's Settings tabs: Setup, Typing, Suggestions, Dictionary,
+         Layout and Updates, in that order. -->
     <Grid RowSpacing="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -75,8 +75,8 @@
                 <StackPanel x:Name="CandidatesPage" Spacing="12" Visibility="Collapsed" />
 
                 <StackPanel x:Name="DictionaryPage" Spacing="8" Visibility="Collapsed">
-                    <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Personal dictionary" />
-                    <TextBlock Style="{StaticResource HintStyle}" Text="Your words are suggested after Avro's while you type." />
+                    <TextBlock Style="{StaticResource SectionTitleStyle}" Text="Dictionary" />
+                    <TextBlock Style="{StaticResource HintStyle}" Text="Words you saved. Always suggested, never marked wrong." />
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -103,14 +103,19 @@
                     <StackPanel x:Name="UserWordsPanel" Spacing="2" />
                 </StackPanel>
 
-                <!-- The Avro phonetic key map. -->
-                <StackPanel x:Name="LayoutPage" Spacing="16" Visibility="Collapsed" />
+                <!-- The Avro phonetic key map, from the core (LayoutReference). -->
+                <StackPanel x:Name="LayoutPage" Spacing="16" Visibility="Collapsed">
+                    <TextBlock
+                        Style="{StaticResource HintStyle}"
+                        FontSize="13"
+                        Text="Byakaron types Avro Phonetic. Capitals are keys of their own: T is ট, t is ত." />
+                </StackPanel>
 
                 <!-- Updates: the shared update settings, then Check Now. -->
                 <StackPanel x:Name="UpdatesPage" Spacing="12" Visibility="Collapsed">
                     <StackPanel x:Name="UpdatesSettings" Spacing="12" />
                     <StackPanel Orientation="Horizontal" Spacing="12">
-                        <Button x:Name="UpdateButton" Content="Check now" Click="UpdateButton_Click" />
+                        <Button x:Name="UpdateButton" Content="Check Now" Click="UpdateButton_Click" />
                         <ProgressRing x:Name="UpdateProgress" IsActive="False" Width="20" Height="20" />
                     </StackPanel>
                     <TextBlock x:Name="UpdateStatusText" TextWrapping="Wrap" />

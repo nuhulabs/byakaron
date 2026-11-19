@@ -1,9 +1,9 @@
 /*
- * "Layout" page — the Avro phonetic key map, as a lookup table.
+ * "Layout" page: the Avro phonetic key map, as a lookup table.
  *
- * Static reference, no engine calls. The data is a transcription of the macOS
- * LayoutTab so the two platforms document the same keyboard; if the mappings
- * ever diverge, one of the two is a bug.
+ * The table is the engine's own (src/Composer/Layout.zig, read through
+ * byakaron_layout_*), the one every platform's Layout tab draws, so the
+ * platforms cannot drift apart from each other or from what the keyboard types.
  */
 #ifndef BYAKARON_LINUX_APP_LAYOUT_H
 #define BYAKARON_LINUX_APP_LAYOUT_H

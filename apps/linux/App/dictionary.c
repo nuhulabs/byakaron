@@ -7,7 +7,6 @@
 
 typedef struct {
     ByakaronComposer *composer;
-    GtkWidget *dialog;
     GtkWidget *list;
     GtkWidget *empty;
     GtkWidget *count;
@@ -110,29 +109,28 @@ byk_dictionary_fill (BykDictionaryView *view)
     gtk_label_set_text (GTK_LABEL (view->count), count);
     g_free (count);
 
-    gtk_widget_show_all (view->list);
+    /* The list itself is no-show-all (see the constructor), so show its rows
+     * one by one: show_all on it would stop at the flag. */
+    GList *rows = gtk_container_get_children (GTK_CONTAINER (view->list));
+    for (GList *l = rows; l != NULL; l = l->next)
+        gtk_widget_show_all (l->data);
+    g_list_free (rows);
     gtk_widget_set_visible (view->list, n > 0);
     gtk_widget_set_visible (view->empty, n == 0);
 }
 
-void
-byk_dictionary_show (GtkWindow *parent, ByakaronComposer *composer,
-                     GCallback changed, gpointer changed_data)
+/* Whoever holds the widget can refresh it; the view itself is its data. */
+#define BYK_DICTIONARY_VIEW_KEY "byk-dictionary-view"
+
+GtkWidget *
+byk_dictionary_view_new (ByakaronComposer *composer, GCallback changed, gpointer changed_data)
 {
     BykDictionaryView *view = g_new0 (BykDictionaryView, 1);
     view->composer = composer;
     view->changed = changed;
     view->changed_data = changed_data;
 
-    view->dialog = gtk_dialog_new_with_buttons (byk_str (BYK_STR_PERSONAL_DICTIONARY), parent,
-                                                GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT |
-                                                GTK_DIALOG_USE_HEADER_BAR,
-                                                NULL, NULL);
-    gtk_window_set_default_size (GTK_WINDOW (view->dialog), 420, 480);
-    g_object_set_data_full (G_OBJECT (view->dialog), "byk-view", view, g_free);
-
-    GtkWidget *intro = gtk_label_new ("Words saved here are never marked as misspelled, "
-                                      "and the keyboard suggests them while you type.");
+    GtkWidget *intro = gtk_label_new (byk_str (BYK_STR_PERSONAL_DICTIONARY_HINT));
     gtk_label_set_line_wrap (GTK_LABEL (intro), TRUE);
     gtk_label_set_xalign (GTK_LABEL (intro), 0.0);
     byk_css_add (intro, "dim-label");
@@ -145,6 +143,8 @@ byk_dictionary_show (GtkWindow *parent, ByakaronComposer *composer,
     GtkWidget *add_row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
     byk_box_add_expand (add_row, view->entry);
     byk_box_add (add_row, add);
+    /* Without the app's composer there is nowhere to save a word to. */
+    gtk_widget_set_sensitive (add_row, composer != NULL);
 
     view->error = gtk_label_new (NULL);
     gtk_label_set_xalign (GTK_LABEL (view->error), 0.0);
@@ -162,6 +162,11 @@ byk_dictionary_show (GtkWindow *parent, ByakaronComposer *composer,
     gtk_label_set_line_wrap (GTK_LABEL (view->empty), TRUE);
     gtk_widget_set_vexpand (view->empty, TRUE);
     byk_css_add (view->empty, "dim-label");
+
+    /* fill() picks which of the two is visible; a show_all from whatever the
+     * view is packed into (the Preferences window) must not undo that. */
+    gtk_widget_set_no_show_all (view->list, TRUE);
+    gtk_widget_set_no_show_all (view->empty, TRUE);
 
     GtkWidget *list_box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
     byk_box_add (list_box, view->list);
@@ -182,9 +187,8 @@ byk_dictionary_show (GtkWindow *parent, ByakaronComposer *composer,
     byk_css_add (where, "dim-label");
     byk_css_add (where, "caption");
 
-    GtkWidget *content = gtk_dialog_get_content_area (GTK_DIALOG (view->dialog));
-    gtk_box_set_spacing (GTK_BOX (content), 10);
-    gtk_container_set_border_width (GTK_CONTAINER (content), 14);
+    GtkWidget *content = gtk_box_new (GTK_ORIENTATION_VERTICAL, 10);
+    g_object_set_data_full (G_OBJECT (content), BYK_DICTIONARY_VIEW_KEY, view, g_free);
     byk_box_add (content, intro);
     byk_box_add (content, add_row);
     byk_box_add (content, view->error);
@@ -192,9 +196,43 @@ byk_dictionary_show (GtkWindow *parent, ByakaronComposer *composer,
     byk_box_add_expand (content, frame);
     byk_box_add (content, where);
 
-    g_signal_connect (view->dialog, "response", G_CALLBACK (gtk_widget_destroy), NULL);
-    gtk_widget_show_all (view->dialog);
+    gtk_widget_show_all (content);
     byk_dictionary_fill (view);
-    gtk_widget_hide (view->error);
+    return content;
+}
+
+void
+byk_dictionary_view_refresh (GtkWidget *widget)
+{
+    BykDictionaryView *view = g_object_get_data (G_OBJECT (widget), BYK_DICTIONARY_VIEW_KEY);
+    g_return_if_fail (view != NULL);
+    byk_dictionary_fill (view);
+}
+
+void
+byk_dictionary_view_focus (GtkWidget *widget)
+{
+    BykDictionaryView *view = g_object_get_data (G_OBJECT (widget), BYK_DICTIONARY_VIEW_KEY);
+    g_return_if_fail (view != NULL);
     gtk_widget_grab_focus (view->entry);
+}
+
+void
+byk_dictionary_show (GtkWindow *parent, ByakaronComposer *composer,
+                     GCallback changed, gpointer changed_data)
+{
+    GtkWidget *dialog = gtk_dialog_new_with_buttons (byk_str (BYK_STR_PERSONAL_DICTIONARY), parent,
+                                                     GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT |
+                                                     GTK_DIALOG_USE_HEADER_BAR,
+                                                     NULL, NULL);
+    gtk_window_set_default_size (GTK_WINDOW (dialog), 420, 480);
+
+    GtkWidget *view = byk_dictionary_view_new (composer, changed, changed_data);
+    GtkWidget *content = gtk_dialog_get_content_area (GTK_DIALOG (dialog));
+    gtk_container_set_border_width (GTK_CONTAINER (content), 14);
+    byk_box_add_expand (content, view);
+
+    g_signal_connect (dialog, "response", G_CALLBACK (gtk_widget_destroy), NULL);
+    gtk_widget_show (dialog);
+    byk_dictionary_view_focus (view);
 }

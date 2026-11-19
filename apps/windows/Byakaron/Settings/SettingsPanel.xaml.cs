@@ -11,7 +11,8 @@ namespace Byakaron.Settings;
 /// <summary>
 /// The Settings tabs, as the macOS app has them: Setup (install and switch to
 /// the keyboard), Typing and Suggestions (the shared settings, from the core's
-/// manifest), the personal dictionary, and the Avro layout. Settings are read
+/// manifest), the personal dictionary, the Avro layout (from the core) and
+/// Updates. Settings are read
 /// and written through <see cref="ByakaronSettings"/> (a composer on the
 /// keyboard's data directory); the keyboard picks them up at its next word.
 /// </summary>
@@ -200,7 +201,7 @@ public sealed partial class SettingsPanel : UserControl
         var busy = updater.State is Updates.UpdateState.Checking or Updates.UpdateState.Downloading;
         UpdateProgress.IsActive = busy;
         UpdateButton.IsEnabled = !busy;
-        UpdateButton.Content = updater.State == Updates.UpdateState.Ready ? "Restart to update" : "Check now";
+        UpdateButton.Content = updater.State == Updates.UpdateState.Ready ? "Restart to update" : "Check Now";
         UpdateStatusText.Text = $"Byakaron {updater.CurrentVersion}. {updater.StatusText}";
     }
 
@@ -219,7 +220,7 @@ public sealed partial class SettingsPanel : UserControl
 
     private void BuildLayout()
     {
-        foreach (var section in LayoutReference.Sections)
+        foreach (var section in LayoutReference.Load())
         {
             LayoutPage.Children.Add(new TextBlock { Text = section.Title, Style = ResourceStyle("SectionTitleStyle") });
             var grid = new VariableSizedWrapGrid

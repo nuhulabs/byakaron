@@ -783,6 +783,39 @@ pub export fn byakaron_settings_field_info(index: usize, lang: ?[*:0]const u8, o
     return 0;
 }
 
+// —— Layout (src/Composer/Layout.zig) ——
+
+const Layout = Composer.Layout;
+
+/// byakaron.h's ByakaronLayoutEntry.
+pub const ByakaronLayoutEntry = extern struct {
+    bangla: [*:0]const u8,
+    keys: [*:0]const u8,
+};
+
+pub export fn byakaron_layout_section_count() usize {
+    return Layout.sections.len;
+}
+
+/// The section's title and how many entries it has. 0, or -1 past the end.
+pub export fn byakaron_layout_section_info(index: usize, title: ?*[*:0]const u8, entry_count: ?*usize) c_int {
+    if (index >= Layout.sections.len) return -1;
+    const s = Layout.sections[index];
+    if (title) |t| t.* = s.title.ptr;
+    if (entry_count) |n| n.* = s.entries.len;
+    return 0;
+}
+
+/// One entry of a section. 0, or -1 past the end.
+pub export fn byakaron_layout_entry(section: usize, index: usize, out: ?*ByakaronLayoutEntry) c_int {
+    const o = out orelse return -1;
+    if (section >= Layout.sections.len) return -1;
+    const entries = Layout.sections[section].entries;
+    if (index >= entries.len) return -1;
+    o.* = .{ .bangla = entries[index].bangla.ptr, .keys = entries[index].keys.ptr };
+    return 0;
+}
+
 // —— Updates (src/Update.zig) ——
 
 const Update = Composer.Update;
