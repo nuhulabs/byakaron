@@ -73,7 +73,9 @@ static const char BYK_CSS[] =
      * The candidate pills. Compact on purpose: a word is the only thing in
      * here, so the panel is barely taller than the word itself. The rest
      * follows light and dark. Resources/gnome-shell/panel.css is this same
-     * look for the popup GNOME Shell draws: change both together.
+     * look for the popup GNOME Shell draws, and macOS and Windows draw it too
+     * (apps/macos/Core/Composer/CandidatePanel.swift,
+     * apps/windows/Keyboard/CandidateWindow.cpp): change them together.
      */
     ".byk-pill {\n"
     "  background-color: mix(@theme_base_color, @theme_fg_color, 0.04);\n"

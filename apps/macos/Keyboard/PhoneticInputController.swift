@@ -27,18 +27,22 @@ class ByakaronInputController: IMKInputController {
     /// The controller of the focused client, redrawn when corrections arrive.
     fileprivate static weak var active: ByakaronInputController?
 
-    /// The one candidate panel, kept for the process lifetime. IMKServer holds
-    /// the panel it last showed without retaining it and messages it on later
-    /// key events and deactivations (`_serverGetsFirstShotAtWindowEvents`,
-    /// `deactivateServer_Common…`). A panel owned by a controller dies with that
-    /// controller when its client goes away, and the next event then crashes
-    /// the keyboard process: macOS falls back to plain English typing until it
-    /// relaunches. One shared panel, as Apple's IMK sample does, never dies.
-    private static var sharedCandidates: IMKCandidates?
+    /// The one candidate panel, kept for the process lifetime and shared by
+    /// every client's controller: picks and page clicks go to the active one.
+    /// We draw it (`CandidatePanel`) rather than use `IMKCandidates`, whose
+    /// highlight would not follow the composer's in a horizontal panel.
+    private static let candidatePanel = CandidatePanel(
+        onPick: { index in
+            guard let composer = Composer.handle, let controller = active else { return }
+            controller.apply(byakaron_composer_pick(composer, index), client: controller.client())
+        },
+        onPage: { next in
+            guard let composer = Composer.handle, let controller = active else { return }
+            let key = next ? BYAKARON_KEY_PAGE_DOWN : BYAKARON_KEY_PAGE_UP
+            controller.apply(byakaron_composer_key(composer, Int32(key), 0, 0), client: controller.client())
+        }
+    )
 
-    private var candidatesWindow: IMKCandidates? { Self.sharedCandidates }
-    /// The current page of candidates, as the composer last drew it.
-    private var pageCandidates: [String] = []
     private var hasMarkedText = false
     /// Where the next marked text goes when the client's selection moved away
     /// from the word (see `dropStaleComposition`); nil means the marked range.
@@ -55,26 +59,13 @@ class ByakaronInputController: IMKInputController {
 
     override func deactivateServer(_ sender: Any!) {
         flush(client: sender as? (any IMKTextInput))
-        candidatesWindow?.hide()
+        Self.candidatePanel.orderOut(nil)
         if Self.active === self { Self.active = nil }
         super.deactivateServer(sender)
     }
 
     override func commitComposition(_ sender: Any!) {
         flush(client: sender as? (any IMKTextInput))
-    }
-
-    override func candidates(_ sender: Any!) -> [Any]! {
-        pageCandidates
-    }
-
-    /// A candidate was clicked. Keys never reach the panel, so this is the mouse.
-    override func candidateSelected(_ candidateString: NSAttributedString!) {
-        guard let composer = Composer.handle,
-            let text = candidateString?.string,
-            let index = pageCandidates.firstIndex(of: text)
-        else { return }
-        apply(byakaron_composer_pick(composer, index), client: self.client())
     }
 
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
@@ -111,14 +102,14 @@ class ByakaronInputController: IMKInputController {
         byakaron_composer_reset(composer)
         hasMarkedText = false
         pendingReplacement = selected
-        candidatesWindow?.hide()
+        Self.candidatePanel.orderOut(nil)
     }
 
     // MARK: - Composer glue
 
     /// Insert the result's commit, redraw, and report whether the key was consumed.
     @discardableResult
-    private func apply(_ result: ByakaronKeyResult, client: (any IMKTextInput)?) -> Bool {
+    fileprivate func apply(_ result: ByakaronKeyResult, client: (any IMKTextInput)?) -> Bool {
         if let commit = result.commitText { insert(commit, client: client) }
         redraw(client: client)
         return result.handled != 0
@@ -152,48 +143,22 @@ class ByakaronInputController: IMKInputController {
         // Only the key right after a stale word replaces the selection.
         pendingReplacement = nil
 
-        pageCandidates = state.candidates
-        guard state.panelVisible, !pageCandidates.isEmpty,
-            let panel = candidatesPanel(vertical: state.vertical)
-        else {
-            candidatesWindow?.hide()
+        guard state.panelVisible, !state.candidates.isEmpty, let client else {
+            Self.candidatePanel.orderOut(nil)
             return
         }
-        panel.setPanelType(Self.panelType(vertical: state.vertical))
-        panel.update()
-        panel.show(IMKCandidatesLocationHint(kIMKLocateCandidatesBelowHint))
-        // Select by the candidate itself: `candidateIdentifier(atLineNumber:)`
-        // counts rows, and a horizontal panel has one, so the highlight stayed
-        // on the first candidate while the arrows moved the marked text.
-        if pageCandidates.indices.contains(state.highlight) {
-            panel.selectCandidate(
-                withIdentifier: panel.candidateStringIdentifier(pageCandidates[state.highlight]))
+        // Where the marked text starts, in screen coordinates.
+        var caret = NSRect.zero
+        client.attributes(forCharacterIndex: 0, lineHeightRectangle: &caret)
+        if caret == .zero {
+            // A client that cannot say where its text is: near the pointer.
+            let mouse = NSEvent.mouseLocation
+            caret = NSRect(x: mouse.x, y: mouse.y - 20, width: 1, height: 20)
         }
+        Self.candidatePanel.show(state, below: caret)
     }
 
     // MARK: - Drawing
-
-    private static func panelType(vertical: Bool) -> IMKCandidatePanelType {
-        vertical
-            ? IMKCandidatePanelType(kIMKSingleColumnScrollingCandidatePanel)
-            : IMKCandidatePanelType(kIMKSingleRowSteppingCandidatePanel)
-    }
-
-    private func candidatesPanel(vertical: Bool) -> IMKCandidates? {
-        if let panel = candidatesWindow { return panel }
-        guard let server = self.server(),
-            let panel = IMKCandidates(server: server, panelType: Self.panelType(vertical: vertical))
-        else { return nil }
-        Self.sharedCandidates = panel
-        // Keys come to `handle` first and are all consumed there while the panel
-        // shows, so the composer, not the panel, moves the highlight and pages.
-        panel.setAttributes([
-            IMKCandidatesSendServerKeyEventFirst: NSNumber(value: true),
-            NSAttributedString.Key.font.rawValue: NSFont.systemFont(ofSize: 16),
-        ])
-        panel.setDismissesAutomatically(false)
-        return panel
-    }
 
     private func insert(_ text: String, client: (any IMKTextInput)?) {
         hasMarkedText = false
