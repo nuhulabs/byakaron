@@ -144,10 +144,9 @@ final class Updater: ObservableObject {
         }
         var request = URLRequest(url: url, timeoutInterval: 30)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-            throw UpdateError("github.com answered \(http.statusCode). Try again later.")
+            throw UpdateError("Could not check for updates. Try again later.")
         }
         return String(decoding: data, as: UTF8.self)
     }
@@ -165,7 +164,7 @@ final class Updater: ObservableObject {
         case 0:
             return nil
         default:
-            throw UpdateError("github.com sent something unexpected. Try again later.")
+            throw UpdateError("Could not check for updates. Try again later.")
         }
     }
 

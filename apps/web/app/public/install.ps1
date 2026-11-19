@@ -30,8 +30,9 @@ if (-not $env:BYAKARON_SETUP_URL) {
     try {
         Invoke-WebRequest -Uri $SetupUrl -Method Head -UseBasicParsing | Out-Null
     } catch {
-        $Api = "https://api.github.com/repos/$Repo/releases?per_page=20"
-        $Preview = (Invoke-RestMethod -Uri $Api -UseBasicParsing) |
+        $Api = "https://raw.githubusercontent.com/$Repo/main/releases.json"
+        # A plain file (text/plain), so parse it here.
+        $Preview = ((Invoke-WebRequest -Uri $Api -UseBasicParsing).Content | ConvertFrom-Json) |
             ForEach-Object { $_.assets } |
             Where-Object { $_.name -eq "Byakaron-Setup.exe" } |
             Select-Object -First 1 -ExpandProperty browser_download_url

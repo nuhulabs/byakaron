@@ -15,8 +15,11 @@
 //! internal gets everything. So switching to a steadier channel never goes
 //! back: the app waits on its version until the steadier channel passes it.
 //!
-//! The feed is GitHub's release list (`feed_url`), JSON the apps hand to
-//! `pick` as it came.
+//! The feed (`feed_url`) is GitHub's release list, trimmed to the fields
+//! `pick` reads, which the release workflow writes to releases.json on
+//! Byakaron-Assets after each release. The apps hand it to `pick` as it came.
+//! It is a plain file, not GitHub's API, whose 60 requests an hour per
+//! address run out fast when several computers share one.
 
 const Update = @This();
 
@@ -28,7 +31,7 @@ const std = @import("std");
 pub const build_version: []const u8 = @import("build_info").version;
 
 /// The release feed: newest first, every channel's releases.
-pub const feed_url = "https://api.github.com/repos/nuhulabs/Byakaron-Assets/releases?per_page=40";
+pub const feed_url = "https://raw.githubusercontent.com/nuhulabs/Byakaron-Assets/main/releases.json";
 
 /// From the steadiest to the newest. The order is also the settings option
 /// order (Settings.zig's `update_channel`), so `internal` stays last.

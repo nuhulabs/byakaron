@@ -456,7 +456,7 @@ on_checked (BykUpdates *u, gint status, const gchar *output)
     } else if (u->asked) {
         gchar *text = found >= 0
             ? g_strdup_printf ("Byakaron %s is the newest version on this channel.", mine)
-            : g_strdup ("Could not reach github.com to check. Try again later.");
+            : g_strdup ("Could not check for updates. Check your internet connection and try again.");
         byk_updates_show (u, found >= 0 ? GTK_MESSAGE_INFO : GTK_MESSAGE_WARNING,
                           text, FALSE, TRUE, FALSE);
         g_free (text);
@@ -498,10 +498,9 @@ byk_updates_check (GtkWidget *bar, gboolean asked)
         return;
     }
 
-    /* GitHub's release list, every channel's; on_checked picks from it. */
+    /* The release feed, every channel's; on_checked picks from it. */
     agent = g_strdup_printf ("Byakaron/%s (Linux)", byakaron_version ());
     const gchar *argv[] = { "curl", "-fsSL", "--max-time", "30", "-A", agent,
-                            "-H", "Accept: application/vnd.github+json",
                             byakaron_update_feed_url (), NULL };
     u->busy = TRUE;
     g_object_ref (u->bar);

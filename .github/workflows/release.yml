@@ -766,6 +766,22 @@ jobs:
           done < SHA256SUMS
           echo "https://github.com/$ASSETS_REPO/releases/tag/$TAG"
 
+          # The apps' update feed (src/Update.zig's feed_url): the release
+          # list as releases.json on Byakaron-Assets' main branch, a plain
+          # file, so it is not held to the API's 60 requests an hour.
+          gh api "repos/$ASSETS_REPO/releases?per_page=40" \
+            | jq '[.[] | {tag_name, draft, prerelease, published_at, html_url,
+                   assets: [.assets[] | {name, browser_download_url, digest, size}]}]' \
+            > "$RUNNER_TEMP/releases.json"
+          jq -e 'length > 0' "$RUNNER_TEMP/releases.json" > /dev/null
+          feed_sha=$(gh api "repos/$ASSETS_REPO/contents/releases.json" -q .sha 2>/dev/null || true)
+          [[ "$feed_sha" =~ ^[0-9a-f]{40}$ ]] || feed_sha=""
+          jq -n --arg message "releases.json: ${TAG}" --arg sha "$feed_sha" \
+                --rawfile content <(base64 -w0 "$RUNNER_TEMP/releases.json") \
+                '{message: $message, content: $content} + (if $sha == "" then {} else {sha: $sha} end)' \
+            | gh api -X PUT "repos/$ASSETS_REPO/contents/releases.json" --input - > /dev/null
+          echo "https://raw.githubusercontent.com/$ASSETS_REPO/main/releases.json"
+
           # Source repo: release notes only (private clone / changelog), no binaries.
           GH_TOKEN="$SOURCE_TOKEN" gh release delete "$TAG" --repo "$SOURCE_REPO" --yes 2>/dev/null || true
           GH_TOKEN="$SOURCE_TOKEN" gh release create "$TAG" --repo "$SOURCE_REPO" \

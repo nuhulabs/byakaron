@@ -53,7 +53,7 @@ os_field() {
 fetch_package() {
     local name="$1" dest="$2" pinned="${3:-}"
     local assets="${BYAKARON_ASSETS_URL:-$ASSETS}"
-    local api="${BYAKARON_API_URL:-https://api.github.com/repos/${REPO}/releases?per_page=20}"
+    local api="${BYAKARON_API_URL:-https://raw.githubusercontent.com/${REPO}/main/releases.json}"
     local url="${pinned:-${assets}/${name}}"
     local sums_url="${assets}/SHA256SUMS"
 

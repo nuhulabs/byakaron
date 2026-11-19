@@ -133,11 +133,10 @@ public sealed class Updater
             var (_, channel) = ReadSettings();
             var feedUrl = ByakaronNative.Utf8String(ByakaronNative.UpdateFeedUrl())!;
             using var request = new HttpRequestMessage(HttpMethod.Get, feedUrl);
-            request.Headers.Accept.ParseAdd("application/vnd.github+json");
             using var response = await _http.SendAsync(request);
             if (!response.IsSuccessStatusCode)
             {
-                throw new UpdateException($"github.com answered {(int)response.StatusCode}. Try again later.");
+                throw new UpdateException("Could not check for updates. Try again later.");
             }
             var feed = await response.Content.ReadAsStringAsync();
             LastChecked = DateTime.UtcNow;
@@ -156,9 +155,14 @@ public sealed class Updater
         catch (Exception e)
         {
             Debug.WriteLine($"Byakaron: update failed: {e}");
-            _error = e is UpdateException or HttpRequestException or TaskCanceledException
-                ? e.Message
-                : $"The update failed: {e.Message}";
+            _error = e switch
+            {
+                UpdateException => e.Message,
+                HttpRequestException or TaskCanceledException => State == UpdateState.Downloading
+                    ? "The download failed. Check your internet connection and try again."
+                    : "Could not check for updates. Check your internet connection and try again.",
+                _ => "The update failed. Try again later.",
+            };
             SetState(UpdateState.Failed);
         }
         finally
@@ -183,7 +187,7 @@ public sealed class Updater
                     ByakaronNative.Utf8String(r.Url)!,
                     ByakaronNative.Utf8String(r.Sha256)),
                 0 => null,
-                _ => throw new UpdateException("github.com sent something unexpected. Try again later."),
+                _ => throw new UpdateException("Could not check for updates. Try again later."),
             };
         }
         finally
