@@ -170,7 +170,7 @@ int main(void)
                st.page == pages - 1 ? "last page" : "elsewhere");
         gchar *highlighted = g_strdup(st.preedit);
         out = press(c, 0xff8d, &handled); /* KP_Enter */
-        expect(handled && strcmp(out, highlighted) == 0, "Enter commits the word only", out);
+        expect(!handled && strcmp(out, highlighted) == 0, "Enter commits the word and passes", out);
         g_free(out);
         g_free(highlighted);
 

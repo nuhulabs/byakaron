@@ -429,8 +429,9 @@ main (void)
         check_flag ("highlight two candidates on", g_cursor_visible && g_cursor_pos == start + 2, TRUE);
         check ("inline text is the highlight", g_preedit, third);
         send_key (ctx, IBUS_KEY_Return);
-        /* newline_on_enter is off by default: the word only, Enter consumed. */
-        check ("Enter commits the highlight only", g_committed, third);
+        /* newline_on_enter is on by default: the word, then Enter goes on to
+         * the app (a new line here). */
+        check_flag ("Enter commits the highlight", g_str_has_prefix (g_committed, third), TRUE);
         check ("preedit cleared", g_preedit, "");
         g_free (third);
     }

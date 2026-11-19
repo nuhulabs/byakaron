@@ -7,10 +7,12 @@
 //! - Typed ASCII accumulates in a Latin buffer; Avro's candidates for it
 //!   (`AutoComplete.suggest`) are listed, the highlighted one is shown inline.
 //! - Space commits the highlighted candidate and a space; Enter commits it
-//!   (plus a new line with `newline_on_enter`); Tab and other keys commit it
-//!   and pass through; Esc drops the word; Backspace edits the buffer.
+//!   and passes on to the app, which sends or starts a new line (commit only
+//!   with `newline_on_enter` off); Tab and other keys commit it and pass
+//!   through; Esc drops the word; Backspace edits the buffer.
 //! - Arrows move the highlight (wrapping), Page Up/Down move a page, 1–9 pick
-//!   on the current page. Moving the highlight teaches Avro the choice.
+//!   on the current page; a pick (or a click) commits the word and a space.
+//!   Moving the highlight teaches Avro the choice.
 //! - With `suggestions` off (phonetic mode) the word is transliterated exactly,
 //!   with no list.
 //! After Avro's list come personal-dictionary words starting with the
@@ -38,10 +40,6 @@ const correction_limit = 3;
 /// platform's list stays as its owner left it.
 const prefix_words = builtin.os.tag == .linux and !builtin.abi.isAndroid();
 const prefix_limit = 8;
-/// A `.` or `:` typed between two digits stays one: ৩.১৪, ১০:৩০. Avro makes
-/// every `.` a দাঁড়ি and every `:` a বিসর্গ, which no number has. A দাঁড়ি
-/// after a number (২৫।) is kept. Desktop Linux only, like `prefix_words`.
-const number_marks = builtin.os.tag == .linux and !builtin.abi.isAndroid();
 
 pub const Key = union(enum) {
     /// A printable ASCII character (0x21–0x7e).
@@ -245,17 +243,20 @@ pub fn key(self: *Composer, k: Key, mods: Modifiers) !Outcome {
 }
 
 /// Choose the `index`th candidate of the current page (a click or 1–9) and
-/// commit it.
+/// commit it and a space, as Space would: a picked word is finished, on
+/// every platform, as a phone's suggestion bar does.
 pub fn pick(self: *Composer, index: usize) !Outcome {
     self.committed.clearRetainingCapacity();
     if (!self.panelVisible() or index >= self.pageItems().len) return .{ .handled = false };
     self.moveHighlight(self.page() * self.perPage() + index);
     try self.commitHighlighted();
+    try self.committed.append(self.gpa, ' ');
     return .{ .handled = true, .commit = self.committed.items };
 }
 
 /// Choose `word` directly (from the candidate list or an external suggestion
-/// strip) and commit it, recording the choice when learning is enabled.
+/// strip) and commit it and a space, like `pick`, recording the choice when
+/// learning is enabled.
 pub fn pickWord(self: *Composer, word: []const u8) !Outcome {
     self.committed.clearRetainingCapacity();
     if (!self.composing() or word.len == 0) return .{ .handled = false };
@@ -263,6 +264,7 @@ pub fn pickWord(self: *Composer, word: []const u8) !Outcome {
         if (i < self.avro_count) {
             self.moveHighlight(i);
             try self.commitHighlighted();
+            try self.committed.append(self.gpa, ' ');
             return .{ .handled = true, .commit = self.committed.items };
         }
         break;
@@ -277,6 +279,7 @@ pub fn pickWord(self: *Composer, word: []const u8) !Outcome {
         }
     }
     try self.committed.appendSlice(self.gpa, word);
+    try self.committed.append(self.gpa, ' ');
     self.clearWord();
     self.saveSelections();
     return .{ .handled = true, .commit = self.committed.items };
@@ -313,9 +316,12 @@ pub fn refresh(self: *Composer) !void {
     try self.items.appendSlice(self.gpa, fresh.items);
     self.avro_count = fresh.items.len;
     self.highlight = fresh.selected;
-    if (number_marks) for (self.items.items) |*item| {
+    // A `.` or `:` typed between two digits stays one: ৩.১৪, ১০:৩০. Avro makes
+    // every `.` a দাঁড়ি and every `:` a বিসর্গ, which no number has. A দাঁড়ি
+    // after a number (২৫।, a space after the dot) is kept.
+    for (self.items.items) |*item| {
         if (try numberMarks(self.extras.allocator(), item.*)) |fixed| item.* = fixed;
-    };
+    }
 
     if (self.settings.suggestions) {
         // Once per key: the extras below all start from it.
@@ -345,7 +351,7 @@ fn addExtras(self: *Composer) !void {
     // Corrections only when Avro found no dictionary word: its list is just
     // the plain transliteration.
     if (!self.settings.spelling_corrections or self.avro_count > 1) return;
-    if (number_marks and hasBanglaDigit(plain)) return;
+    if (hasBanglaDigit(plain)) return;
     const corrector = self.corrector orelse return;
     if ((std.unicode.utf8CountCodepoints(plain) catch 0) < 2) return;
     if (self.user_words.contains(plain) or self.ac().contains(plain)) return;
@@ -365,7 +371,7 @@ fn addPrefixWords(self: *Composer) !void {
     const plain = self.literal;
     // A single letter starts too many words to say anything yet.
     if ((std.unicode.utf8CountCodepoints(plain) catch 0) < 2) return;
-    if (number_marks and hasBanglaDigit(plain)) return;
+    if (hasBanglaDigit(plain)) return;
     const longer = self.ac().prefixSuggest(arena, plain, prefix_limit) catch &.{};
     for (longer) |entry| if (!self.listed(entry.word)) {
         try self.items.append(self.gpa, try arena.dupe(u8, entry.word));
@@ -378,8 +384,7 @@ fn isBanglaDigit(c: u21) bool {
 
 /// A number is not a misspelling, and an open list would make its next digit
 /// pick a candidate (`1`–`9` choose while the list is up), so a word with a
-/// digit gets no corrections and no longer words. Desktop Linux only, like
-/// `number_marks`.
+/// digit gets no corrections and no longer words.
 fn hasBanglaDigit(word: []const u8) bool {
     const view = std.unicode.Utf8View.init(word) catch return false;
     var it = view.iterator();
@@ -577,19 +582,19 @@ test "space commits the highlight and a space; idle space passes" {
     try testing.expect(!(try h.c.key(.space, .{})).handled);
 }
 
-test "enter commits the word only, or passes with newline_on_enter" {
+test "enter commits the word and passes, or commits only without newline_on_enter" {
     var h: Harness = undefined;
     try h.init();
     defer h.deinit();
     try h.typed("ami");
-    const o = try h.c.key(.enter, .{});
-    try testing.expect(o.handled);
-    try testing.expectEqualStrings("আমি", o.commit);
-    try h.c.setSettings(.{ .newline_on_enter = true });
-    try h.typed("ami");
     const n = try h.c.key(.enter, .{});
     try testing.expect(!n.handled);
     try testing.expectEqualStrings("আমি", n.commit);
+    try h.c.setSettings(.{ .newline_on_enter = false });
+    try h.typed("ami");
+    const o = try h.c.key(.enter, .{});
+    try testing.expect(o.handled);
+    try testing.expectEqualStrings("আমি", o.commit);
 }
 
 test "escape drops, backspace edits" {
@@ -622,10 +627,16 @@ test "arrows wrap, pages move, numbers pick" {
     try testing.expectEqual(@as(usize, 3), h.c.highlight);
     try testing.expectEqual(@as(usize, 1), h.c.page());
     try testing.expectEqual(@as(usize, 3), h.c.pageItems().len);
-    const want = try testing.allocator.dupe(u8, h.c.pageItems()[1]);
+    const want = try std.mem.concat(testing.allocator, u8, &.{ h.c.pageItems()[1], " " });
     defer testing.allocator.free(want);
     const o = try h.c.key(.{ .char = '2' }, .{});
     try testing.expectEqualStrings(want, o.commit);
+
+    // A pick by word, a candidate or not, is followed by a space too.
+    try h.typed("ami");
+    try testing.expectEqualStrings("আমি ", (try h.c.pickWord("আমি")).commit);
+    try h.typed("ami");
+    try testing.expectEqualStrings("আমিও ", (try h.c.pickWord("আমিও")).commit);
 }
 
 test "moving the highlight is learned and persisted" {
@@ -758,8 +769,7 @@ test "Linux: words that start with what is typed follow Avro's list" {
     try testing.expect(!h.c.panelVisible());
 }
 
-test "Linux: a . or : between digits stays one, a দাঁড়ি after a number stays" {
-    if (!number_marks) return error.SkipZigTest;
+test "a . or : between digits stays one, a দাঁড়ি after a number stays" {
     var h: Harness = undefined;
     try h.init();
     defer h.deinit();
@@ -794,8 +804,7 @@ const FakeCorrector = struct {
     }
 };
 
-test "Linux: a number gets no corrections, so its next digit never picks one" {
-    if (!number_marks) return error.SkipZigTest;
+test "a number gets no corrections, so its next digit never picks one" {
     var memory = Store.Memory.init(testing.allocator);
     defer memory.deinit();
     var fake: FakeCorrector = .{ .ready = true };

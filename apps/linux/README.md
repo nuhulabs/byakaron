@@ -120,7 +120,7 @@ This builds the Zig core and calls it from C. Expect `ami → আমি`,
 `bangla → বাংলা`, the keysym mapping (keypad keys, modifier-only keys not
 sent), a few keystrokes through the composer exactly as the IME shells send
 them (preedit = highlighted candidate, Space commits it, arrows wrap, Enter
-commits only), settings and personal-dictionary round trips, and the JSON
+commits and passes), settings and personal-dictionary round trips, and the JSON
 word-list parser including the inputs it must *reject*. The keyboard's
 behaviour itself is tested in Zig (`zig build test`, `src/Composer.zig`).
 
@@ -206,7 +206,7 @@ time for that input, else the first).
 | `.` `,` `:` `$` `^` backtick and other printable ASCII | Appended; Avro maps `.` → `।`, `:` → `ঃ`, `$` → `৳`, `^` → `ঁ`. Between two digits Linux keeps `.` and `:` as they are, so `3.14` → `৩.১৪` and `10:30` → `১০:৩০`; `25.` is still `২৫।` (`src/Composer.zig`, desktop Linux only) |
 | Backspace | Drops one latin character and re-transliterates |
 | Space | Commits the highlighted candidate plus the space, in one commit |
-| Enter | Commits the highlighted candidate only (Enter consumed); with **New line on Enter** it also reaches the app |
+| Enter | Commits the highlighted candidate, then Enter reaches the app (a new line, or send); with **New line on Enter** off it commits only |
 | Escape | Discards the pending word and its candidates |
 | `1`–`9` | Picks that candidate on the current page |
 | Down / Right, Up / Left | Moves the highlight, wrapping from the last candidate to the first and back, across pages. With **Remember my choices** every move is learned, in `~/.local/share/byakaron/selections.json`. Without a list the arrows commit the word and move the caret as usual |
@@ -354,7 +354,7 @@ IPC.
 | **Spelling corrections** (see [Spelling corrections](#spelling-corrections)) | `spelling_corrections` | on |
 | **Remember my choices** — the candidate picked for an input is highlighted first next time | `learn_choices` | on |
 | **Bangla digits** — off keeps 0–9 outside a word | `bangla_digits` | on |
-| **New line on Enter** — Enter commits the word and also starts a new line | `newline_on_enter` | off |
+| **New line on Enter** — Enter commits the word and also starts a new line (or sends) | `newline_on_enter` | on |
 | **Suggestion list** — Horizontal / Vertical | `candidate_orientation` | horizontal |
 | **Suggestions per page** — 3–9 | `candidates_per_page` | 9 |
 

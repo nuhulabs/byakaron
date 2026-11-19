@@ -32,9 +32,11 @@ spelling_corrections: bool = true,
 learn_choices: bool = true,
 /// Digits typed outside a word become Bangla digits (০–৯); off keeps 0–9.
 bangla_digits: bool = true,
-/// Enter commits the word and also starts a new line (iAvro
-/// "CommitNewLineOnEnter"); off commits only.
-newline_on_enter: bool = false,
+/// Enter commits the word and also goes to the app, which starts a new line
+/// or sends (iAvro "CommitNewLineOnEnter"); off commits only. On by default,
+/// unlike iAvro, so Enter sends a message with the word in it on every
+/// platform, as a phone's Send key does.
+newline_on_enter: bool = true,
 candidate_orientation: Orientation = .horizontal,
 candidates_per_page: u8 = max_candidates_per_page,
 /// Strip mode for mobile keyboards: candidate panel stays active while composing,
@@ -350,7 +352,7 @@ test "manifest text in each language, and the language for a tag" {
 test "defaults follow iAvro" {
     const s: Settings = .{};
     try testing.expect(s.suggestions); // IncludeDictionary = true
-    try testing.expect(!s.newline_on_enter); // CommitNewLineOnEnter = false
+    try testing.expect(s.newline_on_enter); // iAvro's CommitNewLineOnEnter is false: Enter sends here
     try testing.expectEqual(@as(u8, 9), s.candidates_per_page);
 }
 
