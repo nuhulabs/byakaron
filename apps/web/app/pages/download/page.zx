@@ -12,7 +12,7 @@ const catalog = @import("../../catalog.zig").catalog;
 const latest = @import("../../catalog.zig").latest;
 
 pub fn Page(ctx: zx.PageContext) !zx.Component {
-    meta.set(ctx.data, .{ .path = "/download", .title = "Download Byakaron | ব্যাকারন", .description = "Download Byakaron, the Bangla keyboard and spell checker, for macOS, Windows, Linux (Ubuntu, Debian, Arch) and Android, or install it with one command." });
+    meta.set(ctx.data, .{ .path = "/download", .title = "Download Byakaron | ব্যাকরণ", .description = "Download Byakaron, the Bangla keyboard and spell checker, for macOS, Windows, Linux (Ubuntu, Debian, Arch) and Android, or install it with one command." });
     const notes = try std.fmt.allocPrint(ctx.arena, "https://github.com/{s}/releases/latest", .{catalog.repo});
     const sums = try latest(ctx.arena, "SHA256SUMS");
     const unix_cmd = try std.fmt.allocPrint(ctx.arena, "curl -fsSL {s}/install.sh | bash", .{catalog.site});

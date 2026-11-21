@@ -189,7 +189,7 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
             <nav class="lp-nav">
                 <a class="lp-logo" href="/">
                     <img src="/logo.svg" alt="" width="32" height="32" />
-                    <span class="lp-logo-name">Byakaron<span class="lp-logo-sep" aria-hidden="true">|</span><span lang="bn">ব্যাকারন</span></span>
+                    <span class="lp-logo-name">Byakaron<span class="lp-logo-sep" aria-hidden="true">|</span><span lang="bn">ব্যাকরণ</span></span>
                 </a>
                 <div class="lp-nav-links">
                     <a href="/app">Web app</a>
@@ -326,7 +326,7 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
             <footer class="lp-footer">
                 <a class="lp-logo" href="/">
                     <img src="/logo.svg" alt="" width="22" height="22" />
-                    <span class="lp-logo-name">Byakaron<span class="lp-logo-sep" aria-hidden="true">|</span><span lang="bn">ব্যাকারন</span></span>
+                    <span class="lp-logo-name">Byakaron<span class="lp-logo-sep" aria-hidden="true">|</span><span lang="bn">ব্যাকরণ</span></span>
                 </a>
                 <div class="lp-footer-links">
                     <a href="/app">Web app</a>

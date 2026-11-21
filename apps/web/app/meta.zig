@@ -5,9 +5,9 @@
 const zx = @import("zx");
 
 pub const site = "https://byakaron.com";
-pub const name = "Byakaron | ব্যাকারন";
+pub const name = "Byakaron | ব্যাকরণ";
 pub const default_title = name;
-pub const default_description = "Byakaron (ব্যাকারন) is a Bangla keyboard and spell checker for macOS, Windows, Linux, Android and the web. বাংলা লিখুন, নির্ভুল বানানে।";
+pub const default_description = "Byakaron (ব্যাকরণ) is a Bangla keyboard and spell checker for macOS, Windows, Linux, Android and the web. বাংলা লিখুন, নির্ভুল বানানে।";
 /// From the landing page's hero (apps/web/app/public/og.png, 1200x630).
 pub const image = site ++ "/og.png";
 

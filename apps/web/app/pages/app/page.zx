@@ -71,7 +71,7 @@ var saved_caret: ?Caret = null;
 var restored: bool = false;
 
 pub fn Page(ctx: zx.PageContext) !zx.Component {
-    seo.set(ctx.data, .{ .path = "/app", .title = "Bangla Spell Checker | Byakaron (ব্যাকারন)", .description = "Type and check Bangla spelling in the browser with Byakaron: phonetic typing, suggestions and corrections, nothing to install." });
+    seo.set(ctx.data, .{ .path = "/app", .title = "Bangla Spell Checker | Byakaron (ব্যাকরণ)", .description = "Type and check Bangla spelling in the browser with Byakaron: phonetic typing, suggestions and corrections, nothing to install." });
     return (
         <main @allocator={ctx.arena} class="app-shell">
             <SpellApp @client />

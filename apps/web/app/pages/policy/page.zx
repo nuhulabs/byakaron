@@ -12,7 +12,7 @@ pub fn Page(ctx: zx.PageContext) zx.Component {
             <nav class="policy-nav">
                 <a class="lp-logo" href="/">
                     <img src="/logo.svg" alt="" width="28" height="28" />
-                    <span class="lp-logo-name">Byakaron<span class="lp-logo-sep" aria-hidden="true">|</span><span lang="bn">ব্যাকারন</span></span>
+                    <span class="lp-logo-name">Byakaron<span class="lp-logo-sep" aria-hidden="true">|</span><span lang="bn">ব্যাকরণ</span></span>
                 </a>
             </nav>
             <article class="policy-body">
