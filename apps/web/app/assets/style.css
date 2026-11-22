@@ -1,15 +1,57 @@
+/* Light by default; dark follows the system (prefers-color-scheme), no JS. */
 :root {
+    color-scheme: light dark;
     --ink: #1a1d24;
     --muted: #8b929e;
     --muted-2: #6b7280;
     --line: #e4e7eb;
+    --line-strong: #cfd4da;
     --sidebar: #f3f4f6;
     --panel: #ffffff;
+    /* Chips, menus and other surfaces that sit on --sidebar. */
+    --raised: #ffffff;
+    --hover: rgb(255 255 255 / 0.7);
+    --toolbar: #eef0f3;
+    --tool-fg: #5b6573;
+    --placeholder: #a0a7b4;
     --accent: #2f6bff;
     --accent-soft: #e8efff;
+    --on-accent: #ffffff;
+    /* Solid buttons and tooltips: dark on light, light on dark. */
+    --solid: #1a1d24;
+    --solid-hover: #000000;
+    --on-solid: #ffffff;
+    --shadow-rgb: 26 29 36;
     --warn: #f59a1a;
     --warn-text: #c2410c;
     --error: #e11d48;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --ink: #e6e8ec;
+        --muted: #7d8592;
+        --muted-2: #9aa1ad;
+        --line: #2a3038;
+        --line-strong: #3b424d;
+        --sidebar: #15191f;
+        --panel: #0e1116;
+        --raised: #1c2129;
+        --hover: rgb(255 255 255 / 0.05);
+        --toolbar: #1c2129;
+        --tool-fg: #a3aab5;
+        --placeholder: #5d6572;
+        --accent: #5b8cff;
+        --accent-soft: #18233d;
+        --on-accent: #ffffff;
+        --solid: #e6e8ec;
+        --solid-hover: #ffffff;
+        --on-solid: #0e1116;
+        --shadow-rgb: 0 0 0;
+        --warn: #f5a524;
+        --warn-text: #fbbf24;
+        --error: #fb7185;
+    }
 }
 
 * {
@@ -30,14 +72,44 @@ body {
     background: var(--panel);
 }
 
+/* /app: the site nav on top, the spell checker filling the rest. */
 .app-shell {
-    height: 100%;
-    min-height: 100vh;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+}
+
+.lp-nav.app-nav {
+    flex: none;
+    padding: 0.7rem 1.1rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+}
+
+.app-nav .lp-logo {
+    color: inherit;
+    font-size: 1rem;
+}
+
+.app-nav .lp-logo img {
+    border-radius: 22%;
+}
+
+.lp-nav-links a[aria-current="page"] {
+    color: var(--ink);
+    font-weight: 600;
+}
+
+@media (max-width: 480px) {
+    .app-nav .lp-nav-links a[aria-current="page"] {
+        display: none;
+    }
 }
 
 .app-layout {
-    height: 100%;
-    min-height: 100vh;
+    flex: 1;
+    min-height: 0;
     display: grid;
     grid-template-columns: 240px 1fr;
     background: var(--panel);
@@ -94,16 +166,16 @@ body {
 }
 
 .issue-item:hover {
-    background: rgba(255, 255, 255, 0.7);
+    background: var(--hover);
 }
 
 .issue-item.is-active {
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
 }
 
 .issue-item.is-active .issue-count {
-    color: rgba(255, 255, 255, 0.85);
+    color: rgb(255 255 255 / 0.85);
 }
 
 .issue-item.is-active .issue-icon {
@@ -115,7 +187,7 @@ body {
     width: 14px;
     height: 14px;
     border-radius: 2px;
-    background: #fff;
+    background: var(--raised);
     box-shadow: inset 2px 0 0 var(--warn);
     position: relative;
     /* Clicks must hit the <button>, not child nodes; otherwise
@@ -179,11 +251,9 @@ body {
 
 .brand {
     margin: 0;
-    font-family: Syne, system-ui, sans-serif;
-    font-size: 1.35rem;
+    font-size: 1.2rem;
     font-weight: 700;
-    letter-spacing: -0.03em;
-    line-height: 1.1;
+    line-height: 1.2;
 }
 
 .brand-meta {
@@ -197,7 +267,7 @@ body {
     align-items: center;
     gap: 0.15rem;
     padding: 0.2rem;
-    background: #eef0f3;
+    background: var(--toolbar);
     border-radius: 10px;
 }
 
@@ -211,7 +281,7 @@ body {
     display: grid;
     place-items: center;
     cursor: pointer;
-    color: #5b6573;
+    color: var(--tool-fg);
 }
 
 .tool-toggle {
@@ -228,7 +298,7 @@ body {
 }
 
 .tool-btn:hover {
-    background: #fff;
+    background: var(--panel);
     color: var(--ink);
 }
 
@@ -336,7 +406,7 @@ body {
 }
 
 .editor-input::placeholder {
-    color: #a0a7b4;
+    color: var(--placeholder);
 }
 
 /* -- Spell-check activity: fades in place, never shifts the layout -- */
@@ -371,7 +441,7 @@ body {
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: 10px;
-    box-shadow: 0 8px 24px rgba(26, 29, 36, 0.12);
+    box-shadow: 0 8px 24px rgb(var(--shadow-rgb) / 0.12);
 }
 
 .suggest-item {
@@ -398,7 +468,7 @@ body {
 }
 
 .suggest-item.is-active .suggest-num {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgb(255 255 255 / 0.75);
 }
 
 .suggest-page {
@@ -427,7 +497,7 @@ body {
 
 .suggest-item.is-active {
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
 }
 
 /* -- Fix bar -- */
@@ -439,7 +509,7 @@ body {
     margin: 0 1rem 0.65rem;
     padding: 0.7rem 0.85rem;
     border-radius: 12px;
-    background: #f3f4f6;
+    background: var(--sidebar);
     border: 1px solid var(--line);
 }
 
@@ -507,8 +577,8 @@ body {
     flex: 0 0 auto;
     padding: 0.35rem 0.75rem;
     border-radius: 999px;
-    background: #fff;
-    border: 1px solid #dde1e7;
+    background: var(--raised);
+    border: 1px solid var(--line-strong);
     font: inherit;
     font-size: 0.95rem;
     color: var(--ink);
@@ -542,7 +612,7 @@ body {
 }
 
 .fix-ignore:hover {
-    background: #fff;
+    background: var(--raised);
     color: var(--ink);
 }
 
@@ -755,13 +825,14 @@ body {
     border-radius: 8px;
     padding: 0.25rem 0.65rem;
     font: inherit;
+    color: inherit;
     cursor: pointer;
 }
 
 .seg.is-on {
     background: var(--accent);
     border-color: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
 }
 
 .stepper-value {
@@ -781,6 +852,8 @@ body {
     border-radius: 8px;
     padding: 0.3rem 0.6rem;
     font: inherit;
+    color: inherit;
+    background: var(--panel);
 }
 
 .userdict-list {
@@ -822,7 +895,7 @@ body {
     margin: 0 auto;
     padding: 3.5rem 1.25rem 4rem;
     background:
-        radial-gradient(ellipse 80% 50% at 50% -10%, #e8efff 0%, transparent 55%),
+        radial-gradient(ellipse 80% 50% at 50% -10%, var(--accent-soft) 0%, transparent 55%),
         var(--panel);
 }
 
@@ -998,15 +1071,15 @@ body {
     justify-content: center;
     padding: 0.55rem 1rem;
     border-radius: 0.45rem;
-    background: var(--ink);
-    color: #fff;
+    background: var(--solid);
+    color: var(--on-solid);
     font-weight: 600;
     font-size: 0.92rem;
     text-decoration: none;
 }
 
 .dl-btn:hover {
-    background: #000;
+    background: var(--solid-hover);
 }
 
 @media (max-width: 560px) {
@@ -1138,15 +1211,15 @@ body:has(.lp) {
     gap: 0.6rem;
     padding: 0.8rem 1.35rem;
     border-radius: 0.65rem;
-    background: var(--ink);
-    color: #fff !important;
+    background: var(--solid);
+    color: var(--on-solid) !important;
     font-weight: 600;
     text-decoration: none;
-    box-shadow: 0 6px 18px -8px rgb(26 29 36 / 0.55);
+    box-shadow: 0 6px 18px -8px rgb(var(--shadow-rgb) / 0.55);
 }
 
 .lp-cta:hover {
-    background: #000;
+    background: var(--solid-hover);
 }
 
 .lp-secondary {
@@ -1215,7 +1288,7 @@ body:has(.lp) {
     border: 1px solid var(--line);
     border-radius: 1rem;
     background: var(--panel);
-    box-shadow: 0 24px 48px -28px rgb(26 29 36 / 0.35);
+    box-shadow: 0 24px 48px -28px rgb(var(--shadow-rgb) / 0.35);
 }
 
 .lp-demo-bar {
@@ -1265,7 +1338,7 @@ body:has(.lp) {
     border: 1px solid var(--line);
     border-radius: 0.6rem;
     background: var(--panel);
-    box-shadow: 0 12px 28px -12px rgb(26 29 36 / 0.35);
+    box-shadow: 0 12px 28px -12px rgb(var(--shadow-rgb) / 0.35);
     font-size: 1rem;
     text-decoration: none;
 }
@@ -1362,7 +1435,7 @@ body:has(.lp) {
 }
 
 .lp-card:hover {
-    border-color: #cfd4da;
+    border-color: var(--line-strong);
 }
 
 .lp-card-ic {
@@ -1425,8 +1498,8 @@ body:has(.lp) {
     z-index: 2;
     padding: 0.3rem 0.55rem;
     border-radius: 0.4rem;
-    background: var(--ink);
-    color: #fff;
+    background: var(--solid);
+    color: var(--on-solid);
     font-size: 0.76rem;
     font-weight: 500;
     white-space: nowrap;
@@ -1461,13 +1534,13 @@ body:has(.lp) {
 }
 
 .lp-tip.is-primary .lp-icon-btn {
-    border-color: var(--ink);
-    background: var(--ink);
-    color: #fff !important;
+    border-color: var(--solid);
+    background: var(--solid);
+    color: var(--on-solid) !important;
 }
 
 .lp-tip.is-primary .lp-icon-btn:hover {
-    background: #000;
+    background: var(--solid-hover);
 }
 
 .lp-tip .lp-icon-btn.is-soon {
@@ -1485,6 +1558,7 @@ body:has(.lp) {
 .lp-term {
     max-width: 44rem;
     border-radius: 0.8rem;
+    border: 1px solid transparent;
     background: #0e1319;
     color: #e8ebee;
     overflow: hidden;
@@ -1581,6 +1655,12 @@ body:has(.lp) {
 #lp-term-macos:focus-visible ~ .lp-term-bar label[for="lp-term-macos"] {
     outline: 2px solid #6ea0ff;
     outline-offset: -4px;
+}
+
+@media (prefers-color-scheme: dark) {
+    .lp-term {
+        border-color: var(--line);
+    }
 }
 
 #lp-term-macos:checked ~ .lp-term-pane[data-tab="lp-term-macos"] {

@@ -10,7 +10,9 @@ pub fn Layout(ctx: zx.LayoutContext, children: zx.Component) zx.Component {
                 <meta name="description" content={m.description} />
                 <meta name="keywords" content="Byakaron, ব্যাকরণ, Bangla keyboard, Bengali keyboard, বাংলা কিবোর্ড, Bangla spell checker, বানান পরীক্ষক, Avro, phonetic" />
                 <meta name="application-name" content="Byakaron" />
-                <meta name="theme-color" content="#0e1319" />
+                <meta name="color-scheme" content="light dark" />
+                <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+                <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0e1116" />
                 <meta name="robots" content="index, follow" />
                 <link rel="canonical" href={url} />
                 <meta property="og:type" content="website" />

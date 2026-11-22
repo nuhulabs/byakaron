@@ -74,6 +74,16 @@ pub fn Page(ctx: zx.PageContext) !zx.Component {
     seo.set(ctx.data, .{ .path = "/app", .title = "Bangla Spell Checker | Byakaron (ব্যাকরণ)", .description = "Type and check Bangla spelling in the browser with Byakaron: phonetic typing, suggestions and corrections, nothing to install." });
     return (
         <main @allocator={ctx.arena} class="app-shell">
+            <nav class="lp-nav app-nav">
+                <a class="lp-logo" href="/">
+                    <img src="/logo.svg" alt="" width="28" height="28" />
+                    <span class="lp-logo-name">Byakaron<span class="lp-logo-sep" aria-hidden="true">|</span><span lang="bn">ব্যাকরণ</span></span>
+                </a>
+                <div class="lp-nav-links">
+                    <a href="/app" aria-current="page">Web app</a>
+                    <a href="/download">Downloads</a>
+                </div>
+            </nav>
             <SpellApp @client />
         </main>
     );
@@ -122,7 +132,7 @@ pub fn SpellApp(ctx: *zx.ComponentContext) zx.Component {
             <section class="main-pane">
                 <header class="main-header">
                     <div class="brand-block">
-                        <h1 class="brand">Byakaron</h1>
+                        <h1 class="brand">Spell checker</h1>
                         <p class="brand-meta">
                             {meta}
                             <span class={if (checking) "check-dot is-busy" else "check-dot"} title="Checking" aria-hidden="true"></span>
