@@ -335,9 +335,14 @@ Bangla digits are skipped because `২০২৪` is not a misspelling.
 The issue list shows only the misspelled words; suggestions appear in the bar
 under the editor, one place for both ways of reaching a word.
 
-**Bangla typing**, the keyboard toggle in the header bar (on by default,
-remembered in the `spelling-typing` GSetting), makes the editor
-type Bangla with no system keyboard change and no effect on other apps. Keys go
+**Bangla typing**, the round ক / A button in the header bar
+(`App/langtoggle.c`: a drawing area in a toggle button for the `spell.typing`
+action; on by default, remembered in the `spelling-typing` GSetting), makes the editor
+type Bangla with no system keyboard change and no effect on other apps. On, the
+circle is filled with the accent and shows a large ক, with a small A in a notch
+at the lower right; off, it is an outline with a large A and ক in the notch.
+The letters swap places in 200 ms (at once when the desktop turns animations
+off), and the tooltip says which mode is on. Keys go
 to a composer of the app's own, opened with `spell` on the same worker thread so
 corrections work and the first frame is not held up. The word being typed sits in
 the buffer underlined and is replaced on each key, because GtkTextView can only
@@ -419,14 +424,21 @@ day when **Preferences → Updates → Auto-update** is on (the shared
    with what is installed. dpkg is asked first: `.deb` versions (`v27.0.0` →
    `1:27.0.0`, `v27.0.0-dev.2` → `1:27.0.0~dev.2`) in dpkg's order. Then
    pacman (`pacman -Q byakaron`): Arch versions (`v27.0.0` → `27.0.0-1`,
-   `v27.0.0-dev.2` → `27.0.0dev.2-1`) in `vercmp`'s order. A build that
-   neither installed (run from `zig-out`, or `dev -- linux-system`) never checks.
+   `v27.0.0-dev.2` → `27.0.0dev.2-1`) in `vercmp`'s order. Then rpm
+   (`27.0.0-1`, `27.0.0~dev.2-1`) in `rpm.vercmp`'s order. A build that
+   none installed (run from `zig-out`, or `dev -- linux-system`) never checks.
 3. If it is newer, a bar says **Byakaron 27.0.0 is available**. **Update**
    downloads `byakaron_<arch>.deb` (or `byakaron_x86_64.pkg.tar.zst` on Arch)
    and `SHA256SUMS` from that release, checks the hash, and runs
    `pkexec apt-get install -y` (or `pkexec pacman -U --noconfirm`) on it, the
-   system password prompt. postinst (`.INSTALL` on Arch) restarts IBus, so the
-   keyboard is new at once; the bar then offers **Restart** for the app.
+   system password prompt (`dnf install -y` / `zypper install
+   --allow-unsigned-rpm` for the RPM). postinst (`.INSTALL` on Arch, `%post`
+   for the RPM) restarts IBus, so the keyboard is new at once; the bar then
+   offers **Restart** for the app. On a read-only Fedora (`/run/ostree-booted`)
+   it runs `rpm-ostree uninstall byakaron --install <file>` instead (rpm-ostree
+   asks for the password through polkit), and the bar says to restart the
+   computer. The version installed afterwards, not the exit status, decides
+   whether it worked.
 
 The hash catches a broken download; it is not a signature, since both files
 come from the same release. `BYAKARON_UPDATE_FEED` points the check at
@@ -546,8 +558,11 @@ The slow checks run by hand from `.github/workflows/e2e.yml` (Actions → e2e �
 Run): **GNOME Wayland typing** (`zig build e2e -- linux-wayland`, see
 [Wayland](#wayland): GTK3 and GTK4 apps on a headless GNOME Shell, typed into
 through `org.gnome.Mutter.RemoteDesktop`) and the **install matrix** (package
-the `.deb` and the Arch package and `zig build e2e -- linux-install` them in
-clean Ubuntu/Debian containers and `archlinux:latest`). `zig build e2e -- linux` (glibc ceiling, smoke test, IME integration
+the `.deb`, the Arch package and the RPM, and `zig build e2e -- linux-install`
+them in clean containers: Ubuntu 20.04–26.04, Debian 12 and 13, Kali, Linux
+Mint 22, `archlinux:latest`, Fedora, AlmaLinux 9 and openSUSE Tumbleweed and
+Leap. The `.deb` and the RPM go in through the website's `install.sh`, which
+must report the version and, run again, "already the latest"). `zig build e2e -- linux` (glibc ceiling, smoke test, IME integration
 test against a throwaway Xvfb+ibus-daemon, Fcitx5 addon, GtkEntry typing) is
 for local runs before a release.
 
@@ -562,6 +577,9 @@ To run the same steps locally:
 zig build e2e -- linux
 zig build e2e -- linux-wayland   # needs gnome-shell
 zig build e2e -- linux-install  # the local .deb and Arch package in clean containers (Docker)
+# with the RPM too (rpmbuild: sudo apt install rpm):
+zig build pack -- linux-rpm
+zig build e2e -Dlinux-rpm=zig-out/pkg -- linux-install
 ```
 
 ## Releasing
@@ -595,10 +613,24 @@ had its own numbering, and without the epoch apt refuses the shared 0.1.x over
 The public command, `curl -fsSL https://byakaron.com/install.sh | bash`,
 is served by the website (`apps/web`) from `apps/web/app/public/install.sh`
 (Linux + macOS), so it ships with every web deploy.
-It reads `/etc/os-release` and downloads `byakaron_<arch>.deb` (apt) or
-`byakaron_x86_64.pkg.tar.zst` (pacman, `ID`/`ID_LIKE` arch) from the latest
-release (or the newest prerelease while there is none), checked against its
-`SHA256SUMS`, so a release needs no change to it.
+It reads `/etc/os-release` and downloads `byakaron_<arch>.deb` (apt),
+`byakaron_<cpu>.pkg.tar.zst` (pacman, `ID`/`ID_LIKE` arch) or
+`byakaron_<cpu>.rpm` (dnf, zypper, or rpm-ostree when `/run/ostree-booted`
+exists) from the latest release (or the newest prerelease while there is
+none), checked against its `SHA256SUMS`, so a release needs no change to it.
+Read-only systems are checked before the package managers, since theirs are
+there but cannot write: Fedora's (Silverblue, Kinoite, Bazzite, Bluefin) layer
+the RPM with `rpm-ostree install` (or `rpm-ostree uninstall byakaron --install`
+over an older one) for the next start; SteamOS, openSUSE's transactional ones,
+NixOS and Alpine (musl) are told why not. On ChromeOS's Linux
+(`/dev/.cros_milestone`, a Debian container) it also writes
+`/etc/systemd/user/cros-garcon.service.d/zz-byakaron-ibus.conf`
+(`GTK_IM_MODULE=ibus` and friends for apps started from ChromeOS's launcher)
+and `ibus-daemon -drx` into `~/.sommelierrc`; `--uninstall` takes both out.
+The first-install steps follow `XDG_CURRENT_DESKTOP` (GNOME, KDE, elementary's
+Pantheon, others). A package manager that installed Byakaron but exited
+non-zero (zypper's 106 when a mirror could not be refreshed) counts as
+installed when `rpm -q` shows the downloaded version.
 `bash apps/linux/tests/web_install_test.sh` checks what the installer decides
 on different systems and where the package comes from.
 

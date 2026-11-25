@@ -15,15 +15,29 @@ curl -fsSL https://byakaron.com/install.sh | bash
 ```
 
 It asks for your password once, and finds out by itself which Linux it is on.
-It works on:
+It works on Intel/AMD and on 64-bit ARM computers, on:
 
-- Ubuntu 20.04, 22.04, 24.04 and 26.04, Debian 12 and 13, and Raspberry Pi OS
-  (64-bit), on Intel/AMD and on 64-bit ARM computers
-- Arch Linux, and the systems built on it such as Manjaro and EndeavourOS, on
-  Intel/AMD computers
+| Linux | Also the systems built on it |
+| --- | --- |
+| Ubuntu 20.04, 22.04, 24.04, 26.04 | Linux Mint, Pop!_OS, Zorin OS, elementary OS, Kubuntu, Xubuntu |
+| Debian 12, 13 | Raspberry Pi OS (64-bit), Kali Linux, LMDE, MX Linux, ChromeOS's Linux |
+| Arch Linux | Manjaro, EndeavourOS, CachyOS, Garuda |
+| Fedora | Nobara; Silverblue, Kinoite, Bazzite and Bluefin (see below) |
+| RHEL 9 and its rebuilds | Rocky Linux, AlmaLinux, CentOS Stream |
+| openSUSE Tumbleweed and Leap | |
 
-On Arch, bring the system up to date first (`sudo pacman -Syu`), so pacman
-can fetch IBus and GTK if they are missing.
+- **Arch:** bring the system up to date first (`sudo pacman -Syu`), so pacman
+  can fetch IBus and GTK if they are missing.
+- **Fedora Silverblue, Kinoite, Bazzite, Bluefin:** the system is read-only,
+  so Byakaron is added to it with rpm-ostree. Restart the computer once after
+  installing.
+- **A Chromebook:** turn on Linux first (**Settings → About ChromeOS →
+  Developers → Linux development environment**), then run the command in the
+  **Terminal** app. Byakaron then types in Linux apps (the Byakaron app,
+  LibreOffice, Linux Firefox), not in Chrome or Android apps, which only take
+  ChromeOS's own keyboards.
+- **Not yet:** NixOS, Alpine, SteamOS, openSUSE Aeon and MicroOS, Void and
+  Gentoo. The command says so and changes nothing.
 
 ## Turn it on
 
@@ -35,17 +49,34 @@ can fetch IBus and GTK if they are missing.
 4. Log out and back in once. GNOME then shows Byakaron's suggestion list, in
    blue, in every app.
 
-**KDE, Xfce, Raspberry Pi OS and others**
+**elementary OS**
+
+1. Open **System Settings → Keyboard → Input Method**, press **+** and choose
+   **Bangla → Byakaron**.
+2. Press **Super+Space** to switch.
+
+**KDE, Xfce, Cinnamon, Raspberry Pi OS and others**
 
 1. Make IBus start with your desktop, then log out and back in:
-   - Ubuntu, Debian, Raspberry Pi OS: in a terminal, `im-config -n ibus`.
-   - Arch with KDE Plasma: **System Settings → Keyboard → Virtual Keyboard →
-     IBus Wayland**.
-   - Arch with another desktop: start `ibus-daemon -drxR` when you log in (see
-     the Arch wiki's [IBus page](https://wiki.archlinux.org/title/IBus)).
+   - KDE Plasma on Wayland, on any Linux: **System Settings → Keyboard →
+     Virtual Keyboard → IBus Wayland**.
+   - Linux Mint: **Menu → Preferences → Input Method → IBus**.
+   - Ubuntu, Debian, Kali, Raspberry Pi OS: in a terminal, `im-config -n ibus`.
+   - Fedora: in a terminal, `imsettings-switch ibus`.
+   - Elsewhere: start `ibus-daemon -drxR` when you log in (see the Arch wiki's
+     [IBus page](https://wiki.archlinux.org/title/IBus)).
 2. Run `ibus-setup`, open **Input Method**, press **Add**, and choose
    **Bangla → Byakaron**.
 3. Press **Super+Space** to switch.
+
+**A Chromebook**
+
+1. Restart Linux: right-click **Terminal** in the shelf, choose **Shut down
+   Linux**, then open Terminal again. The install command has set IBus to
+   start with Linux.
+2. In Terminal, run `ibus-setup`, open **Input Method**, press **Add**, and
+   choose **Bangla → Byakaron**.
+3. In a Linux app, press **Search+Space** to switch.
 
 The Byakaron app's **Setup** page walks through the same steps.
 
@@ -72,8 +103,11 @@ Open **Byakaron** from your apps.
 - **Spelling** is the main window: paste or type Bangla text and wrong words
   are marked, with corrections in the bar under the text. The buttons at the
   top are the same as on Mac and Windows: the issue list, Open and Save on the
-  left; **Bangla typing** (type Bangla here without changing your keyboard),
-  **Fix All**, **Copy** and **Clear** on the right.
+  left; **Bangla typing**, **Fix All**, **Copy** and **Clear** on the right.
+- **Bangla typing** is the round button with **ক** and **A**. Blue with a large
+  ক: what you type here comes out in Bangla, whatever keyboard your computer
+  is set to. Outlined with a large A: your computer's own keyboard types here.
+  Click it or press **Ctrl+T** to switch; the two letters swap places.
 - **Preferences** (the menu at the top right, or Ctrl+,) has the same tabs as
   on Mac and Windows:
   - **Setup**: whether the keyboard is added, with an **Add** button that puts
@@ -94,6 +128,9 @@ Open **Byakaron** from your apps.
 The app checks once a day. When there is a new version, a bar at the top says
 **Byakaron … is available**. Press **Update** and enter your password. The
 keyboard restarts by itself, then press **Restart** for the app.
+
+On Fedora Silverblue, Kinoite, Bazzite and Bluefin the new version is added to
+the system for the next start: restart the computer to finish.
 
 You can also run the install command again at any time, or press **Check Now**
 in **Preferences → Updates**. To stop the daily check, turn off **Auto-update**
@@ -125,6 +162,7 @@ over a newer preview build.
 | `.` between numbers types । | Update Byakaron: newer versions keep the point (৩.১৪). |
 | Nothing types in Bangla | Press **Super+Space** until Byakaron is selected. |
 | On Arch, the install stops because pacman cannot download ibus or gtk3 | Run `sudo pacman -Syu`, then the install command again. |
+| On a Chromebook, nothing types in Bangla | Restart Linux (right-click Terminal → Shut down Linux), and start the app from the launcher, not from Terminal. |
 | In Telegram, VLC or KDE apps on Ubuntu 20.04 or 22.04, a word disappears when you click | Byakaron app → **Settings** → turn on **Qt apps: type a word once on click**. |
 
 More: https://byakaron.com
