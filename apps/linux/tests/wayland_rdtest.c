@@ -326,7 +326,8 @@ static void act_bhalo (void) { typ ("bhalO. "); }
 static void act_2026 (void) { typ ("2026 "); }
 static void act_pick2 (void) { typ ("ami"); sleep_s (0.4); key ('2'); }
 static void act_pick3 (void) { typ ("ami"); sleep_s (0.4); key ('3'); }
-static void act_remember (void) { typ ("ami"); sleep_s (0.4); key ('2'); sleep_s (0.3); typ (" ami "); }
+/* The pick commits with its own space, so "ami " follows it directly. */
+static void act_remember (void) { typ ("ami"); sleep_s (0.4); key ('2'); sleep_s (0.3); typ ("ami "); }
 static void act_click_commit (void) { typ ("ami"); sleep_s (0.4); click (); }
 static void act_down_down_enter (void)
 {
@@ -386,11 +387,16 @@ main (int argc, char *argv[])
     /* Only Avro's first candidate for "ami" is pinned (as in ime_test.c); the
      * others are checked against each other, so a dictionary change does not
      * break them. */
-    char *second = run (act_pick2);
-    const size_t n = strlen (second);
-    report ("pick candidate 2", second,
-            n > 0 && strcmp (second, "আমি") != 0 && second[n - 1] != ' ',
-            "a word other than আমি");
+    /* A pick (1-9) commits the word with a space, as Space commits the
+     * highlight. */
+    char *picked = run (act_pick2);
+    const size_t n = strlen (picked);
+    const gboolean spaced = n > 1 && picked[n - 1] == ' ';
+    char *second = g_strndup (picked, spaced ? n - 1 : n);
+    report ("pick candidate 2", picked,
+            spaced && strcmp (second, "আমি") != 0,
+            "a word other than আমি, then a space");
+    g_free (picked);
     /* Remember my choices: the pick is learned, so the next "ami" opens on it
      * and Space takes it. */
     char *remembered = g_strdup_printf ("%s %s ", second, second);
@@ -399,9 +405,16 @@ main (int argc, char *argv[])
     g_free (second);
 
     t ("click commits once", "আমি", act_click_commit);
-    char *third = run (act_pick3);
+    /* Enter commits the highlight and goes on to the app (New line on Enter):
+     * the word, then a new line. */
+    char *third_picked = run (act_pick3);
+    const size_t n3 = strlen (third_picked);
+    char *third = g_strdup_printf ("%.*s\n",
+                                   (int) (n3 > 0 && third_picked[n3 - 1] == ' ' ? n3 - 1 : n3),
+                                   third_picked);
     t ("Down Down Enter", third, act_down_down_enter);
     g_free (third);
+    g_free (third_picked);
 
     if (g_strcmp0 (g_getenv ("BYK_SPELL_DB_PRESENT"), "1") == 0) {
         /* The composer lists Avro's dictionary words first, so সোনার is already

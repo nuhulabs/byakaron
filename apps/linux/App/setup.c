@@ -39,18 +39,34 @@ struct _BykSetupPage {
 
 G_DEFINE_TYPE (BykSetupPage, byk_setup_page, GTK_TYPE_BOX)
 
-/* How to make IBus start with a desktop that is not GNOME. Debian and Ubuntu
- * have im-config; Arch has none, and there KDE Plasma picks the input method
- * in its own settings, other desktops start the daemon at login. */
+/* ChromeOS's Linux (a Debian container): this file is its mark, or the file
+ * BYAKARON_CROS_MARKER names (the website installer reads the same). */
+static gboolean
+byk_setup_chromeos (void)
+{
+    const gchar *marker = g_getenv ("BYAKARON_CROS_MARKER");
+    return g_file_test (marker != NULL ? marker : "/dev/.cros_milestone", G_FILE_TEST_EXISTS);
+}
+
+/* How to make IBus start with a desktop that is not GNOME. On ChromeOS the
+ * installer has set it to start with Linux. Debian and Ubuntu have im-config
+ * and Fedora imsettings; Arch has neither, and there KDE Plasma picks the
+ * input method in its own settings, other desktops start the daemon at login. */
 static const gchar *
 byk_setup_ibus_start_hint (void)
 {
     gchar *im_config = g_find_program_in_path ("im-config");
+    gchar *imsettings = g_find_program_in_path ("imsettings-switch");
     const gchar *desktop = g_getenv ("XDG_CURRENT_DESKTOP");
     const gchar *hint;
 
-    if (im_config != NULL)
+    if (byk_setup_chromeos ())
+        hint = "Restart Linux: right-click Terminal in the shelf → Shut down Linux, "
+               "then open it again (IBus starts with Linux)";
+    else if (im_config != NULL)
         hint = "In a terminal: im-config -n ibus, then log out and back in";
+    else if (imsettings != NULL)
+        hint = "In a terminal: imsettings-switch ibus, then log out and back in";
     else if (desktop != NULL && strstr (desktop, "KDE") != NULL)
         hint = "System Settings → Keyboard → Virtual Keyboard → IBus Wayland, "
                "then log out and back in";
@@ -58,20 +74,28 @@ byk_setup_ibus_start_hint (void)
         hint = "Start ibus-daemon -drxR when you log in (your desktop’s autostart), "
                "then log out and back in";
     g_free (im_config);
+    g_free (imsettings);
     return hint;
 }
 
-/* The command that installs IBus here: pacman on Arch, apt elsewhere. */
+/* The command that installs IBus here, from the system's package manager. */
 static const gchar *
 byk_setup_ibus_install_hint (void)
 {
-    gchar *apt = g_find_program_in_path ("apt-get");
-    gchar *pacman = g_find_program_in_path ("pacman");
-    const gboolean arch = apt == NULL && pacman != NULL;
-    g_free (apt);
-    g_free (pacman);
-    return arch ? "ibus-setup not found: sudo pacman -S ibus"
-                : "ibus-setup not found: sudo apt install ibus";
+    static const struct { const gchar *program; const gchar *hint; } managers[] = {
+        { "apt-get", "ibus-setup not found: sudo apt install ibus" },
+        { "pacman", "ibus-setup not found: sudo pacman -S ibus" },
+        { "dnf", "ibus-setup not found: sudo dnf install ibus" },
+        { "zypper", "ibus-setup not found: sudo zypper install ibus" },
+    };
+    for (gsize i = 0; i < G_N_ELEMENTS (managers); i++) {
+        gchar *path = g_find_program_in_path (managers[i].program);
+        const gboolean found = path != NULL;
+        g_free (path);
+        if (found)
+            return managers[i].hint;
+    }
+    return "ibus-setup not found: install IBus from your system’s software";
 }
 
 /* ── detection ───────────────────────────────────────────────────────────── */

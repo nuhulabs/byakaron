@@ -169,7 +169,7 @@ fn packageDeb(t: *Tool, a: []const []const u8) !void {
         \\ first-class input source in GNOME Settings -> Keyboard -> Input Sources and
         \\ switches with Super+Space, powered by the shared Byakaron Zig engine.
         \\ .
-        \\ Includes a GTK3 companion app (Spelling, Layout, Setup) that runs on
+        \\ Includes a GTK3 companion app (spelling editor, keyboard setup) that runs on
         \\ Ubuntu 20.04, 22.04, 24.04 and 26.04 and Debian 12 and 13, and the
         \\ spell-check dictionary.
         \\
@@ -244,7 +244,7 @@ fn stagePayload(t: *Tool, p: Payload, stage: []const u8) !void {
     try render(t, try join(t, &.{ res, "byakaron-app.desktop.in" }), try join(t, &.{ stage, "usr/share/applications/" ++ app_id ++ ".desktop" }), &.{
         .{ "@BYK_APP_EXEC@", "/usr/bin/byakaron" },
     });
-    std.debug.print(">>> Packaged the GTK app (Spelling / Layout / Setup)\n", .{});
+    std.debug.print(">>> Packaged the GTK app (spelling editor, Preferences)\n", .{});
 
     if (!exists(t.io, p.spell_db)) return fail("{s} is missing; run: zig build gen -- db", .{p.spell_db});
     try installFile(t, "644", p.spell_db, try join(t, &.{ stage, "usr/share/byakaron/Byakaron.db" }));
@@ -1973,7 +1973,9 @@ fn tested(t: *Tool, a: []const []const u8) !u8 {
         var i: usize = 0;
         while (i < 80) : (i += 1) {
             if (std.process.run(t.arena, t.io, .{ .argv = &.{ "xwininfo", "-root", "-tree" }, .environ_map = &env })) |r| {
-                if (std.mem.indexOf(u8, r.stdout, "\"Spelling\"") != null) {
+                // The main window's title (window.c); a name, not just the
+                // WM_CLASS "Byakaron" that GTK's hidden leader window has too.
+                if (std.mem.indexOf(u8, r.stdout, "\"Byakaron\": (") != null) {
                     shown = true;
                     break;
                 }
@@ -1995,28 +1997,39 @@ fn tested(t: *Tool, a: []const []const u8) !u8 {
     return 0;
 }
 
-/// Install the *local* packages in clean containers, the way apt or pacman
-/// does for a user, then run `tested` inside each (files, icon, app window,
-/// typing through the installed engine). `deb` is the .deb or a directory
-/// holding one; `--arch-pkg=` the Arch package (or its directory). A container
-/// with pacman installs the Arch package (and checks it with `pacman -Qkk`
-/// and removes it again), any other the .deb. Images default to ubuntu 20.04 /
-/// 22.04 / 24.04 / 26.04 and debian:bookworm / trixie (what Raspberry Pi OS
-/// 64-bit is built on), plus archlinux:latest on an x86_64 host when there is
-/// an Arch package; the packages' CPU must match the Docker host's. The IME
-/// test binary must be built for glibc 2.31 (`zig build e2e -- linux`).
-/// `--tool` is a static build of this program, so it runs on any image.
-/// `--icon-check` is apps/linux/tests/icon_check.c, built for glibc 2.31 like
-/// the IME test (default: byakaron-icon-check next to the IME test binary);
-/// without one, `tested` notes the icon load as not checked.
+/// Install the *local* packages in clean containers, the way apt, pacman,
+/// dnf or zypper does for a user, then run `tested` inside each (files, icon,
+/// app window, typing through the installed engine). `deb` is the .deb or a
+/// directory holding one; `--arch-pkg=` the Arch package and `--rpm=` the RPM
+/// (or their directories). A container with pacman installs the Arch package
+/// (and checks it with `pacman -Qkk` and removes it again), one with dnf or
+/// zypper the RPM (checked with `rpm -V`, removed again), any other the .deb.
+/// With `--installer=` (the website's install.sh) the .deb and the RPM go in
+/// through it, which must report the version and, run again, "already the
+/// latest". Images default to ubuntu 20.04 / 22.04 / 24.04 / 26.04,
+/// debian:bookworm / trixie (what Raspberry Pi OS 64-bit is built on), Kali
+/// and, on x86_64, Linux Mint 22; plus archlinux:latest on an x86_64 host when
+/// there is an Arch package, and Fedora, AlmaLinux 9 and openSUSE Tumbleweed
+/// and Leap when there is an RPM. The packages' CPU must match the Docker
+/// host's. The IME test binary must be built for glibc 2.31 (`zig build e2e
+/// -- linux`). `--tool` is a static build of this program, so it runs on any
+/// image. `--icon-check` is apps/linux/tests/icon_check.c, built for glibc
+/// 2.31 like the IME test (default: byakaron-icon-check next to the IME test
+/// binary); without one, `tested` notes the icon load as not checked.
 fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
     const ime_test = a[0];
     var tool: ?[]const u8 = null;
     var icon_check_arg: ?[]const u8 = null;
     var arch_arg: ?[]const u8 = null;
+    var rpm_arg: ?[]const u8 = null;
+    var installer: ?[]const u8 = null;
     var images: std.ArrayList([]const u8) = .empty;
     for (a[2..]) |arg| {
-        if (std.mem.startsWith(u8, arg, "--tool=")) {
+        if (std.mem.startsWith(u8, arg, "--rpm=")) {
+            rpm_arg = arg["--rpm=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--installer=")) {
+            installer = arg["--installer=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--tool=")) {
             tool = arg["--tool=".len..];
         } else if (std.mem.startsWith(u8, arg, "--icon-check=")) {
             icon_check_arg = arg["--icon-check=".len..];
@@ -2030,6 +2043,9 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
     const deb = try findPackage(t, a[1], ".deb") orelse return fail("no .deb in {s}", .{a[1]});
     const arch_pkg: ?[]const u8 = if (arch_arg) |p| (try findPackage(t, p, ".pkg.tar.zst") orelse
         return fail("no .pkg.tar.zst in {s}", .{p})) else null;
+    const rpm: ?[]const u8 = if (rpm_arg) |p| (try findPackage(t, p, ".rpm") orelse
+        return fail("no .rpm in {s}", .{p})) else null;
+    if (rpm == null) std.debug.print("note: no RPM (-Dlinux-rpm=), so Fedora, AlmaLinux and openSUSE are not tested\n", .{});
 
     // byakaron_<version>_<arch>.deb
     const base = std.fs.path.basename(deb);
@@ -2042,12 +2058,23 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
         const shown = shownFromArchFile(t.arena, std.fs.path.basename(p));
         if (!std.mem.eql(u8, shown, version)) return fail("the .deb is {s}, the Arch package {s}: build both from one tree", .{ version, shown });
     }
+    if (rpm) |p| {
+        const shown = try shownFromRpmFile(t.arena, std.fs.path.basename(p));
+        if (!std.mem.eql(u8, shown, version)) return fail("the .deb is {s}, the RPM {s}: build both from one tree", .{ version, shown });
+    }
 
     const machine = capture(t, &.{ "uname", "-m" }) orelse "?";
     if (images.items.len == 0) {
         try images.appendSlice(t.arena, &.{ "ubuntu:20.04", "ubuntu:22.04", "ubuntu:24.04", "ubuntu:26.04", "debian:bookworm", "debian:trixie" });
+        // Built on Debian (Kali, rolling) and on Ubuntu 24.04 (Linux Mint 22,
+        // the most used of them, amd64 only).
+        try images.append(t.arena, "kalilinux/kali-rolling");
+        if (std.mem.eql(u8, machine, "x86_64")) try images.append(t.arena, "linuxmintd/mint22-amd64");
         // Arch Linux has x86_64 images only.
         if (arch_pkg != null and std.mem.eql(u8, machine, "x86_64")) try images.append(t.arena, "archlinux:latest");
+        // Fedora, a RHEL rebuild (what RHEL, Rocky and CentOS Stream users
+        // get) and both openSUSEs: dnf and zypper.
+        if (rpm != null) try images.appendSlice(t.arena, &.{ "fedora:latest", "almalinux:9", "opensuse/tumbleweed", "opensuse/leap:15.6" });
     }
     const self_exe = try std.process.executablePathAlloc(t.io, t.arena);
 
@@ -2070,9 +2097,15 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
     }
     try installFile(t, "644", deb, try join(t, &.{ work, "byakaron.deb" }));
     if (arch_pkg) |p| try installFile(t, "644", p, try join(t, &.{ work, "byakaron.pkg.tar.zst" }));
+    if (rpm) |p| try installFile(t, "644", p, try join(t, &.{ work, "byakaron.rpm" }));
+    // With the website installer, the .deb and the RPM go in through it, as
+    // for a user: its detection, its apt / dnf / zypper commands, its report.
+    if (installer) |p| try installFile(t, "644", p, try join(t, &.{ work, "install.sh" }));
     try writeFile(t, try join(t, &.{ work, "inside.sh" }), matrix_inside, "755");
 
     var failed: std.ArrayList([]const u8) = .empty;
+    var skipped: std.ArrayList([]const u8) = .empty;
+    var passed: std.ArrayList([]const u8) = .empty;
     for (images.items) |image| {
         std.debug.print("=== {s} ({s}) with {s}\n", .{ image, machine, base });
         const r = std.process.run(t.arena, t.io, .{
@@ -2086,7 +2119,18 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
             continue;
         };
         const good = r.term.success();
+        // 77: inside.sh could not reach Kali's mirrors (mid-sync); not ours.
+        const skip = switch (r.term) {
+            .exited => |c| c == 77,
+            else => false,
+        };
         const log = try std.mem.concat(t.arena, u8, &.{ r.stdout, r.stderr });
+        if (skip) {
+            var it = std.mem.splitScalar(u8, log, '\n');
+            while (it.next()) |l| if (std.mem.indexOf(u8, l, "  skip") != null) std.debug.print("{s}\n", .{l});
+            try skipped.append(t.arena, image);
+            continue;
+        }
         const keep: []const []const u8 = if (good)
             &.{ "  >>>", "  ok", "  note", "installed check" }
         else
@@ -2102,7 +2146,7 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
                 }
             }
         }
-        if (!good) try failed.append(t.arena, image);
+        try (if (good) &passed else &failed).append(t.arena, image);
     }
 
     std.debug.print("\n", .{});
@@ -2113,7 +2157,11 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
         return 1;
     }
     std.debug.print("install matrix passed:", .{});
-    for (images.items) |f| std.debug.print(" {s}", .{f});
+    for (passed.items) |f| std.debug.print(" {s}", .{f});
+    if (skipped.items.len > 0) {
+        std.debug.print("\nskipped (mirrors out of sync):", .{});
+        for (skipped.items) |f| std.debug.print(" {s}", .{f});
+    }
     std.debug.print("\n", .{});
     return 0;
 }
@@ -2132,6 +2180,28 @@ fn findPackage(t: *Tool, path: []const u8, suffix: []const u8) !?[]const u8 {
         if (std.mem.endsWith(u8, e.name, suffix)) found = try t.arena.dupe(u8, e.name);
     }
     return if (found) |name| try join(t, &.{ path, name }) else null;
+}
+
+/// byakaron-27.0.0~dev.3-1.x86_64.rpm → 27.0.0-dev.3, the version
+/// `byakaron --version` prints: `rpmVersion` backwards (`~` back to `-`; a
+/// later `-` that became `_` stays, as in rpm_shown in install.sh).
+fn shownFromRpmFile(arena: Allocator, name: []const u8) ![]const u8 {
+    var rest = name;
+    if (std.mem.startsWith(u8, rest, "byakaron-")) rest = rest["byakaron-".len..];
+    // <version>-<release>.<arch>.rpm
+    const rel = std.mem.lastIndexOfScalar(u8, rest, '-') orelse return rest;
+    const out = try arena.dupe(u8, rest[0..rel]);
+    std.mem.replaceScalar(u8, out, '~', '-');
+    return out;
+}
+
+test shownFromRpmFile {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    try std.testing.expectEqualStrings("27.0.0-dev.3", try shownFromRpmFile(a, "byakaron-27.0.0~dev.3-1.x86_64.rpm"));
+    try std.testing.expectEqualStrings("27.0.0-dev", try shownFromRpmFile(a, "byakaron-27.0.0~dev-1.aarch64.rpm"));
+    try std.testing.expectEqualStrings("27.0.0", try shownFromRpmFile(a, "byakaron-27.0.0-1.x86_64.rpm"));
 }
 
 /// byakaron-27.0.0dev.3-1-x86_64.pkg.tar.zst → 27.0.0-dev.3, the version
@@ -2197,19 +2267,106 @@ const matrix_inside =
     \\        || { echo "  FAIL left behind after pacman -R: $left"; exit 1; }
     \\    exit 0
     \\fi
+    \\# Installs through the website installer when there is one (/w/install.sh):
+    \\# $1 the package file, $2 its BYAKARON_*_URL variable. Then the installer's
+    \\# report says which version it installed, and a second run says it is the
+    \\# latest. Without it, $3... is the package manager command.
+    \\via_installer() {
+    \\    local pkg="$1" var="$2"
+    \\    shift 2
+    \\    if [ ! -f /w/install.sh ]; then
+    \\        echo "  >>> $* $pkg"
+    \\        "$@" "$pkg" > /tmp/install.log 2>&1 \
+    \\            || { echo "  FAIL $1 install:"; tail -15 /tmp/install.log; exit 1; }
+    \\        return 0
+    \\    fi
+    \\    echo "  >>> install.sh with $pkg"
+    \\    env "$var=file://$pkg" bash /w/install.sh > /tmp/install.log 2>&1 \
+    \\        || { echo "  FAIL install.sh:"; tail -15 /tmp/install.log; exit 1; }
+    \\    grep -q "=== Byakaron $VERSION is installed" /tmp/install.log \
+    \\        && echo "  ok   install.sh: $(grep -m1 'Detected:' /tmp/install.log | sed 's/^>>> //')" \
+    \\        || { echo "  FAIL install.sh did not report $VERSION installed:"; tail -15 /tmp/install.log; exit 1; }
+    \\    env "$var=file://$pkg" bash /w/install.sh > /tmp/again.log 2>&1 \
+    \\        && grep -q "=== Byakaron $VERSION is already the latest" /tmp/again.log \
+    \\        && echo "  ok   install.sh again: already the latest" \
+    \\        || { echo "  FAIL install.sh a second time:"; tail -15 /tmp/again.log; exit 1; }
+    \\}
+    \\# The test tools are all there (exit codes alone say too little).
+    \\have_tools() {
+    \\    local t
+    \\    for t in "$@"; do
+    \\        command -v "$t" >/dev/null && continue
+    \\        echo "  FAIL could not install the test tools ($t is missing)"
+    \\        grep -iE "not found|unable|error|failed" /tmp/tools.log | tail -5
+    \\        exit 1
+    \\    done
+    \\}
+    \\VERSION="$1"
+    \\if command -v rpm >/dev/null && { command -v dnf >/dev/null || command -v zypper >/dev/null; }; then
+    \\    export LC_ALL=C.UTF-8
+    \\    [ -f /w/byakaron.rpm ] || { echo "  FAIL an RPM image, but no RPM to test (--rpm=)"; exit 1; }
+    \\    # By file for dnf: the packages are named differently on Fedora and RHEL's
+    \\    # rebuilds. zypper exits 106 when a mirror could not be refreshed, so the
+    \\    # tools themselves are checked.
+    \\    if command -v dnf >/dev/null; then
+    \\        dnf -y -q install /usr/bin/Xvfb /usr/bin/dbus-launch /usr/bin/xwininfo /usr/bin/curl \
+    \\            /usr/bin/gsettings ibus librsvg2 >/tmp/tools.log 2>&1
+    \\        installer=(dnf -y install)
+    \\        remove=(dnf -y remove byakaron)
+    \\    else
+    \\        # Leap calls dbus-launch's package dbus-1-x11; Tumbleweed has none by
+    \\        # that name but finds the file. The SVG loader is a capability there.
+    \\        zypper -n install xorg-x11-server-Xvfb xwininfo curl glib2-tools ibus >/tmp/tools.log 2>&1
+    \\        command -v dbus-launch >/dev/null || zypper -n install dbus-1-x11 >>/tmp/tools.log 2>&1 \
+    \\            || zypper -n install /usr/bin/dbus-launch >>/tmp/tools.log 2>&1
+    \\        zypper -n install gdk-pixbuf-loader-rsvg >>/tmp/tools.log 2>&1
+    \\        installer=(zypper -n install --allow-unsigned-rpm)
+    \\        remove=(zypper -n remove byakaron)
+    \\    fi
+    \\    have_tools Xvfb dbus-launch xwininfo curl gsettings ibus-daemon
+    \\    via_installer /w/byakaron.rpm BYAKARON_RPM_URL "${installer[@]}"
+    \\    rpm -V byakaron > /tmp/verify.log 2>&1 \
+    \\        && echo "  ok   rpm -V: $(rpm -ql byakaron | wc -l) files as packaged" \
+    \\        || { echo "  FAIL rpm -V byakaron:"; head -15 /tmp/verify.log; exit 1; }
+    \\    gsettings list-schemas | grep -qx dev.nuhu.labs.Byakaron && echo "  ok   settings schema compiled (%post)" \
+    \\        || { echo "  FAIL settings schema not compiled"; exit 1; }
+    \\    /w/tool tested /w/ime-test "$1" || exit 1
+    \\    echo "  >>> ${remove[*]}"
+    \\    "${remove[@]}" > /tmp/remove.log 2>&1 \
+    \\        || { echo "  FAIL ${remove[*]}:"; tail -15 /tmp/remove.log; exit 1; }
+    \\    left="$(ls -d /usr/bin/byakaron /usr/libexec/byakaron-ibus /usr/share/byakaron \
+    \\        /usr/share/ibus/component/byakaron.xml /usr/share/icons/hicolor/scalable/apps/byakaron.svg \
+    \\        /usr/share/applications/dev.nuhu.labs.Byakaron.desktop /usr/share/metainfo/dev.nuhu.labs.Byakaron.metainfo.xml \
+    \\        /usr/share/glib-2.0/schemas/dev.nuhu.labs.Byakaron.gschema.xml \
+    \\        /usr/share/gnome-shell/extensions/*@byakaron.com 2>/dev/null)"
+    \\    gsettings list-schemas | grep -qx dev.nuhu.labs.Byakaron && left="$left compiled schema"
+    \\    [ -z "$left" ] && echo "  ok   ${remove[0]} remove left nothing behind" \
+    \\        || { echo "  FAIL left behind after ${remove[*]}: $left"; exit 1; }
+    \\    exit 0
+    \\fi
     \\export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
     \\# Do not set XDG_RUNTIME_DIR before apt: ibus's postinst can bind
     \\# $XDG_RUNTIME_DIR/ibus.sock and then Session.start fails with EADDRINUSE.
-    \\apt-get update -qq >/dev/null
+    \\# Kali's mirrors are sometimes out of step; its redirector picks another on
+    \\# a retry.
+    \\updated=0
+    \\for try in 1 2 3; do
+    \\    apt-get update -qq >/tmp/update.log 2>&1 && { updated=1; break; }
+    \\    sleep 5
+    \\done
+    \\if [ "$updated" -eq 0 ] && grep -qx 'ID=kali' /etc/os-release; then
+    \\    echo "  skip Kali's mirrors are mid-sync: apt-get update failed 3 times"
+    \\    grep '^E:' /tmp/update.log | head -2 | sed 's/^/       /'
+    \\    exit 77
+    \\fi
     \\# ibus explicitly: the .deb Depends on it, but pull the daemon/tools first so
     \\# a failed dependency resolution is obvious before we install Byakaron.
     \\# librsvg2-common is gdk-pixbuf's SVG loader, for /w/byakaron-icon-check.
-    \\apt-get install -y -qq xvfb dbus-x11 x11-utils ibus \
-    \\    librsvg2-common >/dev/null 2>&1 \
-    \\    || { echo "  FAIL could not install the test tools"; exit 1; }
-    \\echo "  >>> apt install /w/byakaron.deb"
-    \\apt-get install -y -qq /w/byakaron.deb > /tmp/install.log 2>&1 \
-    \\    || { echo "  FAIL apt install of the .deb:"; tail -15 /tmp/install.log; exit 1; }
+    \\apt-get install -y -qq xvfb dbus-x11 x11-utils ibus curl \
+    \\    librsvg2-common >/tmp/tools.log 2>&1
+    \\cat /tmp/update.log >> /tmp/tools.log
+    \\have_tools Xvfb dbus-launch xwininfo curl ibus-daemon
+    \\via_installer /w/byakaron.deb BYAKARON_DEB_URL apt-get install -y -qq
     \\exec /w/tool tested /w/ime-test "$1"
     \\
 ;

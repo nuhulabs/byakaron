@@ -393,15 +393,16 @@ main (void)
     send_string (ctx, "amar");
     {
         gchar *second = g_strdup (candidate_at (1));
+        gchar *spaced = g_strconcat (second, " ", NULL);
         send_key (ctx, IBUS_KEY_2);
-        check ("\"2\" commits candidate 2", g_committed, second);
+        /* A pick commits with a space, as Space commits the highlight. */
+        check ("\"2\" commits candidate 2", g_committed, spaced);
         check ("preedit cleared", g_preedit, "");
         check_flag ("lookup table hidden", g_table_visible, FALSE);
 
         reset_state (ctx);
         send_string (ctx, "amar");
         check_flag ("opens on candidate 2 next time", g_cursor_visible && g_cursor_pos == 1, TRUE);
-        gchar *spaced = g_strconcat (second, " ", NULL);
         send_key (ctx, IBUS_KEY_space);
         check ("Space commits the highlight", g_committed, spaced);
         g_free (spaced);
@@ -471,7 +472,7 @@ main (void)
             check_flag ("correction বাংলা offered", at > 0, TRUE);
             if (at > 0) {
                 send_key (ctx, IBUS_KEY_1 + at);
-                check ("its number commits it", g_committed, "বাংলা");
+                check ("its number commits it", g_committed, "বাংলা ");
             } else {
                 send_key (ctx, IBUS_KEY_Escape);
             }
@@ -510,7 +511,7 @@ main (void)
         check_flag ("still shown after Page Down", g_table_visible, TRUE);
         check_flag ("a different page", g_strcmp0 (candidate_at (0), page_one_first) != 0, TRUE);
         check_flag ("highlight on its first", g_cursor_pos == 0, TRUE);
-        gchar *page_two_first = g_strdup (candidate_at (0));
+        gchar *page_two_first = g_strconcat (candidate_at (0), " ", NULL);
         send_key (ctx, IBUS_KEY_1);
         check ("\"1\" commits page two's first", g_committed, page_two_first);
         g_free (page_two_first);

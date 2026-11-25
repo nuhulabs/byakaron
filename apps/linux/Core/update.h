@@ -62,6 +62,12 @@ gchar *byk_update_installed_version (BykPackage *package);
  * when `a` is newer than `b`. */
 gboolean byk_update_newer (BykPackage package, const gchar *a, const gchar *b);
 
+/* TRUE on a read-only Fedora (Silverblue, Kinoite, Bazzite, Bluefin): an RPM
+ * is layered with rpm-ostree there and runs from the next start, since dnf
+ * cannot write to the system. /run/ostree-booted says so, or the file
+ * BYAKARON_OSTREE_BOOTED names (tests; the website installer reads it too). */
+gboolean byk_update_ostree (void);
+
 /* The release file for this machine: "byakaron_amd64.deb" (from dpkg's
  * architecture), "byakaron_x86_64.pkg.tar.zst", "byakaron_aarch64.rpm", or
  * NULL when there is none (no dpkg; a CPU no package is built for). */

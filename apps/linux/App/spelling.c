@@ -1,4 +1,5 @@
 #include "spelling.h"
+#include "langtoggle.h"
 
 #include "prefs.h"
 #include "uiutil.h"
@@ -1743,10 +1744,6 @@ byk_spell_page_pack_header (BykSpellPage *self, GtkHeaderBar *header)
                                           "Clear the editor", "spell.clear", FALSE));
     gtk_header_bar_pack_end (header, edit);
 
-    gtk_header_bar_pack_end (header,
-                             byk_header_button ("input-keyboard-symbolic",
-                                                "Bangla typing: type with the Byakaron keyboard "
-                                                "here without changing the system keyboard "
-                                                "(Ctrl+T)",
-                                                "spell.typing", TRUE));
+    /* ক / A in a circle, as the keyboard's own language key. */
+    gtk_header_bar_pack_end (header, byk_lang_toggle_new ("spell.typing"));
 }

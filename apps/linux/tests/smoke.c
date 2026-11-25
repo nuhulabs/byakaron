@@ -509,6 +509,15 @@ int main(void)
         name = byk_update_package_name(BYK_PACKAGE_NONE);
         expect(name == NULL, "no package name without a package", name ? name : "(none)");
         g_free(name);
+
+        /* A read-only Fedora is told by its marker file. */
+        gchar *marker = g_build_filename(data_dir, "ostree-booted", NULL);
+        g_setenv("BYAKARON_OSTREE_BOOTED", marker, TRUE);
+        expect(!byk_update_ostree(), "no marker: not a read-only Fedora", "no");
+        g_file_set_contents(marker, "", 0, NULL);
+        expect(byk_update_ostree(), "marker: a read-only Fedora (rpm-ostree)", "yes");
+        g_unsetenv("BYAKARON_OSTREE_BOOTED");
+        g_free(marker);
     }
 
     rm_rf(data_dir);

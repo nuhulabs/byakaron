@@ -242,6 +242,13 @@ byk_update_installed_version (BykPackage *package)
 }
 
 gboolean
+byk_update_ostree (void)
+{
+    const gchar *marker = g_getenv ("BYAKARON_OSTREE_BOOTED");
+    return g_file_test (marker != NULL ? marker : "/run/ostree-booted", G_FILE_TEST_EXISTS);
+}
+
+gboolean
 byk_update_newer (BykPackage package, const gchar *a, const gchar *b)
 {
     gint status = -1;
