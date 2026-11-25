@@ -2104,6 +2104,8 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
     try writeFile(t, try join(t, &.{ work, "inside.sh" }), matrix_inside, "755");
 
     var failed: std.ArrayList([]const u8) = .empty;
+    var skipped: std.ArrayList([]const u8) = .empty;
+    var passed: std.ArrayList([]const u8) = .empty;
     for (images.items) |image| {
         std.debug.print("=== {s} ({s}) with {s}\n", .{ image, machine, base });
         const r = std.process.run(t.arena, t.io, .{
@@ -2117,7 +2119,18 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
             continue;
         };
         const good = r.term.success();
+        // 77: inside.sh could not reach Kali's mirrors (mid-sync); not ours.
+        const skip = switch (r.term) {
+            .exited => |c| c == 77,
+            else => false,
+        };
         const log = try std.mem.concat(t.arena, u8, &.{ r.stdout, r.stderr });
+        if (skip) {
+            var it = std.mem.splitScalar(u8, log, '\n');
+            while (it.next()) |l| if (std.mem.indexOf(u8, l, "  skip") != null) std.debug.print("{s}\n", .{l});
+            try skipped.append(t.arena, image);
+            continue;
+        }
         const keep: []const []const u8 = if (good)
             &.{ "  >>>", "  ok", "  note", "installed check" }
         else
@@ -2133,7 +2146,7 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
                 }
             }
         }
-        if (!good) try failed.append(t.arena, image);
+        try (if (good) &passed else &failed).append(t.arena, image);
     }
 
     std.debug.print("\n", .{});
@@ -2144,7 +2157,11 @@ fn installMatrix(t: *Tool, a: []const []const u8) !u8 {
         return 1;
     }
     std.debug.print("install matrix passed:", .{});
-    for (images.items) |f| std.debug.print(" {s}", .{f});
+    for (passed.items) |f| std.debug.print(" {s}", .{f});
+    if (skipped.items.len > 0) {
+        std.debug.print("\nskipped (mirrors out of sync):", .{});
+        for (skipped.items) |f| std.debug.print(" {s}", .{f});
+    }
     std.debug.print("\n", .{});
     return 0;
 }
@@ -2274,23 +2291,39 @@ const matrix_inside =
     \\        && echo "  ok   install.sh again: already the latest" \
     \\        || { echo "  FAIL install.sh a second time:"; tail -15 /tmp/again.log; exit 1; }
     \\}
+    \\# The test tools are all there (exit codes alone say too little).
+    \\have_tools() {
+    \\    local t
+    \\    for t in "$@"; do
+    \\        command -v "$t" >/dev/null && continue
+    \\        echo "  FAIL could not install the test tools ($t is missing)"
+    \\        grep -iE "not found|unable|error|failed" /tmp/tools.log | tail -5
+    \\        exit 1
+    \\    done
+    \\}
     \\VERSION="$1"
     \\if command -v rpm >/dev/null && { command -v dnf >/dev/null || command -v zypper >/dev/null; }; then
     \\    export LC_ALL=C.UTF-8
     \\    [ -f /w/byakaron.rpm ] || { echo "  FAIL an RPM image, but no RPM to test (--rpm=)"; exit 1; }
-    \\    # By file for dnf: Xvfb and xwininfo come in differently named packages on
-    \\    # Fedora and on RHEL's rebuilds.
+    \\    # By file for dnf: the packages are named differently on Fedora and RHEL's
+    \\    # rebuilds. zypper exits 106 when a mirror could not be refreshed, so the
+    \\    # tools themselves are checked.
     \\    if command -v dnf >/dev/null; then
     \\        dnf -y -q install /usr/bin/Xvfb /usr/bin/dbus-launch /usr/bin/xwininfo /usr/bin/curl \
     \\            /usr/bin/gsettings ibus librsvg2 >/tmp/tools.log 2>&1
     \\        installer=(dnf -y install)
     \\        remove=(dnf -y remove byakaron)
     \\    else
-    \\        zypper -n -q install xorg-x11-server-Xvfb dbus-1-x11 xwininfo curl glib2-tools ibus \
-    \\            gdk-pixbuf-loader-rsvg >/tmp/tools.log 2>&1
+    \\        # Leap calls dbus-launch's package dbus-1-x11; Tumbleweed has none by
+    \\        # that name but finds the file. The SVG loader is a capability there.
+    \\        zypper -n install xorg-x11-server-Xvfb xwininfo curl glib2-tools ibus >/tmp/tools.log 2>&1
+    \\        command -v dbus-launch >/dev/null || zypper -n install dbus-1-x11 >>/tmp/tools.log 2>&1 \
+    \\            || zypper -n install /usr/bin/dbus-launch >>/tmp/tools.log 2>&1
+    \\        zypper -n install gdk-pixbuf-loader-rsvg >>/tmp/tools.log 2>&1
     \\        installer=(zypper -n install --allow-unsigned-rpm)
     \\        remove=(zypper -n remove byakaron)
-    \\    fi || { echo "  FAIL could not install the test tools"; tail -5 /tmp/tools.log; exit 1; }
+    \\    fi
+    \\    have_tools Xvfb dbus-launch xwininfo curl gsettings ibus-daemon
     \\    via_installer /w/byakaron.rpm BYAKARON_RPM_URL "${installer[@]}"
     \\    rpm -V byakaron > /tmp/verify.log 2>&1 \
     \\        && echo "  ok   rpm -V: $(rpm -ql byakaron | wc -l) files as packaged" \
@@ -2314,13 +2347,25 @@ const matrix_inside =
     \\export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
     \\# Do not set XDG_RUNTIME_DIR before apt: ibus's postinst can bind
     \\# $XDG_RUNTIME_DIR/ibus.sock and then Session.start fails with EADDRINUSE.
-    \\apt-get update -qq >/dev/null
+    \\# Kali's mirrors are sometimes out of step; its redirector picks another on
+    \\# a retry.
+    \\updated=0
+    \\for try in 1 2 3; do
+    \\    apt-get update -qq >/tmp/update.log 2>&1 && { updated=1; break; }
+    \\    sleep 5
+    \\done
+    \\if [ "$updated" -eq 0 ] && grep -qx 'ID=kali' /etc/os-release; then
+    \\    echo "  skip Kali's mirrors are mid-sync: apt-get update failed 3 times"
+    \\    grep '^E:' /tmp/update.log | head -2 | sed 's/^/       /'
+    \\    exit 77
+    \\fi
     \\# ibus explicitly: the .deb Depends on it, but pull the daemon/tools first so
     \\# a failed dependency resolution is obvious before we install Byakaron.
     \\# librsvg2-common is gdk-pixbuf's SVG loader, for /w/byakaron-icon-check.
     \\apt-get install -y -qq xvfb dbus-x11 x11-utils ibus curl \
-    \\    librsvg2-common >/dev/null 2>&1 \
-    \\    || { echo "  FAIL could not install the test tools"; exit 1; }
+    \\    librsvg2-common >/tmp/tools.log 2>&1
+    \\cat /tmp/update.log >> /tmp/tools.log
+    \\have_tools Xvfb dbus-launch xwininfo curl ibus-daemon
     \\via_installer /w/byakaron.deb BYAKARON_DEB_URL apt-get install -y -qq
     \\exec /w/tool tested /w/ime-test "$1"
     \\
