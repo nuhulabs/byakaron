@@ -191,7 +191,9 @@ on_installed (BykUpdates *u, gint status, const gchar *output)
 
     byk_updates_clear_download (u);
     u->busy = FALSE;
-    if (status == 0 && now != NULL && g_strcmp0 (now, u->version) == 0) {
+    /* What is installed decides, not only the exit status: zypper exits 106
+     * when it installed but could not refresh a repository. */
+    if (now != NULL && g_strcmp0 (now, u->version) == 0) {
         text = g_strdup_printf ("Byakaron %s is installed and the keyboard has restarted. "
                                 "Restart the app to finish.", shown);
         byk_updates_show (u, GTK_MESSAGE_INFO, text, FALSE, FALSE, TRUE);
@@ -213,6 +215,33 @@ on_installed (BykUpdates *u, gint status, const gchar *output)
     byk_updates_done (u); /* may free u: last */
 }
 
+/* rpm-ostree has layered the new RPM: it runs from the next start, so the
+ * installed version (the running system's) has not changed yet. */
+static void
+on_layered (BykUpdates *u, gint status, const gchar *output)
+{
+    gchar *shown = byk_update_shown_version (u->package, u->version);
+    gchar *text;
+
+    byk_updates_clear_download (u);
+    u->busy = FALSE;
+    if (status == 0) {
+        text = g_strdup_printf ("Byakaron %s is added to the system. "
+                                "Restart the computer to finish.", shown);
+        byk_updates_show (u, GTK_MESSAGE_INFO, text, FALSE, FALSE, FALSE);
+        g_free (u->installed);
+        u->installed = g_strdup (u->version); /* no second offer before the restart */
+    } else {
+        gchar *why = byk_last_line (output);
+        text = g_strdup_printf ("The update did not install: %s", why);
+        byk_updates_show (u, GTK_MESSAGE_WARNING, text, TRUE, TRUE, FALSE);
+        g_free (why);
+    }
+    g_free (text);
+    g_free (shown);
+    byk_updates_done (u); /* may free u: last */
+}
+
 /* ── 3. checked: install it ──────────────────────────────────────────────── */
 
 static void
@@ -224,6 +253,7 @@ byk_updates_install (BykUpdates *u)
     gchar *dnf = g_find_program_in_path ("dnf");
     gchar *zypper = g_find_program_in_path ("zypper");
     gchar *pkexec = g_find_program_in_path ("pkexec");
+    gchar *rpm_ostree = g_find_program_in_path ("rpm-ostree");
     gboolean root = geteuid () == 0;
     gboolean started = FALSE;
 
@@ -231,7 +261,12 @@ byk_updates_install (BykUpdates *u)
      * (not env): "Authentication is needed to run /usr/bin/apt-get as the
      * super user". apt's lock timeout waits out Software Updater instead of
      * failing; pacman has none, and says so if another pacman holds the lock. */
-    if (u->package == BYK_PACKAGE_DEB && apt != NULL && (root || pkexec != NULL)) {
+    if (u->package == BYK_PACKAGE_RPM && rpm_ostree != NULL && byk_update_ostree ()) {
+        /* A read-only Fedora: dnf is there but cannot write. rpm-ostree asks
+         * for the password itself (polkit), and swaps the layered package. */
+        const gchar *argv[] = { rpm_ostree, "uninstall", "byakaron", "--install", deb, NULL };
+        started = byk_updates_run (u, argv, on_layered);
+    } else if (u->package == BYK_PACKAGE_DEB && apt != NULL && (root || pkexec != NULL)) {
         const gchar *as_root[] = { apt, "-o", "DPkg::Lock::Timeout=120",
                                    "install", "-y", deb, NULL };
         const gchar *with_prompt[] = { pkexec, apt, "-o", "DPkg::Lock::Timeout=120",
@@ -272,6 +307,7 @@ byk_updates_install (BykUpdates *u)
     g_free (dnf);
     g_free (zypper);
     g_free (pkexec);
+    g_free (rpm_ostree);
 }
 
 static gchar *
