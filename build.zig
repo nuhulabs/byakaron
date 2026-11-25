@@ -901,7 +901,7 @@ fn module(b: *std.Build, exported: bool, name: []const u8, options: std.Build.Mo
 ///   zig build deps -- linux          → sudo: apt packages (`deps -- linux --test` adds the test toolchain)
 ///   zig build e2e -- linux           → what CI runs (glibc, smoke, IME test, probes, icon, AppStream)
 ///   zig build e2e -- linux-wayland   → typing into GTK3/GTK4 on a private headless GNOME Shell
-///   zig build e2e -- linux-install   → the local .deb in clean Ubuntu/Debian containers (Docker)
+///   zig build e2e -- linux-install   → the local packages in clean containers (Docker): .deb, Arch, and the RPM with -Dlinux-rpm
 ///
 /// The packages and the system install always use ReleaseFast builds,
 /// whatever `-Doptimize` is.
@@ -1161,7 +1161,7 @@ fn addLinux(
     const deps_step = cli.deps.add(b, "linux", "apt-get the Linux runtime packages (sudo; `--test` adds the test toolchain)");
     const ci_step = cli.e2e.add(b, "linux", "The Linux CI checks (glibc, smoke, IME test, probes, icon, AppStream)");
     const e2e_step = cli.e2e.add(b, "linux-wayland", "Type into GTK3/GTK4 apps on a private headless GNOME Shell (needs gnome-shell)");
-    const install_test_step = cli.e2e.add(b, "linux-install", "Install the built .deb in clean Docker images and test it (needs docker; args: images)");
+    const install_test_step = cli.e2e.add(b, "linux-install", "Install the built packages in clean Docker images and test them (needs docker; -Dlinux-rpm= adds the RPM; args: images)");
     if (misuse) |f| for ([_]*std.Build.Step{ package_step, arch_package_step, rpm_package_step, run_step, install_step, ci_step, e2e_step, install_test_step }) |s| s.dependOn(f);
 
     if (!host_linux) {
@@ -1319,6 +1319,7 @@ fn addLinux(
     // building another one via the package step.
     const external_deb = b.option([]const u8, "linux-deb", "Existing .deb (or dir) for `e2e -- linux-install`; skip re-packaging");
     const external_arch_pkg = b.option([]const u8, "linux-arch-pkg", "Existing Arch .pkg.tar.zst (or dir) for `e2e -- linux-install`; skip re-packaging");
+    const external_rpm = b.option([]const u8, "linux-rpm", "Existing .rpm (or dir) for `e2e -- linux-install`; skip re-packaging");
     const static_tool = b.addExecutable(.{
         .name = "linux-static",
         .root_module = b.createModule(.{
@@ -1348,6 +1349,12 @@ fn addLinux(
     } else if (arch == .x86_64) {
         matrix.addPrefixedDirectoryArg("--arch-pkg=", arch_dir);
     }
+    // Fedora, AlmaLinux and openSUSE images get the RPM when one is given:
+    // building it needs rpmbuild, which most machines lack (`pack --
+    // linux-rpm`, then -Dlinux-rpm=zig-out/pkg).
+    if (external_rpm) |p| matrix.addArg(b.fmt("--rpm={s}", .{p}));
+    // The .deb and the RPM go in through the website installer, as for a user.
+    matrix.addPrefixedFileArg("--installer=", b.path("apps/web/app/public/install.sh"));
     matrix.addPrefixedFileArg("--tool=", static_tool.getEmittedBin());
     matrix.addPrefixedFileArg("--icon-check=", icon_check.getEmittedBin());
     matrix.addPassthruArgs(); // optional docker images after `--`

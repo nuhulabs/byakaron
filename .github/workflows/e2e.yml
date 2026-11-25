@@ -2,8 +2,9 @@
 # per suite, each `zig build e2e -- <suite>` as run locally:
 #
 #   linux-wayland  type into GTK3/GTK4 apps on a headless GNOME Shell
-#   linux-install  pack the .deb and the Arch package and install them in
-#                  clean Docker images (Ubuntu, Debian, archlinux)
+#   linux-install  pack the .deb, the Arch package and the RPM and install them
+#                  in clean Docker images (Ubuntu, Debian, Kali, Mint, Arch,
+#                  Fedora, AlmaLinux, openSUSE)
 #   ios-build      build the app and KeyboardUITests once, and pick the
 #                  iPhone x iOS matrix from the runner's simulators (one
 #                  iPhone per screen width on each iOS, as a local run does)
@@ -76,21 +77,22 @@ jobs:
     name: e2e (linux-install)
     if: inputs.os != 'ios'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # 13 systems: Ubuntu, Debian, Kali, Mint, Arch, Fedora, AlmaLinux, openSUSE.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      # What packing needs (msgfmt, glib-compile-schemas); the installs run in Docker.
+      # What packing needs (msgfmt, glib-compile-schemas, rpmbuild); the installs run in Docker.
       - name: deps
         run: |
           sudo -E apt-get update -qq
-          sudo -E apt-get install -y -qq >/dev/null ibus ibus-gtk3 libglib2.0-bin gettext
+          sudo -E apt-get install -y -qq >/dev/null ibus ibus-gtk3 libglib2.0-bin gettext rpm
           sudo -E apt-get install -y -qq --no-install-recommends >/dev/null xvfb dbus-x11
       - uses: mlugg/setup-zig@v2
         with:
           version: ${{ env.ZIG_VERSION }}
       # The tiny wiki dump keeps Byakaron.db cheap.
       - name: pack
-        run: zig build pack -Dlinux-arch=x86_64 -Dwiki-dump=.github/ci/bnwiki-tiny.xml -- linux linux-arch
+        run: zig build pack -Dlinux-arch=x86_64 -Dwiki-dump=.github/ci/bnwiki-tiny.xml -- linux linux-arch linux-rpm
       - name: e2e
         run: |
           zig build e2e \
@@ -98,6 +100,7 @@ jobs:
             -Dspell-db=zig-out/db/Byakaron.db \
             -Dlinux-deb="$(echo zig-out/pkg/byakaron_*_amd64.deb)" \
             -Dlinux-arch-pkg="$(echo zig-out/pkg/byakaron-*-x86_64.pkg.tar.zst)" \
+            -Dlinux-rpm="$(echo zig-out/pkg/byakaron-*.x86_64.rpm)" \
             -- linux-install
 
   # ── ios ────────────────────────────────────────────────────────────────────
