@@ -1440,6 +1440,7 @@ fn linuxApp(
             "apps/linux/App/window.c",
             "apps/linux/App/preferences.c",
             "apps/linux/App/spelling.c",
+            "apps/linux/App/langtoggle.c",
             "apps/linux/App/layout.c",
             "apps/linux/App/setup.c",
             "apps/linux/App/uiutil.c",
