@@ -77,8 +77,9 @@ jobs:
     name: e2e (linux-install)
     if: inputs.os != 'ios'
     runs-on: ubuntu-24.04
-    # 13 systems: Ubuntu, Debian, Kali, Mint, Arch, Fedora, AlmaLinux, openSUSE.
-    timeout-minutes: 60
+    # 13 systems (Ubuntu, Debian, Kali, Mint, Arch, Fedora, AlmaLinux,
+    # openSUSE), 3 to 5 minutes each.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       # What packing needs (msgfmt, glib-compile-schemas, rpmbuild); the installs run in Docker.
